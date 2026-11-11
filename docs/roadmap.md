@@ -46,7 +46,7 @@ Every runtime or dev dependency needs the author's OK before it is added
 | fastapi | API server | MIT | M0 | |
 | uvicorn | ASGI server | BSD-3-Clause | M0 | |
 | pydantic v2 | models, JSON Schema | MIT | M0 | 2026-11-11 |
-| ruamel.yaml | round-trip YAML | MIT | M0 | |
+| ruamel.yaml | round-trip YAML | MIT | M0 | 2026-11-11 |
 | keyring | secrets | MIT | M0 | |
 | httpx | HTTP client | BSD-3-Clause | M0 | |
 | pytest, pytest-asyncio | tests | MIT / Apache-2.0 | M0 | 2026-11-11 |
@@ -79,7 +79,7 @@ Implementation order (each depends on the ones above it):
 | # | Spec | What it delivers |
 |---|---|---|
 | 1 ✓ | [F-DEV-TOOLING](../specs/features/F-DEV-TOOLING.md) | backend and frontend project skeletons, checks, CI, audio fixtures |
-| 2 | [C-WORKFLOW](../specs/core/C-WORKFLOW.md) | workflow YAML models, validation, `{{ }}` interpolation, schema export |
+| 2 ✓ | [C-WORKFLOW](../specs/core/C-WORKFLOW.md) | workflow YAML models, validation, `{{ }}` interpolation, schema export |
 | 3 | [C-BACKEND](../specs/core/C-BACKEND.md) | `LibraryBackend` protocol, snapshots, capabilities, `FakeBackend` |
 | 4 | [C-PROFILE](../specs/core/C-PROFILE.md) | profile files, variables, credential references |
 | 5 | [C-RUN](../specs/core/C-RUN.md) | run state machine, step registry, events, cancellation |

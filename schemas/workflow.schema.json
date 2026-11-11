@@ -1,0 +1,246 @@
+{
+  "$defs": {
+    "Step": {
+      "additionalProperties": false,
+      "description": "One entry of ``steps:`` (WORKFLOW-2, WORKFLOW-3).",
+      "properties": {
+        "apply": {
+          "default": "review",
+          "description": "Whether this step's ChangeSets apply automatically or wait for review. Ignored by steps that don't produce ChangeSets.",
+          "enum": [
+            "auto",
+            "review"
+          ],
+          "title": "Apply",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[a-z][a-z0-9_-]*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "on_error": {
+          "default": "stop",
+          "enum": [
+            "stop",
+            "skip",
+            "continue"
+          ],
+          "title": "On Error",
+          "type": "string"
+        },
+        "uses": {
+          "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_-]*)*$",
+          "title": "Uses",
+          "type": "string"
+        },
+        "when": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Backend condition (a beets query).",
+          "title": "When"
+        },
+        "with": {
+          "additionalProperties": true,
+          "title": "With",
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "uses"
+      ],
+      "title": "Step",
+      "type": "object"
+    },
+    "Triggers": {
+      "additionalProperties": false,
+      "description": "The ``on:`` block. Parsed and validated; not acted on until F-TRIGGERS (WORKFLOW-13).",
+      "properties": {
+        "schedule": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "cron expression",
+          "title": "Schedule"
+        },
+        "watch": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WatchTrigger"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "webhook": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WebhookTrigger"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "Triggers",
+      "type": "object"
+    },
+    "VarDecl": {
+      "additionalProperties": false,
+      "description": "A declared workflow variable (WORKFLOW-7).",
+      "properties": {
+        "default": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Default"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        }
+      },
+      "title": "VarDecl",
+      "type": "object"
+    },
+    "WatchTrigger": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "settle": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Settle"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "WatchTrigger",
+      "type": "object"
+    },
+    "WebhookTrigger": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$",
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "WebhookTrigger",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A workflow file (WORKFLOW-1).",
+  "properties": {
+    "description": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Description"
+    },
+    "name": {
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+    },
+    "on": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Triggers"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "steps": {
+      "items": {
+        "$ref": "#/$defs/Step"
+      },
+      "minItems": 1,
+      "title": "Steps",
+      "type": "array"
+    },
+    "vars": {
+      "additionalProperties": {
+        "$ref": "#/$defs/VarDecl"
+      },
+      "title": "Vars",
+      "type": "object"
+    }
+  },
+  "required": [
+    "name",
+    "steps"
+  ],
+  "title": "Rifferr workflow",
+  "type": "object"
+}

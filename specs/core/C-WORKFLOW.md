@@ -1,5 +1,5 @@
 # C-WORKFLOW: Workflow file schema, validation and interpolation
-Status: Draft
+Status: Implemented
 Milestone: M0
 
 ## Context
@@ -54,6 +54,18 @@ def interpolate(value: str, ctx: InterpolationContext) -> str: ...
 ```
 `ValidationError` carries `path` (e.g. `steps[1].with.run`), `line`, `column`, `message`.
 
+As implemented (`rifferr.core.workflow`):
+- `validate(wf, registry, backend_caps=None, profile_vars=None, *, doc=None)`. Pass the
+  `RoundTripDoc` from `load_workflow` to get line/column. `profile_vars=None` skips the
+  profile-dependent var checks; `backend_caps=None` skips capability checks.
+- Fields allowed under the fixed roots: `run.id`, `run.workflow`, `profile.name`.
+  `vars.<name>` and `steps.<id>.<key>` as described above.
+- `RoundTripDoc.dump()` returns the original text until `set()` edits it. After an edit,
+  ruamel.yaml keeps comments, key order, quoting and block layout; the one normalization is
+  whitespace inside flow mappings (`{ a: b }` becomes `{a: b}`).
+- `BackendCapabilities` (BACKEND-2) landed in `rifferr.backends.base` with this spec, because
+  WORKFLOW-6 needs it.
+
 ## Examples
 ```yaml
 name: two-step
@@ -84,13 +96,14 @@ Step types supply their own `with:` model. Interpolation roots and syntax are fi
 - Workflow trust hashing (F-SECURITY).
 
 ## Open questions
-- Does `steps.<id>.<output>` need to exist in M0, or only `vars`/`run`/`profile`?
-- File extension and discovery: `*.yaml` only, or also `*.yml`? Where do workflows live by default (profile dir `workflows/`)?
-- Should `apply` default differently for step types that never produce ChangeSets (e.g. `shell` with `emits: none`), or is it just ignored there?
+- ~~Does `steps.<id>.<output>` need to exist in M0?~~ Resolved 2026-11-11 (author): yes as syntax; validation checks `<id>` is an earlier step. Values are filled once C-RUN step results exist.
+- ~~File extension and discovery?~~ Resolved 2026-11-11 (author): `*.yaml` and `*.yml`; default location `<profile>/workflows/`. Discovery itself belongs to F-API / F-CLI.
+- ~~`apply` on steps that never produce ChangeSets?~~ Resolved 2026-11-11 (author): allowed and ignored; no error, no warning.
+- Dependency ruamel.yaml (MIT) approved 2026-11-11 (author).
 
 ## Tasks
-- [ ] models + loader with line/column errors
-- [ ] validation (params, capabilities, vars)
-- [ ] interpolation + tests for mixed `{{ }}` / `$field` strings
-- [ ] round-trip save
-- [ ] schema export
+- [x] models + loader with line/column errors
+- [x] validation (params, capabilities, vars)
+- [x] interpolation + tests for mixed `{{ }}` / `$field` strings
+- [x] round-trip save
+- [x] schema export

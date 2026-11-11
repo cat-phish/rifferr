@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from rifferr import __version__
+from rifferr.core.workflow import StaticStepRegistry, StepRegistry, workflow_json_schema
 from rifferr.schemas import PUBLISHED
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
@@ -28,9 +29,14 @@ def openapi_document() -> dict[str, Any]:
     }
 
 
+def step_registry() -> StepRegistry:
+    """Registered step types. Empty until C-RUN adds the entry-point registry."""
+    return StaticStepRegistry([])
+
+
 def render() -> dict[str, str]:
     """Map of file name -> file content for everything under ``schemas/``."""
-    files: dict[str, str] = {}
+    files: dict[str, str] = {"workflow.schema.json": _dump(workflow_json_schema(step_registry()))}
     for stem, model in sorted(PUBLISHED.items()):
         files[f"{stem}.schema.json"] = _dump(model.model_json_schema())
     files["openapi.json"] = _dump(openapi_document())

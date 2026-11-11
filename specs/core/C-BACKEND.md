@@ -84,7 +84,8 @@ Snapshots carry tag data and paths only, never credentials or config.
 
 ## Tasks
 - [ ] snapshot + selection models in core
-- [ ] protocol + capabilities in backends/base.py
+- [x] `BackendCapabilities` in backends/base.py (landed with C-WORKFLOW)
+- [ ] protocol in backends/base.py
 - [ ] FakeBackend with query subset
 - [ ] backend contract test suite
 - [ ] snapshot JSON Schema export

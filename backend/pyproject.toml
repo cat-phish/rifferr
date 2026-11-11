@@ -5,7 +5,10 @@ description = "A local web app for building and running user-defined music-impor
 readme = "../README.md"
 license = "AGPL-3.0-or-later"
 requires-python = ">=3.12"
-dependencies = ["pydantic>=2.10,<3"]
+dependencies = [
+    "pydantic>=2.10,<3",
+    "ruamel-yaml>=0.18,<0.20",
+]
 
 [dependency-groups]
 dev = [

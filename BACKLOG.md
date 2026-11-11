@@ -29,6 +29,7 @@ are **not** part of the current task. Append here instead of acting on them.
 - B-014 [debt] (2026-11-11, from F-DEV-TOOLING) No GitHub remote yet, so `.github/workflows/ci.yml` has never run. Push and confirm CI is green, then mark F-DEV-TOOLING Verified.
 - B-015 [debt] (2026-11-11, from F-DEV-TOOLING) TypeScript pinned to 6.0 because typescript-eslint 8.x doesn't support TS 7; openapi-typescript 7 still declares a TS 5 peer (works with 6). Revisit when they catch up.
 - B-016 [debt] (2026-11-11, from F-DEV-TOOLING) `schemas/openapi.json` is a stub until F-API provides the FastAPI app; `export.openapi_document()` must switch to `app.openapi()` then.
+- B-017 [debt] (2026-11-11, from C-WORKFLOW) WORKFLOW-5 checks `with:` values before interpolation, so a non-string parameter written as an expression (e.g. `timeout: "{{ vars.t }}"`) fails validation. Decide whether typed params may take `{{ }}` and validate them after interpolation.
 
 ## Questions
 - B-008 [question] (2026-11-11, from architecture §12) Which UI component library (shadcn/ui, Mantine, …)? Needed for F-UI-SHELL.
