@@ -1,0 +1,10 @@
+# gitleaks config: default rules plus project allowlist.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Placeholder env template and recorded HTTP fixtures (scrubbed)"
+paths = [
+  '''^\.env\.example$''',
+  '''^backend/tests/fixtures/cassettes/''',
+]

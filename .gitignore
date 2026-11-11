@@ -1,0 +1,49 @@
+# --- Secrets (never commit) ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+secrets/
+
+# --- Python ---
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# --- Node / frontend ---
+node_modules/
+frontend/dist/
+playwright-report/
+test-results/
+*.tsbuildinfo
+
+# --- Local runtime data (dev profiles, app DB, logs) ---
+.rifferr/
+*.sqlite
+*.sqlite3
+*.db
+!backend/tests/fixtures/**/*.db
+*.log
+
+# --- Editors / OS ---
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+*.swp
+*~
+
+# --- Claude Code local settings ---
+.claude/settings.local.json
