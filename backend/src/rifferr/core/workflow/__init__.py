@@ -10,6 +10,7 @@ from rifferr.core.workflow.interpolation import (
     InterpolationError,
     find_expressions,
     interpolate,
+    substitute,
 )
 from rifferr.core.workflow.loader import load_workflow
 from rifferr.core.workflow.models import (
@@ -52,6 +53,7 @@ __all__ = [
     "format_path",
     "interpolate",
     "load_workflow",
+    "substitute",
     "validate",
     "workflow_json_schema",
 ]

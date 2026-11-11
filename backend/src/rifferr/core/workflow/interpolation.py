@@ -8,7 +8,7 @@ beets template syntax (``$field``, ``%func{}``) is never touched here.
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Final
 
@@ -113,8 +113,9 @@ def _render(value: Scalar) -> str:
     return str(value)
 
 
-def interpolate(value: str, ctx: InterpolationContext) -> str:
-    """Replace every ``{{ path }}`` in ``value``; everything else is kept as is."""
+def substitute(value: str, resolve: Callable[[tuple[str, ...]], str]) -> str:
+    """Replace every ``{{ path }}`` in ``value`` with ``resolve(path)``; ``{{ '{{' }}``
+    becomes ``{{``; everything else is kept as is."""
     tokens = _scan(value)
     if not tokens:
         return value
@@ -122,7 +123,12 @@ def interpolate(value: str, ctx: InterpolationContext) -> str:
     pos = 0
     for tok in tokens:
         out.append(value[pos : tok.start])
-        out.append(_OPEN if isinstance(tok, _Literal) else ctx.resolve(tok.path))
+        out.append(_OPEN if isinstance(tok, _Literal) else resolve(tok.path))
         pos = tok.end
     out.append(value[pos:])
     return "".join(out)
+
+
+def interpolate(value: str, ctx: InterpolationContext) -> str:
+    """Resolve workflow-context expressions (roots: vars, run, profile, steps)."""
+    return substitute(value, ctx.resolve)
