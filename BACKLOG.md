@@ -22,6 +22,7 @@ are **not** part of the current task. Append here instead of acting on them.
 ## Issues
 - B-004 [bug] (2026-11-11, from session) Nix `pre-commit` package fails to build Python hook environments (`ModuleNotFoundError: No module named 'packaging'` in its virtualenv). Use the distro package or pipx; mention in contributor docs.
 - B-012 [bug] (2026-11-11, from F-DEV-TOOLING) The dev shell exports `LD_LIBRARY_PATH` pointing at a Nix alsa-lib, which breaks system `ffmpeg`/`ffprobe` (`GLIBC_2.43 not found`). The ffmpeg fixture test skips locally; run `env -u LD_LIBRARY_PATH uv run pytest` or fix the shell profile.
+- B-018 [bug] (2026-11-11, from C-BACKEND) beets splits query strings with shell rules, so the architecture §4 example `'albumtype:ep ^album::\bEP\b'` likely loses its backslashes (pattern becomes `bEPb`). Confirm with the BeetsBackend contract run (S-BEETS-IMPORT); if confirmed, fix the docs example to quote the regex term and consider a UI hint.
 
 ## Tech debt
 - B-005 [debt] (2026-11-11, from session) No LICENSE file yet; add the AGPL-3.0-or-later text.

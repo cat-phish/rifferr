@@ -63,6 +63,7 @@ def test_DEV_TOOLING_1_entry_point_group_names_are_fixed() -> None:
         "rifferr.cover_providers",
         "rifferr.ai_providers",
         "rifferr.template_functions",
+        "rifferr.backends",  # added by C-BACKEND
     )
 
 

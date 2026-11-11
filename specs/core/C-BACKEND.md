@@ -1,5 +1,5 @@
 # C-BACKEND: LibraryBackend protocol, snapshots and FakeBackend
-Status: Draft
+Status: Implemented
 Milestone: M0
 
 ## Context
@@ -54,9 +54,23 @@ class LibraryBackend(Protocol):
     def matches(self, condition: str, target: ItemSnapshot | AlbumSnapshot) -> bool: ...
     def apply(self, changes: ChangeSet) -> JournalEntry: ...
     def import_folder(self, path: Path, mode: ImportMode,
-                      decide: DecisionCallback | None) -> ImportResult: ...
+                      decide: DecisionCallback | None,
+                      *, run_id: str | None = None) -> ImportResult: ...
     def command_env(self) -> Mapping[str, str]: ...
 ```
+
+As implemented:
+- Snapshots and `Selection` live in `rifferr.core.snapshot` / `rifferr.core.selection`; the
+  protocol, `CapabilityError`, `QueryError`, `TemplateError`, `ImportResult` and
+  `RUN_MARKER = "rifferr_run"` in `rifferr.backends.base`; `FakeBackend` in
+  `rifferr.backends.fake` (its docstring lists the supported query subset).
+- `import_folder` takes `run_id`; imported albums get `RUN_MARKER = run_id`.
+- `scope="item"` returns albums that have a matching item, with only the matching items.
+- `ChangeSet` / `JournalEntry` are empty placeholders in `rifferr.core.changeset` until M1.
+- Query strings are split with shell rules, as beets does: quote a regex that contains a
+  backslash (`'album::\bEP\b'`).
+- Published schemas: `schemas/album-snapshot.schema.json`, `schemas/item-snapshot.schema.json`.
+- Contract suite: `backend/tests/backends/contract.py` (`BackendContract`).
 
 ## Examples
 ```python
@@ -78,14 +92,14 @@ Snapshots carry tag data and paths only, never credentials or config.
 - Interactive import decisions (F-IMPORT-UI, M2): `decide` is accepted but only `quiet` is implemented in M0.
 
 ## Open questions
-- How do run markers work across backends? Architecture uses beets flexible attribute `rifferr_run`; is "albums touched by this run" a backend responsibility (`Selection.run_id`) or tracked by the engine in the app DB?
-- Should `FieldValue` allow dates as a distinct type, or keep them as strings as beets does?
-- Is the backend entry-point group (`rifferr.backends`) wanted in M0, or only once a second backend exists?
+- ~~Who tracks "albums touched by this run"?~~ Resolved 2026-11-11 (author): the backend, via `Selection.run_id`. Backends store the run marker as the flexible attribute `rifferr_run` (beets) or its equivalent, set by `import_folder(..., run_id=...)`, and filter on it.
+- ~~Dates as a distinct `FieldValue` type?~~ Resolved 2026-11-11 (author): no; strings and ints as beets stores them.
+- ~~`rifferr.backends` entry-point group in M0?~~ Resolved 2026-11-11 (author): the group name is public now; BeetsBackend registers there in S-BEETS-IMPORT; loading a backend by name arrives with F-WORKER.
 
 ## Tasks
-- [ ] snapshot + selection models in core
+- [x] snapshot + selection models in core
 - [x] `BackendCapabilities` in backends/base.py (landed with C-WORKFLOW)
-- [ ] protocol in backends/base.py
-- [ ] FakeBackend with query subset
-- [ ] backend contract test suite
-- [ ] snapshot JSON Schema export
+- [x] protocol in backends/base.py
+- [x] FakeBackend with query subset
+- [x] backend contract test suite
+- [x] snapshot JSON Schema export

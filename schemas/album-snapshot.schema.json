@@ -1,0 +1,116 @@
+{
+  "$defs": {
+    "ItemSnapshot": {
+      "additionalProperties": false,
+      "description": "One track. ``id`` is opaque and assigned by the backend.",
+      "properties": {
+        "fields": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": "Fields",
+          "type": "object"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "path",
+        "fields"
+      ],
+      "title": "ItemSnapshot",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "An album with its items in track order (disc, then track).",
+  "properties": {
+    "fields": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "integer"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "string"
+          },
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "title": "Fields",
+      "type": "object"
+    },
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "items": {
+      "items": {
+        "$ref": "#/$defs/ItemSnapshot"
+      },
+      "title": "Items",
+      "type": "array"
+    },
+    "path": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Path"
+    }
+  },
+  "required": [
+    "id",
+    "path",
+    "fields"
+  ],
+  "title": "AlbumSnapshot",
+  "type": "object"
+}

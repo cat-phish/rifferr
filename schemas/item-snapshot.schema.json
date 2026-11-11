@@ -1,0 +1,50 @@
+{
+  "additionalProperties": false,
+  "description": "One track. ``id`` is opaque and assigned by the backend.",
+  "properties": {
+    "fields": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "integer"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "string"
+          },
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "title": "Fields",
+      "type": "object"
+    },
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "path": {
+      "title": "Path",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "path",
+    "fields"
+  ],
+  "title": "ItemSnapshot",
+  "type": "object"
+}
