@@ -10,6 +10,7 @@ repos:
     rev: v6.0.0
     hooks:
       - id: check-yaml
+        exclude: ^frontend/pnpm-lock\.yaml$  # pnpm 12 writes a multi-document lockfile
       - id: check-toml
       - id: end-of-file-fixer
       - id: trailing-whitespace
@@ -19,8 +20,28 @@ repos:
       - id: check-symlinks
       - id: check-merge-conflict
 
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.4
+    hooks:
+      - id: ruff-format
+        files: ^(backend|scripts)/
+      - id: ruff-check
+        files: ^(backend|scripts)/
+
   - repo: local
     hooks:
+      - id: eslint
+        name: eslint (frontend)
+        entry: pnpm -C frontend exec eslint --max-warnings=0
+        language: system
+        files: ^frontend/.*\.(ts|tsx|js)$
+        pass_filenames: false
+      - id: prettier
+        name: prettier (frontend)
+        entry: pnpm -C frontend exec prettier --check .
+        language: system
+        files: ^frontend/
+        pass_filenames: false
       - id: spec-lint
         name: spec lint
         entry: python3 scripts/spec.py lint

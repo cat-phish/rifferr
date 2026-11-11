@@ -21,11 +21,15 @@ are **not** part of the current task. Append here instead of acting on them.
 
 ## Issues
 - B-004 [bug] (2026-11-11, from session) Nix `pre-commit` package fails to build Python hook environments (`ModuleNotFoundError: No module named 'packaging'` in its virtualenv). Use the distro package or pipx; mention in contributor docs.
+- B-012 [bug] (2026-11-11, from F-DEV-TOOLING) The dev shell exports `LD_LIBRARY_PATH` pointing at a Nix alsa-lib, which breaks system `ffmpeg`/`ffprobe` (`GLIBC_2.43 not found`). The ffmpeg fixture test skips locally; run `env -u LD_LIBRARY_PATH uv run pytest` or fix the shell profile.
+- B-013 [bug] (2026-11-11, from F-DEV-TOOLING) The Nix `pre-commit` (broken, see B-004) is back on PATH ahead of `/usr/bin/pre-commit`. The git hook itself uses `/usr/bin/python3` and works; manual `pre-commit run` picks the broken one.
 
 ## Tech debt
 - B-005 [debt] (2026-11-11, from session) No LICENSE file yet; add the AGPL-3.0-or-later text.
-- B-006 [debt] (2026-11-11, from session) Run gitleaks in CI too, not only as a local pre-commit hook (lands with F-DEV-TOOLING).
 - B-007 [debt] (2026-11-11, from session) Decide a cadence for `pre-commit autoupdate` (or let Renovate/Dependabot do it).
+- B-014 [debt] (2026-11-11, from F-DEV-TOOLING) No GitHub remote yet, so `.github/workflows/ci.yml` has never run. Push and confirm CI is green, then mark F-DEV-TOOLING Verified.
+- B-015 [debt] (2026-11-11, from F-DEV-TOOLING) TypeScript pinned to 6.0 because typescript-eslint 8.x doesn't support TS 7; openapi-typescript 7 still declares a TS 5 peer (works with 6). Revisit when they catch up.
+- B-016 [debt] (2026-11-11, from F-DEV-TOOLING) `schemas/openapi.json` is a stub until F-API provides the FastAPI app; `export.openapi_document()` must switch to `app.openapi()` then.
 
 ## Questions
 - B-008 [question] (2026-11-11, from architecture §12) Which UI component library (shadcn/ui, Mantine, …)? Needed for F-UI-SHELL.
@@ -34,3 +38,4 @@ are **not** part of the current task. Append here instead of acting on them.
 - B-011 [question] (2026-11-11, from architecture §12) Add a plugin exception to the AGPL so in-process plugins can use any license?
 
 ## Done
+- B-006 [debt] (2026-11-11, from session) Run gitleaks in CI too, not only as a local pre-commit hook. → F-DEV-TOOLING

@@ -41,7 +41,7 @@ A row gets a link once its spec file exists. Build order: [docs/roadmap.md](../d
 | S-SUBWORKFLOW | `workflow` (call another workflow) step | 3 | M2 | Planned |
 | S-COVERS-SEARCH | `covers.search` step and provider protocol | 6 | M3 | Planned |
 | S-AI-TAG | `ai.tag` step | 7 | M4 | Planned |
-| [F-DEV-TOOLING](features/F-DEV-TOOLING.md) | Project skeleton, checks, CI, fixtures | 9, 10 | M0 | Draft |
+| [F-DEV-TOOLING](features/F-DEV-TOOLING.md) | Project skeleton, checks, CI, fixtures | 9, 10 | M0 | Implemented |
 | [F-SECURITY](features/F-SECURITY.md) | Host/Origin checks, local token, remote auth, workflow trust | 8 | M0 | Draft |
 | [F-API](features/F-API.md) | HTTP API and SSE event stream | 8 | M0 | Draft |
 | [F-CLI](features/F-CLI.md) | `rifferr serve`, `run`, `validate` | 9 | M0 | Draft |

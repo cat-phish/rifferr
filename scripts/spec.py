@@ -22,7 +22,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SPECS = ROOT / "specs"
-TESTS = [ROOT / "backend" / "tests", ROOT / "frontend" / "src", ROOT / "frontend" / "e2e"]
+TESTS = [
+    ROOT / "backend" / "tests",
+    ROOT / "frontend" / "src",
+    ROOT / "frontend" / "e2e",
+]
 
 STATUSES = ("Draft", "Approved", "Implemented", "Verified")
 MILESTONES = tuple(f"M{i}" for i in range(6))
@@ -197,8 +201,9 @@ def parse_backlog(errors: list[str] | None = None) -> list[BacklogEntry]:
             if errors is not None:
                 errors.append(f"BACKLOG.md:{lineno}: malformed entry: {line[:60]!r}")
             continue
-        entries.append(BacklogEntry(lineno, section, m["id"], m["tag"], m["date"],
-                                    m["source"], m["summary"]))
+        entries.append(
+            BacklogEntry(lineno, section, m["id"], m["tag"], m["date"], m["source"], m["summary"])
+        )
     return entries
 
 
@@ -234,7 +239,7 @@ def lint_spec(s: Spec, errors: list[str]) -> None:
     if s.status not in STATUSES:
         err(f"Status {s.status!r} not in {STATUSES}")
     if s.milestone not in MILESTONES:
-        err(f"Milestone {s.milestone!r} not in M0–M5")
+        err(f"Milestone {s.milestone!r} not in M0-M5")
     if s.path.name == OVERVIEW:
         return
 
@@ -297,13 +302,18 @@ def cmd_lint(_: argparse.Namespace) -> int:
     for e in errors:
         print(e, file=sys.stderr)
     if not errors:
-        print(f"ok: {len(specs)} spec(s), {n_backlog} backlog entr{'y' if n_backlog == 1 else 'ies'}")
+        print(
+            f"ok: {len(specs)} spec(s), {n_backlog} backlog entr{'y' if n_backlog == 1 else 'ies'}"
+        )
     return 1 if errors else 0
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(prog="spec.py", description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        prog="spec.py",
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     p = sub.add_parser("list", help="one line per spec")

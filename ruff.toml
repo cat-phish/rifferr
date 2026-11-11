@@ -1,0 +1,2 @@
+# Root config so files outside backend/ (scripts/) use the same rules as the backend.
+extend = "backend/pyproject.toml"

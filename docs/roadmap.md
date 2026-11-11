@@ -29,8 +29,8 @@ live in [BACKLOG.md](../BACKLOG.md).
 
 | Item | Needed by | State |
 |---|---|---|
-| Real `uv` on PATH (the shell currently aliases `uv` to an editor) | M0 | Missing |
-| `pnpm` | M0 | Missing |
+| Real `uv` on PATH (installed; the shell still aliases `uv` to an editor) | M0 | Present |
+| `pnpm` | M0 | Present |
 | ffmpeg (fixtures, ReplayGain) | M0 | Present |
 | `docs/original-checklist.md` filled in by the author | M1 (release-type suffix logic), M5 | Placeholder |
 | Decisions in M0 specs' *Open questions* | M0 approval | Open |
@@ -45,20 +45,22 @@ Every runtime or dev dependency needs the author's OK before it is added
 | beets (`>=2.14,<2.15`) | library backend | MIT | M0 | |
 | fastapi | API server | MIT | M0 | |
 | uvicorn | ASGI server | BSD-3-Clause | M0 | |
-| pydantic v2 | models, JSON Schema | MIT | M0 | |
+| pydantic v2 | models, JSON Schema | MIT | M0 | 2026-11-11 |
 | ruamel.yaml | round-trip YAML | MIT | M0 | |
 | keyring | secrets | MIT | M0 | |
 | httpx | HTTP client | BSD-3-Clause | M0 | |
-| pytest, pytest-asyncio | tests | MIT / Apache-2.0 | M0 | |
-| hypothesis | property tests (dev only) | MPL-2.0 | M0 | |
-| respx | HTTP mocks (dev only) | BSD-3-Clause | M0 | |
-| ruff, pyright | lint, types (dev only) | MIT | M0 | |
-| react, react-dom, vite, typescript | frontend | MIT / Apache-2.0 | M0 | |
+| pytest, pytest-asyncio | tests | MIT / Apache-2.0 | M0 | 2026-11-11 |
+| hypothesis | property tests (dev only) | MPL-2.0 | M0 | 2026-11-11 |
+| respx | HTTP mocks (dev only) | BSD-3-Clause | M0 | 2026-11-11 |
+| ruff, pyright | lint, types (dev only) | MIT | M0 | 2026-11-11 |
+| react, react-dom, vite, typescript | frontend | MIT / Apache-2.0 | M0 | 2026-11-11 |
 | @tanstack/react-query | data fetching | MIT | M0 | |
-| openapi-typescript | API client types | MIT | M0 | |
-| vitest, @testing-library/react | frontend tests | MIT | M0 | |
+| openapi-typescript | API client types | MIT | M0 | 2026-11-11 |
+| vitest, @testing-library/react | frontend tests | MIT | M0 | 2026-11-11 |
 | @playwright/test | e2e | Apache-2.0 | M0 | |
-| eslint, prettier | frontend lint | MIT | M0 | |
+| eslint, prettier | frontend lint | MIT | M0 | 2026-11-11 |
+| @vitejs/plugin-react, @types/react, @types/react-dom, @types/node, @eslint/js, typescript-eslint, eslint-plugin-react-hooks, globals, @testing-library/jest-dom, jsdom | companions of the approved frontend tools | MIT | M0 | 2026-11-11 (with F-DEV-TOOLING) |
+| uv_build | backend build backend | MIT / Apache-2.0 | M0 | 2026-11-11 (with F-DEV-TOOLING) |
 | @tanstack/react-table, react-virtual | tag grid | MIT | M1 | |
 | watchfiles | folder triggers | MIT | M2 | |
 | apprise | notifications | BSD-2-Clause | M2 | |
@@ -76,7 +78,7 @@ Implementation order (each depends on the ones above it):
 
 | # | Spec | What it delivers |
 |---|---|---|
-| 1 | [F-DEV-TOOLING](../specs/features/F-DEV-TOOLING.md) | backend and frontend project skeletons, checks, CI, audio fixtures |
+| 1 ✓ | [F-DEV-TOOLING](../specs/features/F-DEV-TOOLING.md) | backend and frontend project skeletons, checks, CI, audio fixtures |
 | 2 | [C-WORKFLOW](../specs/core/C-WORKFLOW.md) | workflow YAML models, validation, `{{ }}` interpolation, schema export |
 | 3 | [C-BACKEND](../specs/core/C-BACKEND.md) | `LibraryBackend` protocol, snapshots, capabilities, `FakeBackend` |
 | 4 | [C-PROFILE](../specs/core/C-PROFILE.md) | profile files, variables, credential references |

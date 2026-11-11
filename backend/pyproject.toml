@@ -1,0 +1,48 @@
+[project]
+name = "rifferr"
+version = "0.0.0"
+description = "A local web app for building and running user-defined music-import workflows, with beets as its primary library backend."
+readme = "../README.md"
+license = "AGPL-3.0-or-later"
+requires-python = ">=3.12"
+dependencies = ["pydantic>=2.10,<3"]
+
+[dependency-groups]
+dev = [
+  "hypothesis",
+  "pyright",
+  "pytest",
+  "pytest-asyncio",
+  "respx",
+  "ruff",
+]
+
+[build-system]
+requires = ["uv_build>=0.9,<0.14"]
+build-backend = "uv_build"
+
+# Entry-point groups (public API, see rifferr/plugins.py). Built-ins register here
+# exactly like third-party plugins, e.g.:
+#   [project.entry-points."rifferr.steps"]
+#   shell = "rifferr.steps.shell:ShellStep"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["tests/fixtures"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF", "PT"]
+
+[tool.pyright]
+include = ["src", "tests"]
+pythonVersion = "3.12"
+typeCheckingMode = "basic"
+# Pure layers are type-checked strictly (AGENTS.md "Layout").
+strict = ["src/rifferr/core", "src/rifferr/engine", "src/rifferr/tagscript"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["--strict-markers", "-ra"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"

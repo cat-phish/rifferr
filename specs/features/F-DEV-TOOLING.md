@@ -1,5 +1,5 @@
 # F-DEV-TOOLING: Project skeleton, checks and CI
-Status: Draft
+Status: Implemented
 Milestone: M0
 
 ## Context
@@ -59,18 +59,19 @@ Entry-point group names are fixed here and become public API. Tool versions are 
 - Any application behavior.
 
 ## Open questions
-- CI host: GitHub Actions assumed (repo has `gh` available). Confirm, or name another.
-- Python version for CI matrix: 3.12 only, or 3.12 + 3.14 (the local system Python)?
-- Which dependencies from the roadmap's dependency ledger are approved for M0?
+- ~~CI host?~~ Resolved 2026-11-11 (author): GitHub Actions.
+- ~~Python CI matrix?~~ Resolved 2026-11-11 (author): 3.12 and 3.14.
+- ~~Which dependencies are approved?~~ Resolved 2026-11-11 (author): all tooling deps — ruff, pyright, pytest, pytest-asyncio, hypothesis, respx, pydantic; vite, react, react-dom, typescript, eslint, prettier, vitest, @testing-library/react, jsdom, openapi-typescript. Runtime deps (fastapi, beets, …) wait for their own specs.
 
 ## Tasks
-- [ ] backend uv project and empty packages
-- [ ] ruff, pyright config (strict zones)
-- [ ] conftest isolation + socket guard
-- [ ] boundary tests
-- [ ] make_fixtures.py + fixtures
-- [ ] schema export module + drift test
-- [ ] frontend Vite project, eslint, prettier, vitest
-- [ ] gen:api script
-- [ ] CI workflow
-- [ ] pre-commit ruff/eslint hooks
+CI workflow is written but has not run yet: the repo has no GitHub remote (BACKLOG B-014).
+- [x] backend uv project and empty packages
+- [x] ruff, pyright config (strict zones)
+- [x] conftest isolation + socket guard
+- [x] boundary tests
+- [x] make_fixtures.py + fixtures
+- [x] schema export module + drift test
+- [x] frontend Vite project, eslint, prettier, vitest
+- [x] gen:api script
+- [x] CI workflow
+- [x] pre-commit ruff/eslint hooks
