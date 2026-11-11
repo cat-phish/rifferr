@@ -58,7 +58,8 @@ python3 scripts/spec.py list [--status Approved] [--milestone M1]
 python3 scripts/spec.py show S-TAGSCRIPT -s Behavior   # one section, not the whole file
 python3 scripts/spec.py behavior TAGSCRIPT-4           # one behavior line
 python3 scripts/spec.py tests S-TAGSCRIPT              # behaviors with no test naming them
-python3 scripts/spec.py lint
+python3 scripts/spec.py backlog [--tag question]     # deferred ideas/issues
+python3 scripts/spec.py lint                           # specs + BACKLOG.md
 
 # backend (from backend/)
 uv sync
@@ -124,6 +125,7 @@ Milestone: M0–M5
 5. If public models changed, regenerate schemas and the TS client. Run every check for both backend and frontend.
 6. Tick the *Tasks* items, set Status to Implemented, and update `docs/coverage.md` if the reference workflow gained a capability.
 7. Make small commits, each prefixed with the spec ID (`S-SHELL: stream stderr to run log`).
+8. Ideas, bugs or debt found outside the current spec go in `BACKLOG.md` as a new entry. Don't act on them in the current task. Build order and milestone status live in `docs/roadmap.md`.
 
 ## Conventions
 

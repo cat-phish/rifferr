@@ -25,5 +25,5 @@ repos:
         name: spec lint
         entry: python3 scripts/spec.py lint
         language: system
-        files: ^specs/.*\.md$
+        files: ^(specs/.*\.md|BACKLOG\.md)$
         pass_filenames: false

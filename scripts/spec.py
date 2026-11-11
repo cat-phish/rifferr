@@ -8,6 +8,7 @@ instead of whole files, and checks specs follow specs/_template.md.
     spec.py show <SPEC-ID> [--section NAME]
     spec.py behavior <BEHAVIOR-ID>
     spec.py tests [<SPEC-ID>]
+    spec.py backlog [--tag T] [--section S]
     spec.py lint
 """
 
@@ -39,6 +40,13 @@ SECTIONS = (
 CATEGORY_DIRS = {"core": "C", "steps": "S", "features": "F"}
 SKIP = {"_template.md"}
 OVERVIEW = "000-overview.md"
+BACKLOG = ROOT / "BACKLOG.md"
+BACKLOG_TAGS = ("idea", "bug", "debt", "question")
+BACKLOG_SECTIONS = ("Ideas", "Issues", "Tech debt", "Questions", "Done")
+BACKLOG_RE = re.compile(
+    r"^- (?P<id>B-\d{3,})\s+\[(?P<tag>[a-z]+)\]\s+"
+    r"\((?P<date>\d{4}-\d{2}-\d{2}), from (?P<source>[^)]+)\)\s+(?P<summary>\S.*)$"
+)
 
 TITLE_RE = re.compile(r"^# (?P<id>[A-Z0-9][A-Z0-9-]*): (?P<title>.+)$")
 FIELD_RE = re.compile(r"^(?P<key>Status|Milestone): *(?P<value>.*)$")
@@ -162,6 +170,60 @@ def cmd_tests(args: argparse.Namespace) -> int:
     return 1 if missing else 0
 
 
+@dataclass
+class BacklogEntry:
+    lineno: int
+    section: str
+    id: str
+    tag: str
+    date: str
+    source: str
+    summary: str
+
+
+def parse_backlog(errors: list[str] | None = None) -> list[BacklogEntry]:
+    entries: list[BacklogEntry] = []
+    if not BACKLOG.exists():
+        return entries
+    section = ""
+    for lineno, line in enumerate(BACKLOG.read_text(encoding="utf-8").splitlines(), 1):
+        if m := SECTION_RE.match(line):
+            section = m["name"]
+            continue
+        if section not in BACKLOG_SECTIONS or not line.startswith("- "):
+            continue
+        m = BACKLOG_RE.match(line)
+        if m is None:
+            if errors is not None:
+                errors.append(f"BACKLOG.md:{lineno}: malformed entry: {line[:60]!r}")
+            continue
+        entries.append(BacklogEntry(lineno, section, m["id"], m["tag"], m["date"],
+                                    m["source"], m["summary"]))
+    return entries
+
+
+def lint_backlog(errors: list[str]) -> int:
+    entries = parse_backlog(errors)
+    seen: dict[str, int] = {}
+    for e in entries:
+        if e.tag not in BACKLOG_TAGS:
+            errors.append(f"BACKLOG.md:{e.lineno}: {e.id} tag [{e.tag}] not in {BACKLOG_TAGS}")
+        if e.id in seen:
+            errors.append(f"BACKLOG.md:{e.lineno}: duplicate {e.id} (first at line {seen[e.id]})")
+        seen[e.id] = e.lineno
+    return len(entries)
+
+
+def cmd_backlog(args: argparse.Namespace) -> int:
+    for e in parse_backlog():
+        if args.tag and e.tag != args.tag:
+            continue
+        if args.section and e.section.lower() != args.section.lower():
+            continue
+        print(f"{e.id}  {e.tag:<8} {e.section:<10} {e.summary}")
+    return 0
+
+
 def lint_spec(s: Spec, errors: list[str]) -> None:
     def err(msg: str) -> None:
         errors.append(f"{s.rel}: {msg}")
@@ -231,10 +293,11 @@ def cmd_lint(_: argparse.Namespace) -> int:
             elif bid in seen_behaviors:
                 errors.append(f"{s.rel}: behavior {bid} defined twice")
             seen_behaviors[bid] = s.rel
+    n_backlog = lint_backlog(errors)
     for e in errors:
         print(e, file=sys.stderr)
     if not errors:
-        print(f"ok: {len(specs)} spec(s)")
+        print(f"ok: {len(specs)} spec(s), {n_backlog} backlog entr{'y' if n_backlog == 1 else 'ies'}")
     return 1 if errors else 0
 
 
@@ -260,6 +323,11 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("tests", help="report behaviors with no test naming them")
     p.add_argument("id", nargs="?")
     p.set_defaults(func=cmd_tests)
+
+    p = sub.add_parser("backlog", help="list BACKLOG.md entries")
+    p.add_argument("--tag", choices=BACKLOG_TAGS)
+    p.add_argument("--section", help="e.g. Ideas, Questions, Done")
+    p.set_defaults(func=cmd_backlog)
 
     p = sub.add_parser("lint", help="check all specs against the template")
     p.set_defaults(func=cmd_lint)

@@ -21,31 +21,32 @@ architecture doc is updated to match.
 - Lookup and checks: `python3 scripts/spec.py --help`.
 
 ## Spec index
-Planned specs. A row gets a link once its file exists.
+A row gets a link once its spec file exists. Build order: [docs/roadmap.md](../docs/roadmap.md).
 
 | ID | Title | Arch § | Milestone | Status |
 |---|---|---|---|---|
-| C-PROFILE | Profiles, variables, credential references | 2 | M0 | Planned |
-| C-WORKFLOW | Workflow YAML schema, steps, interpolation | 2 | M0 | Planned |
-| C-BACKEND | LibraryBackend protocol, snapshots, capabilities | 8 | M0 | Planned |
-| C-RUN | Run state machine, lanes, events | 2, 2a | M0 | Planned |
+| [C-PROFILE](core/C-PROFILE.md) | Profiles, variables, credential references | 2 | M0 | Draft |
+| [C-WORKFLOW](core/C-WORKFLOW.md) | Workflow YAML schema, steps, interpolation | 2 | M0 | Draft |
+| [C-BACKEND](core/C-BACKEND.md) | LibraryBackend protocol, snapshots, capabilities | 8 | M0 | Draft |
+| [C-RUN](core/C-RUN.md) | Run state machine, lanes, events | 2, 2a | M0 | Draft |
 | C-CHANGESET | ChangeSet model and apply/review policy | 2 | M1 | Planned |
 | C-JOURNAL | Journal and undo | 2 | M1 | Planned |
-| S-BEETS-IMPORT | `beets.import` step | 3, 8 | M0 | Planned |
-| S-SHELL | `shell` step | 5 | M0 | Planned |
+| [S-BEETS-IMPORT](steps/S-BEETS-IMPORT.md) | `beets.import` step | 3, 8 | M0 | Draft |
+| [S-SHELL](steps/S-SHELL.md) | `shell` step | 5 | M0 | Draft |
 | S-BEETS-COMMAND | `beets.command` step | 3 | M1 | Planned |
 | S-TAGSCRIPT | `tags.script` step and action set | 4 | M1 | Planned |
 | S-REVIEW | `review` gate step | 3 | M1 | Planned |
 | S-NOTIFY | `notify` step | 2a, 3 | M2 | Planned |
 | S-FILES-CLEANUP | `files.cleanup` step | 3 | M2 | Planned |
-| S-WORKFLOW | `workflow` (call another workflow) step | 3 | M2 | Planned |
+| S-SUBWORKFLOW | `workflow` (call another workflow) step | 3 | M2 | Planned |
 | S-COVERS-SEARCH | `covers.search` step and provider protocol | 6 | M3 | Planned |
 | S-AI-TAG | `ai.tag` step | 7 | M4 | Planned |
-| F-SECURITY | Host/Origin checks, local token, remote auth, workflow trust | 8 | M0 | Planned |
-| F-API | HTTP API and SSE event stream | 8 | M0 | Planned |
-| F-CLI | `rifferr serve`, `run`, `validate` | 9 | M0 | Planned |
-| F-WORKER | Worker process per profile and IPC | 8 | M0 | Planned |
-| F-UI-SHELL | UI shell and run log | 11 | M0 | Planned |
+| [F-DEV-TOOLING](features/F-DEV-TOOLING.md) | Project skeleton, checks, CI, fixtures | 9, 10 | M0 | Draft |
+| [F-SECURITY](features/F-SECURITY.md) | Host/Origin checks, local token, remote auth, workflow trust | 8 | M0 | Draft |
+| [F-API](features/F-API.md) | HTTP API and SSE event stream | 8 | M0 | Draft |
+| [F-CLI](features/F-CLI.md) | `rifferr serve`, `run`, `validate` | 9 | M0 | Draft |
+| [F-WORKER](features/F-WORKER.md) | Worker process per profile and IPC | 8 | M0 | Draft |
+| [F-UI-SHELL](features/F-UI-SHELL.md) | UI shell and run log | 11 | M0 | Draft |
 | F-TAG-GRID | Library/tag grid and script preview UI | 4 | M1 | Planned |
 | F-REVIEW-QUEUE | Review queue UI and dashboard | 2a | M1 | Planned |
 | F-IMPORT-UI | Interactive import decisions | 3, 8 | M2 | Planned |
