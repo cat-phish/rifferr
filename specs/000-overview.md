@@ -32,7 +32,7 @@ A row gets a link once its spec file exists. Build order: [docs/roadmap.md](../d
 | [C-CHANGESET](core/C-CHANGESET.md) | ChangeSet model and apply/review policy | 2 | M1 | Approved |
 | [C-JOURNAL](core/C-JOURNAL.md) | Journal and undo | 2 | M1 | Approved |
 | [S-BEETS-IMPORT](steps/S-BEETS-IMPORT.md) | `beets.import` step | 3, 8 | M0 | Implemented |
-| [S-SHELL](steps/S-SHELL.md) | `shell` step | 5 | M0 | Implemented |
+| [S-SHELL](steps/S-SHELL.md) | `shell` step (M1: `emits: changes`) | 5 | M1 | Draft |
 | S-BEETS-COMMAND | `beets.command` step | 3 | M1 | Planned |
 | S-TAGSCRIPT | `tags.script` step and action set | 4 | M1 | Planned |
 | S-REVIEW | `review` gate step | 3 | M1 | Planned |

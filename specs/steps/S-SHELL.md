@@ -1,6 +1,6 @@
 # S-SHELL: `shell` step
-Status: Implemented
-Milestone: M0
+Status: Draft
+Milestone: M1
 
 ## Context
 The `shell` step runs any command or script, once per run, album or item
@@ -8,6 +8,13 @@ The `shell` step runs any command or script, once per run, album or item
 which turns stdout into a ChangeSet, lands with C-CHANGESET in M1. Shell steps
 are the main reason the security model exists (F-SECURITY): they run only for
 trusted workflows.
+
+**M1 update (Draft, 2026-11-11).** SHELL-1 to -10 and -12, -13 are implemented and
+unchanged. SHELL-11 is replaced and SHELL-14 to -19 are new: with `emits: changes`,
+the script's stdout is a ChangeSetProposal (C-CHANGESET CHANGESET-3). Author
+decisions: in `per: album` / `per: item` a script may omit the target and mean the
+current one; proposals are split into one ChangeSet per album. Both need the
+C-CHANGESET amendments listed below.
 
 ## Behavior
 - SHELL-1: `with.run` MUST accept an argv list (preferred) or, only when `shell: true`, a single string run through `/bin/sh -c`. A string without `shell: true` MUST be a validation error.
@@ -20,9 +27,19 @@ trusted workflows.
 - SHELL-8: A non-zero exit code MUST count as a failure for that target and be handled by the step's `on_error` (RUN-5).
 - SHELL-9: Cancellation (RUN-8) MUST terminate the process group the same way as a timeout.
 - SHELL-10: `cwd` MAY be set (templated); it defaults to the album directory for `per: album|item` and the profile directory for `per: run`.
-- SHELL-11: In M0, `emits` MUST accept only `none`; `changes` MUST be a validation error that says it arrives with ChangeSets (M1).
+- SHELL-11: `emits` MUST accept `none` (default) or `changes`. (Replaces the M0 rule that rejected `changes`.)
 - SHELL-12: The step MUST refuse to run if the run is not trusted (the engine's per-run `trusted` flag, default false; F-SECURITY decides it from the workflow's content hash). The refusal fails the step and stops the run regardless of `on_error`.
 - SHELL-13: Shell steps MUST support Linux and macOS (POSIX process groups). Windows is not supported natively; use the Docker image.
+- SHELL-14: With `emits: changes`, stdout MUST NOT be streamed as log lines. It is collected (at most 16 MiB; more fails the target) and, after exit status 0, parsed as one JSON ChangeSetProposal. Empty or whitespace-only stdout means no changes. stderr streams as usual (SHELL-6). With a non-zero exit, timeout or cancellation, stdout is discarded and nothing is proposed.
+- SHELL-15: With `per: album` or `per: item`, the proposal MAY use the short form `{"rationale"?, "changes": [FieldChange…]}`, which targets the current album or item. `per: run` MUST use `targets`. A proposal with both `changes` and `targets` is invalid.
+- SHELL-16: Every target MUST lie within the invocation's scope: with `per: album`, the current album and its items; with `per: item`, the current item; with `per: run`, the selected albums and their items. A target outside it fails the target, and nothing from that invocation is proposed.
+- SHELL-17: Output that isn't valid JSON, doesn't match the proposal schema, or has problems reported by `backend.check` (CHANGESET-2) MUST fail the target (handled by `on_error`, RUN-5), with a message naming the first problem and its JSON path, and nothing from that invocation is proposed.
+- SHELL-18: A valid proposal MUST go through `ctx.propose` (source `step` / `shell`). `old` values the script omits are filled from the snapshot it got on stdin (SHELL-5), so a value changed by someone else in between shows up as a conflict at apply time. The step's `apply` policy then applies (CHANGESET-6, -7).
+- SHELL-19: For each target, the step MUST log one summary line: the number of ChangeSets and field changes proposed, or "no changes".
+
+### C-CHANGESET amendments this update needs
+- CHANGESET-3 (amend): `ChangeSetProposal` MUST accept either `targets` or the short form `changes`. `ctx.propose(proposal, current=TargetRef | None)` resolves the short form to `current`, and rejects it without one. The published schema allows both forms, exclusively.
+- CHANGESET-14 (new): `ctx.propose` MUST split a proposal into one ChangeSet per album. Each holds the album's own target (if any) and the targets of its items, grouped by the snapshot's album membership, in the order they appear. Each ChangeSet keeps the proposal's `rationale`. `propose` returns the ids of the ChangeSets it created (empty when everything was a no-op, CHANGESET-4).
 
 ## Interfaces
 ```python
@@ -34,7 +51,7 @@ class ShellParams(BaseModel):
     cwd: str | None = None
     env: dict[str, str] = {}             # extra vars, templated
     secrets: list[str] = []              # profile secret names to expose as env
-    emits: Literal["none"] = "none"      # "changes" added in M1
+    emits: Literal["none", "changes"] = "none"
 ```
 
 As implemented (`rifferr.steps.shell`, entry point `shell`):
@@ -63,6 +80,27 @@ As implemented (`rifferr.steps.shell`, entry point `shell`):
 For album at `/music/A/B` → argv `["ls", "-la", "/music/A/B"]`, cwd `/music/A/B`,
 stdin = album snapshot JSON, `RIFFERR_ALBUM_DIR=/music/A/B`.
 
+A `per: album` script that sets `albumtype` from the track count it reads on stdin:
+```yaml
+- id: ep-type
+  uses: shell
+  apply: review
+  with:
+    run: [python3, scripts/ep_type.py]
+    emits: changes
+```
+```python
+import json, sys
+album = json.load(sys.stdin)
+if len(album["items"]) <= 6 and album["fields"].get("albumtype") != "ep":
+    print(json.dumps({"rationale": "6 tracks or fewer",
+                      "changes": [{"field": "albumtype", "new": "ep"}]}))
+```
+For `album-7` with 5 tracks and `albumtype: album` → one ChangeSet
+`albumtype: album → ep` (old filled from the snapshot), logged as
+`album-7: proposed 1 ChangeSet, 1 field change`; run → `waiting_review`.
+On a re-run after it was applied, the script prints nothing → `no changes`.
+
 `run: ["echo", "$title"]` where title is `a b; rm -rf /` → one argv element `a b; rm -rf /`, printed literally.
 
 ## Extensibility
@@ -72,9 +110,11 @@ None beyond parameters; users extend behavior with their own scripts.
 - argv lists avoid shell injection from tag values (SHELL-2). `shell: true` is flagged in the static safety report (F-SECURITY).
 - Secrets only reach the process when named in `with.secrets`, and are redacted from its output.
 - Runs inside the container in Docker mode; can only see mounted paths.
+- With `emits: changes` a script can only propose. Its ChangeSets go through the engine and journal like any other, and can't reach albums outside its scope (SHELL-16).
 
 ## Non-goals
-- `emits: changes` (M1, after C-CHANGESET).
+- Proposing file moves or renames (C-CHANGESET non-goal).
+- Several proposals per invocation (JSON Lines); one JSON document per process.
 - Resource limits beyond timeout (memory, CPU).
 
 ## Open questions
@@ -87,6 +127,7 @@ None beyond parameters; users extend behavior with their own scripts.
   `RIFFERR_ITEM_PATH` or stdin, or use `[sh, -c, '…"$1"…', sh, $path]`.
 
 ## Tasks
+- [ ] M1: `emits: changes` (SHELL-11, -14 to -19) + CHANGESET-3 short form, CHANGESET-14 split
 - [x] params model + validation
 - [x] argv templating without word splitting
 - [x] env + stdin snapshot
