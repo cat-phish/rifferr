@@ -29,7 +29,6 @@ are **not** part of the current task. Append here instead of acting on them.
 - B-004 [bug] (2026-11-11, from session) Nix `pre-commit` package fails to build Python hook environments (`ModuleNotFoundError: No module named 'packaging'` in its virtualenv). Use the distro package or pipx; mention in contributor docs.
 - B-012 [bug] (2026-11-11, from F-DEV-TOOLING) The dev shell exports `LD_LIBRARY_PATH` pointing at a Nix alsa-lib, which breaks system `ffmpeg`/`ffprobe` (`GLIBC_2.43 not found`). The ffmpeg fixture test skips locally; run `env -u LD_LIBRARY_PATH uv run pytest` or fix the shell profile.
 - B-018 [bug] (2026-11-11, from C-BACKEND) beets splits query strings with shell rules, so the architecture §4 example `'albumtype:ep ^album::\bEP\b'` likely loses its backslashes (pattern becomes `bEPb`). Confirmed 2026-11-11 by `test_BEETS_IMPORT_12_regex_query_needs_quotes_for_backslashes`: unquoted backslashes are lost. Still to do: fix the docs example to quote the regex term and consider a UI hint.
-- B-022 [bug] (2026-11-11, from F-API) A worker told to stop exits with SIGABRT (status 134/-6): "Fatal Python error: _enter_buffered_busy: could not acquire lock for <_io.BufferedReader name='<stdin>'> at interpreter shutdown, possibly due to daemon threads". The daemon thread in `worker.process._read_commands` is blocked reading `sys.stdin.buffer`. Job states stay correct, but the supervisor logs a normal stop as `worker_crashed`. Likely fix: read commands from the raw fd (or `os._exit` after cleanup), plus a test that a stopped worker exits 0.
 
 ## Tech debt
 - B-005 [debt] (2026-11-11, from session) No LICENSE file yet; add the AGPL-3.0-or-later text.
@@ -44,6 +43,7 @@ are **not** part of the current task. Append here instead of acting on them.
 - B-011 [question] (2026-11-11, from architecture §12) Add a plugin exception to the AGPL so in-process plugins can use any license?
 
 ## Done
+- B-022 [bug] (2026-11-11, from F-API) A worker told to stop exits with SIGABRT (status 134/-6): "Fatal Python error: _enter_buffered_busy: could not acquire lock for <_io.BufferedReader name='<stdin>'> at interpreter shutdown, possibly due to daemon threads". The daemon thread in `worker.process._read_commands` is blocked reading `sys.stdin.buffer`. Job states stay correct, but the supervisor logs a normal stop as `worker_crashed`. Likely fix: read commands from the raw fd (or `os._exit` after cleanup), plus a test that a stopped worker exits 0. → fixed: commands are read from fd 0 with `os.read` (2026-11-11)
 - B-016 [debt] (2026-11-11, from F-DEV-TOOLING) `schemas/openapi.json` is a stub until F-API provides the FastAPI app; `export.openapi_document()` must switch to `app.openapi()` then. → F-API
 - B-009 [question] (2026-11-11, from architecture §12) Server ↔ worker IPC: multiprocessing pipes or a local socket? → F-WORKER (author: inherited pipes, 2026-11-11)
 - B-006 [debt] (2026-11-11, from session) Run gitleaks in CI too, not only as a local pre-commit hook. → F-DEV-TOOLING

@@ -15,7 +15,7 @@ from rifferr.engine import Event
 from rifferr.profile_store import config_root, create_profile
 from rifferr.trust import workflow_hash
 from rifferr.worker.supervisor import WorkerSupervisor
-from tests.worker.conftest import ECHO, PID, SLOW, Sup, block, set_idle_timeout
+from tests.worker.conftest import ECHO, FAKE_WORKER, PID, SLOW, Sup, block, set_idle_timeout
 
 
 async def _pid_of(sup: Sup, profile: str = "main") -> int:
@@ -324,3 +324,29 @@ async def test_SECURITY_10_any_edit_resets_trust(sup: Sup) -> None:
     assert job is not None
     assert job.payload["trusted"] is False
     await sup.finished(run_id)
+
+
+def test_WORKER_8_stopped_worker_process_exits_cleanly(tmp_path: Path) -> None:
+    """B-022: with stdin still open (as the supervisor keeps it), a stop request must not
+    leave the stdin reader thread aborting interpreter shutdown."""
+    import subprocess
+
+    create_profile(config_root(), "main")
+    proc = subprocess.Popen(
+        [sys.executable, FAKE_WORKER, "--profile", "main", "--db", str(tmp_path / "app.db")],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+    )
+    assert proc.stdin is not None
+    assert proc.stderr is not None
+    try:
+        proc.stdin.write(b'{"kind":"stop","profile":"main"}\n')
+        proc.stdin.flush()
+        code = proc.wait(timeout=30)  # stdin stays open until the worker has exited
+        err = proc.stderr.read()
+    finally:
+        proc.stdin.close()
+        proc.kill()
+    assert code == 0, err.decode()[-500:]
+    assert b"Fatal Python error" not in err

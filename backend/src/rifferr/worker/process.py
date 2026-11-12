@@ -15,7 +15,7 @@ import logging
 import os
 import sys
 import threading
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import BinaryIO
@@ -231,12 +231,32 @@ class Worker:
 # -- process ------------------------------------------------------------------
 
 
-def _read_commands(stdin: BinaryIO, loop: asyncio.AbstractEventLoop, queue: Commands) -> None:
+def _lines(fd: int, chunk: int = 65536) -> Iterator[bytes]:
+    """Lines from a raw file descriptor until EOF.
+
+    Plain ``os.read`` instead of ``sys.stdin.buffer``: a daemon thread blocked inside a
+    ``BufferedReader`` holds its lock, and interpreter shutdown then aborts with
+    "could not acquire lock for <_io.BufferedReader name='<stdin>'>" (B-022).
+    """
+    pending = b""
+    while data := os.read(fd, chunk):
+        pending += data
+        *lines, pending = pending.split(b"\n")
+        yield from lines
+    if pending:
+        yield pending
+
+
+def _read_commands(
+    lines: Iterable[bytes], loop: asyncio.AbstractEventLoop, queue: Commands
+) -> None:
     def put(item: WorkerCommand | None) -> None:
         with contextlib.suppress(RuntimeError):  # loop already closed
             loop.call_soon_threadsafe(queue.put_nowait, item)
 
-    for line in stdin:
+    for line in lines:
+        if not line.strip():
+            continue
         try:
             put(WorkerCommand.model_validate_json(line))
         except ValidationError as exc:
@@ -292,7 +312,7 @@ def main(
         queue: Commands = asyncio.Queue()
         loop = asyncio.get_running_loop()
         threading.Thread(
-            target=_read_commands, args=(sys.stdin.buffer, loop, queue), daemon=True
+            target=_read_commands, args=(_lines(sys.stdin.fileno()), loop, queue), daemon=True
         ).start()
         worker = Worker(
             profile,

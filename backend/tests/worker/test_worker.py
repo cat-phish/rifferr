@@ -156,3 +156,17 @@ def test_WORKER_7_idle_timeout_must_be_positive() -> None:
 
     with pytest.raises(ProfileLoadError, match="idle_timeout"):
         parse_profile("worker: { idle_timeout: 0 }\n", "p.yaml", name="p", root=Path("/p"), env={})
+
+
+def test_WORKER_9_command_lines_split_across_reads() -> None:
+    import os
+
+    from rifferr.worker.process import _lines  # pyright: ignore[reportPrivateUsage]
+
+    r, w = os.pipe()
+    os.write(w, b'{"a":1}\n{"b":\n2}\n\ntail')
+    os.close(w)
+    try:
+        assert list(_lines(r, chunk=3)) == [b'{"a":1}', b'{"b":', b"2}", b"", b"tail"]
+    finally:
+        os.close(r)
