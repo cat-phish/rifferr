@@ -1,5 +1,5 @@
 # C-CHANGESET: ChangeSet model, apply policy and review states
-Status: Approved
+Status: Implemented
 Milestone: M1
 
 ## Context
@@ -93,6 +93,41 @@ def propose(self, proposal: ChangeSetProposal, current: TargetRef | None = None)
 - Step type attribute: `force_review: bool = False`.
 - App DB (migration): `changesets` (id, profile, run_id, step_id, state, body JSON, created_at, resolved_at, resolved_by); `changeset_decisions` (changeset id, field-change index, accepted).
 
+As implemented (2026-11-12):
+- `rifferr.core.changeset`: the models above plus `ProposedFieldChange.has_old()`,
+  `ChangeSet.field_changes()` (the flat order review indexes use) and `subset(accepted)`,
+  and pure helpers `find_conflicts`, `diff_effects`, `same_value` (keeps `True` and `1` apart).
+  `op: set` needs a non-null `new`; clearing a field is `op: delete`.
+- `LibraryBackend.apply` raises `ChangeSetRejected(problems)` when `check` refuses the changes.
+- `rifferr.engine.changesets`: `ChangeSetStore` protocol + `InMemoryChangeSetStore`,
+  `SnapshotIndex`, `build_changesets`, `apply_changeset`, `reject_changeset`. `rifferr.appdb.AppChangeSets` is the
+  app DB store (migration `003_changesets_journal.sql`).
+- `ctx.propose` only accepts targets the step got from `ctx.albums()` (that is where `old` comes
+  from). It runs `backend.check` before storing anything, and problems fail the step.
+  `ChangeSource.kind` is `step`; AI steps will pass `ai` once S-AI-TAG exists.
+- The engine emits `changeset.*` with the step's id. Write failures also go to the run log as
+  `run.step.log` lines with stream `error`. New engine events: `run.waiting_review`
+  (`{after, changesets, gates}`) and `run.resumed` (`{after}`, instead of `run.started`).
+- A run also suspends when the step that proposed for review is the last one; resuming it just
+  finishes the run.
+- Jobs: kind `review_decision` (payload `changeset_id`, `decision: accept|reject`, `accepted`,
+  `by`), job state `waiting_review`. The run job's payload records `resume_after` and `holds`.
+  `WorkerSupervisor.decide()` validates and queues a decision; `cancel()` also cancels a waiting run.
+  The worker re-queues a released run in the shared job table (CHANGESET-7's "server queues"),
+  once none of its holds is `proposed` or `conflicted`. A conflicted ChangeSet can only be
+  rejected here; re-proposing it belongs to F-REVIEW-QUEUE.
+- A ChangeSet that `check` refuses at decision time ends `rejected` without a journal entry.
+- Manual ChangeSets (no run) have no profile event stream yet; the worker only logs their events
+  until F-REVIEW-QUEUE adds one (B-030).
+- `BeetsBackend` (`backends/beets/apply.py`): read-only = `id`, `path`, `album_id`, `mtime`,
+  `added`, `artpath` plus beets' computed fields. Types come from beets' own field types, and
+  untyped flexible attributes take strings only. The conflict check and the changes share one
+  library transaction. Tags are written with `Item.write()`, then the item is stored again for
+  its new mtime. `FakeBackend` mirrors this: `inherited_fields` (default: all, as in beets 2.x),
+  `read_only`, `field_types`, `fail_writes`. When seeding, items now get their album's fields,
+  as beets items do.
+- Profile: `changes.write_tags` (`ChangeSettings`).
+
 ## Examples
 A `tags.script` step with `apply: review` proposes for album `album-7`:
 ```json
@@ -130,10 +165,10 @@ ChangeSet (CHANGESET-4), so the step proposes nothing and the run doesn't pause.
 - None yet.
 
 ## Tasks
-- [ ] models in `rifferr.core.changeset` + published proposal schema
-- [ ] `ctx.propose`, empty/no-op dropping, events
-- [ ] app DB tables + states; review decisions as worker jobs
-- [ ] `waiting_review` suspend and resume (C-RUN amendment)
-- [ ] `FakeBackend.check/apply` + contract tests
-- [ ] `BeetsBackend.check/apply` (album/item store, file writes, `write_tags` opt-out) + contract tests
-- [ ] `force_review` on step types
+- [x] models in `rifferr.core.changeset` + published proposal schema
+- [x] `ctx.propose`, empty/no-op dropping, events
+- [x] app DB tables + states; review decisions as worker jobs
+- [x] `waiting_review` suspend and resume (C-RUN amendment)
+- [x] `FakeBackend.check/apply` + contract tests
+- [x] `BeetsBackend.check/apply` (album/item store, file writes, `write_tags` opt-out) + contract tests
+- [x] `force_review` on step types

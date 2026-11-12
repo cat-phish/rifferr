@@ -28,19 +28,23 @@ are **not** part of the current task. Append here instead of acting on them.
 - B-024 [idea] (2026-11-11, from F-UI-SHELL) Importing part of a workflow (pasting or importing steps in the M1 editor) MUST always show the review (YAML of the imported part + safety report) and ask for trust, like importing a whole workflow (author's trust model, F-UI-SHELL Context). The M1 editor spec must cover it.
 - B-025 [idea] (2026-11-11, from F-UI-SHELL) `/api/events` has no event for a run being queued, so the Runs page shows runs queued by another client (CLI) only once they start. Consider a non-persisted `run.queued` notification on the dashboard stream.
 - B-028 [idea] (2026-11-11, from S-TAGSCRIPT) Tag-script visual builder: action-list builder with field autocomplete and a condition builder that writes beets queries (architecture §4 UI requirements), editing the same file as the YAML view (ruamel.yaml round-trip). Decide on a code editor component (e.g. CodeMirror 6, MIT) at the same time. Needs its own spec.
+- B-030 [idea] (2026-11-12, from C-CHANGESET) Manual ChangeSets (no run) need the profile event stream CHANGESET-5 mentions. Until then the worker only logs their `changeset.*` events. Add it with F-REVIEW-QUEUE / F-TAG-GRID.
 
 ## Issues
 - B-004 [bug] (2026-11-11, from session) Nix `pre-commit` package fails to build Python hook environments (`ModuleNotFoundError: No module named 'packaging'` in its virtualenv). Use the distro package or pipx; mention in contributor docs.
 - B-012 [bug] (2026-11-11, from F-DEV-TOOLING) The dev shell exports `LD_LIBRARY_PATH` pointing at a Nix alsa-lib, which breaks system `ffmpeg`/`ffprobe` (`GLIBC_2.43 not found`). The ffmpeg fixture test skips locally; run `env -u LD_LIBRARY_PATH uv run pytest` or fix the shell profile.
 - B-018 [bug] (2026-11-11, from C-BACKEND) beets splits query strings with shell rules, so the architecture §4 example `'albumtype:ep ^album::\bEP\b'` likely loses its backslashes (pattern becomes `bEPb`). Confirmed 2026-11-11 by `test_BEETS_IMPORT_12_regex_query_needs_quotes_for_backslashes`: unquoted backslashes are lost. Still to do: fix the docs example to quote the regex term and consider a UI hint.
+- B-029 [bug] (2026-11-12, from C-CHANGESET) `pnpm test` fails: vitest collects the Playwright file `e2e/two-step.spec.ts` ("Playwright Test did not expect test() to be called here"). The 14 unit tests pass. Likely fix: `test.exclude: [...configDefaults.exclude, "e2e/**"]` in `frontend/vite.config.ts`.
+- B-031 [bug] (2026-11-12, from C-CHANGESET) A `cancel_run` that reaches the worker after it claimed the job but before the engine exists (`Worker._run` is still None) is dropped, and a cooperative step then runs on. Seen as a timeout in `test_WORKER_5_cancel_a_queued_run` under load. Likely fix: remember the cancelled run id and cancel it as soon as its engine is created (or check the job row before executing).
+- B-032 [bug] (2026-11-12, from session) On a NixOS dev machine, `tests/steps/test_shell.py` (9 tests) fails because the shell harness sets `PATH=/usr/bin:/bin`, and NixOS has no `tr`, `pwd` etc. there. Also, beets' `lap`/numpy wheels need `libstdc++.so.6` and `libz.so.1` on `LD_LIBRARY_PATH` (see B-012), and `pnpm` is only available through `corepack pnpm`. Consider building the test PATH from `shutil.which` results, and documenting the Nix setup.
 
 ## Tech debt
-- B-005 [debt] (2026-11-11, from session) No LICENSE file yet; add the AGPL-3.0-or-later text.
 - B-007 [debt] (2026-11-11, from session) Decide a cadence for `pre-commit autoupdate` (or let Renovate/Dependabot do it).
 - B-014 [debt] (2026-11-11, from F-DEV-TOOLING) No GitHub remote yet, so `.github/workflows/ci.yml` has never run. Push and confirm CI is green, then mark F-DEV-TOOLING Verified.
 - B-015 [debt] (2026-11-11, from F-DEV-TOOLING) TypeScript pinned to 6.0 because typescript-eslint 8.x doesn't support TS 7; openapi-typescript 7 still declares a TS 5 peer (works with 6). Revisit when they catch up.
 - B-017 [debt] (2026-11-11, from C-WORKFLOW) WORKFLOW-5 checks `with:` values before interpolation, so a non-string parameter written as an expression (e.g. `timeout: "{{ vars.t }}"`) fails validation. Decide whether typed params may take `{{ }}` and validate them after interpolation.
 - B-026 [debt] (2026-11-11, from F-UI-SHELL) One backend test failed once in a full `uv run pytest` run and passed in the next five; its name wasn't captured. Run with `-rf` and record which test it is when it shows up again (likely timing-sensitive, in the worker/API/CLI subprocess tests).
+  2026-11-12: under load, `test_WORKER_5_cancel_a_running_run` and `test_WORKER_3_job_is_written_before_the_worker_starts` failed because the job row was read before the worker stored its final state (fixed in C-CHANGESET: the worker stores the state before forwarding `run.finished`), and `test_WORKER_5_cancel_a_queued_run` timed out (B-031).
 - B-027 [debt] (2026-11-11, from F-UI-SHELL) The production JS bundle is ~560 kB (Mantine), above Vite's 500 kB warning. Code-split per route or accept and raise `chunkSizeWarningLimit`.
 
 ## Questions
@@ -48,6 +52,7 @@ are **not** part of the current task. Append here instead of acting on them.
 - B-011 [question] (2026-11-11, from architecture §12) Add a plugin exception to the AGPL so in-process plugins can use any license?
 
 ## Done
+- B-005 [debt] (2026-11-11, from session) No LICENSE file yet; add the AGPL-3.0-or-later text. → 44f7b89
 - B-008 [question] (2026-11-11, from architecture §12) Which UI component library (shadcn/ui, Mantine, …)? Needed for F-UI-SHELL. → F-UI-SHELL (author: Mantine, 2026-11-11)
 - B-022 [bug] (2026-11-11, from F-API) A worker told to stop exits with SIGABRT (status 134/-6): "Fatal Python error: _enter_buffered_busy: could not acquire lock for <_io.BufferedReader name='<stdin>'> at interpreter shutdown, possibly due to daemon threads". The daemon thread in `worker.process._read_commands` is blocked reading `sys.stdin.buffer`. Job states stay correct, but the supervisor logs a normal stop as `worker_crashed`. Likely fix: read commands from the raw fd (or `os._exit` after cleanup), plus a test that a stopped worker exits 0. → fixed: commands are read from fd 0 with `os.read` (2026-11-11)
 - B-016 [debt] (2026-11-11, from F-DEV-TOOLING) `schemas/openapi.json` is a stub until F-API provides the FastAPI app; `export.openapi_document()` must switch to `app.openapi()` then. → F-API

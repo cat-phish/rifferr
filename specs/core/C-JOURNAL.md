@@ -60,6 +60,9 @@ class Journal(Protocol):           # injected into the engine
     def for_run(self, run_id: str) -> list[JournalEntry]: ...
     def mark_undone(self, entry_id: str, by: str) -> None: ...
 ```
+- As implemented so far (2026-11-12, with C-CHANGESET): `rifferr.engine.journal` (`Journal`,
+  `InMemoryJournal`, `JournalError`) and `rifferr.appdb.AppJournal`. `Journal.fail(entry_id, error)`
+  and `JournalEntry.error` record an apply that raised before changing anything.
 - Undo requests arrive as worker jobs (`kind: undo`, target entry or run id), like review decisions (C-CHANGESET CHANGESET-13). Their API and UI belong to F-REVIEW-QUEUE.
 
 ## Examples
@@ -91,9 +94,9 @@ Worker killed between `begin` and `apply` → on restart, all old values current
 - None yet.
 
 ## Tasks
-- [ ] models + `Journal` protocol + in-memory journal for tests
-- [ ] app DB `journal` table (migration) + `AppJournal`
-- [ ] write-ahead begin / complete around apply
+- [x] models + `Journal` protocol + in-memory journal for tests
+- [x] app DB `journal` table (migration) + `AppJournal`
+- [x] write-ahead begin / complete around apply
 - [ ] start-up reconciliation of pending entries
 - [ ] undo of an entry and of a run, with conflicts
 - [ ] `undo` worker jobs
