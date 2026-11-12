@@ -13,9 +13,9 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from rifferr.profile_store import SCRIPTS_DIR
 from rifferr.tagscript.models import script_path_problem
 
-SCRIPTS_DIR = "scripts"
 SUFFIXES = (".yaml", ".yml")
 
 

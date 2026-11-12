@@ -126,7 +126,7 @@ def test_TAGSCRIPT_20_validation_errors_have_line_and_column(profile: Profile) -
 
 def test_TAGSCRIPT_20_script_file_and_errors(profile: Profile) -> None:
     scripts = profile_dir(config_root(), "main") / "scripts"
-    scripts.mkdir()
+    scripts.mkdir(exist_ok=True)
     (scripts / "ep.yaml").write_text(EP)
     r = preview(profile, library(), script="ep.yaml")
     assert r.albums == 2

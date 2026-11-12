@@ -2,6 +2,7 @@
 
 <config_root>/profiles/<name>/profile.yaml
 <config_root>/profiles/<name>/workflows/
+<config_root>/profiles/<name>/scripts/
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ from rifferr.core.profile import (
 
 PROFILE_FILE = "profile.yaml"
 WORKFLOWS_DIR = "workflows"
+SCRIPTS_DIR = "scripts"
 
 
 APP_DB_FILE = "rifferr.db"
@@ -134,6 +136,7 @@ def create_profile(root: Path, name: str, beetsdir: Path | None = None) -> Path:
         "# worker: { idle_timeout: 600 }  # seconds without a run; null = stay up\n"
     )
     (directory / WORKFLOWS_DIR).mkdir(parents=True)
+    (directory / SCRIPTS_DIR).mkdir()  # tag scripts (S-TAGSCRIPT)
     (directory / PROFILE_FILE).write_text(text, encoding="utf-8")
     return directory
 

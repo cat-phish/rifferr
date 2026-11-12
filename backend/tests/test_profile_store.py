@@ -74,7 +74,7 @@ def test_PROFILE_3_missing_profile(tmp_path: Path) -> None:
 
 def test_PROFILE_8_create_without_beetsdir_is_empty(tmp_path: Path) -> None:
     root = create_profile(tmp_path, "main")
-    assert sorted(p.name for p in root.iterdir()) == ["profile.yaml", "workflows"]
+    assert sorted(p.name for p in root.iterdir()) == ["profile.yaml", "scripts", "workflows"]
     p = load_profile(tmp_path, "main")
     assert p.vars == {}
     assert p.secrets == {}
@@ -128,3 +128,8 @@ def test_PROFILE_10_invalid_timezone_is_an_error(tmp_path: Path) -> None:
         load_profile(tmp_path, "tz")
     assert "Mars/Olympus" in str(exc.value)
     assert "timezone" in str(exc.value)
+
+
+def test_TAGSCRIPT_1_profile_create_adds_scripts_folder(tmp_path: Path) -> None:
+    create_profile(tmp_path, "main")
+    assert (tmp_path / "profiles" / "main" / "scripts").is_dir()

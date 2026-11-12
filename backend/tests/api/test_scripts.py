@@ -64,7 +64,7 @@ async def test_API_18_missing_and_ambiguous(api: Api) -> None:
     r = await api.client.get("/api/profiles/main/scripts/nope")
     assert r.status_code == 404
     folder = profile_dir(config_root(), "main") / "scripts"
-    folder.mkdir()
+    folder.mkdir(exist_ok=True)
     (folder / "dup.yaml").write_text(EP)
     (folder / "dup.yml").write_text(EP)
     r = await api.client.get("/api/profiles/main/scripts/dup")
