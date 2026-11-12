@@ -45,8 +45,8 @@ trusted at save time (SECURITY-10).
 - `pnpm e2e`: `playwright test` with a global setup that prepares the temp profile and starts the server; the browsers come from `pnpm exec playwright install chromium` (one-time, needs network; the test itself needs none).
 
 ## Examples
-Open Workflows → "two-step" shows "Needs review" → Review shows YAML and two
-safety findings (`command`, `shell_string`) → Trust → Start, with the form
+Open Workflows → "two-step" shows "Needs review" → Review shows YAML and the
+safety report (the `shell` step's `command` finding) → Trust → Start, with the form
 asking for `inbox` → Run page shows `import` running, then `imported: A - B`,
 then `list-files` with `ls` output, then "Succeeded" with duration.
 
