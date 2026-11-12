@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 from pydantic import BaseModel, JsonValue
 
 from rifferr.backends.base import BackendCapabilities, LibraryBackend
+from rifferr.core.profile import Secret
 from rifferr.core.selection import Scope, Selection
 from rifferr.core.snapshot import AlbumSnapshot
 from rifferr.core.workflow import StepSpec, StepTypeInfo
@@ -18,6 +20,37 @@ from rifferr.engine.run import FailedTarget, Scalar
 
 class StepFailure(Exception):
     """Raise from a step to fail it with a message for the user."""
+
+
+class StepRefused(StepFailure):
+    """The step refuses to run at all (e.g. untrusted workflow). Always stops the run,
+    whatever ``on_error`` says."""
+
+
+class SecretAccess(Protocol):
+    """Named profile secrets, resolved only when a step asks (PROFILE-5)."""
+
+    def names(self) -> list[str]: ...
+
+    def resolve(self, name: str) -> Secret:
+        """Raise ``LookupError`` if unknown or unavailable; never include the value."""
+        ...
+
+    def env_refs(self) -> Mapping[str, str]:
+        """Secret name -> environment variable, for secrets held in the environment
+        (``env:`` references)."""
+        ...
+
+
+class NoSecrets:
+    def names(self) -> list[str]:
+        return []
+
+    def resolve(self, name: str) -> Secret:
+        raise LookupError(f"no secret named '{name}' in this profile")
+
+    def env_refs(self) -> Mapping[str, str]:
+        return {}
 
 
 @dataclass(frozen=True)
@@ -52,8 +85,21 @@ class StepContext:
         selection: Selection,
         emit: Emit,
         is_cancelled: Callable[[], bool],
+        profile: str = "",
+        vars: Mapping[str, str] | None = None,
+        work_dir: Path | None = None,
+        trusted: bool = False,
+        secrets: SecretAccess | None = None,
+        on_secret: Callable[[Secret], None] | None = None,
     ) -> None:
         self.run_id = run_id
+        self.profile = profile
+        self.vars: Mapping[str, str] = dict(vars or {})
+        self.work_dir = work_dir
+        self.trusted = trusted
+        """Whether this run's workflow is trusted to run shell/python steps (F-SECURITY)."""
+        self._secrets = secrets or NoSecrets()
+        self._on_secret = on_secret
         self.step = step
         self.params = params
         self.backend = backend
@@ -78,8 +124,25 @@ class StepContext:
         self.check_event_type(type)
         self._emit(type, data)
 
-    def log(self, line: str, stream: str = "info") -> None:
-        self._emit("run.step.log", {"stream": stream, "line": line})
+    def log(self, line: str, stream: str = "info", target: str | None = None) -> None:
+        data: dict[str, JsonValue] = {"stream": stream, "line": line}
+        if target is not None:
+            data["target"] = target
+        self._emit("run.step.log", data)
+
+    def secret(self, name: str) -> Secret:
+        """Resolve a profile secret by name. Its value is masked in this run's events."""
+        try:
+            secret = self._secrets.resolve(name)
+        except LookupError as exc:
+            raise StepFailure(f"secret '{name}' is not available: {exc}") from None
+        if self._on_secret is not None:
+            self._on_secret(secret)
+        return secret
+
+    def secret_env_refs(self) -> Mapping[str, str]:
+        """Secret name -> inherited environment variable holding it (``env:`` secrets)."""
+        return self._secrets.env_refs()
 
     def albums(self, scope: Scope = "album") -> list[AlbumSnapshot]:
         """This step's targets: the run's albums, narrowed by the step's ``when``."""

@@ -1,5 +1,5 @@
 # S-SHELL: `shell` step
-Status: Draft
+Status: Implemented
 Milestone: M0
 
 ## Context
@@ -12,8 +12,8 @@ trusted workflows.
 ## Behavior
 - SHELL-1: `with.run` MUST accept an argv list (preferred) or, only when `shell: true`, a single string run through `/bin/sh -c`. A string without `shell: true` MUST be a validation error.
 - SHELL-2: Each argv element MUST have `{{ }}` interpolated at step start (C-WORKFLOW) and beets template syntax (`$path`, `%if{…}`) evaluated per target through `backend.evaluate`; templates MUST NOT be expanded into extra argv elements (no word splitting).
-- SHELL-3: `per` MUST accept `run` (once), `album` (once per selected album) or `item` (once per selected item), default `album`.
-- SHELL-4: The process environment MUST include `RIFFERR_RUN_ID`, `RIFFERR_PROFILE`, `RIFFERR_ALBUM_DIR` (for `per: album|item`), `RIFFERR_ITEM_PATH` (for `per: item`), every profile/workflow var as `RIFFERR_VAR_<NAME>` (upper-cased, non-alphanumerics → `_`), plus `backend.command_env()`. Profile secrets MUST NOT be added to the environment unless the step lists them in `with.secrets`.
+- SHELL-3: `per` MUST accept `run` (once), `album` (once per selected album) or `item` (once per selected item), default `album`. Targets run one at a time, in selection order (parallelism arrives with lanes, M2). With `per: run` there is no target, so beets templates are not evaluated.
+- SHELL-4: The process environment MUST include `RIFFERR_RUN_ID`, `RIFFERR_PROFILE`, `RIFFERR_ALBUM_DIR` (for `per: album|item`), `RIFFERR_ITEM_PATH` (for `per: item`), every profile/workflow var as `RIFFERR_VAR_<NAME>` (upper-cased, non-alphanumerics → `_`), plus `backend.command_env()`. Profile secrets MUST NOT be added to the environment unless the step lists them in `with.secrets`; environment variables inherited from Rifferr's own environment that hold a profile `env:` secret MUST be removed unless listed.
 - SHELL-5: stdin MUST receive the JSON snapshot of the current album (`per: album`), item (`per: item`) or `{"albums": [...]}` (`per: run`), matching the published snapshot schema (C-BACKEND).
 - SHELL-6: stdout and stderr MUST stream line by line into `run.step.log` events tagged with stream name and target id, with secret redaction applied (PROFILE-5).
 - SHELL-7: `timeout` (seconds, default 600) MUST terminate the process group with SIGTERM, then SIGKILL after 5 seconds, and count as a failure.
@@ -21,7 +21,8 @@ trusted workflows.
 - SHELL-9: Cancellation (RUN-8) MUST terminate the process group the same way as a timeout.
 - SHELL-10: `cwd` MAY be set (templated); it defaults to the album directory for `per: album|item` and the profile directory for `per: run`.
 - SHELL-11: In M0, `emits` MUST accept only `none`; `changes` MUST be a validation error that says it arrives with ChangeSets (M1).
-- SHELL-12: The step MUST refuse to run if the workflow is not trusted (F-SECURITY), emitting a clear `run.step.finished` failure, regardless of `on_error`.
+- SHELL-12: The step MUST refuse to run if the run is not trusted (the engine's per-run `trusted` flag, default false; F-SECURITY decides it from the workflow's content hash). The refusal fails the step and stops the run regardless of `on_error`.
+- SHELL-13: Shell steps MUST support Linux and macOS (POSIX process groups). Windows is not supported natively; use the Docker image.
 
 ## Interfaces
 ```python
@@ -35,6 +36,20 @@ class ShellParams(BaseModel):
     secrets: list[str] = []              # profile secret names to expose as env
     emits: Literal["none"] = "none"      # "changes" added in M1
 ```
+
+As implemented (`rifferr.steps.shell`, entry point `shell`):
+- `requires` query + templates; `backend.command_env()` is added when the backend offers it.
+- `shell: true` with a list, an empty `run`, and invalid `env` names are validation errors.
+- A secret listed in `with.secrets` is exposed as `RIFFERR_SECRET_<NAME>` (upper-cased,
+  non-alphanumerics → `_`); an inherited `env:` secret variable stays only if its secret is listed.
+- Env precedence: inherited < `command_env()` < `RIFFERR_VAR_*` < `with.env` < secrets <
+  `RIFFERR_RUN_ID` / `RIFFERR_PROFILE` / `RIFFERR_ALBUM_DIR` / `RIFFERR_ITEM_PATH`.
+- Failure messages: `exited with status N`, `killed by signal SIGX`, `timed out after N s`,
+  `could not start <prog>: …`, `working directory … does not exist`, `template error: …`.
+  With `per: run` these fail the step; otherwise they fail the target (RUN-5).
+- Output lines longer than 64 KiB are split into several events; output pipes held open by a
+  background child are not waited for after the process exits (1 s).
+- The step stops starting new targets once the run is cancelled.
 
 ## Examples
 ```yaml
@@ -63,14 +78,19 @@ None beyond parameters; users extend behavior with their own scripts.
 - Resource limits beyond timeout (memory, CPU).
 
 ## Open questions
-- Should `per: album` run albums in parallel in M0, or strictly sequentially until lanes exist (M2)?
-- Is 600 s a reasonable default timeout, or should there be no default?
-- On Windows (not a target today), what replaces process groups? Assume Linux/macOS only?
+- ~~Parallel `per: album` in M0?~~ Resolved 2026-11-11 (author): sequential until lanes (SHELL-3).
+- ~~Default timeout?~~ Resolved 2026-11-11 (author): 600 s.
+- ~~Windows?~~ Resolved 2026-11-11 (author): Linux and macOS only (SHELL-13).
+- Trust before F-SECURITY: approved 2026-11-11 (author): per-run `trusted` flag, default false (SHELL-12).
+- Beets templates in a `shell: true` string? SHELL-2 covers argv elements only. Implemented
+  as **not evaluated**, because tag values would become shell code; scripts read
+  `RIFFERR_ALBUM_DIR`/`RIFFERR_ITEM_PATH` or stdin, or use `[sh, -c, '…"$1"…', sh, $path]`.
+  Needs author confirmation.
 
 ## Tasks
-- [ ] params model + validation
-- [ ] argv templating without word splitting
-- [ ] env + stdin snapshot
-- [ ] streaming logs with redaction
-- [ ] timeout + cancellation (process group)
-- [ ] trust check hook
+- [x] params model + validation
+- [x] argv templating without word splitting
+- [x] env + stdin snapshot
+- [x] streaming logs with redaction
+- [x] timeout + cancellation (process group)
+- [x] trust check hook

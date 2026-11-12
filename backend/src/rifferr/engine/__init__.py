@@ -14,7 +14,16 @@ from rifferr.engine.run import (
     StepRecord,
     StepStatus,
 )
-from rifferr.engine.steps import StepContext, StepFailure, StepResult, StepType, StepTypeRegistry
+from rifferr.engine.steps import (
+    NoSecrets,
+    SecretAccess,
+    StepContext,
+    StepFailure,
+    StepRefused,
+    StepResult,
+    StepType,
+    StepTypeRegistry,
+)
 
 __all__ = [
     "ENGINE_EVENTS",
@@ -25,13 +34,16 @@ __all__ = [
     "FailedTarget",
     "InMemoryEventSink",
     "InvalidTransitionError",
+    "NoSecrets",
     "Run",
     "RunState",
     "RunValidationError",
     "Scalar",
+    "SecretAccess",
     "StepContext",
     "StepFailure",
     "StepRecord",
+    "StepRefused",
     "StepResult",
     "StepStatus",
     "StepType",

@@ -74,3 +74,24 @@ class SecretResolver:
         if text.endswith("\n"):
             return text[:-1]
         return text
+
+
+class ProfileSecrets:
+    """A profile's named secrets for a run (``engine.SecretAccess``), resolved on demand."""
+
+    def __init__(self, secrets: Mapping[str, SecretRef], resolver: SecretResolver) -> None:
+        self._refs = dict(secrets)
+        self._resolver = resolver
+
+    def names(self) -> list[str]:
+        return sorted(self._refs)
+
+    def resolve(self, name: str) -> Secret:
+        ref = self._refs.get(name)
+        if ref is None:
+            known = ", ".join(self.names()) or "none"
+            raise SecretNotAvailableError(f"no secret named '{name}' (known: {known})")
+        return self._resolver.resolve(ref)
+
+    def env_refs(self) -> Mapping[str, str]:
+        return {name: r.target for name, r in self._refs.items() if r.kind == "env"}

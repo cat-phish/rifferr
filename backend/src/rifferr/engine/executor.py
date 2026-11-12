@@ -12,6 +12,7 @@ import contextlib
 import hashlib
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, Protocol, cast
 
 from pydantic import BaseModel, JsonValue
@@ -33,7 +34,14 @@ from rifferr.core.workflow import (
 )
 from rifferr.engine.events import Event, EventSink
 from rifferr.engine.run import Run, RunState, Scalar, StepRecord
-from rifferr.engine.steps import StepContext, StepFailure, StepTypeRegistry
+from rifferr.engine.steps import (
+    NoSecrets,
+    SecretAccess,
+    StepContext,
+    StepFailure,
+    StepRefused,
+    StepTypeRegistry,
+)
 
 DEFAULT_CANCEL_GRACE = 5.0
 
@@ -61,11 +69,21 @@ Listener = Callable[[Event], None]
 class _RunState:
     """Engine-side bookkeeping for one run."""
 
-    def __init__(self, run: Run, wf: Workflow, backend: LibraryBackend, redactor: Redactor) -> None:
+    def __init__(
+        self,
+        run: Run,
+        wf: Workflow,
+        backend: LibraryBackend,
+        redactor: Redactor,
+        work_dir: Path | None,
+        secrets: SecretAccess,
+    ) -> None:
         self.run = run
         self.workflow = wf
         self.backend = backend
         self.redactor = redactor
+        self.work_dir = work_dir
+        self.secrets = secrets
         self.cancel = asyncio.Event()
 
 
@@ -105,8 +123,15 @@ class Engine:
         run_vars: Mapping[str, str] | None = None,
         doc: RoundTripDoc | None = None,
         redactor: Redactor | None = None,
+        trusted: bool = False,
+        work_dir: Path | None = None,
+        secrets: SecretAccess | None = None,
     ) -> Run:
-        """Validate and create a queued run (RUN-10, RUN-11)."""
+        """Validate and create a queued run (RUN-10, RUN-11).
+
+        ``trusted``: may this run execute shell/python steps (decided by F-SECURITY).
+        ``work_dir``: default working directory for steps without a target (the profile dir).
+        """
         supplied = {**profile_vars, **(run_vars or {})}
         errors = validate(wf, self.registry, backend.capabilities, supplied, doc=doc)
         if errors:
@@ -119,9 +144,12 @@ class Engine:
             created_at=self.clock.now(),
             steps=[StepRecord(id=s.id, uses=s.uses) for s in wf.steps],
             vars=merged_vars(supplied, wf.vars),
+            trusted=trusted,
         )
         self.runs[run.id] = run
-        self._state[run.id] = _RunState(run, wf, backend, redactor or Redactor([]))
+        self._state[run.id] = _RunState(
+            run, wf, backend, redactor or Redactor([]), work_dir, secrets or NoSecrets()
+        )
         return run
 
     def cancel(self, run_id: str) -> None:
@@ -164,6 +192,7 @@ class Engine:
         record.started_at = self.clock.now()
         self._emit(run, "run.step.started", spec.id, {"uses": spec.uses})
         ctx: StepContext | None = None
+        refused = False
         try:
             params = self._prepare_params(run, spec)
             step_type = self.registry.step_type(spec.uses)
@@ -176,6 +205,12 @@ class Engine:
                 selection=Selection(query=spec.when or "", run_id=run.id),
                 emit=lambda type, data: self._emit_from_step(state, spec.id, type, data),
                 is_cancelled=state.cancel.is_set,
+                profile=run.profile,
+                vars=run.vars,
+                work_dir=state.work_dir,
+                trusted=run.trusted,
+                secrets=state.secrets,
+                on_secret=state.redactor.add,
             )
             result = await self._run_cancellable(state, step_type.run(ctx))
             if state.cancel.is_set():
@@ -185,6 +220,10 @@ class Engine:
                 record.status = "failed" if ctx.failed_targets else "succeeded"
         except asyncio.CancelledError:
             record.status = "cancelled"
+        except StepRefused as exc:
+            record.status = "failed"
+            record.error = str(exc)
+            refused = True
         except StepFailure as exc:
             record.status = "cancelled" if state.cancel.is_set() else "failed"
             record.error = str(exc)
@@ -204,7 +243,7 @@ class Engine:
         if record.error is not None:
             data["error"] = state.redactor.redact(record.error)
         self._emit(run, "run.step.finished", spec.id, data)
-        return record.status == "failed" and spec.on_error == "stop"
+        return refused or (record.status == "failed" and spec.on_error == "stop")
 
     async def _run_cancellable(self, state: _RunState, coro: Any) -> Any:
         task: asyncio.Task[Any] = asyncio.ensure_future(coro)

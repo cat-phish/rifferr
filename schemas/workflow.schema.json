@@ -1,76 +1,78 @@
 {
   "$defs": {
     "Step": {
-      "additionalProperties": false,
-      "description": "One entry of ``steps:`` (WORKFLOW-2, WORKFLOW-3).",
-      "properties": {
-        "apply": {
-          "default": "review",
-          "description": "Whether this step's ChangeSets apply automatically or wait for review. Ignored by steps that don't produce ChangeSets.",
-          "enum": [
-            "auto",
-            "review"
-          ],
-          "title": "Apply",
-          "type": "string"
-        },
-        "id": {
-          "pattern": "^[a-z][a-z0-9_-]*$",
-          "title": "Id",
-          "type": "string"
-        },
-        "name": {
-          "anyOf": [
-            {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "One entry of ``steps:`` (WORKFLOW-2, WORKFLOW-3).",
+          "properties": {
+            "apply": {
+              "default": "review",
+              "description": "Whether this step's ChangeSets apply automatically or wait for review. Ignored by steps that don't produce ChangeSets.",
+              "enum": [
+                "auto",
+                "review"
+              ],
+              "title": "Apply",
               "type": "string"
             },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Name"
-        },
-        "on_error": {
-          "default": "stop",
-          "enum": [
-            "stop",
-            "skip",
-            "continue"
-          ],
-          "title": "On Error",
-          "type": "string"
-        },
-        "uses": {
-          "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_-]*)*$",
-          "title": "Uses",
-          "type": "string"
-        },
-        "when": {
-          "anyOf": [
-            {
+            "id": {
+              "pattern": "^[a-z][a-z0-9_-]*$",
+              "title": "Id",
               "type": "string"
             },
-            {
-              "type": "null"
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Name"
+            },
+            "on_error": {
+              "default": "stop",
+              "enum": [
+                "stop",
+                "skip",
+                "continue"
+              ],
+              "title": "On Error",
+              "type": "string"
+            },
+            "uses": {
+              "const": "shell",
+              "title": "Uses"
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Backend condition (a beets query).",
+              "title": "When"
+            },
+            "with": {
+              "$ref": "#/$defs/With_shell"
             }
+          },
+          "required": [
+            "id",
+            "uses"
           ],
-          "default": null,
-          "description": "Backend condition (a beets query).",
-          "title": "When"
-        },
-        "with": {
-          "additionalProperties": true,
-          "title": "With",
+          "title": "Step: shell",
           "type": "object"
         }
-      },
-      "required": [
-        "id",
-        "uses"
       ],
-      "title": "Step",
-      "type": "object"
+      "title": "Step"
     },
     "Triggers": {
       "additionalProperties": false,
@@ -186,6 +188,89 @@
         "name"
       ],
       "title": "WebhookTrigger",
+      "type": "object"
+    },
+    "With_shell": {
+      "additionalProperties": false,
+      "properties": {
+        "cwd": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Working directory (templated)",
+          "title": "Cwd"
+        },
+        "emits": {
+          "const": "none",
+          "default": "none",
+          "title": "Emits",
+          "type": "string"
+        },
+        "env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Extra variables",
+          "title": "Env",
+          "type": "object"
+        },
+        "per": {
+          "default": "album",
+          "enum": [
+            "run",
+            "album",
+            "item"
+          ],
+          "title": "Per",
+          "type": "string"
+        },
+        "run": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Command as an argv list, or a string run by /bin/sh -c (needs shell: true)",
+          "title": "Run"
+        },
+        "secrets": {
+          "description": "Profile secrets to expose as RIFFERR_SECRET_<NAME>",
+          "items": {
+            "type": "string"
+          },
+          "title": "Secrets",
+          "type": "array"
+        },
+        "shell": {
+          "default": false,
+          "description": "Run a string command through /bin/sh -c",
+          "title": "Shell",
+          "type": "boolean"
+        },
+        "timeout": {
+          "default": 600,
+          "description": "Seconds before the command is stopped",
+          "exclusiveMinimum": 0,
+          "title": "Timeout",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "run"
+      ],
+      "title": "ShellParams",
       "type": "object"
     }
   },

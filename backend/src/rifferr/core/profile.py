@@ -121,12 +121,19 @@ class Redactor:
     """Masks known secret values in text bound for logs and events (PROFILE-5)."""
 
     def __init__(self, secrets: Iterable[Secret]) -> None:
-        values = sorted(
-            {s.reveal() for s in secrets if len(s.reveal()) >= MIN_REDACT_LENGTH},
-            key=len,
-            reverse=True,
-        )
-        self._pattern = re.compile("|".join(map(re.escape, values))) if values else None
+        self._values: set[str] = set()
+        self._pattern: re.Pattern[str] | None = None
+        for s in secrets:
+            self.add(s)
+
+    def add(self, secret: Secret) -> None:
+        """Also mask ``secret`` from now on (e.g. a secret resolved mid-run)."""
+        value = secret.reveal()
+        if len(value) < MIN_REDACT_LENGTH or value in self._values:
+            return
+        self._values.add(value)
+        ordered = sorted(self._values, key=len, reverse=True)
+        self._pattern = re.compile("|".join(map(re.escape, ordered)))
 
     def redact(self, text: str) -> str:
         return self._pattern.sub("***", text) if self._pattern else text

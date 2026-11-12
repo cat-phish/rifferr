@@ -75,6 +75,14 @@ As implemented (`rifferr.engine`):
 - Entry-point loading: `rifferr.steps.registry.load_step_types()`; broken plugins are listed in
   `registry.errors` instead of stopping the app.
 - ULIDs: `rifferr.core.ids.new_ulid()`.
+- Added for S-SHELL: `create_run(..., trusted=False, work_dir=None, secrets=None)`. `trusted`
+  is stored on the `Run` (F-SECURITY will decide it); `work_dir` is the default directory for
+  steps without a target (the profile dir); `secrets` is a `SecretAccess`
+  (`rifferr.credentials.ProfileSecrets` for a real profile). `StepContext` also has `profile`,
+  `vars`, `work_dir`, `trusted`, `secret(name)` (resolves on demand and adds the value to the
+  run's redactor) and `secret_env_refs()`. `log(line, stream, target=None)` adds `target` to
+  `run.step.log` data. Raising `StepRefused` fails the step and stops the run whatever
+  `on_error` says.
 
 ## Examples
 Workflow with steps `a` (on_error: skip, fails) and `b` (succeeds) → events:

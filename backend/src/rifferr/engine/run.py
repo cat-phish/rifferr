@@ -60,6 +60,7 @@ class Run:
     created_at: datetime
     steps: list[StepRecord]
     vars: dict[str, str]
+    trusted: bool = False
     state: RunState = RunState.queued
     started_at: datetime | None = None
     finished_at: datetime | None = None

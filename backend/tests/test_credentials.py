@@ -86,3 +86,24 @@ def test_PROFILE_11_file_secret_is_read_at_use_not_on_construction(tmp_path: Pat
     f.write_text("later")
     os.chmod(f, 0o600)
     assert r.resolve(ref).reveal() == "later"
+
+
+def test_PROFILE_5_profile_secrets_resolve_by_name_only_on_request() -> None:
+    from rifferr.credentials import ProfileSecrets
+
+    calls: list[str] = []
+
+    def get(service: str, name: str) -> str:
+        calls.append(name)
+        return "value-1234"
+
+    secrets = ProfileSecrets(
+        {"b": SecretRef.parse("env:B_TOKEN"), "a": SecretRef.parse("keyring:svc/a")},
+        SecretResolver(env={}, keyring_get=get),
+    )
+    assert secrets.names() == ["a", "b"]
+    assert secrets.env_refs() == {"b": "B_TOKEN"}
+    assert calls == []
+    assert secrets.resolve("a").reveal() == "value-1234"
+    with pytest.raises(SecretNotAvailableError, match="no secret named 'c'"):
+        secrets.resolve("c")
