@@ -44,6 +44,69 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/profiles/{profile}/scripts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Scripts
+         * @description Script files with their hash and validity (API-18).
+         */
+        get: operations["list_scripts_api_profiles__profile__scripts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profiles/{profile}/scripts/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Script */
+        get: operations["get_script_api_profiles__profile__scripts__name__get"];
+        /**
+         * Put Script
+         * @description Save the text as typed; with ``sha256``, only if the file is unchanged (API-18).
+         */
+        put: operations["put_script_api_profiles__profile__scripts__name__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profiles/{profile}/tagscript/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Script
+         * @description Evaluate a script against a query in the read-only worker (TAGSCRIPT-20, -21).
+         *
+         *     Nothing is proposed, written or stored.
+         */
+        post: operations["preview_script_api_profiles__profile__tagscript_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs": {
         parameters: {
             query?: never;
@@ -252,6 +315,135 @@ export interface components {
             status: "ok";
         };
         JsonValue: unknown;
+        /** PreviewError */
+        PreviewError: {
+            /** Column */
+            column?: number | null;
+            /** Line */
+            line?: number | null;
+            /** Message */
+            message: string;
+            /** Path */
+            path: string;
+        };
+        /** PreviewField */
+        PreviewField: {
+            /** Actions */
+            actions: string[];
+            /** After */
+            after: boolean | number | string | string[] | null;
+            /** Before */
+            before: boolean | number | string | string[] | null;
+            /**
+             * Deleted
+             * @default false
+             */
+            deleted: boolean;
+            /** Field */
+            field: string;
+        };
+        /**
+         * PreviewIssue
+         * @description A field a second pass changes (TAGSCRIPT-16).
+         */
+        PreviewIssue: {
+            /** Action */
+            action: string | null;
+            /** Action Index */
+            action_index: number | null;
+            /** Field */
+            field: string;
+            /** First */
+            first: boolean | number | string | string[] | null;
+            /** Second */
+            second: boolean | number | string | string[] | null;
+            target: components["schemas"]["TargetRef"];
+        };
+        /**
+         * PreviewRequest
+         * @description A script as text (the editor's buffer) or a file in ``scripts/``, and a query.
+         */
+        PreviewRequest: {
+            /**
+             * Client
+             * @description Caller id; a newer preview from the same client cancels an older one
+             */
+            client?: string | null;
+            /**
+             * Limit
+             * @description Albums at most
+             * @default 50
+             */
+            limit: number;
+            /**
+             * Query
+             * @description beets query selecting the albums
+             * @default
+             */
+            query: string;
+            /**
+             * Scope
+             * @description Override the script's scope
+             */
+            scope?: ("album" | "item") | null;
+            /**
+             * Script
+             * @description A file in the profile's scripts/
+             */
+            script?: string | null;
+            /**
+             * Script Text
+             * @description YAML text of a script
+             */
+            script_text?: string | null;
+        };
+        /** PreviewResponse */
+        PreviewResponse: {
+            /**
+             * Albums
+             * @description Albums evaluated
+             * @default 0
+             */
+            albums: number;
+            /** Idempotence */
+            idempotence?: components["schemas"]["PreviewIssue"][];
+            /**
+             * Idempotence Checked
+             * @default false
+             */
+            idempotence_checked: boolean;
+            /** Targets */
+            targets?: components["schemas"]["PreviewTarget"][];
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+            /** Validation Errors */
+            validation_errors?: components["schemas"]["PreviewError"][];
+        };
+        /** PreviewTarget */
+        PreviewTarget: {
+            /**
+             * Actions
+             * @description Actions that changed this target
+             */
+            actions?: string[];
+            /**
+             * Album
+             * @description Id of the album this target belongs to
+             */
+            album: string;
+            /** Errors */
+            errors?: string[];
+            /** Fields */
+            fields?: components["schemas"]["PreviewField"][];
+            /** Label */
+            label: string;
+            /** Notes */
+            notes?: string[];
+            target: components["schemas"]["TargetRef"];
+        };
         /** ProfileSummary */
         ProfileSummary: {
             /** Backend */
@@ -367,6 +559,61 @@ export interface components {
             /** Step Id */
             step_id: string;
         };
+        /** ScriptDetail */
+        ScriptDetail: {
+            /** Errors */
+            errors: components["schemas"]["ScriptError"][];
+            /** File */
+            file: string;
+            /** Name */
+            name: string;
+            /** Sha256 */
+            sha256: string;
+            /** Text */
+            text: string;
+            /** Valid */
+            valid: boolean;
+        };
+        /**
+         * ScriptError
+         * @description A problem in a script file, with its YAML location (TAGSCRIPT-2).
+         */
+        ScriptError: {
+            /** Column */
+            column?: number | null;
+            /** Line */
+            line?: number | null;
+            /** Message */
+            message: string;
+            /** Path */
+            path: string;
+        };
+        /** ScriptSave */
+        ScriptSave: {
+            /**
+             * Sha256
+             * @description Hash of the text the editor loaded; 409 hash_mismatch if the file changed
+             */
+            sha256?: string | null;
+            /** Text */
+            text: string;
+        };
+        /**
+         * ScriptSummary
+         * @description A file in the profile's ``scripts/`` folder (API-18).
+         */
+        ScriptSummary: {
+            /** Errors */
+            errors: components["schemas"]["ScriptError"][];
+            /** File */
+            file: string;
+            /** Name */
+            name: string;
+            /** Sha256 */
+            sha256: string;
+            /** Valid */
+            valid: boolean;
+        };
         /** StepState */
         StepState: {
             /** Error */
@@ -384,6 +631,19 @@ export interface components {
             status: "pending" | "running" | "succeeded" | "failed" | "skipped" | "cancelled";
             /** Uses */
             uses: string;
+        };
+        /**
+         * TargetRef
+         * @description One album or item, by the backend id from its snapshot.
+         */
+        TargetRef: {
+            /** Id */
+            id: string;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "album" | "item";
         };
         /** TrustRequest */
         TrustRequest: {
@@ -546,6 +806,266 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProfileSummary"][];
+                };
+            };
+        };
+    };
+    list_scripts_api_profiles__profile__scripts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScriptSummary"][];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_script_api_profiles__profile__scripts__name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile: string;
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScriptDetail"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    put_script_api_profiles__profile__scripts__name__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile: string;
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScriptSave"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScriptDetail"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    preview_script_api_profiles__profile__tagscript_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Gateway Timeout */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
         };

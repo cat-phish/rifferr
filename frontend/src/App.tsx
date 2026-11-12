@@ -5,6 +5,8 @@ import { auth } from "./api/auth";
 import { useProfile, withProfile } from "./hooks/useProfile";
 import { RunPage } from "./pages/RunPage";
 import { RunsPage } from "./pages/RunsPage";
+import { ScriptPage } from "./pages/ScriptPage";
+import { ScriptsPage } from "./pages/ScriptsPage";
 import { SignedOut } from "./pages/SignedOut";
 import { WorkflowPage } from "./pages/WorkflowPage";
 import { WorkflowsPage } from "./pages/WorkflowsPage";
@@ -21,6 +23,8 @@ export function App() {
         <Route path="/runs/:id" element={<RunPage />} />
         <Route path="/workflows" element={<WorkflowsPage />} />
         <Route path="/workflows/:name" element={<WorkflowPage />} />
+        <Route path="/scripts" element={<ScriptsPage />} />
+        <Route path="/scripts/:name" element={<ScriptPage />} />
       </Routes>
     </Shell>
   );
@@ -33,6 +37,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   const nav = [
     { label: "Runs", to: "/runs", active: pathname === "/" || pathname.startsWith("/runs") },
     { label: "Workflows", to: "/workflows", active: pathname.startsWith("/workflows") },
+    { label: "Scripts", to: "/scripts", active: pathname.startsWith("/scripts") },
   ];
   return (
     <AppShell header={{ height: 56 }} navbar={{ width: 200, breakpoint: "sm" }} padding="md">

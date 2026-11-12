@@ -12,6 +12,12 @@ export type StepState = S["StepState"];
 export type VarInfo = S["VarInfo"];
 export type WorkflowError = S["WorkflowError"];
 export type ErrorEnvelope = S["ErrorEnvelope"];
+export type ScriptSummary = S["ScriptSummary"];
+export type ScriptDetail = S["ScriptDetail"];
+export type PreviewResponse = S["PreviewResponse"];
+export type PreviewTarget = S["PreviewTarget"];
+export type PreviewField = S["PreviewField"];
+export type PreviewIssue = S["PreviewIssue"];
 
 /** One event of a run's SSE stream (C-RUN RUN-6). Not in OpenAPI: SSE bodies aren't typed. */
 export interface RunEvent {

@@ -68,6 +68,29 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   const rifferr = (...args: string[]): string =>
     execFileSync(uv, ["run", "--project", backend, "rifferr", ...args], { env, encoding: "utf8" });
   rifferr("profile", "create", "main", "--beetsdir", dirs.beets);
+  // An album already in the library, for the tag-script preview (TAGSCRIPT-22). Its album
+  // name differs from the inbox copy, so the two-step import isn't a duplicate.
+  const library = join(root, "preimport");
+  cpSync(join(backend, "tests", "fixtures", "audio", "album-flac"), join(library, "album-flac"), {
+    recursive: true,
+  });
+  execFileSync(
+    uv,
+    [
+      "run",
+      "--project",
+      backend,
+      "beet",
+      "import",
+      "-q",
+      "--set",
+      "album=Preview Sessions",
+      "--set",
+      "albumtype=ep",
+      join(library, "album-flac"),
+    ],
+    { env, encoding: "utf8" },
+  );
   cpSync(
     join(repo, "examples", "workflows", "two-step.yaml"),
     join(dirs.config, "profiles", "main", "workflows", "two-step.yaml"),
