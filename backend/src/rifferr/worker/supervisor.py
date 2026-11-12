@@ -22,6 +22,7 @@ from pydantic import JsonValue, ValidationError
 
 from rifferr.appdb import AppDB
 from rifferr.engine.events import Event, EventSink
+from rifferr.trust import workflow_hash
 from rifferr.worker.protocol import (
     HUNG_AFTER,
     MAX_MESSAGE,
@@ -101,12 +102,12 @@ class WorkerSupervisor:
         *,
         source_name: str,
         run_vars: dict[str, str] | None = None,
-        trusted: bool = False,
     ) -> str:
         """Queue a run and make sure the profile's worker is up. Returns the run id.
 
         The workflow *text* is stored with the job, so the worker runs exactly what
-        the server checked (and, with F-SECURITY, trusted by hash).
+        the server checked. Trust is decided here, from the hash of that text
+        (SECURITY-10).
         """
         if self._shutting_down:
             raise RuntimeError("server is shutting down")
@@ -114,7 +115,7 @@ class WorkerSupervisor:
             "source": source,
             "source_name": source_name,
             "vars": dict(run_vars or {}),
-            "trusted": trusted,
+            "trusted": self.db.is_trusted(workflow_hash(source)),
         }
         job = self.db.submit(profile, payload)
         await self._wake(profile)

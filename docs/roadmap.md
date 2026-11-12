@@ -86,7 +86,7 @@ Implementation order (each depends on the ones above it):
 | 6 ✓ | [S-SHELL](../specs/steps/S-SHELL.md) | `shell` step (`emits: none` only) |
 | 7 ✓ | [F-WORKER](../specs/features/F-WORKER.md) | worker process per profile, server ↔ worker channel |
 | 8 ✓ | [S-BEETS-IMPORT](../specs/steps/S-BEETS-IMPORT.md) | `BeetsBackend` (first slice) and `beets.import` quiet mode, contract tests |
-| 9 | [F-SECURITY](../specs/features/F-SECURITY.md) | Host/Origin/JSON checks, local token, non-localhost refusal |
+| 9 ✓ | [F-SECURITY](../specs/features/F-SECURITY.md) | Host/Origin/JSON checks, local token, non-localhost refusal |
 | 10 | [F-API](../specs/features/F-API.md) | HTTP routes, SSE event stream, app DB |
 | 11 | [F-CLI](../specs/features/F-CLI.md) | `rifferr serve`, `run`, `validate` |
 | 12 | [F-UI-SHELL](../specs/features/F-UI-SHELL.md) | app shell, workflow list, start a run, live run log |

@@ -13,6 +13,7 @@ import pytest
 
 from rifferr.engine import Event
 from rifferr.profile_store import config_root, create_profile
+from rifferr.trust import workflow_hash
 from rifferr.worker.supervisor import WorkerSupervisor
 from tests.worker.conftest import ECHO, PID, SLOW, Sup, block, set_idle_timeout
 
@@ -295,9 +296,31 @@ async def test_WORKER_1_real_worker_runs_beets_import_then_shell(sup: Sup, tmp_p
         "  - {id: list, uses: shell, with: {run: [echo, '$albumartist - $album']}}\n"
     )
     real = WorkerSupervisor(sup.db, sup.sink, stop_grace=2.0)
-    run_id = await real.submit_run("beets", src, source_name="m0.yaml", trusted=True)
+    sup.db.trust(workflow_hash(src), "m0.yaml", "test")
+    run_id = await real.submit_run("beets", src, source_name="m0.yaml")
     finished = await sup.wait_for(run_id, timeout=60)
     await real.shutdown()
     assert finished.data["status"] == "succeeded", sup.events(run_id)
     lines = [e.data["line"] for e in sup.events(run_id) if e.type == "run.step.log"]
     assert "Fixture Artist - Fixture Album" in lines
+
+
+async def test_SECURITY_10_untrusted_workflow_cannot_run_shell_steps(sup: Sup) -> None:
+    src = "name: t\nsteps:\n  - {id: s, uses: shell, with: {run: [echo, hi], per: run}}\n"
+    run_id = await sup.supervisor.submit_run("main", src, source_name="wf.yaml")
+    job = sup.db.job_for_run(run_id)
+    assert job is not None
+    assert job.payload["trusted"] is False
+    await sup.finished(run_id)
+    [step] = [e for e in sup.events(run_id) if e.type == "run.step.finished"]
+    assert "not trusted" in str(step.data["error"])
+
+
+async def test_SECURITY_10_any_edit_resets_trust(sup: Sup) -> None:
+    src = "name: t\nsteps:\n  - {id: s, uses: shell, with: {run: [echo, hi], per: run}}\n"
+    sup.db.trust(workflow_hash(src), "wf.yaml", "test")
+    run_id = await sup.supervisor.submit_run("main", src + "# edited\n", source_name="wf.yaml")
+    job = sup.db.job_for_run(run_id)
+    assert job is not None
+    assert job.payload["trusted"] is False
+    await sup.finished(run_id)

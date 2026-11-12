@@ -35,6 +35,12 @@ CREATE TABLE IF NOT EXISTS jobs (
     finished_at TEXT
 );
 CREATE INDEX IF NOT EXISTS jobs_queue ON jobs (profile, state, created_at);
+CREATE TABLE IF NOT EXISTS trusted_files (
+    sha256     TEXT PRIMARY KEY,
+    path_hint  TEXT NOT NULL,
+    trusted_at TEXT NOT NULL,
+    trusted_by TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS events (
     run_id  TEXT NOT NULL,
     seq     INTEGER NOT NULL,
@@ -144,6 +150,24 @@ class AppDB:
             sql, args = sql + " AND state = ?", [*args, state]
         rows = self._conn.execute(sql + " ORDER BY created_at, id", args).fetchall()
         return [_job(r) for r in rows]
+
+    # -- trust (F-SECURITY) ----------------------------------------------------
+
+    def trust(self, sha256: str, path_hint: str, trusted_by: str) -> None:
+        """Record an explicit user decision to trust this exact content (SECURITY-12)."""
+        self._conn.execute(
+            "INSERT INTO trusted_files (sha256, path_hint, trusted_at, trusted_by)"
+            " VALUES (?, ?, ?, ?) ON CONFLICT (sha256) DO UPDATE SET"
+            " path_hint = excluded.path_hint, trusted_at = excluded.trusted_at,"
+            " trusted_by = excluded.trusted_by",
+            (sha256, path_hint, _now(), trusted_by),
+        )
+
+    def is_trusted(self, sha256: str) -> bool:
+        row = self._conn.execute(
+            "SELECT 1 FROM trusted_files WHERE sha256 = ?", (sha256,)
+        ).fetchone()
+        return row is not None
 
     # -- events ----------------------------------------------------------------
 

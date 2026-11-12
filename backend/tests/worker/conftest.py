@@ -10,6 +10,7 @@ import pytest
 from rifferr.appdb import AppDB, SqliteEventSink
 from rifferr.engine import Event
 from rifferr.profile_store import config_root, create_profile, profile_dir
+from rifferr.trust import workflow_hash
 from rifferr.worker.supervisor import WorkerSupervisor
 
 FAKE_WORKER = str(Path(__file__).with_name("fake_worker.py"))
@@ -49,9 +50,8 @@ class Sup:
         )
 
     async def submit(self, source: str, profile: str = "main") -> str:
-        return await self.supervisor.submit_run(
-            profile, source, source_name="wf.yaml", trusted=True
-        )
+        self.db.trust(workflow_hash(source), "wf.yaml", "test")
+        return await self.supervisor.submit_run(profile, source, source_name="wf.yaml")
 
     def events(self, run_id: str) -> list[Event]:
         return self.db.events_since(run_id, 0)

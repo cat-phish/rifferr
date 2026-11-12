@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict
 from rifferr.backends.base import BackendCapabilities
 from rifferr.backends.fake import FakeBackend
 from rifferr.engine import StepContext, StepResult, StepTypeRegistry
+from rifferr.steps.shell import ShellStep
 from rifferr.worker.process import main
 from tests.engine.steps import ALL
 
@@ -76,7 +77,7 @@ if __name__ == "__main__":
         main(
             sys.argv[1:],
             backend_factory=lambda profile: FakeBackend(),
-            registry=StepTypeRegistry([*ALL, BlockStep(), PrintStep(), PidStep()]),
+            registry=StepTypeRegistry([*ALL, BlockStep(), PrintStep(), PidStep(), ShellStep()]),
             heartbeat_interval=float(os.environ.get("RIFFERR_TEST_HEARTBEAT", "5")),
         )
     )

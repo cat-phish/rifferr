@@ -61,6 +61,7 @@ As implemented:
   `server_shutdown` (killed after the stop grace), or `worker_failed_to_start`. A worker that
   fails before `ready` fails the profile's queued jobs too, instead of restarting in a loop.
 - A stop leaves queued jobs queued for the next worker.
+- Since F-SECURITY, `submit_run` decides `trusted` itself from the app DB trust store.
 
 ## Examples
 Start run → server inserts job, spawns `python -m rifferr.worker --profile main`,
