@@ -20,8 +20,9 @@ from typing import Literal, cast
 
 from pydantic import JsonValue, ValidationError
 
-from rifferr.appdb import AppChangeSets, AppDB
+from rifferr.appdb import AppChangeSets, AppDB, AppJournal
 from rifferr.engine.events import Event, EventSink
+from rifferr.engine.undo import run_entries, undoable
 from rifferr.trust import workflow_hash
 from rifferr.worker.protocol import (
     HUNG_AFTER,
@@ -158,6 +159,41 @@ class WorkerSupervisor:
         cs = stored.changeset
         job = self.db.submit_job(cs.profile, "review_decision", payload, cs.run_id)
         await self._wake(cs.profile)
+        return job.id
+
+    async def undo(
+        self, *, entry_id: str | None = None, run_id: str | None = None, by: str | None = None
+    ) -> str:
+        """Queue an undo of one journal entry or of a whole run as a worker job (C-JOURNAL).
+
+        Returns the job id; its ``result`` lists what was undone and the conflict that
+        stopped it, if any. Raises ``KeyError`` for an unknown entry or run and
+        ``ValueError`` (``UndoError``) when there is nothing to undo.
+        """
+        if self._shutting_down:
+            raise RuntimeError("server is shutting down")
+        if (entry_id is None) == (run_id is None):
+            raise ValueError("undo needs exactly one of entry_id or run_id")
+        journal = AppJournal(self.db)
+        payload: dict[str, JsonValue] = {"entry_id": entry_id, "run_id": run_id, "by": by}
+        if entry_id is not None:
+            found = journal.get(entry_id)
+            if found is None:
+                raise KeyError(entry_id)
+            entry = undoable(found, entry_id)
+            profile, ref_run = entry.profile, entry.run_id
+        else:
+            assert run_id is not None
+            job = self.db.job_for_run(run_id)
+            if job is None:
+                raise KeyError(run_id)
+            if job.state in ("queued", "running"):
+                raise ValueError(f"run {run_id} is {job.state}; undo it once it has stopped")
+            if not run_entries(journal, run_id):
+                raise ValueError(f"run {run_id} has no applied changes to undo")
+            profile, ref_run = job.profile, run_id
+        job = self.db.submit_job(profile, "undo", payload, ref_run)
+        await self._wake(profile)
         return job.id
 
     async def cancel(self, run_id: str) -> None:

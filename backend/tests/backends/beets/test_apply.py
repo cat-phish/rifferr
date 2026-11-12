@@ -157,3 +157,36 @@ def test_CHANGESET_2_untyped_flexible_attributes_take_strings(beets_env: BeetsEn
     assert backend.check(changeset(ref, FieldChange(field="mood", new="calm"))) == []
     (problem,) = backend.check(changeset(ref, FieldChange(field="mood", new=3)))
     assert "str" in problem.message
+
+
+def test_JOURNAL_7_undo_rewrites_the_files_from_restored_values(beets_env: BeetsEnv) -> None:
+    from rifferr.engine import InMemoryJournal
+    from rifferr.engine.changesets import InMemoryChangeSetStore, apply_changeset
+    from rifferr.engine.undo import UndoContext, undo_entry
+
+    backend = beets_env.backend()
+    album = imported(beets_env, backend)
+    journal, store = InMemoryJournal(), InMemoryChangeSetStore()
+    cs = changeset(album_ref(album), FieldChange(field="album", old="Fixture Album", new="Live"))
+    store.add(cs)
+    ids = iter(f"id-{n}" for n in range(100))
+    now = lambda: datetime(2026, 11, 12, tzinfo=UTC)  # noqa: E731
+
+    def emitter(run_id: str | None, step_id: str | None):  # type: ignore[no-untyped-def]
+        return lambda type, data: None
+
+    outcome = apply_changeset(
+        cs,
+        backend=backend,
+        journal=journal,
+        store=store,
+        new_id=lambda: next(ids),
+        now=now,
+        emit=emitter(None, None),
+    )
+    assert outcome.entry is not None
+    assert MediaFile(album.items[0].path).album == "Live"
+    ctx = UndoContext(backend, journal, store, lambda: next(ids), now, emitter)
+    assert undo_entry(outcome.entry.id, ctx).undone
+    assert [MediaFile(i.path).album for i in album.items] == ["Fixture Album"] * 2
+    assert backend.query(Selection())[0].fields["album"] == "Fixture Album"

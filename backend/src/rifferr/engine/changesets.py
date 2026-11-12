@@ -228,6 +228,7 @@ def apply_changeset(
     emit: EmitChange,
     accepted: list[int] | None = None,
     resolved_by: str | None = None,
+    undo_of: str | None = None,
 ) -> ApplyOutcome:
     """Apply ``changeset`` (or the ``accepted`` field changes of it) through the journal.
 
@@ -257,6 +258,7 @@ def apply_changeset(
         run_id=changeset.run_id,
         accepted=sorted(set(accepted)) if partial and accepted is not None else None,
         intended=target.targets,
+        undo_of=undo_of,
         created_at=now(),
     )
     journal.begin(entry)  # durable before anything changes (JOURNAL-1)

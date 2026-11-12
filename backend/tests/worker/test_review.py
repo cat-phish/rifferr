@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -100,14 +101,23 @@ class Harness:
         }
 
 
-@pytest.fixture
-async def h(tmp_path: Path) -> AsyncIterator[Harness]:
+@contextlib.asynccontextmanager
+async def serving(tmp_path: Path) -> AsyncIterator[Harness]:
+    """A harness whose worker serves until the block ends."""
     harness = Harness(tmp_path)
     task = asyncio.create_task(harness.worker.serve(harness.queue))
-    yield harness
-    harness.queue.put_nowait(None)
-    await asyncio.wait_for(task, 5)
-    harness.db.close()
+    try:
+        yield harness
+    finally:
+        harness.queue.put_nowait(None)
+        await asyncio.wait_for(task, 5)
+        harness.db.close()
+
+
+@pytest.fixture
+async def h(tmp_path: Path) -> AsyncIterator[Harness]:
+    async with serving(tmp_path) as harness:
+        yield harness
 
 
 async def _suspended(h: Harness, *albums: str) -> list[str]:

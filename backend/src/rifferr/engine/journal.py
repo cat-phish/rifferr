@@ -43,6 +43,14 @@ class Journal(Protocol):
 
     def mark_undone(self, entry_id: str, by: str) -> None: ...
 
+    def recover(self, entry: JournalEntry) -> None:
+        """Replace a ``pending`` entry with its reconciled version (JOURNAL-3)."""
+        ...
+
+    def uncertain(self, profile: str) -> list[JournalEntry]:
+        """Entries recovery couldn't settle; they wait for a human (JOURNAL-3)."""
+        ...
+
 
 def completed(entry: JournalEntry, result: ApplyResult, now: datetime) -> JournalEntry:
     """The entry after ``apply`` returned (JOURNAL-2)."""
@@ -72,6 +80,14 @@ def undone(entry: JournalEntry, by: str) -> JournalEntry:
     if entry.undone_by is not None:
         raise JournalError(f"journal entry {entry.id} is already undone by {entry.undone_by}")
     return entry.model_copy(update={"undone_by": by})
+
+
+def recovered(old: JournalEntry, new: JournalEntry) -> JournalEntry:
+    """Check that ``new`` is a legal settlement of the pending entry ``old``."""
+    _check_pending(old)
+    if new.id != old.id or new.state == "pending" or new.intended != old.intended:
+        raise JournalError(f"journal entry {old.id}: not a settlement of the pending entry")
+    return new
 
 
 def _check_pending(entry: JournalEntry) -> None:
@@ -113,6 +129,15 @@ class InMemoryJournal:
 
     def mark_undone(self, entry_id: str, by: str) -> None:
         self.entries[entry_id] = undone(self._get(entry_id), by)
+
+    def recover(self, entry: JournalEntry) -> None:
+        self.entries[entry.id] = recovered(self._get(entry.id), entry)
+
+    def uncertain(self, profile: str) -> list[JournalEntry]:
+        return sorted(
+            (e for e in self.entries.values() if e.profile == profile and e.uncertain),
+            key=lambda e: e.created_at,
+        )
 
     def _get(self, entry_id: str) -> JournalEntry:
         entry = self.entries.get(entry_id)

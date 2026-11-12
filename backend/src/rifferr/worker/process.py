@@ -41,6 +41,8 @@ from rifferr.engine import (
     StepTypeRegistry,
 )
 from rifferr.engine.changesets import apply_changeset, reject_changeset
+from rifferr.engine.recovery import recover_pending
+from rifferr.engine.undo import UndoContext, UndoError, undo_entry, undo_run
 from rifferr.profile_store import app_db_path, config_root, load_profile
 from rifferr.steps.registry import load_step_types
 from rifferr.worker.protocol import HEARTBEAT_INTERVAL, WorkerCommand, WorkerMessage, encode
@@ -130,6 +132,7 @@ class Worker:
         """Run jobs until stopped, the server goes away, or idle too long (WORKER-7)."""
         loop = asyncio.get_running_loop()
         self.send(WorkerMessage(kind="ready"))
+        self.recover()
         current: asyncio.Task[None] | None = None
         stopping = False
         idle_since = loop.time()
@@ -197,12 +200,33 @@ class Worker:
         if self._engine is not None and self._run is not None:
             self._engine.cancel(self._run.id)
 
+    def recover(self) -> None:
+        """Settle applies a previous worker left pending (JOURNAL-3). Never writes tags."""
+        try:
+            settled = recover_pending(
+                self.profile.name,
+                journal=self.journal,
+                backend=self.backend,
+                store=self.changesets,
+                emitter_for=self._changeset_emitter,
+                now=lambda: datetime.now(UTC),
+            )
+        except Exception:  # a broken library must not stop the worker from serving
+            log.exception("journal recovery failed")
+            return
+        for entry in settled:
+            note = " (uncertain: needs review)" if entry.uncertain else ""
+            log.warning("recovered journal entry %s: %s%s", entry.id, entry.state, note)
+
     def _next_seq(self, run_id: str) -> int:
         return max(self.db.last_seq(run_id), self._sent.get(run_id, 0)) + 1
 
     async def _run_job(self, job: Job) -> None:
         if job.kind == "review_decision":
             self._decide(job)
+            return
+        if job.kind == "undo":
+            self._undo(job)
             return
         payload = job.payload
         source = str(payload.get("source", ""))
@@ -336,6 +360,45 @@ class Worker:
         self.db.finish_job(job.id, "succeeded")
         if cs.run_id is not None:
             self._resume_if_released(cs.run_id)
+
+    # -- undo (JOURNAL-4 .. -7) -----------------------------------------------------
+
+    def _undo(self, job: Job) -> None:
+        payload = job.payload
+        by = payload.get("by")
+        ctx = UndoContext(
+            backend=self.backend,
+            journal=self.journal,
+            store=self.changesets,
+            new_id=new_ulid,
+            now=lambda: datetime.now(UTC),
+            emitter_for=self._changeset_emitter,
+            by=by if isinstance(by, str) else None,
+        )
+        entry_id, run_id = payload.get("entry_id"), payload.get("run_id")
+        try:
+            if isinstance(entry_id, str):
+                one = undo_entry(entry_id, ctx)
+                result: dict[str, JsonValue] = {
+                    "undone": [one.entry_id] if one.undone else [],
+                    "undo_entries": [one.undo_entry_id] if one.undone else [],
+                    "stopped_at": None if one.undone else one.entry_id,
+                    "conflicts": [c.as_json() for c in one.conflicts],
+                    "problems": [
+                        f"{p.target.label()} {p.field}: {p.message}" for p in one.problems
+                    ],
+                }
+            elif isinstance(run_id, str):
+                result = undo_run(run_id, ctx).as_json()
+            else:
+                raise UndoError("an undo job needs entry_id or run_id")
+        except Exception as exc:
+            log.warning("undo failed: %s", exc)
+            self.db.finish_job(job.id, "failed", f"{type(exc).__name__}: {exc}")
+            return
+        stopped = result.get("stopped_at")
+        error = f"undo stopped at journal entry {stopped}" if stopped else None
+        self.db.finish_job(job.id, "failed" if stopped else "succeeded", error, result)
 
     def _resume_if_released(self, run_id: str) -> None:
         run_job = self.db.job_for_run(run_id)

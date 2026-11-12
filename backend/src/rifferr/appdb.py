@@ -21,12 +21,12 @@ from rifferr.core.changeset import ApplyResult, ChangeSet, ChangeSetState, Journ
 from rifferr.core.ids import new_ulid
 from rifferr.engine.changesets import StoredChangeSet
 from rifferr.engine.events import Event
-from rifferr.engine.journal import JournalError, completed, failed, undone
+from rifferr.engine.journal import JournalError, completed, failed, recovered, undone
 
 JobState = Literal["queued", "running", "waiting_review", "succeeded", "failed", "cancelled"]
 #: ``run``: the run record itself (API-6). ``review_decision``: apply or reject a
-#: ChangeSet (CHANGESET-13).
-JobKind = Literal["run", "review_decision"]
+#: ChangeSet (CHANGESET-13). ``undo``: undo a journal entry or a run (C-JOURNAL).
+JobKind = Literal["run", "review_decision", "undo"]
 
 _MIGRATION_FILE = re.compile(r"^(\d{3})_([a-z0-9_]+)\.sql$")
 
@@ -90,6 +90,8 @@ class Job(BaseModel):
     finished_at: datetime | None = None
     workflow: str | None = None
     workflow_hash: str | None = None
+    result: JsonValue = None
+    """What a finished non-run job did (e.g. an undo's report)."""
 
     @property
     def run(self) -> str:
@@ -178,12 +180,18 @@ class AppDB:
         )
         return cur.rowcount == 1
 
-    def finish_job(self, job_id: str, state: JobState, error: str | None = None) -> bool:
-        """Like ``finish``, by job id (for jobs that aren't runs)."""
+    def finish_job(
+        self,
+        job_id: str,
+        state: JobState,
+        error: str | None = None,
+        result: JsonValue = None,
+    ) -> bool:
+        """Like ``finish``, by job id (for jobs that aren't runs), with an optional result."""
         cur = self._conn.execute(
-            "UPDATE jobs SET state = ?, error = ?, finished_at = ?"
+            "UPDATE jobs SET state = ?, error = ?, finished_at = ?, result = ?"
             " WHERE id = ? AND state = 'running'",
-            (state, error, _now(), job_id),
+            (state, error, _now(), None if result is None else json.dumps(result), job_id),
         )
         return cur.rowcount == 1
 
@@ -465,6 +473,17 @@ class AppJournal:
     def mark_undone(self, entry_id: str, by: str) -> None:
         self._store(undone(self._get(entry_id), by))
 
+    def recover(self, entry: JournalEntry) -> None:
+        self._store(recovered(self._get(entry.id), entry))
+
+    def uncertain(self, profile: str) -> list[JournalEntry]:
+        rows = self._conn.execute(
+            "SELECT body FROM journal WHERE profile = ? AND state = 'applied'"
+            " AND json_extract(body, '$.uncertain') = 1 ORDER BY created_at, id",
+            (profile,),
+        ).fetchall()
+        return [JournalEntry.model_validate_json(r["body"]) for r in rows]
+
     def _get(self, entry_id: str) -> JournalEntry:
         entry = self.get(entry_id)
         if entry is None:
@@ -501,4 +520,5 @@ class SqliteEventSink:
 def _job(row: sqlite3.Row) -> Job:
     data = dict(row)
     data["payload"] = json.loads(data["payload"])
+    data["result"] = json.loads(data["result"]) if data.get("result") else None
     return Job.model_validate(data)
