@@ -8,6 +8,7 @@ requires-python = ">=3.12"
 dependencies = [
     "beets>=2.14,<2.15",
     "fastapi>=0.162,<1",
+    "httpx>=0.28,<1",
     "keyring>=25,<26",
     "pydantic>=2.10,<3",
     "ruamel-yaml>=0.18,<0.20",
@@ -30,6 +31,9 @@ build-backend = "uv_build"
 
 # Entry-point groups (public API, see rifferr/plugins.py). Built-ins register here
 # exactly like third-party plugins.
+[project.scripts]
+rifferr = "rifferr.cli:main"
+
 [project.entry-points."rifferr.steps"]
 shell = "rifferr.steps.shell:ShellStep"
 "beets.import" = "rifferr.steps.beets_import:BeetsImportStep"

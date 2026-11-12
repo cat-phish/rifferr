@@ -1106,6 +1106,7 @@ source = { editable = "." }
 dependencies = [
     { name = "beets" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "keyring" },
     { name = "pydantic" },
     { name = "ruamel-yaml" },
@@ -1126,6 +1127,7 @@ dev = [
 requires-dist = [
     { name = "beets", specifier = ">=2.14,<2.15" },
     { name = "fastapi", specifier = ">=0.162,<1" },
+    { name = "httpx", specifier = ">=0.28,<1" },
     { name = "keyring", specifier = ">=25,<26" },
     { name = "pydantic", specifier = ">=2.10,<3" },
     { name = "ruamel-yaml", specifier = ">=0.18,<0.20" },

@@ -242,6 +242,8 @@ class Engine:
         }
         if record.error is not None:
             data["error"] = state.redactor.redact(record.error)
+        if refused:
+            data["refused"] = True  # e.g. needs trust; lets clients give a hint (CLI-10)
         self._emit(run, "run.step.finished", spec.id, data)
         return refused or (record.status == "failed" and spec.on_error == "stop")
 

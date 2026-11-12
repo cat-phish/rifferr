@@ -69,7 +69,7 @@ As implemented (`rifferr.engine`):
 - Step `with:` values are interpolated, then validated against the step's parameter model, when
   the step starts; a failure there fails the step.
 - Event `data`: `run.started {workflow, profile}`, `run.step.started {uses}`,
-  `run.step.log {stream, line}`, `run.step.finished {status, outputs, failed_targets, error?}`,
+  `run.step.log {stream, line}`, `run.step.finished {status, outputs, failed_targets, error?, refused?}` (`refused: true` when the step raised `StepRefused`, added for F-CLI),
   `run.finished {status}`. String values from steps pass through the profile's redactor.
 - Step statuses: pending, running, succeeded, failed, skipped, cancelled.
 - Entry-point loading: `rifferr.steps.registry.load_step_types()`; broken plugins are listed in

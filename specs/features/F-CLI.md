@@ -1,5 +1,5 @@
 # F-CLI: `rifferr` command line (M0 slice)
-Status: Approved
+Status: Implemented
 Milestone: M0
 
 ## Context
@@ -39,6 +39,21 @@ runs, which would need a system-wide worker lock per profile, are B-023.
   ```
 - Exit codes: 0 success, 1 run failed / invalid file / runtime error, 2 usage or validation error or refused bind, 3 server not reachable, 130 / 143 cancelled by SIGINT / SIGTERM.
 
+As implemented:
+- `rifferr.cli` package (`main`, `client`, `serve`, `run`, `files`, `profiles`); also runnable as
+  `python -m rifferr.cli`. Results go to stdout, diagnostics to stderr.
+- `serve` binds the socket itself and hands it to uvicorn, so "port in use" is detected before
+  startup. A hidden `--uds PATH` listens on a Unix socket instead (created with umask 077, only
+  this user can connect) and is recorded as `uds` in `server.json`; the client then connects
+  through it. The tests use it because the test network guard blocks loopback TCP.
+- `serve --dev` also stops (exit 1) when the Vite process exits, e.g. because its port is taken,
+  so the printed URL never points at another app.
+- `run` always sends the app's own `Origin`, so it works against a `--no-auth` server too.
+  `--json` implies `--follow` unless `--no-follow` is given. httpx request logs show only with `-v`.
+- CLI-10 relies on `refused: true` in `run.step.finished` data, added to the engine for this
+  (C-RUN interfaces).
+- `trust` refuses a file that doesn't load as a workflow, with or without `--profile`.
+
 ## Examples
 ```bash
 rifferr validate examples/workflows/*.yaml --safety
@@ -75,11 +90,11 @@ Plugins cannot add subcommands in M0.
 - ~~AGENTS.md `serve --profile dev --dev`?~~ Resolved 2026-11-11 (author): becomes `uv run rifferr serve --dev`.
 
 ## Tasks
-- [ ] `[project.scripts]` entry, parser, `--version`, `-v`
-- [ ] serve: bind check, server file, token URL on TTY only, access-log redaction, signals
-- [ ] serve --dev: Vite child process
-- [ ] run: discovery, submit, follow (text / JSON), exit codes, Ctrl-C cancel, trust hint
-- [ ] validate (+ --safety)
-- [ ] trust
-- [ ] profile create / list
-- [ ] secret-leak test over every command's output
+- [x] `[project.scripts]` entry, parser, `--version`, `-v`
+- [x] serve: bind check, server file, token URL on TTY only, access-log redaction, signals
+- [x] serve --dev: Vite child process
+- [x] run: discovery, submit, follow (text / JSON), exit codes, Ctrl-C cancel, trust hint
+- [x] validate (+ --safety)
+- [x] trust
+- [x] profile create / list
+- [x] secret-leak test over every command's output
