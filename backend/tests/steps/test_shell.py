@@ -209,7 +209,8 @@ async def test_SHELL_5_item_snapshot_on_stdin(sh: ShellHarness) -> None:
     sh.album("A", items=[{"title": "t", "track": 1}])
     run = await sh.run(step({"run": [PY, "-c", READ_STDIN], "per": "item"}))
     data = json.loads(sh.lines(run)[0])
-    assert data["fields"] == {"title": "t", "track": 1}
+    # Items carry their album's fields, as beets items do (C-CHANGESET CHANGESET-12).
+    assert {"title": "t", "track": 1, "album": "A"}.items() <= data["fields"].items()
     assert data["path"].endswith("01 t.flac")
 
 
@@ -439,14 +440,7 @@ async def test_SHELL_10_missing_cwd_fails_target(sh: ShellHarness) -> None:
     assert run.steps[0].error == "working directory /nonexistent/dir does not exist"
 
 
-# -- SHELL-11: emits -----------------------------------------------------------
-
-
-def test_SHELL_11_emits_changes_is_not_yet_supported() -> None:
-    errs = errors(step({"run": ["ls"], "emits": "changes"}))
-    assert len(errs) == 1
-    assert "arrives with ChangeSets in M1" in errs[0]
-    assert errors(step({"run": ["ls"], "emits": "none"})) == []
+# SHELL-11 (emits: none | changes) and SHELL-14 .. -19 are in test_shell_changes.py.
 
 
 # -- SHELL-12: trust -----------------------------------------------------------

@@ -10,7 +10,7 @@ from typing import Any, Protocol, runtime_checkable
 from pydantic import BaseModel, JsonValue
 
 from rifferr.backends.base import BackendCapabilities, LibraryBackend
-from rifferr.core.changeset import ChangeSetProposal, TargetRef
+from rifferr.core.changeset import ChangeSet, ChangeSetProposal, TargetRef
 from rifferr.core.profile import Secret
 from rifferr.core.selection import Scope, Selection
 from rifferr.core.snapshot import AlbumSnapshot
@@ -76,13 +76,13 @@ class StepType(Protocol):
 
 
 Emit = Callable[[str, dict[str, JsonValue]], None]
-#: The engine's side of ``ctx.propose``: proposal, current target -> ChangeSet ids.
-Propose = Callable[[ChangeSetProposal, TargetRef | None, SnapshotIndex], list[str]]
+#: The engine's side of ``ctx.propose``: proposal, current target -> the ChangeSets made.
+Propose = Callable[[ChangeSetProposal, TargetRef | None, SnapshotIndex], list[ChangeSet]]
 
 
 def _no_propose(
     proposal: ChangeSetProposal, current: TargetRef | None, s: SnapshotIndex
-) -> list[str]:
+) -> list[ChangeSet]:
     raise StepFailure("this run can't propose ChangeSets")
 
 
@@ -124,6 +124,8 @@ class StepContext:
         self.failed_targets: list[FailedTarget] = []
         self._propose = propose or _no_propose
         self._snapshots = SnapshotIndex()
+        self.proposed: list[ChangeSet] = []
+        """Every ChangeSet this step proposed so far, in order (after no-op dropping)."""
 
     @property
     def cancelled(self) -> bool:
@@ -175,7 +177,9 @@ class StepContext:
         returns their ids (empty if nothing changes). The step's ``apply`` policy then
         applies them right away (``auto``) or leaves them for review (``review``).
         """
-        return self._propose(proposal, current, self._snapshots)
+        made = self._propose(proposal, current, self._snapshots)
+        self.proposed.extend(made)
+        return [cs.id for cs in made]
 
     def fail_target(self, target: str, message: str) -> None:
         """Record a failed target. Returns under ``on_error: continue``; otherwise ends

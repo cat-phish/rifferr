@@ -1,7 +1,10 @@
 """The ``shell`` step (S-SHELL): run a command once per run, album or item.
 
-Output-only in M0 (``emits: none``). Commands run in their own process group so
-a timeout or cancellation can stop everything they started (POSIX only).
+With ``emits: none`` (default) stdout and stderr stream into the run log. With
+``emits: changes`` stdout is collected and parsed as one ChangeSetProposal,
+which goes through ``ctx.propose`` (SHELL-14 .. -19). Commands run in their own
+process group so a timeout or cancellation can stop everything they started
+(POSIX only).
 """
 
 from __future__ import annotations
@@ -15,12 +18,29 @@ import signal
 import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, PositiveInt, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PositiveInt,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
-from rifferr.backends.base import BackendCapabilities, TemplateError
+from rifferr.backends.base import BackendCapabilities, CapabilityError, TemplateError
+from rifferr.core.changeset import (
+    ChangeSet,
+    ChangeSetProposal,
+    ChangeSource,
+    FieldChange,
+    TargetChange,
+    TargetRef,
+)
 from rifferr.core.profile import env_var_name
 from rifferr.core.snapshot import AlbumSnapshot, ItemSnapshot
 from rifferr.engine import StepContext, StepFailure, StepRefused, StepResult
@@ -35,6 +55,8 @@ child that keeps them open is not waited for."""
 MAX_LINE = 64 * 1024
 """Longer lines are split into several log events."""
 SECRET_ENV_PREFIX = "RIFFERR_SECRET_"
+MAX_PROPOSAL = 16 * 1024 * 1024
+"""Most stdout collected with ``emits: changes`` (SHELL-14)."""
 
 _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -54,7 +76,11 @@ class ShellParams(BaseModel):
         default_factory=list[str],
         description="Profile secrets to expose as RIFFERR_SECRET_<NAME>",
     )
-    emits: Literal["none"] = "none"
+    emits: Literal["none", "changes"] = Field(
+        default="none",
+        description="none: stdout goes to the run log. changes: stdout is one JSON "
+        "ChangeSetProposal (schemas/changeset-proposal.schema.json).",
+    )
 
     @field_validator("run")
     @classmethod
@@ -69,13 +95,6 @@ class ShellParams(BaseModel):
         bad = [k for k in value if not _ENV_NAME.match(k)]
         if bad:
             raise ValueError(f"not a valid environment variable name: {', '.join(bad)}")
-        return value
-
-    @field_validator("emits", mode="before")
-    @classmethod
-    def _emits(cls, value: object) -> object:
-        if value == "changes":
-            raise ValueError("'changes' arrives with ChangeSets in M1; only 'none' is supported")
         return value
 
     @model_validator(mode="after")
@@ -97,6 +116,31 @@ class _Target:
     stdin: bytes
     album_dir: str | None
     item_path: str | None
+    scope: frozenset[tuple[str, str]] = frozenset()
+    """``(scope, id)`` of what this invocation may change (SHELL-16)."""
+    current: TargetRef | None = None
+    """What the short form ``changes`` targets (SHELL-15)."""
+
+    @property
+    def label(self) -> str:
+        return self.id or "run"
+
+
+class _Collector:
+    """stdout of an ``emits: changes`` invocation, up to MAX_PROPOSAL bytes."""
+
+    def __init__(self) -> None:
+        self.data = bytearray()
+        self.overflow = False
+
+    def add(self, chunk: bytes) -> None:
+        if self.overflow:
+            return
+        if len(self.data) + len(chunk) > MAX_PROPOSAL:
+            self.overflow = True
+            self.data.clear()
+        else:
+            self.data += chunk
 
 
 class ShellStep:
@@ -129,8 +173,13 @@ class ShellStep:
             env = {**base_env, **extra, **_fixed_env(ctx, target)}
             if cwd is None:
                 cwd = target.album_dir or (str(ctx.work_dir) if ctx.work_dir else None)
-            problem = await _execute(ctx, argv, cwd, env, target, params.timeout)
-            if problem is not None and not ctx.cancelled:
+            collect = _Collector() if params.emits == "changes" else None
+            problem = await _execute(ctx, argv, cwd, env, target, params.timeout, collect)
+            if ctx.cancelled:
+                continue
+            if problem is None and collect is not None:
+                problem = _propose(ctx, params, target, collect)
+            if problem is not None:
                 _fail(ctx, target, problem)
         return StepResult()
 
@@ -156,18 +205,45 @@ def secret_env_name(name: str) -> str:
 # -- targets ------------------------------------------------------------------
 
 
+def _album_scope(album: AlbumSnapshot) -> set[tuple[str, str]]:
+    return {("album", album.id)} | {("item", i.id) for i in album.items}
+
+
 def _targets(ctx: StepContext, params: ShellParams) -> list[_Target]:
     if params.per == "run":
         albums = ctx.albums()
         data = {"albums": [a.model_dump(mode="json") for a in albums]}
-        return [_Target(None, None, json.dumps(data).encode(), None, None)]
+        scope = frozenset(r for a in albums for r in _album_scope(a))
+        return [_Target(None, None, json.dumps(data).encode(), None, None, scope)]
     if params.per == "album":
-        return [_Target(a.id, a, a.model_dump_json().encode(), a.path, None) for a in ctx.albums()]
-    return [
-        _Target(i.id, i, i.model_dump_json().encode(), a.path, i.path)
-        for a in ctx.albums("item")
-        for i in a.items
-    ]
+        return [
+            _Target(
+                a.id,
+                a,
+                a.model_dump_json().encode(),
+                a.path,
+                None,
+                frozenset(_album_scope(a)),
+                TargetRef(scope="album", id=a.id),
+            )
+            for a in ctx.albums()
+        ]
+    out: list[_Target] = []
+    for a in ctx.albums("item"):
+        for i in a.items:
+            ref = TargetRef(scope="item", id=i.id)
+            out.append(
+                _Target(
+                    i.id,
+                    i,
+                    i.model_dump_json().encode(),
+                    a.path,
+                    i.path,
+                    frozenset({("item", i.id)}),
+                    ref,
+                )
+            )
+    return out
 
 
 def _render(
@@ -204,6 +280,117 @@ def _fail(ctx: StepContext, target: _Target, message: str) -> None:
     ctx.fail_target(target.id, message)
 
 
+# -- proposals (SHELL-14 .. -19) ------------------------------------------------
+
+
+def _propose(
+    ctx: StepContext, params: ShellParams, target: _Target, collect: _Collector
+) -> str | None:
+    """Turn collected stdout into ChangeSets; return a failure message, or None."""
+    if collect.overflow:
+        return f"stdout is larger than {MAX_PROPOSAL // (1024 * 1024)} MiB"
+    text = collect.data.decode(errors="replace")
+    if not text.strip():
+        ctx.log(f"{target.label}: no changes", target=target.id)
+        return None
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        return f"stdout is not valid JSON: {exc.msg} (line {exc.lineno}, column {exc.colno})"
+    try:
+        proposal = ChangeSetProposal.model_validate(data)
+    except ValidationError as exc:
+        first = exc.errors()[0]
+        return f"invalid ChangeSet proposal at {_json_path(first['loc'])}: {first['msg']}"
+    if proposal.changes is not None and target.current is None:
+        return "invalid ChangeSet proposal at $: per: run needs 'targets', not 'changes'"
+    for i, t in enumerate(proposal.targets or []):
+        if (t.target.scope, t.target.id) not in target.scope:
+            return (
+                f"invalid ChangeSet proposal at $.targets[{i}].target: "
+                f"{t.target.label()} is outside this invocation ({_scope_name(params.per)})"
+            )
+    problem = _check(ctx, proposal, target)
+    if problem is not None:
+        return problem
+    before = len(ctx.proposed)
+    try:
+        ctx.propose(proposal, current=target.current)
+    except StepFailure as exc:
+        return str(exc)
+    made = ctx.proposed[before:]
+    if not made:
+        ctx.log(f"{target.label}: no changes", target=target.id)
+    else:
+        fields = sum(len(cs.field_changes()) for cs in made)
+        ctx.log(
+            f"{target.label}: proposed {_count(len(made), 'ChangeSet')}, "
+            f"{_count(fields, 'field change')}",
+            target=target.id,
+        )
+    return None
+
+
+def _check(ctx: StepContext, proposal: ChangeSetProposal, target: _Target) -> str | None:
+    """``backend.check`` before proposing, so a problem can name its JSON path (SHELL-17)."""
+    if proposal.changes is not None:
+        assert target.current is not None
+        entries = [(target.current, proposal.changes, "$.changes")]
+    else:
+        entries = [
+            (t.target, t.changes, f"$.targets[{i}].changes")
+            for i, t in enumerate(proposal.targets or [])
+        ]
+    targets = [
+        TargetChange(
+            target=ref,
+            changes=[FieldChange(field=c.field, op=c.op, old=c.old, new=c.new) for c in changes],
+        )
+        for ref, changes, _ in entries
+    ]
+    probe = ChangeSet(
+        id="shell-check",
+        profile=ctx.profile,
+        source=ChangeSource(kind="step", name="shell"),
+        created_at=datetime.now(UTC),
+        targets=targets,
+    )
+    try:
+        problems = ctx.backend.check(probe)
+    except CapabilityError as exc:
+        return f"this profile's backend can't apply changes: {exc}"
+    if not problems:
+        return None
+    p = problems[0]
+    for ref, changes, path in entries:
+        if ref != p.target:
+            continue
+        for j, c in enumerate(changes):
+            if c.field == p.field:
+                return f"invalid ChangeSet proposal at {path}[{j}].{p.field}: {p.message}"
+        return f"invalid ChangeSet proposal at {path}: {p.target.label()}: {p.message}"
+    return f"invalid ChangeSet proposal: {p.target.label()} {p.field}: {p.message}"
+
+
+def _json_path(loc: tuple[int | str, ...]) -> str:
+    path = "$"
+    for part in loc:
+        path += f"[{part}]" if isinstance(part, int) else f".{part}"
+    return path
+
+
+def _scope_name(per: str) -> str:
+    return {
+        "album": "per: album may change its album and its items",
+        "item": "per: item may change its item only",
+        "run": "per: run may change the selected albums and their items",
+    }[per]
+
+
+def _count(n: int, word: str) -> str:
+    return f"{n} {word}" + ("" if n == 1 else "s")
+
+
 # -- processes ----------------------------------------------------------------
 
 
@@ -214,8 +401,12 @@ async def _execute(
     env: dict[str, str],
     target: _Target,
     timeout: int,
+    collect: _Collector | None = None,
 ) -> str | None:
-    """Run one command; return a failure message, or None on success."""
+    """Run one command; return a failure message, or None on success.
+
+    With ``collect``, stdout is gathered there instead of logged (SHELL-14).
+    """
     if cwd is not None and not Path(cwd).is_dir():
         return f"working directory {cwd} does not exist"
     try:
@@ -236,7 +427,10 @@ async def _execute(
         assert proc.stdout is not None
         assert proc.stderr is not None
         io.append(asyncio.ensure_future(_feed(proc.stdin, target.stdin)))
-        io.append(asyncio.ensure_future(_pump(ctx, proc.stdout, "stdout", target.id)))
+        if collect is None:
+            io.append(asyncio.ensure_future(_pump(ctx, proc.stdout, "stdout", target.id)))
+        else:
+            io.append(asyncio.ensure_future(_gather(proc.stdout, collect)))
         io.append(asyncio.ensure_future(_pump(ctx, proc.stderr, "stderr", target.id)))
         loop = asyncio.get_running_loop()
         deadline = loop.time() + timeout
@@ -275,6 +469,11 @@ async def _feed(stdin: asyncio.StreamWriter, data: bytes) -> None:
         await stdin.drain()
         stdin.close()
         await stdin.wait_closed()
+
+
+async def _gather(stream: asyncio.StreamReader, collect: _Collector) -> None:
+    while chunk := await stream.read(MAX_LINE):
+        collect.add(chunk)  # keeps draining past the limit so the child never blocks
 
 
 async def _pump(

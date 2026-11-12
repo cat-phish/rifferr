@@ -451,8 +451,12 @@
           "title": "Cwd"
         },
         "emits": {
-          "const": "none",
           "default": "none",
+          "description": "none: stdout goes to the run log. changes: stdout is one JSON ChangeSetProposal (schemas/changeset-proposal.schema.json).",
+          "enum": [
+            "none",
+            "changes"
+          ],
           "title": "Emits",
           "type": "string"
         },

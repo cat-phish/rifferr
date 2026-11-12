@@ -361,7 +361,7 @@ class Engine:
         proposal: ChangeSetProposal,
         current: TargetRef | None,
         snapshots: SnapshotIndex,
-    ) -> list[str]:
+    ) -> list[ChangeSet]:
         run = state.run
         step_type = self.registry.step_type(spec.uses)
         force_review = bool(getattr(step_type, "force_review", False))
@@ -409,7 +409,7 @@ class Engine:
                 self._log_outcome(state, spec.id, outcome.entry)
             else:
                 state.holds.setdefault(spec.id, []).append(cs.id)
-        return [cs.id for cs in changesets]
+        return changesets
 
     def _change_emitter(
         self, state: _RunState, step_id: str
