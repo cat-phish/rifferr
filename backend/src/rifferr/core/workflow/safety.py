@@ -42,8 +42,17 @@ SEPARATORS: frozenset[str] = frozenset({";", "&&", "||", "|", "&"})
 SCRIPT_WARNING = "trust covers the workflow text only, not this script's content"
 
 FindingKind = Literal[
-    "command", "shell_string", "network_tool", "destructive", "secret", "local_script"
+    "command",
+    "shell_string",
+    "network_tool",
+    "destructive",
+    "secret",
+    "local_script",
+    "auto_apply",
 ]
+#: Step types that only propose ChangeSets; with ``apply: auto`` they change tags
+#: without review, which the report lists as information (TAGSCRIPT-18).
+PROPOSING_STEPS: frozenset[str] = frozenset({"tags.script"})
 
 
 class Finding(BaseModel):
@@ -66,6 +75,14 @@ class SafetyReport(BaseModel):
 def safety_report(wf: Workflow) -> SafetyReport:
     findings: list[Finding] = []
     for step in wf.steps:
+        if step.uses in PROPOSING_STEPS and step.apply == "auto":
+            findings.append(
+                Finding(
+                    step_id=step.id,
+                    kind="auto_apply",
+                    detail=f"{step.uses} applies its changes without review (apply: auto)",
+                )
+            )
         if step.uses != "shell":
             continue
         params = step.with_

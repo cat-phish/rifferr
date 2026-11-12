@@ -95,8 +95,10 @@ class _RunState:
         redactor: Redactor,
         work_dir: Path | None,
         secrets: SecretAccess,
+        profile_dir: Path | None = None,
     ) -> None:
         self.run = run
+        self.profile_dir = profile_dir
         self.workflow = wf
         self.backend = backend
         self.redactor = redactor
@@ -151,12 +153,14 @@ class Engine:
         work_dir: Path | None = None,
         secrets: SecretAccess | None = None,
         last_seq: int = 0,
+        profile_dir: Path | None = None,
     ) -> Run:
         """Validate and create a queued run (RUN-10, RUN-11).
 
         ``trusted``: may this run execute shell/python steps (decided by F-SECURITY).
         ``work_dir``: default working directory for steps without a target (the profile dir).
         ``last_seq``: events already stored for this run (a resumed run, RUN-14).
+        ``profile_dir``: the profile's folder, for steps that read files from it.
         """
         supplied = {**profile_vars, **(run_vars or {})}
         errors = validate(wf, self.registry, backend.capabilities, supplied, doc=doc)
@@ -175,7 +179,13 @@ class Engine:
         )
         self.runs[run.id] = run
         self._state[run.id] = _RunState(
-            run, wf, backend, redactor or Redactor([]), work_dir, secrets or NoSecrets()
+            run,
+            wf,
+            backend,
+            redactor or Redactor([]),
+            work_dir,
+            secrets or NoSecrets(),
+            profile_dir,
         )
         return run
 
@@ -278,6 +288,8 @@ class Engine:
                 propose=lambda proposal, current, snapshots: self._propose(
                     state, spec, proposal, current, snapshots
                 ),
+                profile_dir=state.profile_dir,
+                interpolate=lambda value: self._interpolate_text(run, value),
             )
             result = await self._run_cancellable(state, step_type.run(ctx))
             if state.cancel.is_set():
@@ -331,13 +343,23 @@ class Engine:
         finally:
             cancel_wait.cancel()
 
-    def _prepare_params(self, run: Run, spec: StepSpec) -> BaseModel:
-        ctx = InterpolationContext(
+    @staticmethod
+    def _interpolation_context(run: Run) -> InterpolationContext:
+        return InterpolationContext(
             vars=run.vars,
             run={"id": run.id, "workflow": run.workflow},
             profile={"name": run.profile},
             steps={r.id: r.outputs for r in run.steps if r.status in ("succeeded", "failed")},
         )
+
+    def _interpolate_text(self, run: Run, value: str) -> str:
+        try:
+            return interpolate(value, self._interpolation_context(run))
+        except InterpolationError as exc:
+            raise StepFailure(str(exc)) from exc
+
+    def _prepare_params(self, run: Run, spec: StepSpec) -> BaseModel:
+        ctx = self._interpolation_context(run)
         try:
             values = _interpolate_values(spec.with_, ctx)
         except InterpolationError as exc:

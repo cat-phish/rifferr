@@ -59,9 +59,13 @@ def _trim_loc(loc: tuple[int | str, ...], data: Any) -> Path:
     tags (e.g. ``'list[str]'``), which appear below a scalar or list value."""
     out: list[str | int] = []
     node: Any = data
-    for part in loc:
+    for i, part in enumerate(loc):
         if isinstance(node, dict) and isinstance(part, str):
             mapping: dict[str, Any] = node  # pyright: ignore[reportUnknownVariableType]
+            following = loc[i + 1] if i + 1 < len(loc) else None
+            if part not in mapping and isinstance(following, str) and following in mapping:
+                continue  # a tagged union's tag (e.g. 'set action') between two keys
+
             node = mapping.get(part)
         elif isinstance(node, list) and isinstance(part, int):
             items: list[Any] = node  # pyright: ignore[reportUnknownVariableType]

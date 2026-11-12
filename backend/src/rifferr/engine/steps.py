@@ -86,6 +86,10 @@ def _no_propose(
     raise StepFailure("this run can't propose ChangeSets")
 
 
+def _unchanged(value: str) -> str:
+    return value
+
+
 class StepContext:
     """What a running step can see and do. Steps get nothing else (RUN-4)."""
 
@@ -106,11 +110,16 @@ class StepContext:
         secrets: SecretAccess | None = None,
         on_secret: Callable[[Secret], None] | None = None,
         propose: Propose | None = None,
+        profile_dir: Path | None = None,
+        interpolate: Callable[[str], str] | None = None,
     ) -> None:
         self.run_id = run_id
         self.profile = profile
         self.vars: Mapping[str, str] = dict(vars or {})
         self.work_dir = work_dir
+        self.profile_dir = profile_dir
+        """The profile's folder (``scripts/``, ``rules/`` ... live under it), if known."""
+        self._interpolate: Callable[[str], str] = interpolate or _unchanged
         self.trusted = trusted
         """Whether this run's workflow is trusted to run shell/python steps (F-SECURITY)."""
         self._secrets = secrets or NoSecrets()
@@ -148,6 +157,11 @@ class StepContext:
         if target is not None:
             data["target"] = target
         self._emit("run.step.log", data)
+
+    def interpolate(self, value: str) -> str:
+        """``{{ ... }}`` interpolation (C-WORKFLOW) with this step's context, for text a
+        step reads itself (e.g. a script file). Raises ``StepFailure`` on a bad expression."""
+        return self._interpolate(value)
 
     def secret(self, name: str) -> Secret:
         """Resolve a profile secret by name. Its value is masked in this run's events."""

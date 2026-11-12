@@ -1,0 +1,897 @@
+{
+  "$defs": {
+    "AppendSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "title": "Field",
+          "type": "string"
+        },
+        "values": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Values",
+          "type": "array"
+        }
+      },
+      "required": [
+        "field",
+        "values"
+      ],
+      "title": "AppendSpec",
+      "type": "object"
+    },
+    "AppendUniqueAction": {
+      "additionalProperties": false,
+      "properties": {
+        "append_unique": {
+          "$ref": "#/$defs/AppendSpec"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Label for logs and preview",
+          "title": "Name"
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "enum": [
+                "album",
+                "item"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Default: the script's scope",
+          "title": "Scope"
+        },
+        "when": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Backend query (a beets query)",
+          "title": "When"
+        }
+      },
+      "required": [
+        "append_unique"
+      ],
+      "title": "AppendUniqueAction",
+      "type": "object"
+    },
+    "CaseAction": {
+      "additionalProperties": false,
+      "properties": {
+        "case": {
+          "$ref": "#/$defs/CaseSpec"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Label for logs and preview",
+          "title": "Name"
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "enum": [
+                "album",
+                "item"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Default: the script's scope",
+          "title": "Scope"
+        },
+        "when": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Backend query (a beets query)",
+          "title": "When"
+        }
+      },
+      "required": [
+        "case"
+      ],
+      "title": "CaseAction",
+      "type": "object"
+    },
+    "CaseSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Fields",
+          "type": "array"
+        },
+        "keep": {
+          "description": "Words left in exactly this form (matched case-insensitively)",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Keep",
+          "type": "array"
+        },
+        "style": {
+          "enum": [
+            "lower",
+            "upper",
+            "title",
+            "sentence"
+          ],
+          "title": "Style",
+          "type": "string"
+        }
+      },
+      "required": [
+        "fields",
+        "style"
+      ],
+      "title": "CaseSpec",
+      "type": "object"
+    },
+    "CopyAction": {
+      "additionalProperties": false,
+      "properties": {
+        "copy": {
+          "$ref": "#/$defs/CopySpec"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Label for logs and preview",
+          "title": "Name"
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "enum": [
+                "album",
+                "item"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Default: the script's scope",
+          "title": "Scope"
+        },
+        "when": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Backend query (a beets query)",
+          "title": "When"
+        }
+      },
+      "required": [
+        "copy"
+      ],
+      "title": "CopyAction",
+      "type": "object"
+    },
+    "CopySpec": {
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "title": "From",
+          "type": "string"
+        },
+        "to": {
+          "title": "To",
+          "type": "string"
+        }
+      },
+      "required": [
+        "from",
+        "to"
+      ],
+      "title": "CopySpec",
+      "type": "object"
+    },
+    "DeleteAction": {
+      "additionalProperties": false,
+      "properties": {
+        "delete": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Delete",
+          "type": "array"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Label for logs and preview",
+          "title": "Name"
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "enum": [
+                "album",
+                "item"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Default: the script's scope",
+          "title": "Scope"
+        },
+        "when": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Backend query (a beets query)",
+          "title": "When"
+        }
+      },
+      "required": [
+        "delete"
+      ],
+      "title": "DeleteAction",
+      "type": "object"
+    },
+    "FromFilenameAction": {
+      "additionalProperties": false,
+      "properties": {
+        "from_filename": {
+          "$ref": "#/$defs/FromFilenameSpec"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Label for logs and preview",
+          "title": "Name"
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "enum": [
+                "album",
+                "item"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Default: the script's scope",
+          "title": "Scope"
+        },
+        "when": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Backend query (a beets query)",
+          "title": "When"
+        }
+      },
+      "required": [
+        "from_filename"
+      ],
+      "title": "FromFilenameAction",
+      "type": "object"
+    },
+    "FromFilenameSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "pattern": {
+          "description": "Literal text and $field placeholders, e.g. '$track - $title'",
+          "title": "Pattern",
+          "type": "string"
+        },
+        "source": {
+          "default": "stem",
+          "enum": [
+            "stem",
+            "name",
+            "path"
+          ],
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "pattern"
+      ],
+      "title": "FromFilenameSpec",
+      "type": "object"
+    },
+    "JoinAction": {
+      "additionalProperties": false,
+      "properties": {
+        "join": {
+          "$ref": "#/$defs/JoinSpec"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Label for logs and preview",
+          "title": "Name"
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "enum": [
+                "album",
+                "item"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Default: the script's scope",
+          "title": "Scope"
+        },
+        "when": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Backend query (a beets query)",
+          "title": "When"
+        }
+      },
+      "required": [
+        "join"
+      ],
+      "title": "JoinAction",
+      "type": "object"
+    },
+    "JoinSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "title": "Field",
+          "type": "string"
+        },
+        "into": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Into"
+        },
+        "with": {
+          "title": "With",
+          "type": "string"
+        }
+      },
+      "required": [
+        "field",
+        "with"
+      ],
+      "title": "JoinSpec",
+      "type": "object"
+    },
+    "MoveAction": {
+      "additionalProperties": false,
+      "properties": {
+        "move": {
+          "$ref": "#/$defs/CopySpec"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Label for logs and preview",
+          "title": "Name"
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "enum": [
+                "album",
+                "item"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Default: the script's scope",
+          "title": "Scope"
+        },
+        "when": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Backend query (a beets query)",
+          "title": "When"
+        }
+      },
+      "required": [
+        "move"
+      ],
+      "title": "MoveAction",
+      "type": "object"
+    },
+    "ReplaceAction": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Label for logs and preview",
+          "title": "Name"
+        },
+        "replace": {
+          "$ref": "#/$defs/ReplaceSpec"
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "enum": [
+                "album",
+                "item"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Default: the script's scope",
+          "title": "Scope"
+        },
+        "when": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Backend query (a beets query)",
+          "title": "When"
+        }
+      },
+      "required": [
+        "replace"
+      ],
+      "title": "ReplaceAction",
+      "type": "object"
+    },
+    "ReplaceSpec": {
+      "additionalProperties": false,
+      "description": "Literal (``find``) or regex (``regex``) replacement in string values.",
+      "properties": {
+        "fields": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Fields",
+          "type": "array"
+        },
+        "find": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Find"
+        },
+        "flags": {
+          "items": {
+            "enum": [
+              "i",
+              "m",
+              "s"
+            ],
+            "type": "string"
+          },
+          "title": "Flags",
+          "type": "array"
+        },
+        "regex": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Python re pattern; \\1 or \\g<name> in 'with'",
+          "title": "Regex"
+        },
+        "with": {
+          "title": "With",
+          "type": "string"
+        }
+      },
+      "required": [
+        "fields",
+        "with"
+      ],
+      "title": "ReplaceSpec",
+      "type": "object"
+    },
+    "SetAction": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Label for logs and preview",
+          "title": "Name"
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "enum": [
+                "album",
+                "item"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Default: the script's scope",
+          "title": "Scope"
+        },
+        "set": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ]
+          },
+          "minProperties": 1,
+          "title": "Set",
+          "type": "object"
+        },
+        "when": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Backend query (a beets query)",
+          "title": "When"
+        }
+      },
+      "required": [
+        "set"
+      ],
+      "title": "SetAction",
+      "type": "object"
+    },
+    "SplitAction": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Label for logs and preview",
+          "title": "Name"
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "enum": [
+                "album",
+                "item"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Default: the script's scope",
+          "title": "Scope"
+        },
+        "split": {
+          "$ref": "#/$defs/SplitSpec"
+        },
+        "when": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Backend query (a beets query)",
+          "title": "When"
+        }
+      },
+      "required": [
+        "split"
+      ],
+      "title": "SplitAction",
+      "type": "object"
+    },
+    "SplitSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "by": {
+          "minLength": 1,
+          "title": "By",
+          "type": "string"
+        },
+        "field": {
+          "title": "Field",
+          "type": "string"
+        },
+        "into": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Into"
+        },
+        "strip": {
+          "default": true,
+          "title": "Strip",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "field",
+        "by"
+      ],
+      "title": "SplitSpec",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "A script file, or a step's inline actions with its parameters (TAGSCRIPT-1).",
+  "properties": {
+    "actions": {
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/SetAction"
+          },
+          {
+            "$ref": "#/$defs/CopyAction"
+          },
+          {
+            "$ref": "#/$defs/MoveAction"
+          },
+          {
+            "$ref": "#/$defs/ReplaceAction"
+          },
+          {
+            "$ref": "#/$defs/SplitAction"
+          },
+          {
+            "$ref": "#/$defs/JoinAction"
+          },
+          {
+            "$ref": "#/$defs/CaseAction"
+          },
+          {
+            "$ref": "#/$defs/FromFilenameAction"
+          },
+          {
+            "$ref": "#/$defs/DeleteAction"
+          },
+          {
+            "$ref": "#/$defs/AppendUniqueAction"
+          }
+        ]
+      },
+      "minItems": 1,
+      "title": "Actions",
+      "type": "array"
+    },
+    "idempotence": {
+      "default": "warn",
+      "description": "Run the script twice and report a second-pass change",
+      "enum": [
+        "warn",
+        "fail",
+        "off"
+      ],
+      "title": "Idempotence",
+      "type": "string"
+    },
+    "scope": {
+      "default": "album",
+      "description": "Default scope of the actions",
+      "enum": [
+        "album",
+        "item"
+      ],
+      "title": "Scope",
+      "type": "string"
+    }
+  },
+  "required": [
+    "actions"
+  ],
+  "title": "TagScript",
+  "type": "object"
+}
