@@ -47,9 +47,11 @@ from rifferr.backends.base import (
     ImportMode,
     ImportResult,
     QueryError,
+    SharedFields,
     SkippedFolder,
     TemplateError,
 )
+from rifferr.backends.coerce import FALSE_WORDS, TRUE_WORDS, coerce_value
 from rifferr.core.changeset import (
     ApplyResult,
     ChangeProblem,
@@ -94,8 +96,7 @@ DEFAULT_FIELD_TYPES: dict[str, type] = {
     "artists": _LIST,
     "albumartists": _LIST,
 }
-TRUE_WORDS = {"1", "true", "t", "yes", "y", "on"}
-FALSE_WORDS = {"0", "false", "f", "no", "n", "off"}
+_EMPTY: dict[type, FieldValue] = {_INT: 0, _FLOAT: 0.0, _BOOL: False, _STR: "", _LIST: []}
 
 
 @dataclass
@@ -206,6 +207,18 @@ class FakeBackend:
         else:
             self._import_fixtures[str(path)] = [dict(a) for a in albums or []]
 
+    def read_only_view(self) -> FakeBackend:
+        """The same library, opened read-only (BACKEND-13): no apply, no import."""
+        view = FakeBackend(
+            self.capabilities.model_copy(update={"apply": False, "import_": False, "undo": False}),
+            self._env,
+            inherited_fields=self.inherited_fields,
+            read_only=self.read_only,
+            field_types=self.field_types,
+        )
+        view._albums = self._albums
+        return view
+
     def _new_id(self, kind: str) -> str:
         self._next_id += 1
         return f"{kind}-{self._next_id}"
@@ -236,13 +249,21 @@ class FakeBackend:
     def matches(self, condition: str, target: ItemSnapshot | AlbumSnapshot) -> bool:
         self._need("query")
         terms = parse_query(condition)
-        env = _snapshot_env(target, None)
-        return _matches_all(terms, env)
+        return _matches_all(terms, _snapshot_env(target, None, self._stored_fields(target)))
 
     def evaluate(self, template: str, target: ItemSnapshot | AlbumSnapshot) -> str:
         self._need("templates")
         album_fields = self._album_fields_for(target)
-        return render_template(template, _snapshot_env(target, album_fields))
+        env = _snapshot_env(target, album_fields, self._stored_fields(target))
+        return render_template(template, env)
+
+    def coerce(self, field: str, value: FieldValue) -> FieldValue:
+        """By ``field_types``; multi-value text splits on ``;`` (BACKEND-11)."""
+        wanted = self.field_types.get(field, _STR)
+        return coerce_value(wanted, value, empty=_EMPTY.get(wanted), split=_split_list)
+
+    def album_item_fields(self) -> SharedFields:
+        return SharedFields(include=self.inherited_fields, exclude=frozenset({"id", "path"}))
 
     def check(self, changes: ChangeSet) -> list[ChangeProblem]:
         self._need("apply")
@@ -390,6 +411,11 @@ class FakeBackend:
         }.get(wanted, isinstance(value, str))
         return None if ok else f"expects {wanted.__name__}, got {type(value).__name__}"
 
+    def _stored_fields(self, target: ItemSnapshot | AlbumSnapshot) -> dict[str, FieldValue]:
+        scope = "album" if isinstance(target, AlbumSnapshot) else "item"
+        obj = self._find(TargetRef(scope=scope, id=target.id))
+        return {} if obj is None else obj.fields
+
     def _album_fields_for(self, target: ItemSnapshot | AlbumSnapshot) -> dict[str, FieldValue]:
         if isinstance(target, AlbumSnapshot):
             return {}
@@ -428,9 +454,18 @@ def _item_env(item: _Item) -> dict[str, FieldValue]:
 
 
 def _snapshot_env(
-    target: ItemSnapshot | AlbumSnapshot, album_fields: Mapping[str, FieldValue] | None
+    target: ItemSnapshot | AlbumSnapshot,
+    album_fields: Mapping[str, FieldValue] | None,
+    stored: Mapping[str, FieldValue] | None = None,
 ) -> dict[str, FieldValue]:
-    return {**(album_fields or {}), **target.fields, "path": target.path}
+    """The target's values over its stored ones and the stored album's; ``None`` =
+    absent (BACKEND-10)."""
+    env = {**(album_fields or {}), **(stored or {}), **target.fields, "path": target.path}
+    return {k: v for k, v in env.items() if v is not None}
+
+
+def _split_list(text: str) -> list[str]:
+    return [p.strip() for p in text.split(";") if p.strip()]
 
 
 # -- queries ------------------------------------------------------------------

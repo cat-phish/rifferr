@@ -5,6 +5,7 @@ from typing import Any
 import pytest
 
 from rifferr.backends.base import LibraryBackend
+from rifferr.backends.beets import BeetsBackend
 from tests.backends.beets.conftest import BeetsEnv, seed
 from tests.backends.contract import BackendContract
 
@@ -20,6 +21,9 @@ class TestBeetsBackendContract(BackendContract):
         backend = self.env.backend()
         seed(backend, albums)
         return backend
+
+    def read_only(self, backend: LibraryBackend) -> LibraryBackend:
+        return BeetsBackend(self.env.beetsdir.resolve(), read_only=True)
 
 
 def test_BEETS_IMPORT_11_contract_runs_for_declared_capabilities(beets_env: BeetsEnv) -> None:

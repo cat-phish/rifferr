@@ -104,6 +104,10 @@ class BackendContract:
     def make_backend(self, albums: list[dict[str, Any]]) -> LibraryBackend:
         raise NotImplementedError
 
+    def read_only(self, backend: LibraryBackend) -> LibraryBackend:
+        """The same library opened read-only (BACKEND-13)."""
+        raise NotImplementedError
+
     @pytest.fixture
     def backend(self) -> LibraryBackend:
         return self.make_backend(self.library)
@@ -388,3 +392,91 @@ class BackendContract:
         after = self.by_album(backend, "First EP")
         assert after.fields["genres"] == ["Rock", "Live"]
         assert after.items[0].fields["genres"] == ["Rock", "Live"]
+
+    # -- working values, types, shared fields, read-only (S-TAGSCRIPT) ------------
+
+    def test_BACKEND_10_evaluate_uses_snapshot_values(self, backend: LibraryBackend) -> None:
+        self.need(backend, "templates")
+        ep = self.by_album(backend, "First EP")
+        changed = ep.model_copy(update={"fields": {**ep.fields, "album": "Renamed"}})
+        assert backend.evaluate("$album ($year)", changed) == "Renamed (2001)"
+        item = ep.items[0]
+        working = item.model_copy(update={"fields": {**item.fields, "title": "Uno"}})
+        assert backend.evaluate("$title", working) == "Uno"
+        # not stored: the library still has the old values
+        assert backend.evaluate("$album", ep) == "First EP"
+
+    def test_BACKEND_10_absent_fields_fall_back_to_stored(self, backend: LibraryBackend) -> None:
+        self.need(backend, "templates")
+        ep = self.by_album(backend, "First EP")
+        partial = ep.model_copy(update={"fields": {"album": "Partial"}})
+        assert backend.evaluate("$album $year", partial) == "Partial 2001"
+
+    def test_BACKEND_10_none_removes_a_flexible_attribute(self, backend: LibraryBackend) -> None:
+        self.need(backend, "query")
+        ep = self.by_album(backend, "First EP")
+        assert backend.matches(f"{RUN_MARKER}:run-1", ep)
+        gone = ep.model_copy(update={"fields": {**ep.fields, RUN_MARKER: None}})
+        assert not backend.matches(f"{RUN_MARKER}:run-1", gone)
+
+    def test_BACKEND_10_matches_uses_snapshot_values(self, backend: LibraryBackend) -> None:
+        self.need(backend, "query")
+        ep = self.by_album(backend, "First EP")
+        assert not backend.matches("album::[(]EP[)]$", ep)
+        renamed = ep.model_copy(update={"fields": {**ep.fields, "album": "First (EP)"}})
+        assert backend.matches("album::[(]EP[)]$", renamed)
+        assert backend.matches(
+            "year:1999", renamed.model_copy(update={"fields": {**renamed.fields, "year": 1999}})
+        )
+
+    @pytest.mark.parametrize(
+        ("field", "value", "expected"),
+        [
+            ("year", "1999", 1999),
+            ("year", " 2001 ", 2001),
+            ("year", 2003, 2003),
+            ("year", "", 0),
+            ("comp", "yes", True),
+            ("comp", "false", False),
+            ("comp", True, True),
+            ("title", "x", "x"),
+            ("title", 12, "12"),
+            ("genres", "Rock; Jazz", ["Rock", "Jazz"]),
+            ("genres", ["Rock"], ["Rock"]),
+            ("genres", "", []),
+            ("rifferr_flex", "7", "7"),
+        ],
+    )
+    def test_BACKEND_11_coerce_converts_to_field_type(
+        self, backend: LibraryBackend, field: str, value: Any, expected: Any
+    ) -> None:
+        result = backend.coerce(field, value)
+        assert result == expected
+        assert type(result) is type(expected)
+
+    @pytest.mark.parametrize(
+        ("field", "value"), [("year", "soon"), ("year", "19.5"), ("comp", "maybe"), ("year", True)]
+    )
+    def test_BACKEND_11_coerce_raises_value_error(
+        self, backend: LibraryBackend, field: str, value: Any
+    ) -> None:
+        with pytest.raises(ValueError, match=r"expects"):
+            backend.coerce(field, value)
+
+    def test_BACKEND_12_album_item_fields(self, backend: LibraryBackend) -> None:
+        shared = backend.album_item_fields()
+        for name in ("album", "albumartist", "year", "genres", RUN_MARKER):
+            assert name in shared
+        assert "id" not in shared
+
+    def test_BACKEND_13_read_only_refuses_writes(self, backend: LibraryBackend) -> None:
+        self.need(backend, "apply")
+        ro = self.read_only(backend)
+        assert not ro.capabilities.apply
+        assert not ro.capabilities.import_
+        ep = self.by_album(ro, "First EP")
+        assert ro.evaluate("$album", ep) == "First EP"
+        cs = changeset((album_ref(ep), [FieldChange(field="album", old="First EP", new="X")]))
+        with pytest.raises(CapabilityError):
+            ro.apply(cs)
+        assert self.by_album(backend, "First EP").fields["album"] == "First EP"

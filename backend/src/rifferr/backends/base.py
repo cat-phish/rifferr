@@ -8,6 +8,7 @@ under the ``rifferr.backends`` entry-point group.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, Literal, Protocol, runtime_checkable
 
@@ -15,7 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from rifferr.core.changeset import ApplyResult, ChangeProblem, ChangeSet
 from rifferr.core.selection import Selection
-from rifferr.core.snapshot import AlbumSnapshot, ItemSnapshot
+from rifferr.core.snapshot import AlbumSnapshot, FieldValue, ItemSnapshot
 
 #: Flexible attribute holding the id of the run that imported or last touched an album.
 RUN_MARKER: Final = "rifferr_run"
@@ -45,6 +46,21 @@ class ChangeSetRejected(ValueError):
     def __init__(self, problems: list[ChangeProblem]) -> None:
         self.problems = problems
         super().__init__("; ".join(f"{p.target.label()} {p.field}: {p.message}" for p in problems))
+
+
+@dataclass(frozen=True)
+class SharedFields:
+    """Album fields a backend copies to the album's items when the album is stored
+    (BACKEND-12, TAGSCRIPT-3). ``include=None`` means every field not in ``exclude``
+    (beets: fixed ``Album.item_keys`` and all flexible attributes)."""
+
+    include: frozenset[str] | None = None
+    exclude: frozenset[str] = frozenset()
+
+    def __contains__(self, field: object) -> bool:
+        if not isinstance(field, str) or field in self.exclude:
+            return False
+        return self.include is None or field in self.include
 
 
 class BackendCapabilities(BaseModel):
@@ -120,6 +136,20 @@ class LibraryBackend(Protocol):
     def evaluate(self, template: str, target: ItemSnapshot | AlbumSnapshot) -> str: ...
 
     def matches(self, condition: str, target: ItemSnapshot | AlbumSnapshot) -> bool: ...
+
+    # ``evaluate`` and ``matches`` use the field values in ``target``, not the stored
+    # ones; fields absent from it fall back to the stored object, and a field given
+    # as ``None`` counts as absent (BACKEND-10).
+
+    def coerce(self, field: str, value: FieldValue) -> FieldValue:
+        """``value`` converted to ``field``'s type (BACKEND-11). Strings are parsed;
+        ``''`` is the type's empty value. Lists pass through unchanged (``check``
+        rejects them for single-value fields). Raises ``ValueError`` if it can't."""
+        ...
+
+    def album_item_fields(self) -> SharedFields:
+        """Album fields carried to the album's items on store (BACKEND-12)."""
+        ...
 
     def check(self, changes: ChangeSet) -> list[ChangeProblem]:
         """Problems that stop ``changes`` from being applied: unknown targets, read-only

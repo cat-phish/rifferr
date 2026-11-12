@@ -24,6 +24,10 @@ class TestFakeBackendContract(BackendContract):
     def make_backend(self, albums: list[dict[str, Any]]) -> LibraryBackend:
         return FakeBackend.from_fixture({"albums": albums})
 
+    def read_only(self, backend: LibraryBackend) -> LibraryBackend:
+        assert isinstance(backend, FakeBackend)
+        return backend.read_only_view()
+
 
 class TestFakeBackendWithoutCapabilities(BackendContract):
     """The contract also holds for a backend that offers nothing."""
