@@ -1,5 +1,5 @@
 # C-RUN: Runs, step execution, events and cancellation
-Status: Draft
+Status: Implemented
 Milestone: M0
 
 ## Context
@@ -15,13 +15,15 @@ album) arrive in M2.
 - RUN-2: Steps MUST execute in file order. Before each step, the engine MUST interpolate its `with:` values (C-WORKFLOW) and evaluate its selection; a step with a `when:` condition acts only on targets for which `backend.matches` is true.
 - RUN-3: Step types MUST be discovered through the `rifferr.steps` entry-point group; built-in steps MUST be registered the same way (AGENTS.md non-negotiable 7).
 - RUN-4: A step type MUST provide a parameter model, the backend capabilities it requires, and an async `run(ctx)` that reports progress only through `ctx.emit(...)`.
-- RUN-5: When a step fails, `on_error` MUST decide: `stop` fails the run and skips the rest; `skip` marks the step failed and continues with the next step; `continue` marks the failing targets and continues the same step for other targets, then continues the run.
+- RUN-5: When a step fails, `on_error` MUST decide: `stop` fails the run and skips the rest; `skip` marks the step failed and continues with the next step; `continue` marks the failing targets and continues the same step for other targets, then continues the run. Steps report a per-target failure with `ctx.fail_target(...)`, which returns under `continue` and ends the step otherwise. A step failure with no target (for example a `per: run` command, or an unexpected exception) ends the step, so `continue` behaves like `skip` there. A run whose steps failed only under `skip`/`continue` still succeeds; the step records show the failures.
 - RUN-6: The engine MUST emit events `run.started`, `run.step.started`, `run.step.log`, `run.step.finished`, `run.finished`, each with a monotonically increasing per-run `seq`, a UTC timestamp, `run_id` and (where relevant) `step_id`.
 - RUN-7: Events MUST be persisted through an injected `EventSink` before being published, so a subscriber that reconnects with its last `seq` receives every later event exactly once.
 - RUN-8: Cancelling a run MUST stop the current step cooperatively within 5 seconds (steps check `ctx.cancelled`; subprocess steps are terminated), mark the run `cancelled` and emit `run.finished` with that status.
 - RUN-9: The engine MUST be pure apart from injected interfaces (backend, event sink, clock, step registry); it MUST be runnable in tests with `FakeBackend` and an in-memory sink.
 - RUN-10: Validation (C-WORKFLOW `validate`) MUST pass before a run is created; a workflow that fails validation never reaches `running`.
 - RUN-11: Each run MUST record the workflow content hash and profile name it ran with.
+- RUN-12: A step MAY return outputs (a map of string, number or boolean values); later steps read them as `{{ steps.<id>.<key> }}`. Referencing an output the step didn't return fails the referencing step.
+- RUN-13: Run IDs MUST be ULIDs (26-character Crockford base32, time-sortable), generated without third-party dependencies.
 
 ## Interfaces
 ```python
@@ -55,6 +57,25 @@ class EventSink(Protocol):
     def since(self, run_id: str, seq: int) -> Iterable[Event]: ...
 ```
 
+As implemented (`rifferr.engine`):
+- `Engine(registry, sink, clock=, new_id=, cancel_grace=5.0)`;
+  `create_run(wf, source_bytes, profile_name=, profile_vars=, backend=, run_vars=, doc=, redactor=)`
+  validates and returns a queued `Run`; `await execute(run)`; `cancel(run_id)`;
+  `subscribe(listener)` gets each event after the sink has stored it.
+- Vars precedence: workflow defaults < profile vars < run vars (CLI `--var` / API).
+- `StepContext`: `params`, `backend`, `selection` (the run's albums narrowed by `when`),
+  `albums(scope)`, `log(line, stream)`, `emit("run.step.<name>", ...)`, `fail_target(target,
+  message)`, `cancelled`. Steps can't emit the engine's own event types.
+- Step `with:` values are interpolated, then validated against the step's parameter model, when
+  the step starts; a failure there fails the step.
+- Event `data`: `run.started {workflow, profile}`, `run.step.started {uses}`,
+  `run.step.log {stream, line}`, `run.step.finished {status, outputs, failed_targets, error?}`,
+  `run.finished {status}`. String values from steps pass through the profile's redactor.
+- Step statuses: pending, running, succeeded, failed, skipped, cancelled.
+- Entry-point loading: `rifferr.steps.registry.load_step_types()`; broken plugins are listed in
+  `registry.errors` instead of stopping the app.
+- ULIDs: `rifferr.core.ids.new_ulid()`.
+
 ## Examples
 Workflow with steps `a` (on_error: skip, fails) and `b` (succeeds) → events:
 `run.started`, `run.step.started{a}`, `run.step.finished{a, status: failed}`,
@@ -74,13 +95,14 @@ Third-party step types register under `rifferr.steps` and get the same `StepCont
 - ChangeSet application (C-CHANGESET, M1).
 
 ## Open questions
-- Does `on_error: continue` make sense for steps with no per-target granularity (e.g. a single `per: run` shell command), or does it behave like `skip` there?
-- Should step outputs (`steps.<id>.<key>`) be part of `StepResult` in M0?
-- Run IDs: ULID, UUIDv7, or something shorter for display? (Used in `rifferr_run` flexible attribute values and URLs.)
+- ~~`on_error: continue` without per-target granularity?~~ Resolved 2026-11-11 (author): behaves like `skip` (RUN-5).
+- ~~Step outputs in M0?~~ Resolved 2026-11-11 (author): yes (RUN-12).
+- ~~Run ID format?~~ Resolved 2026-11-11 (author): ULID, stdlib-only (RUN-13).
 
 ## Tasks
-- [ ] run state machine
-- [ ] step registry via entry points
-- [ ] executor with on_error handling
-- [ ] event model + in-memory sink + replay-from-seq
-- [ ] cancellation
+- [x] run state machine
+- [x] step registry via entry points
+- [x] executor with on_error handling
+- [x] event model + in-memory sink + replay-from-seq
+- [x] cancellation
+- [x] step outputs + ULID run ids

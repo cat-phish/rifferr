@@ -82,7 +82,7 @@ Implementation order (each depends on the ones above it):
 | 2 ✓ | [C-WORKFLOW](../specs/core/C-WORKFLOW.md) | workflow YAML models, validation, `{{ }}` interpolation, schema export |
 | 3 ✓ | [C-BACKEND](../specs/core/C-BACKEND.md) | `LibraryBackend` protocol, snapshots, capabilities, `FakeBackend` |
 | 4 ✓ | [C-PROFILE](../specs/core/C-PROFILE.md) | profile files, variables, credential references |
-| 5 | [C-RUN](../specs/core/C-RUN.md) | run state machine, step registry, events, cancellation |
+| 5 ✓ | [C-RUN](../specs/core/C-RUN.md) | run state machine, step registry, events, cancellation |
 | 6 | [S-SHELL](../specs/steps/S-SHELL.md) | `shell` step (`emits: none` only) |
 | 7 | [F-WORKER](../specs/features/F-WORKER.md) | worker process per profile, server ↔ worker channel |
 | 8 | [S-BEETS-IMPORT](../specs/steps/S-BEETS-IMPORT.md) | `BeetsBackend` (first slice) and `beets.import` quiet mode, contract tests |

@@ -28,7 +28,7 @@ A row gets a link once its spec file exists. Build order: [docs/roadmap.md](../d
 | [C-PROFILE](core/C-PROFILE.md) | Profiles, variables, credential references | 2 | M0 | Implemented |
 | [C-WORKFLOW](core/C-WORKFLOW.md) | Workflow YAML schema, steps, interpolation | 2 | M0 | Implemented |
 | [C-BACKEND](core/C-BACKEND.md) | LibraryBackend protocol, snapshots, capabilities | 8 | M0 | Implemented |
-| [C-RUN](core/C-RUN.md) | Run state machine, lanes, events | 2, 2a | M0 | Draft |
+| [C-RUN](core/C-RUN.md) | Run state machine, lanes, events | 2, 2a | M0 | Implemented |
 | C-CHANGESET | ChangeSet model and apply/review policy | 2 | M1 | Planned |
 | C-JOURNAL | Journal and undo | 2 | M1 | Planned |
 | [S-BEETS-IMPORT](steps/S-BEETS-IMPORT.md) | `beets.import` step | 3, 8 | M0 | Draft |

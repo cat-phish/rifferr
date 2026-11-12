@@ -1,0 +1,48 @@
+"""Run events and the sink that persists them (RUN-6, RUN-7)."""
+
+from __future__ import annotations
+
+from collections.abc import Iterable
+from datetime import datetime
+from typing import Protocol
+
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
+
+#: Event types the engine owns. Steps emit other ``run.step.*`` types.
+ENGINE_EVENTS = frozenset({"run.started", "run.step.started", "run.step.finished", "run.finished"})
+
+
+class Event(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    seq: int
+    ts: datetime
+    run_id: str
+    type: str
+    step_id: str | None = None
+    data: dict[str, JsonValue] = Field(default_factory=dict[str, JsonValue])
+
+
+class EventSink(Protocol):
+    """Durable event storage. ``append`` must persist before returning."""
+
+    def append(self, event: Event) -> None: ...
+
+    def since(self, run_id: str, seq: int) -> Iterable[Event]:
+        """Events of ``run_id`` with ``seq`` greater than ``seq``, in order."""
+        ...
+
+
+class InMemoryEventSink:
+    def __init__(self) -> None:
+        self._events: dict[str, list[Event]] = {}
+
+    def append(self, event: Event) -> None:
+        events = self._events.setdefault(event.run_id, [])
+        expected = len(events) + 1
+        if event.seq != expected:
+            raise ValueError(f"run {event.run_id}: expected seq {expected}, got {event.seq}")
+        events.append(event)
+
+    def since(self, run_id: str, seq: int) -> Iterable[Event]:
+        return list(self._events.get(run_id, [])[max(seq, 0) :])

@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from rifferr import __version__
-from rifferr.core.workflow import StaticStepRegistry, StepRegistry, workflow_json_schema
+from rifferr.core.workflow import StepRegistry, workflow_json_schema
 from rifferr.schemas import PUBLISHED
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
@@ -30,8 +30,10 @@ def openapi_document() -> dict[str, Any]:
 
 
 def step_registry() -> StepRegistry:
-    """Registered step types. Empty until C-RUN adds the entry-point registry."""
-    return StaticStepRegistry([])
+    """Step types installed through the ``rifferr.steps`` entry points."""
+    from rifferr.steps.registry import load_step_types
+
+    return load_step_types()
 
 
 def render() -> dict[str, str]:
