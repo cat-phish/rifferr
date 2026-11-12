@@ -55,6 +55,11 @@ Every runtime or dev dependency needs the author's OK before it is added
 | respx | HTTP mocks (dev only) | BSD-3-Clause | M0 | 2026-11-11 |
 | ruff, pyright | lint, types (dev only) | MIT | M0 | 2026-11-11 |
 | react, react-dom, vite, typescript | frontend | MIT / Apache-2.0 | M0 | 2026-11-11 |
+| @mantine/core, @mantine/hooks (9.x) | UI components | MIT | M0 | 2026-11-11 |
+| react-router (8.x) | routing | MIT | M0 | 2026-11-11 |
+| @tanstack/react-query (5.x), @tanstack/react-virtual (3.x) | REST cache, virtualized log | MIT | M0 | 2026-11-11 |
+| openapi-fetch (0.17) | typed API client | MIT | M0 | 2026-11-11 |
+| @playwright/test (1.x, dev) | end-to-end tests | Apache-2.0 | M0 | 2026-11-11 |
 | @tanstack/react-query | data fetching | MIT | M0 | |
 | openapi-typescript | API client types | MIT | M0 | 2026-11-11 |
 | vitest, @testing-library/react | frontend tests | MIT | M0 | 2026-11-11 |

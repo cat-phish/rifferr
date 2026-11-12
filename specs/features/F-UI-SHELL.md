@@ -1,5 +1,5 @@
 # F-UI-SHELL: App shell, workflow list and live run log
-Status: Draft
+Status: Approved
 Milestone: M0
 
 ## Context
@@ -9,7 +9,7 @@ screens. The dashboard-as-queue (§2a) arrives in M1–M2; the M0 home screen is
 a simple run list. The UI only uses generated API types (DEV-TOOLING-10) and
 subscribes to SSE for progress (AGENTS.md conventions).
 
-**Trust model (author, 2026-11-11):** the user is asked to trust a workflow
+**Trust model (author, 2026-11-11; reading confirmed):** the user is asked to trust a workflow
 when it is *imported*, never when it is started. A workflow file that isn't
 trusted yet arrived from elsewhere, so it counts as an import that still needs
 review. Importing part of a workflow (pasting or importing steps, M1 editor)
@@ -67,7 +67,7 @@ None in M0. Step-specific result views come with their step specs.
 - ~~Component library?~~ Resolved 2026-11-11 (author): Mantine (B-008).
 - ~~Router?~~ Resolved 2026-11-11 (author): React Router (8.x, the current major; library mode).
 - ~~Trust prompt at start?~~ Resolved 2026-11-11 (author): trust is asked at import, always; never at start (UI-SHELL-4, -5).
-- M0 home screen vs. future dashboard: proposed `/` = Runs now, with `/runs` as a stable alias, so the M2 dashboard can take `/` without breaking links. Confirm.
+- ~~M0 home screen vs. future dashboard?~~ Resolved 2026-11-11 (author): `/` = Runs now, `/runs` a stable alias; the M2 dashboard takes `/`.
 
 ## Tasks
 - [ ] F-API additions: API-16, API-17, SPA fallback; F-SECURITY HTML 401 page
