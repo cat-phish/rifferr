@@ -33,7 +33,7 @@ STANDARD_LIBRARY: list[dict[str, Any]] = [
         "album": "First EP",
         "albumtype": "ep",
         "year": 2001,
-        "genre": "Rock",
+        "genres": ["Rock"],
         RUN_MARKER: "run-1",
         "items": [
             {"title": "Two", "track": 2, "artist": "Fixture Artist"},
@@ -45,7 +45,7 @@ STANDARD_LIBRARY: list[dict[str, Any]] = [
         "album": "Long Player",
         "albumtype": "album",
         "year": 2010,
-        "genre": "Jazz",
+        "genres": ["Jazz"],
         "items": [{"title": "Solo feat. Guest", "track": 1, "artist": "Other Artist"}],
     },
     {
@@ -53,7 +53,7 @@ STANDARD_LIBRARY: list[dict[str, Any]] = [
         "album": "Second (EP)",
         "albumtype": "ep",
         "year": 2005,
-        "genre": "Rock",
+        "genres": ["Rock"],
         RUN_MARKER: "run-2",
         "items": [{"title": "Three", "track": 1, "artist": "Fixture Artist"}],
     },
@@ -154,7 +154,7 @@ class BackendContract:
             ("year:200", set()),
             ("'album:First EP'", {"First EP"}),  # quoted term with a space
             ("nosuchfield:x", set()),  # missing flexattr never matches
-            ("genre:rock", {"First EP", "Second (EP)"}),
+            ("genres:rock", {"First EP", "Second (EP)"}),
         ],
     )
     def test_BACKEND_6_album_queries(
@@ -176,7 +176,7 @@ class BackendContract:
     ) -> None:
         self.need(backend, "query")
         assert album_names(backend.query(Selection(run_id="run-1"))) == {"First EP"}
-        assert album_names(backend.query(Selection(run_id="run-2", query="genre:rock"))) == {
+        assert album_names(backend.query(Selection(run_id="run-2", query="genres:rock"))) == {
             "Second (EP)"
         }
         assert backend.query(Selection(run_id="run-1", query="albumtype:album")) == []
@@ -200,7 +200,7 @@ class BackendContract:
             ("$nosuchfield", "$nosuchfield"),  # unknown fields stay literal
             ("100$$", "100$"),
             ("plain text", "plain text"),
-            ("$genre/$albumtype", "Rock/ep"),
+            ("$genres/$albumtype", "Rock/ep"),
         ],
     )
     def test_BACKEND_6_evaluate_album_templates(

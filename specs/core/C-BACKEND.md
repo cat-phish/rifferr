@@ -71,6 +71,9 @@ As implemented:
   backslash (`'album::\bEP\b'`).
 - Published schemas: `schemas/album-snapshot.schema.json`, `schemas/item-snapshot.schema.json`.
 - Contract suite: `backend/tests/backends/contract.py` (`BackendContract`).
+- Extended for S-BEETS-IMPORT: `import_folder(..., options=, set_fields=, should_stop=,
+  on_decision=)`; `ImportDecision(path, outcome, reason)`; `ImportResult.duplicates`.
+- The standard contract library uses `genres` (a list): beets 2.14 deprecates `genre`.
 - Loading by name (F-WORKER): `rifferr.backends.loader.load_backend(profile)` finds the
   `rifferr.backends` entry point named by `profile.backend`; it names a factory
   `(Profile) -> LibraryBackend`.

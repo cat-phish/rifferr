@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import re
 import shlex
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -35,6 +35,7 @@ from rifferr.backends.base import (
     BackendCapabilities,
     CapabilityError,
     DecisionCallback,
+    ImportDecision,
     ImportMode,
     ImportResult,
     QueryError,
@@ -72,6 +73,8 @@ class ImportCall:
     path: Path
     mode: ImportMode
     run_id: str | None
+    options: dict[str, str | bool] = field(default_factory=dict[str, str | bool])
+    set_fields: dict[str, str] = field(default_factory=dict[str, str])
 
 
 @dataclass(frozen=True)
@@ -190,27 +193,42 @@ class FakeBackend:
         decide: DecisionCallback | None,
         *,
         run_id: str | None = None,
+        options: Mapping[str, str | bool] | None = None,
+        set_fields: Mapping[str, str] | None = None,
+        should_stop: Callable[[], bool] | None = None,
+        on_decision: Callable[[ImportDecision], None] | None = None,
     ) -> ImportResult:
+        """``options`` are recorded, not interpreted."""
         self._need("import_")
         if mode != "quiet":
             raise NotImplementedError(f"import mode '{mode}' arrives with F-IMPORT-UI (M2)")
-        self.import_calls.append(ImportCall(path, mode, run_id))
+        self.import_calls.append(
+            ImportCall(path, mode, run_id, dict(options or {}), dict(set_fields or {}))
+        )
+        report = on_decision or (lambda d: None)
         key = str(path)
         fixture = self._import_fixtures.get(key)
+        reason = None
         if key in self._imported:
-            return ImportResult(skipped=[SkippedFolder(path=key, reason="already imported")])
-        if fixture is None:
-            return ImportResult(
-                skipped=[SkippedFolder(path=key, reason="no import fixture registered")]
-            )
-        if isinstance(fixture, str):
-            return ImportResult(skipped=[SkippedFolder(path=key, reason=fixture)])
+            reason = "already imported"
+        elif fixture is None:
+            reason = "no import fixture registered"
+        elif isinstance(fixture, str):
+            reason = fixture
+        if reason is not None or not isinstance(fixture, list):
+            reason = reason or "skipped"
+            report(ImportDecision(path=key, outcome="skipped", reason=reason))
+            return ImportResult(skipped=[SkippedFolder(path=key, reason=reason)])
         imported: list[AlbumSnapshot] = []
         for spec in fixture:
-            spec = {"path": key, **spec}
+            if should_stop is not None and should_stop():
+                break
+            spec = {"path": key, **spec, **(set_fields or {})}
             if run_id is not None:
                 spec[RUN_MARKER] = run_id
-            imported.append(self.add_album(spec))
+            album = self.add_album(spec)
+            imported.append(album)
+            report(ImportDecision(path=album.path or key, outcome="imported"))
         self._imported.add(key)
         return ImportResult(imported=imported)
 

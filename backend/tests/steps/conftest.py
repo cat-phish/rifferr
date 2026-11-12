@@ -12,6 +12,7 @@ from rifferr.core.profile import Redactor
 from rifferr.core.workflow import load_workflow
 from rifferr.engine import Engine, InMemoryEventSink, Run, SecretAccess, StepTypeRegistry
 from rifferr.steps import shell
+from tests.backends.beets.conftest import beets_env  # noqa: F401  (shared fixture)
 from tests.engine.conftest import FixedClock
 
 RUN_ID = "01RUN000000000000000000001"

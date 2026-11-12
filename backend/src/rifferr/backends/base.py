@@ -75,11 +75,26 @@ class SkippedFolder(BaseModel):
     reason: str
 
 
+class ImportDecision(BaseModel):
+    """One album decision, reported while an import runs."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    path: str
+    outcome: Literal["imported", "skipped", "duplicate"]
+    reason: str | None = None
+
+
 class ImportResult(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     imported: list[AlbumSnapshot] = Field(default_factory=list[AlbumSnapshot])
     skipped: list[SkippedFolder] = Field(default_factory=list[SkippedFolder])
+    duplicates: list[SkippedFolder] = Field(
+        default_factory=list[SkippedFolder],
+        description="Albums that matched one already in the library; reason = what was done. "
+        "A duplicate that was kept is also in imported, one that was skipped also in skipped.",
+    )
 
 
 @runtime_checkable
@@ -107,8 +122,19 @@ class LibraryBackend(Protocol):
         decide: DecisionCallback | None,
         *,
         run_id: str | None = None,
+        options: Mapping[str, str | bool] | None = None,
+        set_fields: Mapping[str, str] | None = None,
+        should_stop: Callable[[], bool] | None = None,
+        on_decision: Callable[[ImportDecision], None] | None = None,
     ) -> ImportResult:
-        """Import ``path``; imported albums get ``RUN_MARKER = run_id`` when given."""
+        """Import ``path``; imported albums get ``RUN_MARKER = run_id`` when given.
+
+        ``options`` override backend importer settings for this import only.
+        ``set_fields`` are stored on every imported album and its items (plain strings).
+        ``should_stop`` is polled between albums; when it returns True the import stops
+        early and returns what was done so far. ``on_decision`` may be called from
+        another thread.
+        """
         ...
 
     def command_env(self) -> Mapping[str, str]:

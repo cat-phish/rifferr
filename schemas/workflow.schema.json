@@ -44,6 +44,75 @@
               "type": "string"
             },
             "uses": {
+              "const": "beets.import",
+              "title": "Uses"
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Backend condition (a beets query).",
+              "title": "When"
+            },
+            "with": {
+              "$ref": "#/$defs/With_beets_import"
+            }
+          },
+          "required": [
+            "id",
+            "uses"
+          ],
+          "title": "Step: beets.import",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One entry of ``steps:`` (WORKFLOW-2, WORKFLOW-3).",
+          "properties": {
+            "apply": {
+              "default": "review",
+              "description": "Whether this step's ChangeSets apply automatically or wait for review. Ignored by steps that don't produce ChangeSets.",
+              "enum": [
+                "auto",
+                "review"
+              ],
+              "title": "Apply",
+              "type": "string"
+            },
+            "id": {
+              "pattern": "^[a-z][a-z0-9_-]*$",
+              "title": "Id",
+              "type": "string"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Name"
+            },
+            "on_error": {
+              "default": "stop",
+              "enum": [
+                "stop",
+                "skip",
+                "continue"
+              ],
+              "title": "On Error",
+              "type": "string"
+            },
+            "uses": {
               "const": "shell",
               "title": "Uses"
             },
@@ -188,6 +257,181 @@
         "name"
       ],
       "title": "WebhookTrigger",
+      "type": "object"
+    },
+    "With_beets_import": {
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "const": "quiet",
+          "default": "quiet",
+          "title": "Mode",
+          "type": "string"
+        },
+        "options": {
+          "$ref": "#/$defs/With_beets_import__ImporterOptions"
+        },
+        "path": {
+          "description": "Folder to import",
+          "title": "Path",
+          "type": "string"
+        },
+        "set": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Fields stored on every imported album and its items (beets set_fields)",
+          "title": "Set",
+          "type": "object"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "BeetsImportParams",
+      "type": "object"
+    },
+    "With_beets_import__ImporterOptions": {
+      "additionalProperties": false,
+      "description": "beets importer options a step may override for its own import (BEETS-IMPORT-4).\nUnset options come from the user's beets config. See\nhttps://beets.readthedocs.io/en/stable/reference/config.html#importer-options",
+      "properties": {
+        "autotag": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Autotag"
+        },
+        "copy": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Copy"
+        },
+        "duplicate_action": {
+          "anyOf": [
+            {
+              "enum": [
+                "skip",
+                "keep",
+                "remove",
+                "merge",
+                "upgrade"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duplicate Action"
+        },
+        "hardlink": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hardlink"
+        },
+        "incremental": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Incremental"
+        },
+        "link": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Link"
+        },
+        "move": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Move"
+        },
+        "quiet_fallback": {
+          "anyOf": [
+            {
+              "enum": [
+                "skip",
+                "asis"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Quiet Fallback"
+        },
+        "reflink": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "const": "auto",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reflink"
+        },
+        "write": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Write"
+        }
+      },
+      "title": "ImporterOptions",
       "type": "object"
     },
     "With_shell": {

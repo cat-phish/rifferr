@@ -6,6 +6,7 @@ readme = "../README.md"
 license = "AGPL-3.0-or-later"
 requires-python = ">=3.12"
 dependencies = [
+    "beets>=2.14,<2.15",
     "keyring>=25,<26",
     "pydantic>=2.10,<3",
     "ruamel-yaml>=0.18,<0.20",
@@ -29,6 +30,10 @@ build-backend = "uv_build"
 # exactly like third-party plugins.
 [project.entry-points."rifferr.steps"]
 shell = "rifferr.steps.shell:ShellStep"
+"beets.import" = "rifferr.steps.beets_import:BeetsImportStep"
+
+[project.entry-points."rifferr.backends"]
+beets = "rifferr.backends.beets:from_profile"
 
 [tool.ruff]
 line-length = 100

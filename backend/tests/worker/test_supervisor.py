@@ -7,10 +7,12 @@ import os
 import signal
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
 from rifferr.engine import Event
+from rifferr.profile_store import config_root, create_profile
 from rifferr.worker.supervisor import WorkerSupervisor
 from tests.worker.conftest import ECHO, PID, SLOW, Sup, block, set_idle_timeout
 
@@ -269,11 +271,33 @@ async def test_WORKER_10_silent_worker_is_killed_as_hung(sup: Sup) -> None:
         os.kill(pid, 0)
 
 
-async def test_WORKER_6_real_worker_reports_missing_backend(sup: Sup) -> None:
-    # The real entry point (python -m rifferr.worker): no backend is installed in M0.
+async def test_WORKER_6_real_worker_reports_unusable_profile(sup: Sup) -> None:
+    # The real entry point (python -m rifferr.worker); the profile has no beets.beetsdir.
     real = WorkerSupervisor(sup.db, sup.sink, stop_grace=1.0)
     run_id = await real.submit_run("main", ECHO, source_name="wf.yaml")
     finished = await sup.finished(run_id)
     await real.shutdown()
     assert finished.data["reason"] == "worker_failed_to_start"
-    assert "backend 'beets', which is not installed" in str(finished.data["error"])
+    assert "has no beets.beetsdir" in str(finished.data["error"])
+
+
+async def test_WORKER_1_real_worker_runs_beets_import_then_shell(sup: Sup, tmp_path: Path) -> None:
+    """The M0 two-step workflow, end to end through a real worker process and beets."""
+    from tests.backends.beets.conftest import BeetsEnv
+
+    env = BeetsEnv(tmp_path / "b")
+    env.write_config()
+    env.inbox_album()
+    create_profile(config_root(), "beets", beetsdir=env.beetsdir)
+    src = (
+        "name: m0\nsteps:\n"
+        f"  - {{id: import, uses: beets.import, with: {{path: '{env.inbox}'}}}}\n"
+        "  - {id: list, uses: shell, with: {run: [echo, '$albumartist - $album']}}\n"
+    )
+    real = WorkerSupervisor(sup.db, sup.sink, stop_grace=2.0)
+    run_id = await real.submit_run("beets", src, source_name="m0.yaml", trusted=True)
+    finished = await sup.wait_for(run_id, timeout=60)
+    await real.shutdown()
+    assert finished.data["status"] == "succeeded", sup.events(run_id)
+    lines = [e.data["line"] for e in sup.events(run_id) if e.type == "run.step.log"]
+    assert "Fixture Artist - Fixture Album" in lines
