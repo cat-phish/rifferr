@@ -31,6 +31,7 @@ M1 additions (API-18) are specified in [S-TAGSCRIPT](../steps/S-TAGSCRIPT.md) (a
 - API-15: `create_app(settings)` MUST open the app DB and apply migrations, create the `WorkerSupervisor`, generate the local token and write the token file at startup, and on shutdown stop the workers (WORKER-8) and remove the token file.
 - API-16: `GET /api/workflows` and `GET /api/workflows/{name}` MUST include the workflow's declared vars (`name`, `default`, `description`, `profile_value`) and, as `missing_vars`, the vars without a default that the profile doesn't set. Missing vars MUST NOT make a workflow invalid (they are supplied at start); every other validation error still does. `POST /api/runs` still fails with `422 validation_failed` if they are missing from the request (added for F-UI-SHELL).
 - API-17: `POST /api/runs` MAY carry `sha256`; if the workflow file's current hash differs, the server MUST return `409 hash_mismatch` and queue nothing (added for F-UI-SHELL).
+- API-18: `GET /api/profiles/{profile}/scripts` lists script files (name, hash, valid, errors); `GET …/scripts/{name}` returns text and hash; `PUT …/scripts/{name}` `{text, sha256?}` saves, with `409 hash_mismatch` if `sha256` is given and differs from the file on disk. Names follow the workflow stem rules (API-3) and stay inside `scripts/` (added for S-TAGSCRIPT).
 
 ## Interfaces
 ```

@@ -1,5 +1,5 @@
 # S-TAGSCRIPT: `tags.script` step, action set and live preview
-Status: Approved
+Status: Implemented
 Milestone: M1
 
 ## Context
@@ -113,6 +113,54 @@ def check_idempotence(script, first: ScriptResult, ev) -> list[IdempotenceIssue]
   `{targets: [{target, label, fields: [{field, before, after, actions}], errors}], idempotence: [{target, field, action, first, second}], validation_errors, truncated}`.
 - Profile folder: `<profile>/scripts/` (created on first save; `profile create` adds it).
 
+As implemented (2026-11-12; `rifferr.tagscript`, `rifferr.steps.tagscript`, entry point
+`tags.script`):
+- `album_item_fields()` returns `SharedFields` (`include`/`exclude`, supports `in`), not a
+  frozenset. beets' `Album.store` carries every flexible attribute as well as
+  `Album.item_keys`, which a fixed set can't express. beets: everything but `id` and `artpath`.
+- BACKEND-10: a snapshot field given as `None` counts as absent, with no fallback. The
+  evaluator passes deleted fields that way, so a `delete` holds for later actions. One edge
+  remains in beets: an item still sees its stored album's value for an album field deleted
+  earlier in the script (B-035).
+- BACKEND-11: `''` becomes the type's empty value. Lists pass through unchanged (`check`
+  rejects them for single-value fields). Numbers become text in string fields, and
+  booleans go only into boolean fields. For beets integer fields, `'abc'` is an error
+  (beets' own `parse` would give 0).
+- Item changes that only follow an album change of a shared field aren't proposed, because
+  storing the album carries them and the journal still records them as effects. Preview and
+  the idempotence check leave them out the same way.
+- Rationale: the action's `name`, or `action N` (1-based). Several actions are joined with `, `.
+- `case`: a word is a run of non-whitespace. `keep` matches the word without surrounding
+  punctuation. `append_unique` skips empty values. `from_filename` takes `$field` or
+  `${field}`, matches the whole text (non-greedy), counts as item-scoped in album scripts,
+  and makes `scope: album` a validation error.
+- A script file's `{{ }}` expressions are interpolated in its string values after YAML
+  parsing, as inline actions are, so substituted text can't change the YAML structure.
+- The step requires query, templates and apply. Outputs: `changesets`, `field_changes`,
+  `not_idempotent`, `script_text` (inline: the actions as JSON), `script_path`,
+  `script_sha256`. The summary is an `info` line per album
+  (`album-7: 2 field changes proposed; idempotent`, `…: no changes; idempotence off`).
+  Idempotence findings are `warning` lines (`error` with `fail`).
+- New plugin API: `StepContext.profile_dir` and `ctx.interpolate(text)`.
+- The safety report finding is kind `auto_apply`.
+- Preview request: `{script_text | script, query, scope?, limit?, client?}`. `client` names
+  the caller, and a newer request with the same `client` supersedes the older one. The
+  response also has `album` (per target), `notes`, `deleted`, `idempotence_checked` and
+  `albums` (evaluated). Script errors come back as 200 with `validation_errors`; a missing
+  file is `404 script_not_found`. Preview interpolation sees the profile's vars and name;
+  `run.id` is `preview` and `steps.*` aren't available.
+- Read-only worker: `request` / `cancel_request` commands and `response` messages on the
+  WORKER-9 channel. It answers one request at a time and checks for cancellation between
+  albums. A worker that fails to start answers `503 preview_unavailable`.
+- `rifferr profile create` adds `scripts/` next to `workflows/` (the PROFILE-8 test now
+  expects both).
+- Editor: a fixed 20-row monospace textarea. A new script starts from a short template, and
+  `/scripts` has a "New script" field.
+- The backend query returns every matching album before `limit` applies (B-034).
+- The Playwright spec `frontend/e2e/tagscript.spec.ts` was written but couldn't run on the
+  dev machine, which has no browser installed (B-032). Vitest covers the page. The beets
+  path was smoke-tested by hand against a temp library.
+
 ## Examples
 Illustrative (architecture §4), not the reference checklist's logic:
 ```yaml
@@ -164,13 +212,13 @@ Without the `^album::\(EP\)$` guard, preview shows the second pass producing
 - ~~Editor component?~~ Resolved 2026-11-11 (author left it to the agent): a plain monospace Mantine `Textarea` in M1, so no new dependency and no bundle growth (B-027). A code editor (e.g. CodeMirror 6, MIT) is considered with the visual builder (B-028).
 
 ## Tasks
-- [ ] action models + published `tagscript.schema.json`
-- [ ] pure evaluator: ordered actions, working values, album-to-item sharing
-- [ ] each action + Hypothesis idempotence properties
-- [ ] idempotence check with responsible action
-- [ ] `tags.script` step: script files, net diff, `ctx.propose`, summary log, step record
-- [ ] C-BACKEND amendments (BACKEND-10 to -13) for Fake and beets + contract tests
-- [ ] read-only worker (WORKER-11)
-- [ ] preview API + scripts API (API-18)
-- [ ] script editor page with live preview grid + Playwright test
-- [ ] safety report finding for `apply: auto`
+- [x] action models + published `tagscript.schema.json`
+- [x] pure evaluator: ordered actions, working values, album-to-item sharing
+- [x] each action + Hypothesis idempotence properties
+- [x] idempotence check with responsible action
+- [x] `tags.script` step: script files, net diff, `ctx.propose`, summary log, step record
+- [x] C-BACKEND amendments (BACKEND-10 to -13) for Fake and beets + contract tests
+- [x] read-only worker (WORKER-11)
+- [x] preview API + scripts API (API-18)
+- [x] script editor page with live preview grid + Playwright test (spec written; not run here, see As implemented)
+- [x] safety report finding for `apply: auto`

@@ -22,6 +22,10 @@ M1 additions (BACKEND-10 to -13) are specified in [S-TAGSCRIPT](../steps/S-TAGSC
 - BACKEND-7: `FakeBackend.import_folder` MUST create albums from a declarative fixture description (no files read), and record each call so tests can assert on it.
 - BACKEND-8: A shared backend contract test suite MUST exist that any backend implementation can run against itself; `FakeBackend` MUST pass it, and S-BEETS-IMPORT MUST run the same suite against `BeetsBackend` for the capabilities it offers.
 - BACKEND-9: `apply` and the `ChangeSet`/`JournalEntry` types MUST be declared in the protocol now but `FakeBackend.apply` MAY raise `NotImplementedError` until C-CHANGESET (M1).
+- BACKEND-10: `evaluate` and `matches` MUST use the field values in the snapshot they are given, not the stored ones, so they work on working values. Fields absent from the snapshot fall back to the stored object; a field given as `None` counts as absent (added for S-TAGSCRIPT).
+- BACKEND-11: `coerce(field, value) -> FieldValue` MUST convert a value to the field's type (beets: the field's type; flexible attributes stay strings) and raise `ValueError` with a message when it can't (added for S-TAGSCRIPT).
+- BACKEND-12: `album_item_fields()` MUST return the album fields the backend copies to items on store (beets: `Album.item_keys` and every flexible attribute), as a `SharedFields` set. `FakeBackend` returns its configured set (added for S-TAGSCRIPT).
+- BACKEND-13: A backend MUST be openable read-only (`from_profile(…, read_only=True)`). Read-only, it reports `apply` and `import_` as unsupported, and `BeetsBackend` sets `PRAGMA query_only` on its connection, so no write can happen. A contract test pins that writes fail (added for S-TAGSCRIPT).
 
 ## Interfaces
 ```python
