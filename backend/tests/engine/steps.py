@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
 from rifferr.backends.base import BackendCapabilities
+from rifferr.core.changeset import ChangeSetProposal, TargetRef
 from rifferr.engine import StepContext, StepFailure, StepResult
 
 
@@ -108,4 +110,92 @@ class ImportStep:
         return StepResult(outputs={"imported": len(result.imported)})
 
 
-ALL = [EchoStep(), PerAlbumStep(), SlowStep(), CrashStep(), ImportStep()]
+class ProposeParams(_P):
+    set: dict[str, Any] = {}
+    """Short form per album: field -> new value."""
+    old: dict[str, Any] = {}
+    """Explicit ``old`` values for ``set`` fields."""
+    delete: list[str] = []
+    item_set: dict[str, Any] = {}
+    """Field -> new value for every item, as explicit item targets."""
+    whole_run: bool = False
+    """One proposal for all albums (``set`` + ``item_set``), split by the engine."""
+    raw: dict[str, Any] | None = None
+    """A literal proposal, proposed once with no current target."""
+    rationale: str | None = None
+
+
+class ProposeStep:
+    name = "test.propose"
+    params_model = ProposeParams
+    requires = BackendCapabilities(query=True, apply=True)
+
+    async def run(self, ctx: StepContext) -> StepResult:
+        p = ctx.params
+        assert isinstance(p, ProposeParams)
+        albums = ctx.albums()
+        if p.raw is not None:
+            ids = ctx.propose(ChangeSetProposal.model_validate(p.raw))
+            return StepResult(outputs={"proposed": len(ids)})
+
+        def album_changes() -> list[dict[str, Any]]:
+            out: list[dict[str, Any]] = []
+            for field, new in p.set.items():
+                change: dict[str, Any] = {"field": field, "new": new}
+                if field in p.old:
+                    change["old"] = p.old[field]
+                out.append(change)
+            out += [{"field": f, "op": "delete"} for f in p.delete]
+            return out
+
+        def targets(album: Any) -> list[dict[str, Any]]:
+            out: list[dict[str, Any]] = []
+            if album_changes():
+                out.append(
+                    {"target": {"scope": "album", "id": album.id}, "changes": album_changes()}
+                )
+            if p.item_set:
+                for item in album.items:
+                    out.append(
+                        {
+                            "target": {"scope": "item", "id": item.id},
+                            "changes": [{"field": f, "new": v} for f, v in p.item_set.items()],
+                        }
+                    )
+            return out
+
+        ids: list[str] = []
+        if p.whole_run:
+            every = [t for a in albums for t in targets(a)]
+            if every:
+                ids = ctx.propose(
+                    ChangeSetProposal.model_validate({"targets": every, "rationale": p.rationale})
+                )
+        else:
+            for album in albums:
+                if p.item_set:
+                    proposal = {"targets": targets(album), "rationale": p.rationale}
+                    ids += ctx.propose(ChangeSetProposal.model_validate(proposal))
+                elif album_changes():
+                    proposal = {"changes": album_changes(), "rationale": p.rationale}
+                    ids += ctx.propose(
+                        ChangeSetProposal.model_validate(proposal),
+                        current=TargetRef(scope="album", id=album.id),
+                    )
+        return StepResult(outputs={"proposed": len(ids)})
+
+
+class ReviewOnlyProposeStep(ProposeStep):
+    name = "test.propose-reviewed"
+    force_review = True
+
+
+ALL = [
+    EchoStep(),
+    PerAlbumStep(),
+    SlowStep(),
+    CrashStep(),
+    ImportStep(),
+    ProposeStep(),
+    ReviewOnlyProposeStep(),
+]

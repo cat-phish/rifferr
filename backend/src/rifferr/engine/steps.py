@@ -10,10 +10,12 @@ from typing import Any, Protocol, runtime_checkable
 from pydantic import BaseModel, JsonValue
 
 from rifferr.backends.base import BackendCapabilities, LibraryBackend
+from rifferr.core.changeset import ChangeSetProposal, TargetRef
 from rifferr.core.profile import Secret
 from rifferr.core.selection import Scope, Selection
 from rifferr.core.snapshot import AlbumSnapshot
 from rifferr.core.workflow import StepSpec, StepTypeInfo
+from rifferr.engine.changesets import SnapshotIndex
 from rifferr.engine.events import ENGINE_EVENTS
 from rifferr.engine.run import FailedTarget, Scalar
 
@@ -60,7 +62,11 @@ class StepResult:
 
 @runtime_checkable
 class StepType(Protocol):
-    """A step type plugin. Register it under the ``rifferr.steps`` entry-point group."""
+    """A step type plugin. Register it under the ``rifferr.steps`` entry-point group.
+
+    Optional attribute ``force_review: bool`` (default False): the step's ChangeSets
+    always wait for review, and ``apply: auto`` is a validation error (CHANGESET-6).
+    """
 
     name: str
     params_model: type[BaseModel]
@@ -70,6 +76,14 @@ class StepType(Protocol):
 
 
 Emit = Callable[[str, dict[str, JsonValue]], None]
+#: The engine's side of ``ctx.propose``: proposal, current target -> ChangeSet ids.
+Propose = Callable[[ChangeSetProposal, TargetRef | None, SnapshotIndex], list[str]]
+
+
+def _no_propose(
+    proposal: ChangeSetProposal, current: TargetRef | None, s: SnapshotIndex
+) -> list[str]:
+    raise StepFailure("this run can't propose ChangeSets")
 
 
 class StepContext:
@@ -91,6 +105,7 @@ class StepContext:
         trusted: bool = False,
         secrets: SecretAccess | None = None,
         on_secret: Callable[[Secret], None] | None = None,
+        propose: Propose | None = None,
     ) -> None:
         self.run_id = run_id
         self.profile = profile
@@ -107,6 +122,8 @@ class StepContext:
         self._emit = emit
         self._is_cancelled = is_cancelled
         self.failed_targets: list[FailedTarget] = []
+        self._propose = propose or _no_propose
+        self._snapshots = SnapshotIndex()
 
     @property
     def cancelled(self) -> bool:
@@ -146,7 +163,19 @@ class StepContext:
 
     def albums(self, scope: Scope = "album") -> list[AlbumSnapshot]:
         """This step's targets: the run's albums, narrowed by the step's ``when``."""
-        return self.backend.query(self.selection.model_copy(update={"scope": scope}))
+        albums = self.backend.query(self.selection.model_copy(update={"scope": scope}))
+        self._snapshots.add(albums)
+        return albums
+
+    def propose(self, proposal: ChangeSetProposal, current: TargetRef | None = None) -> list[str]:
+        """Propose changes to albums or items this step got from ``albums()`` (CHANGESET-3).
+
+        ``current`` resolves the short form ``changes``. Missing ``old`` values come
+        from those snapshots; no-op changes are dropped. One ChangeSet per album;
+        returns their ids (empty if nothing changes). The step's ``apply`` policy then
+        applies them right away (``auto``) or leaves them for review (``review``).
+        """
+        return self._propose(proposal, current, self._snapshots)
 
     def fail_target(self, target: str, message: str) -> None:
         """Record a failed target. Returns under ``on_error: continue``; otherwise ends
@@ -182,7 +211,12 @@ class StepTypeRegistry:
         t = self._types.get(name)
         if t is None:
             return None
-        return StepTypeInfo(name=t.name, params_model=t.params_model, requires=t.requires)
+        return StepTypeInfo(
+            name=t.name,
+            params_model=t.params_model,
+            requires=t.requires,
+            force_review=bool(getattr(t, "force_review", False)),
+        )
 
     def names(self) -> list[str]:
         return sorted(self._types)

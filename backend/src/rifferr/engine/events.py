@@ -9,7 +9,22 @@ from typing import Protocol
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 #: Event types the engine owns. Steps emit other ``run.step.*`` types.
-ENGINE_EVENTS = frozenset({"run.started", "run.step.started", "run.step.finished", "run.finished"})
+ENGINE_EVENTS = frozenset(
+    {
+        "run.started",
+        "run.resumed",
+        "run.step.started",
+        "run.step.finished",
+        "run.waiting_review",
+        "run.finished",
+        # C-CHANGESET (CHANGESET-5)
+        "changeset.proposed",
+        "changeset.applied",
+        "changeset.rejected",
+        "changeset.conflicted",
+        "changeset.undone",
+    }
+)
 
 
 class Event(BaseModel):

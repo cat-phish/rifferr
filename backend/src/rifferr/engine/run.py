@@ -14,6 +14,7 @@ StepStatus = Literal["pending", "running", "succeeded", "failed", "skipped", "ca
 class RunState(StrEnum):
     queued = "queued"
     running = "running"
+    waiting_review = "waiting_review"
     succeeded = "succeeded"
     failed = "failed"
     cancelled = "cancelled"
@@ -21,7 +22,11 @@ class RunState(StrEnum):
 
 _ALLOWED: dict[RunState, frozenset[RunState]] = {
     RunState.queued: frozenset({RunState.running, RunState.cancelled}),
-    RunState.running: frozenset({RunState.succeeded, RunState.failed, RunState.cancelled}),
+    RunState.running: frozenset(
+        {RunState.succeeded, RunState.failed, RunState.cancelled, RunState.waiting_review}
+    ),
+    # RUN-14: suspended on holds (pending ChangeSets, review gates), no worker held.
+    RunState.waiting_review: frozenset({RunState.queued, RunState.cancelled}),
     RunState.succeeded: frozenset(),
     RunState.failed: frozenset(),
     RunState.cancelled: frozenset(),
@@ -65,6 +70,10 @@ class Run:
     started_at: datetime | None = None
     finished_at: datetime | None = None
     last_seq: int = 0
+    suspended_after: str | None = None
+    """Step id the run is suspended after while ``waiting_review`` (RUN-14)."""
+    holds: list[str] = field(default_factory=list[str])
+    """ChangeSet ids the suspended run waits for (RUN-14)."""
 
     def transition(self, to: RunState) -> None:
         if to not in _ALLOWED[self.state]:

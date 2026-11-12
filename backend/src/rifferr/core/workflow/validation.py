@@ -72,6 +72,14 @@ def _check_steps(
             continue
         _, param_errors = validate_model(info.params_model, step.with_, d, ("steps", i, "with"))
         errors += param_errors
+        if info.force_review and step.apply == "auto":
+            errors.append(
+                d.error(
+                    ("steps", i, "apply"),
+                    f"step type '{step.uses}' always waits for review; "
+                    "'apply: auto' is not allowed for it",
+                )
+            )
         if caps is not None:
             for cap in caps.missing(info.requires):
                 errors.append(

@@ -20,6 +20,8 @@ class StepTypeInfo:
     name: str
     params_model: type[BaseModel]
     requires: BackendCapabilities
+    force_review: bool = False
+    """ChangeSets always wait for review; ``apply: auto`` is invalid (CHANGESET-6)."""
 
 
 class StepRegistry(Protocol):

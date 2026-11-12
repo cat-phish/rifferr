@@ -18,7 +18,14 @@ from typing import Any, Protocol, cast
 from pydantic import BaseModel, JsonValue
 from pydantic import ValidationError as PydanticValidationError
 
-from rifferr.backends.base import LibraryBackend
+from rifferr.backends.base import CapabilityError, LibraryBackend
+from rifferr.core.changeset import (
+    ChangeSet,
+    ChangeSetProposal,
+    ChangeSource,
+    JournalEntry,
+    TargetRef,
+)
 from rifferr.core.ids import new_ulid
 from rifferr.core.profile import Redactor, merged_vars
 from rifferr.core.selection import Selection
@@ -32,7 +39,18 @@ from rifferr.core.workflow import (
     interpolate,
     validate,
 )
+from rifferr.engine.changesets import (
+    ChangeSetStore,
+    InMemoryChangeSetStore,
+    ProposalError,
+    SnapshotIndex,
+    apply_changeset,
+    build_changesets,
+    new_changeset,
+    proposed_event,
+)
 from rifferr.engine.events import Event, EventSink
+from rifferr.engine.journal import InMemoryJournal, Journal
 from rifferr.engine.run import Run, RunState, Scalar, StepRecord
 from rifferr.engine.steps import (
     NoSecrets,
@@ -85,6 +103,8 @@ class _RunState:
         self.work_dir = work_dir
         self.secrets = secrets
         self.cancel = asyncio.Event()
+        self.holds: dict[str, list[str]] = {}
+        """step id -> ChangeSet ids it proposed that wait for review (CHANGESET-7)."""
 
 
 class Engine:
@@ -96,9 +116,13 @@ class Engine:
         clock: Clock | None = None,
         new_id: Callable[[], str] = new_ulid,
         cancel_grace: float = DEFAULT_CANCEL_GRACE,
+        journal: Journal | None = None,
+        changesets: ChangeSetStore | None = None,
     ) -> None:
         self.registry = registry
         self.sink = sink
+        self.journal: Journal = journal or InMemoryJournal()
+        self.changesets: ChangeSetStore = changesets or InMemoryChangeSetStore()
         self.clock = clock or SystemClock()
         self._new_id = new_id
         self.cancel_grace = cancel_grace
@@ -126,11 +150,13 @@ class Engine:
         trusted: bool = False,
         work_dir: Path | None = None,
         secrets: SecretAccess | None = None,
+        last_seq: int = 0,
     ) -> Run:
         """Validate and create a queued run (RUN-10, RUN-11).
 
         ``trusted``: may this run execute shell/python steps (decided by F-SECURITY).
         ``work_dir``: default working directory for steps without a target (the profile dir).
+        ``last_seq``: events already stored for this run (a resumed run, RUN-14).
         """
         supplied = {**profile_vars, **(run_vars or {})}
         errors = validate(wf, self.registry, backend.capabilities, supplied, doc=doc)
@@ -145,6 +171,7 @@ class Engine:
             steps=[StepRecord(id=s.id, uses=s.uses) for s in wf.steps],
             vars=merged_vars(supplied, wf.vars),
             trusted=trusted,
+            last_seq=last_seq,
         )
         self.runs[run.id] = run
         self._state[run.id] = _RunState(
@@ -158,19 +185,41 @@ class Engine:
         if not state.run.finished:
             state.cancel.set()
 
-    async def execute(self, run: Run) -> None:
+    def restore_steps(self, run: Run, records: Mapping[str, StepRecord]) -> None:
+        """Put back the records of steps a resumed run already finished (RUN-14)."""
+        for i, record in enumerate(run.steps):
+            if record.id in records:
+                run.steps[i] = records[record.id]
+
+    async def execute(self, run: Run, *, resume_after: str | None = None) -> None:
+        """Run the steps; with ``resume_after``, continue after that step (RUN-14).
+
+        Returns with the run finished, or ``waiting_review`` when a step's ChangeSets
+        wait for review (CHANGESET-7).
+        """
         state = self._state[run.id]
+        start = 0
+        if resume_after is not None:
+            ids = [r.id for r in run.steps]
+            if resume_after not in ids:
+                raise ValueError(f"run {run.id} has no step {resume_after!r} to resume after")
+            start = ids.index(resume_after) + 1
         if state.cancel.is_set():
             run.transition(RunState.cancelled)
-            for record in run.steps:
+            for record in run.steps[start:]:
                 record.status = "skipped"
             self._finish(run)
             return
         run.transition(RunState.running)
         run.started_at = self.clock.now()
-        self._emit(run, "run.started", None, {"workflow": run.workflow, "profile": run.profile})
+        if resume_after is None:
+            self._emit(run, "run.started", None, {"workflow": run.workflow, "profile": run.profile})
+        else:
+            self._emit(run, "run.resumed", None, {"after": resume_after})
         outcome = RunState.succeeded
-        for index, (spec, record) in enumerate(zip(state.workflow.steps, run.steps, strict=True)):
+        steps = list(zip(state.workflow.steps, run.steps, strict=True))
+        for index in range(start, len(steps)):
+            spec, record = steps[index]
             stop = await self._execute_step(state, spec, record)
             if record.status == "cancelled":
                 outcome = RunState.cancelled
@@ -180,8 +229,23 @@ class Engine:
                 for later in run.steps[index + 1 :]:
                     later.status = "skipped"
                 break
+            holds = state.holds.pop(spec.id, [])
+            if holds:
+                self._suspend(run, spec.id, holds)
+                return
         run.transition(outcome)
         self._finish(run)
+
+    def _suspend(self, run: Run, step_id: str, holds: list[str]) -> None:
+        run.transition(RunState.waiting_review)
+        run.suspended_after = step_id
+        run.holds = list(holds)
+        self._emit(
+            run,
+            "run.waiting_review",
+            None,
+            {"after": step_id, "changesets": cast(list[JsonValue], list(holds)), "gates": []},
+        )
 
     # -- steps ---------------------------------------------------------------
 
@@ -211,6 +275,9 @@ class Engine:
                 trusted=run.trusted,
                 secrets=state.secrets,
                 on_secret=state.redactor.add,
+                propose=lambda proposal, current, snapshots: self._propose(
+                    state, spec, proposal, current, snapshots
+                ),
             )
             result = await self._run_cancellable(state, step_type.run(ctx))
             if state.cancel.is_set():
@@ -284,6 +351,86 @@ class Engine:
                 f"{'.'.join(str(p) for p in e['loc'])}: {e['msg']}" for e in exc.errors()
             )
             raise StepFailure(f"invalid parameters after interpolation: {problems}") from exc
+
+    # -- ChangeSets (C-CHANGESET) ----------------------------------------------
+
+    def _propose(
+        self,
+        state: _RunState,
+        spec: StepSpec,
+        proposal: ChangeSetProposal,
+        current: TargetRef | None,
+        snapshots: SnapshotIndex,
+    ) -> list[str]:
+        run = state.run
+        step_type = self.registry.step_type(spec.uses)
+        force_review = bool(getattr(step_type, "force_review", False))
+        source = ChangeSource(kind="step", name=spec.uses)
+
+        def make(targets: Any, rationale: str | None) -> ChangeSet:
+            return new_changeset(
+                targets,
+                rationale,
+                id=new_ulid(),
+                profile=run.profile,
+                run_id=run.id,
+                step_id=spec.id,
+                source=source,
+                created_at=self.clock.now(),
+            )
+
+        try:
+            changesets = build_changesets(proposal, current=current, snapshots=snapshots, make=make)
+            for cs in changesets:
+                problems = state.backend.check(cs)
+                if problems:
+                    detail = "; ".join(
+                        f"{p.target.label()} {p.field}: {p.message}" for p in problems
+                    )
+                    raise StepFailure(f"proposed changes can't be applied: {detail}")
+        except ProposalError as exc:
+            raise StepFailure(str(exc)) from exc
+        except CapabilityError as exc:
+            raise StepFailure(f"this profile's backend can't apply changes: {exc}") from exc
+        emit = self._change_emitter(state, spec.id)
+        for cs in changesets:
+            self.changesets.add(cs)
+            emit("changeset.proposed", proposed_event(cs))
+            if spec.apply == "auto" and not force_review:
+                outcome = apply_changeset(
+                    cs,
+                    backend=state.backend,
+                    journal=self.journal,
+                    store=self.changesets,
+                    new_id=new_ulid,
+                    now=self.clock.now,
+                    emit=emit,
+                )
+                self._log_outcome(state, spec.id, outcome.entry)
+            else:
+                state.holds.setdefault(spec.id, []).append(cs.id)
+        return [cs.id for cs in changesets]
+
+    def _change_emitter(
+        self, state: _RunState, step_id: str
+    ) -> Callable[[str, dict[str, JsonValue]], None]:
+        return lambda type, data: self._emit(
+            state.run, type, step_id, _redact(data, state.redactor)
+        )
+
+    def _log_outcome(self, state: _RunState, step_id: str, entry: JournalEntry | None) -> None:
+        """Write failures go to the run log too (CHANGESET-10)."""
+        for failure in entry.write_failures if entry is not None else []:
+            self._emit(
+                state.run,
+                "run.step.log",
+                step_id,
+                {
+                    "stream": "error",
+                    "line": f"{failure.path}: tags not written: {failure.error}",
+                    "target": failure.target.id,
+                },
+            )
 
     # -- events --------------------------------------------------------------
 
