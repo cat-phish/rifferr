@@ -571,3 +571,34 @@ def test_CLI_15_version_without_importing_beets() -> None:
         text=True,
     )
     assert check.stdout.strip() == "False"
+
+
+# -- M0 done-when: the example two-step workflow from the CLI ------------------------------------
+
+EXAMPLE = Path(__file__).parents[3] / "examples" / "workflows" / "two-step.yaml"
+FIXTURE_ALBUM = Path(__file__).parents[1] / "fixtures" / "audio" / "album-flac"
+
+
+def test_CLI_8_example_two_step_workflow_end_to_end(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import shutil
+
+    make_profile(tmp_path)
+    inbox = tmp_path / "inbox"
+    shutil.copytree(FIXTURE_ALBUM, inbox / "album-flac")
+    path = add_workflow("two-step", EXAMPLE.read_text())
+    s = start_server(tmp_path, "--no-browser")
+    try:
+        assert cli("trust", str(path), "--yes") == 0
+        capsys.readouterr()
+        assert (
+            cli("run", "two-step", "--profile", "main", "--var", f"inbox={inbox}", "--follow") == 0
+        )
+    finally:
+        s.stop()
+    out = capsys.readouterr().out
+    assert "[import] imported" in out
+    assert "[list-files]" in out
+    assert "First.flac" in out
+    assert out.rstrip().endswith("succeeded")

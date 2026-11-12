@@ -37,6 +37,17 @@ SECURITY_HEADERS: tuple[tuple[bytes, bytes], ...] = (
     (b"referrer-policy", b"no-referrer"),
 )
 DOCS_HINT = "see specs/features/F-SECURITY.md"
+SIGNED_OUT_PAGE = b"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Rifferr - signed out</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body style="font-family: system-ui, sans-serif; max-width: 40rem; margin: 3rem auto;
+ padding: 0 1rem">
+<h1>Signed out</h1>
+<p>Open the sign-in link that <code>rifferr serve</code> printed in its terminal.</p>
+<p>Running Rifferr as a service? The token is in the token file named in the server's
+log; sign in at <code>/auth/exchange?token=&lt;token&gt;</code>.</p>
+</body></html>
+"""
 
 
 class BindRefusedError(Exception):
@@ -168,6 +179,22 @@ async def _respond(
         }
     )
     await send({"type": "http.response.body", "body": body})
+
+
+async def _signed_out(send: Send) -> None:
+    """SECURITY-7: the same 401, as a page with no app data."""
+    await send(
+        {
+            "type": "http.response.start",
+            "status": 401,
+            "headers": [
+                (b"content-type", b"text/html; charset=utf-8"),
+                (b"content-length", str(len(SIGNED_OUT_PAGE)).encode()),
+                (b"cache-control", b"no-store"),
+            ],
+        }
+    )
+    await send({"type": "http.response.body", "body": SIGNED_OUT_PAGE})
 
 
 def _header(scope: Scope, name: bytes) -> str | None:
@@ -321,6 +348,9 @@ class TokenAuth:
             return
         if scope["type"] == "websocket":
             await send({"type": "websocket.close", "code": 1008})
+            return
+        if scope.get("method") == "GET" and "text/html" in (_header(scope, b"accept") or ""):
+            await _signed_out(send)  # a browser tab: explain, don't dump JSON
             return
         await _respond(send, 401, "unauthenticated", "authentication required")
 

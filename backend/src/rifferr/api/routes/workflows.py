@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Annotated
 
@@ -12,6 +12,7 @@ from rifferr.api.models import (
     TrustRequest,
     TrustResult,
     ValidateResult,
+    VarInfo,
     WorkflowDetail,
     WorkflowError,
     WorkflowSummary,
@@ -41,6 +42,8 @@ class Checked:
     sha256: str
     workflow: Workflow | None
     errors: list[ValidationError]
+    vars: list[VarInfo] = field(default_factory=list[VarInfo])
+    missing_vars: list[str] = field(default_factory=list[str])
 
 
 def get_profile(state: ServerState, name: str) -> Profile:
@@ -76,9 +79,19 @@ def find_workflow(state: ServerState, profile: str, name: str) -> Path:
 
 
 def check(
-    state: ServerState, profile: Profile, name: str, path: Path, run_vars: dict[str, str]
+    state: ServerState,
+    profile: Profile,
+    name: str,
+    path: Path,
+    run_vars: dict[str, str],
+    *,
+    for_start: bool = False,
 ) -> Checked:
-    """Load and validate without backend capabilities: the server never loads beets."""
+    """Load and validate without backend capabilities: the server never loads beets.
+
+    Unless ``for_start``, vars that are supplied at start (no default, not set by the
+    profile) are reported as ``missing_vars`` instead of errors (API-16).
+    """
     try:
         text, sha = read_workflow_file(path)
     except WorkflowFileError as exc:
@@ -87,8 +100,21 @@ def check(
         wf, doc = load_workflow(text, str(path))
     except WorkflowLoadError as exc:
         return Checked(name, path, text, sha, None, list(exc.errors))
-    errors = validate(wf, state.registry, None, {**profile.vars, **run_vars}, doc=doc)
-    return Checked(name, path, text, sha, wf, errors)
+    known = {**profile.vars, **run_vars}
+    infos = [
+        VarInfo(
+            name=n,
+            default=d.default,
+            description=d.description,
+            profile_value=profile.vars.get(n),
+        )
+        for n, d in wf.vars.items()
+    ]
+    missing = [n for n, d in wf.vars.items() if d.default is None and n not in known]
+    if not for_start:
+        known |= dict.fromkeys(missing, "")  # placeholders: supplied at start
+    errors = validate(wf, state.registry, None, known, doc=doc)
+    return Checked(name, path, text, sha, wf, errors, infos, [] if for_start else missing)
 
 
 def error_out(errors: list[ValidationError]) -> list[WorkflowError]:
@@ -111,6 +137,8 @@ async def list_workflows(profile: Annotated[str, Query()], state: State) -> list
                     sha256=c.sha256,
                     valid=not c.errors and len(paths) == 1,
                     trusted=bool(c.sha256) and state.db.is_trusted(c.sha256),
+                    vars=c.vars,
+                    missing_vars=c.missing_vars,
                 )
             )
     return out
@@ -128,6 +156,8 @@ async def get_workflow(name: str, profile: Annotated[str, Query()], state: State
         trusted=bool(c.sha256) and state.db.is_trusted(c.sha256),
         yaml=c.text,
         errors=error_out(c.errors),
+        vars=c.vars,
+        missing_vars=c.missing_vars,
     )
 
 

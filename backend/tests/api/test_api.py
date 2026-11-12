@@ -502,3 +502,90 @@ async def test_API_15_startup_and_shutdown(tmp_path: Path, monkeypatch: pytest.M
         assert job.state in ("cancelled", "failed")
     finally:
         db.close()
+
+
+# -- API-16: declared vars -----------------------------------------------------------------------
+
+VARS = (
+    "name: v\nvars:\n  inbox: {description: where new albums land}\n"
+    "  mode: {default: copy}\n  lib: {}\n"
+    "steps:\n  - {id: a, uses: test.echo, with: {message: '{{ vars.inbox }} {{ vars.lib }}'}}\n"
+)
+
+
+async def test_API_16_declared_vars_and_missing_vars(api: Api) -> None:
+    path = profile_dir(config_root(), "main") / "profile.yaml"
+    path.write_text(path.read_text().replace("vars: {}", "vars: { lib: /srv/music }"))
+    api.add_workflow("v", VARS)
+    q = {"profile": "main"}
+    listed = (await api.client.get("/api/workflows", params=q)).json()[0]
+    assert listed["valid"] is True  # missing vars are supplied at start
+    assert listed["missing_vars"] == ["inbox"]
+    detail = (await api.client.get("/api/workflows/v", params=q)).json()
+    assert detail["errors"] == []
+    assert detail["vars"] == [
+        {
+            "name": "inbox",
+            "default": None,
+            "description": "where new albums land",
+            "profile_value": None,
+        },
+        {"name": "mode", "default": "copy", "description": None, "profile_value": None},
+        {"name": "lib", "default": None, "description": None, "profile_value": "/srv/music"},
+    ]
+
+
+async def test_API_16_start_still_needs_the_missing_vars(api: Api) -> None:
+    api.add_workflow("v", VARS)
+    r = await api.client.post("/api/runs", json={"profile": "main", "workflow": "v"})
+    assert (r.status_code, r.json()["error"]["code"]) == (422, "validation_failed")
+    run_id = await api.start("v", inbox="/in", lib="/lib")
+    assert (await api.wait_finished(run_id))["state"] == "succeeded"
+
+
+async def test_API_16_other_errors_still_make_it_invalid(api: Api) -> None:
+    api.add_workflow("v", VARS.replace("test.echo", "nope"))
+    listed = (await api.client.get("/api/workflows", params={"profile": "main"})).json()[0]
+    assert listed["valid"] is False
+
+
+# -- API-17: start by hash -----------------------------------------------------------------------
+
+
+async def test_API_17_start_only_the_content_shown(api: Api) -> None:
+    path = api.add_workflow("echo", ECHO)
+    body = {"profile": "main", "workflow": "echo", "sha256": workflow_hash(ECHO)}
+    path.write_text(ECHO + "# changed\n")
+    r = await api.client.post("/api/runs", json=body)
+    assert (r.status_code, r.json()["error"]["code"]) == (409, "hash_mismatch")
+    assert (await api.client.get("/api/runs")).json() == []
+    body["sha256"] = workflow_hash(ECHO + "# changed\n")
+    assert (await api.client.post("/api/runs", json=body)).status_code == 201
+
+
+# -- API-13: client-side routes ------------------------------------------------------------------
+
+
+async def test_API_13_spa_fallback_for_page_paths_only(tmp_path: Path) -> None:
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text("<p>the ui</p>")
+    (dist / "assets" / "app.js").write_text("js")
+    s = settings(tmp_path, frontend_dir=dist)
+    app = create_api(s)
+    async with (
+        app.router.lifespan_context(app),
+        auth_client(secure(app, s.security()), s.token) as c,
+    ):
+        html = {"accept": "text/html,application/xhtml+xml"}
+        for page in ("/runs/01ABC", "/workflows/two.step", "/runs"):
+            r = await c.get(page, headers=html)
+            assert r.status_code == 200, page
+            assert "the ui" in r.text
+        assert (await c.get("/assets/app.js")).text == "js"
+        for server_path in ("/api/nothing", "/api", "/auth/other"):
+            r = await c.get(server_path, headers=html)
+            assert r.status_code == 404, server_path
+        for server_path in ("/assets/missing.js", "/runs/01ABC"):
+            r = await c.get(server_path)  # not a page navigation
+            assert r.status_code == 404, server_path

@@ -39,6 +39,8 @@ are **not** part of the current task. Append here instead of acting on them.
 - B-014 [debt] (2026-11-11, from F-DEV-TOOLING) No GitHub remote yet, so `.github/workflows/ci.yml` has never run. Push and confirm CI is green, then mark F-DEV-TOOLING Verified.
 - B-015 [debt] (2026-11-11, from F-DEV-TOOLING) TypeScript pinned to 6.0 because typescript-eslint 8.x doesn't support TS 7; openapi-typescript 7 still declares a TS 5 peer (works with 6). Revisit when they catch up.
 - B-017 [debt] (2026-11-11, from C-WORKFLOW) WORKFLOW-5 checks `with:` values before interpolation, so a non-string parameter written as an expression (e.g. `timeout: "{{ vars.t }}"`) fails validation. Decide whether typed params may take `{{ }}` and validate them after interpolation.
+- B-026 [debt] (2026-11-11, from F-UI-SHELL) One backend test failed once in a full `uv run pytest` run and passed in the next five; its name wasn't captured. Run with `-rf` and record which test it is when it shows up again (likely timing-sensitive, in the worker/API/CLI subprocess tests).
+- B-027 [debt] (2026-11-11, from F-UI-SHELL) The production JS bundle is ~560 kB (Mantine), above Vite's 500 kB warning. Code-split per route or accept and raise `chunkSizeWarningLimit`.
 
 ## Questions
 - B-010 [question] (2026-11-11, from architecture §12) Should `when:` also accept a simpler expression language that compiles to beets queries?

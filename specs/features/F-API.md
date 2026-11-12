@@ -24,9 +24,11 @@ frontend's TypeScript types (DEV-TOOLING-10).
 - API-10: Every request and response body MUST be a Pydantic model so the OpenAPI document fully describes it; `GET /openapi.json` MUST be available to the frontend build.
 - API-11: Errors MUST use one envelope `{error: {code, message, details?}}` with stable `code` strings, including the rejections of the F-SECURITY middleware. M0 codes: `host_not_allowed`, `cross_origin`, `unsupported_media_type`, `unauthenticated`, `invalid_token`, `not_found`, `invalid_workflow_name`, `ambiguous_workflow_name`, `validation_failed`, `hash_mismatch`, `bad_request`.
 - API-12: All routes MUST sit behind the F-SECURITY middleware stack.
-- API-13: The built frontend MUST be served from `/` by the same server, from a configurable directory (default `frontend/dist`); without a build, `/` MUST show a short page saying how to build it. In `--dev` mode the Vite dev server serves the UI and proxies `/api`, `/auth` and `/healthz` to the backend, and the backend MUST additionally accept the Vite origin (`http://localhost:<vite port>`, `http://127.0.0.1:<vite port>`) in the Origin check. Only with `--dev`; Host, JSON and auth checks are unchanged (author approved this dev-only exception 2026-11-11).
+- API-13: The built frontend MUST be served from `/` by the same server, from a configurable directory (default `frontend/dist`); without a build, `/` MUST show a short page saying how to build it. With a build, `GET` paths outside `/api`, `/auth`, `/healthz` and `/openapi.json` that match no file MUST get `index.html`, so client-side routes survive a reload (added for F-UI-SHELL). In `--dev` mode the Vite dev server serves the UI and proxies `/api`, `/auth` and `/healthz` to the backend, and the backend MUST additionally accept the Vite origin (`http://localhost:<vite port>`, `http://127.0.0.1:<vite port>`) in the Origin check. Only with `--dev`; Host, JSON and auth checks are unchanged (author approved this dev-only exception 2026-11-11).
 - API-14: `POST /api/workflows/{name}/trust?profile=` with `{sha256}` MUST trust that exact content (SECURITY-12, the UI's confirm after showing the safety report). If the file's current hash differs, it MUST return `409 hash_mismatch` and trust nothing.
 - API-15: `create_app(settings)` MUST open the app DB and apply migrations, create the `WorkerSupervisor`, generate the local token and write the token file at startup, and on shutdown stop the workers (WORKER-8) and remove the token file.
+- API-16: `GET /api/workflows` and `GET /api/workflows/{name}` MUST include the workflow's declared vars (`name`, `default`, `description`, `profile_value`) and, as `missing_vars`, the vars without a default that the profile doesn't set. Missing vars MUST NOT make a workflow invalid (they are supplied at start); every other validation error still does. `POST /api/runs` still fails with `422 validation_failed` if they are missing from the request (added for F-UI-SHELL).
+- API-17: `POST /api/runs` MAY carry `sha256`; if the workflow file's current hash differs, the server MUST return `409 hash_mismatch` and queue nothing (added for F-UI-SHELL).
 
 ## Interfaces
 ```
@@ -64,6 +66,10 @@ As implemented:
 - Tests drive the never-ending `/api/events` stream through the ASGI interface directly, not
   uvicorn, because the test network guard blocks loopback TCP too (DEV-TOOLING-7). uvicorn stays
   a runtime dependency for `rifferr serve` (F-CLI).
+- API-16: `check()` fills missing vars with placeholders for listing and detail, so only the
+  start request reports them (422). API-17: the hash check runs before validation.
+- API-13 SPA fallback (`SpaStaticFiles`) serves `index.html` only for `GET`/`HEAD` page
+  navigations (`Accept: text/html`); missing assets and server paths keep their 404.
 
 ## Examples
 SSE message:

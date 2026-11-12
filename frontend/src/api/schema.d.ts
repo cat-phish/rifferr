@@ -278,6 +278,11 @@ export interface components {
         RunCreate: {
             /** Profile */
             profile: string;
+            /**
+             * Sha256
+             * @description Start only if the file still has this hash (API-17)
+             */
+            sha256?: string | null;
             /** Vars */
             vars?: {
                 [key: string]: string;
@@ -427,10 +432,29 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        /** VarInfo */
+        VarInfo: {
+            /** Default */
+            default?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Profile Value
+             * @description Set by the profile's vars
+             */
+            profile_value?: string | null;
+        };
         /** WorkflowDetail */
         WorkflowDetail: {
             /** Errors */
             errors: components["schemas"]["WorkflowError"][];
+            /**
+             * Missing Vars
+             * @description Vars to supply at start (API-16)
+             */
+            missing_vars?: string[];
             /** Name */
             name: string;
             /** Path */
@@ -441,6 +465,8 @@ export interface components {
             trusted: boolean;
             /** Valid */
             valid: boolean;
+            /** Vars */
+            vars?: components["schemas"]["VarInfo"][];
             /** Yaml */
             yaml: string;
         };
@@ -457,6 +483,11 @@ export interface components {
         };
         /** WorkflowSummary */
         WorkflowSummary: {
+            /**
+             * Missing Vars
+             * @description Vars to supply at start (API-16)
+             */
+            missing_vars?: string[];
             /** Name */
             name: string;
             /** Path */
@@ -467,6 +498,8 @@ export interface components {
             trusted: boolean;
             /** Valid */
             valid: boolean;
+            /** Vars */
+            vars?: components["schemas"]["VarInfo"][];
         };
     };
     responses: never;

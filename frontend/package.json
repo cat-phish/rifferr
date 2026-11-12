@@ -13,14 +13,22 @@
     "format": "prettier --write .",
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
-    "gen:api": "cd ../backend && uv run python -m rifferr.schemas.export && cd ../frontend && openapi-typescript ../schemas/openapi.json -o src/api/schema.d.ts"
+    "gen:api": "cd ../backend && uv run python -m rifferr.schemas.export && cd ../frontend && openapi-typescript ../schemas/openapi.json -o src/api/schema.d.ts",
+    "e2e": "pnpm build && playwright test"
   },
   "dependencies": {
+    "@mantine/core": "^9.8.0",
+    "@mantine/hooks": "^9.8.0",
+    "@tanstack/react-query": "^5.107.1",
+    "@tanstack/react-virtual": "^3.14.26",
+    "openapi-fetch": "^0.17.0",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "react-router": "^8.5.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.65.0",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@types/node": "^26.6.6",

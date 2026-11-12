@@ -15,6 +15,9 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.responses import Response
+from starlette.types import Scope
 
 from rifferr import __version__
 from rifferr.api import errors
@@ -47,6 +50,31 @@ NO_FRONTEND = """<!doctype html>
 <p>Build it with <code>pnpm build</code> in <code>frontend/</code>, or start the
 dev server with <code>rifferr serve --dev</code>.</p></body></html>
 """
+
+
+SERVER_PREFIXES = ("/api/", "/auth/", "/healthz", "/openapi.json")
+
+
+class SpaStaticFiles(StaticFiles):
+    """The built frontend; unknown page paths get ``index.html`` (API-13), so client-side
+    routes like ``/runs/<id>`` survive a reload. Server paths and missing assets keep
+    their 404."""
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            request_path: str = scope.get("path", "")
+            accept = dict(scope.get("headers", [])).get(b"accept", b"")
+            if (
+                exc.status_code != 404
+                or scope.get("method") not in ("GET", "HEAD")
+                or b"text/html" not in accept  # only page navigations, not missing assets
+                or request_path == "/api"
+                or request_path.startswith(SERVER_PREFIXES)
+            ):
+                raise
+            return await super().get_response("index.html", scope)
 
 
 @dataclass
@@ -124,7 +152,7 @@ def create_api(settings: ApiSettings | None = None) -> FastAPI:
 
     frontend = settings.frontend_dir
     if frontend is not None and (frontend / "index.html").is_file():
-        app.mount("/", StaticFiles(directory=frontend, html=True), name="frontend")
+        app.mount("/", SpaStaticFiles(directory=frontend, html=True), name="frontend")
     else:
 
         @app.get("/", response_class=HTMLResponse, include_in_schema=False)

@@ -55,7 +55,7 @@ Every runtime or dev dependency needs the author's OK before it is added
 | respx | HTTP mocks (dev only) | BSD-3-Clause | M0 | 2026-11-11 |
 | ruff, pyright | lint, types (dev only) | MIT | M0 | 2026-11-11 |
 | react, react-dom, vite, typescript | frontend | MIT / Apache-2.0 | M0 | 2026-11-11 |
-| @mantine/core, @mantine/hooks (9.x) | UI components | MIT | M0 | 2026-11-11 |
+| @mantine/core, @mantine/hooks (9.x) | UI components | MIT; production transitive deps all MIT except tslib 0BSD and type-fest MIT OR CC0-1.0 (checked 2026-11-11) | M0 | 2026-11-11 |
 | react-router (8.x) | routing | MIT | M0 | 2026-11-11 |
 | @tanstack/react-query (5.x), @tanstack/react-virtual (3.x) | REST cache, virtualized log | MIT | M0 | 2026-11-11 |
 | openapi-fetch (0.17) | typed API client | MIT | M0 | 2026-11-11 |
@@ -78,7 +78,9 @@ Every runtime or dev dependency needs the author's OK before it is added
 **Done when:** a two-step workflow (`beets.import` in quiet mode, then a
 `shell` step) runs from the UI and from the CLI against a temporary profile,
 with the run log streaming live. Covered by one Playwright test and one CLI
-integration test.
+integration test. **Met 2026-11-11:** `frontend/e2e/two-step.spec.ts` and
+`test_CLI_8_example_two_step_workflow_end_to_end`, both running
+`examples/workflows/two-step.yaml`.
 
 Implementation order (each depends on the ones above it):
 
@@ -95,7 +97,7 @@ Implementation order (each depends on the ones above it):
 | 9 ✓ | [F-SECURITY](../specs/features/F-SECURITY.md) | Host/Origin/JSON checks, local token, non-localhost refusal |
 | 10 ✓ | [F-API](../specs/features/F-API.md) | HTTP routes, SSE event stream, app DB |
 | 11 ✓ | [F-CLI](../specs/features/F-CLI.md) | `rifferr serve`, `run`, `validate` |
-| 12 | [F-UI-SHELL](../specs/features/F-UI-SHELL.md) | app shell, workflow list, start a run, live run log |
+| 12 ✓ | [F-UI-SHELL](../specs/features/F-UI-SHELL.md) | app shell, workflow list, start a run, live run log |
 
 **Main risks:**
 - beets in-process configuration and plugin loading uses semi-internal APIs.

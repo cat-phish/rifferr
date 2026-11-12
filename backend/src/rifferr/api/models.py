@@ -44,12 +44,23 @@ class WorkflowError(_Model):
     column: int | None = None
 
 
+class VarInfo(_Model):
+    name: str
+    default: str | None = None
+    description: str | None = None
+    profile_value: str | None = Field(default=None, description="Set by the profile's vars")
+
+
 class WorkflowSummary(_Model):
     name: str
     path: str
     sha256: str
     valid: bool
     trusted: bool
+    vars: list[VarInfo] = Field(default_factory=list[VarInfo])
+    missing_vars: list[str] = Field(
+        default_factory=list[str], description="Vars to supply at start (API-16)"
+    )
 
 
 class WorkflowDetail(WorkflowSummary):
@@ -85,6 +96,9 @@ class RunCreate(_Model):
     profile: str
     workflow: str = Field(description="Workflow file stem in the profile's workflows/ folder")
     vars: dict[str, str] = Field(default_factory=dict[str, str])
+    sha256: str | None = Field(
+        default=None, description="Start only if the file still has this hash (API-17)"
+    )
 
 
 class RunCreated(_Model):

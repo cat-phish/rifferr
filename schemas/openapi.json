@@ -150,6 +150,18 @@
             "title": "Profile",
             "type": "string"
           },
+          "sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Start only if the file still has this hash (API-17)",
+            "title": "Sha256"
+          },
           "vars": {
             "additionalProperties": {
               "type": "string"
@@ -594,6 +606,54 @@
         "title": "ValidationError",
         "type": "object"
       },
+      "VarInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "default": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "profile_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set by the profile's vars",
+            "title": "Profile Value"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "VarInfo",
+        "type": "object"
+      },
       "WorkflowDetail": {
         "additionalProperties": false,
         "properties": {
@@ -602,6 +662,14 @@
               "$ref": "#/components/schemas/WorkflowError"
             },
             "title": "Errors",
+            "type": "array"
+          },
+          "missing_vars": {
+            "description": "Vars to supply at start (API-16)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Vars",
             "type": "array"
           },
           "name": {
@@ -623,6 +691,13 @@
           "valid": {
             "title": "Valid",
             "type": "boolean"
+          },
+          "vars": {
+            "items": {
+              "$ref": "#/components/schemas/VarInfo"
+            },
+            "title": "Vars",
+            "type": "array"
           },
           "yaml": {
             "title": "Yaml",
@@ -685,6 +760,14 @@
       "WorkflowSummary": {
         "additionalProperties": false,
         "properties": {
+          "missing_vars": {
+            "description": "Vars to supply at start (API-16)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Vars",
+            "type": "array"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -704,6 +787,13 @@
           "valid": {
             "title": "Valid",
             "type": "boolean"
+          },
+          "vars": {
+            "items": {
+              "$ref": "#/components/schemas/VarInfo"
+            },
+            "title": "Vars",
+            "type": "array"
           }
         },
         "required": [

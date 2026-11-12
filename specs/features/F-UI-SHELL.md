@@ -1,5 +1,5 @@
 # F-UI-SHELL: App shell, workflow list and live run log
-Status: Approved
+Status: Implemented
 Milestone: M0
 
 ## Context
@@ -44,6 +44,25 @@ trusted at save time (SECURITY-10).
 - `src/hooks/useEventStream.ts`: `useEventStream(url, { onEvent, closeOn })`, deduping by `seq`.
 - `pnpm e2e`: `playwright test` with a global setup that prepares the temp profile and starts the server; the browsers come from `pnpm exec playwright install chromium` (one-time, needs network; the test itself needs none).
 
+As implemented:
+- `src/api/client.ts` (openapi-fetch, same origin; any 401 flips `src/api/auth.ts` to signed out),
+  `src/hooks/useEventStream.ts`, `src/hooks/useProfile.ts`, `src/lib/runState.ts` (pure event
+  folding, deduped by seq), `src/components/LogView.tsx` (TanStack Virtual), pages under
+  `src/pages/`, `src/providers.tsx` (Mantine `defaultColorScheme="auto"` + TanStack Query).
+- Start is disabled until every missing var has a value; empty fields aren't sent, so the
+  profile value or default applies.
+- Review uses the hash of the YAML it shows (`GET /api/workflows/{name}`); if the safety
+  report's hash differs, the file changed in between and Trust stays disabled.
+- On a closed EventSource the hook probes `/api/profiles` once to tell a 401 from a network
+  error, because EventSource exposes no status code.
+- Only the beets concepts that appear in M0 screens are linked (`library`, `import`, `query`,
+  `template` in `src/lib/beetsDocs.ts`); add entries as screens name more.
+- Unit tests run Mantine with `env="test"` (no transitions or portals) and stub `clientHeight`
+  so the virtualized log renders in jsdom.
+- E2E: `frontend/playwright.config.ts` + `e2e/global-setup.ts` (port `RIFFERR_E2E_PORT`, default
+  8799; `UV` overrides the uv binary). CI runs it in an `e2e` job.
+- The production bundle is about 560 kB (Mantine); Vite warns above 500 kB (B-027).
+
 ## Examples
 Open Workflows → "two-step" shows "Needs review" → Review shows YAML and the
 safety report (the `shell` step's `command` finding) → Trust → Start, with the form
@@ -70,11 +89,11 @@ None in M0. Step-specific result views come with their step specs.
 - ~~M0 home screen vs. future dashboard?~~ Resolved 2026-11-11 (author): `/` = Runs now, `/runs` a stable alias; the M2 dashboard takes `/`.
 
 ## Tasks
-- [ ] F-API additions: API-16, API-17, SPA fallback; F-SECURITY HTML 401 page
-- [ ] dependencies, Mantine provider (auto color scheme), router, API client
-- [ ] app shell + profile switcher + Signed out screen
-- [ ] workflows page, review + trust, vars form + start
-- [ ] run page with SSE log (virtualized) + cancel
-- [ ] runs list with live updates
-- [ ] `examples/workflows/two-step.yaml`
-- [ ] Playwright e2e (`pnpm e2e`)
+- [x] F-API additions: API-16, API-17, SPA fallback; F-SECURITY HTML 401 page
+- [x] dependencies, Mantine provider (auto color scheme), router, API client
+- [x] app shell + profile switcher + Signed out screen
+- [x] workflows page, review + trust, vars form + start
+- [x] run page with SSE log (virtualized) + cancel
+- [x] runs list with live updates
+- [x] `examples/workflows/two-step.yaml`
+- [x] Playwright e2e (`pnpm e2e`)

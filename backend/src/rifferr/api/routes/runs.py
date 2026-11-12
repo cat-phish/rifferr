@@ -35,7 +35,9 @@ async def create_run(body: RunCreate, state: State) -> RunCreated:
     """Validate and queue a run (API-5). Trust is decided by the supervisor from the hash."""
     profile = get_profile(state, body.profile)
     path = find_workflow(state, body.profile, body.workflow)
-    c = check(state, profile, body.workflow, path, body.vars)
+    c = check(state, profile, body.workflow, path, body.vars, for_start=True)
+    if body.sha256 is not None and c.sha256 != body.sha256:
+        raise ApiError(409, "hash_mismatch", "the workflow changed since it was shown; reload it")
     if c.errors:
         details = cast(JsonValue, [e.model_dump() for e in error_out(c.errors)])
         raise ApiError(422, "validation_failed", "the workflow has errors", details)

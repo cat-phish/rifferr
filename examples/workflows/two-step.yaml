@@ -1,0 +1,23 @@
+# The M0 example (architecture §11): import new albums into the beets library,
+# then list each imported album's files.
+#
+# Copy it into a profile's workflows/ folder, review and trust it in the UI
+# (or `rifferr trust`), and start it with the folder to import:
+#   rifferr run two-step --profile main --var inbox=/path/to/new/albums
+name: two-step
+description: Import an inbox folder with beets, then list the imported files.
+vars:
+  inbox:
+    description: Folder with new albums to import
+steps:
+  - id: import
+    uses: beets.import
+    with:
+      path: "{{ vars.inbox }}"
+      mode: quiet
+  - id: list-files
+    uses: shell
+    with:
+      per: album # each album this run imported
+      run: [ls, -la, "$path"]
+      timeout: 30

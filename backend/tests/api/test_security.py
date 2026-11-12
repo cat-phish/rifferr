@@ -300,3 +300,16 @@ async def test_API_13_dev_origin_is_accepted_only_when_configured(token: str) ->
     async with client(config) as cl:
         assert (await cl.get("/x", headers={"origin": vite})).status_code == 200
         assert (await cl.get("/x", headers={"origin": vite, "host": "evil"})).status_code == 400
+
+
+async def test_SECURITY_7_browser_gets_a_signed_out_page(c: httpx.AsyncClient) -> None:
+    r = await c.get("/", headers={"origin": BASE, "accept": "text/html,*/*"})
+    assert r.status_code == 401
+    assert r.headers["content-type"].startswith("text/html")
+    assert "Signed out" in r.text
+    assert r.headers["x-frame-options"] == "DENY"  # still wrapped in the security headers
+    api = await c.get("/api/runs", headers={"origin": BASE})
+    assert api.status_code == 401
+    assert api.json()["error"]["code"] == "unauthenticated"
+    post = await c.post("/x", headers={**SAME, "accept": "text/html"}, json={})
+    assert post.json()["error"]["code"] == "unauthenticated"

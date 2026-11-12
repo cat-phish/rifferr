@@ -22,7 +22,7 @@ M0 only refuses to start without it.
 - SECURITY-4: Mutating endpoints MUST accept only `Content-Type: application/json` (415 otherwise).
 - SECURITY-5: The server MUST send no CORS headers.
 - SECURITY-6: At launch, the server MUST generate a random local token (≥ 32 bytes, `secrets.token_urlsafe`). `rifferr serve` opens `http://127.0.0.1:<port>/auth/exchange?token=…`; the app exchanges it for an `HttpOnly`, `SameSite=Strict` cookie named `rifferr_token_<port>` (browsers share localhost cookies across ports) and redirects (303) to a URL without the token. The exchange response MUST send `Cache-Control: no-store`.
-- SECURITY-7: Every API route except the token exchange and health check MUST require the cookie or `Authorization: Bearer <token>` (for the CLI), unless `--no-auth` is given. Tokens MUST be compared in constant time (`hmac.compare_digest`). Host/Origin/JSON checks stay on with `--no-auth`.
+- SECURITY-7: Every API route except the token exchange and health check MUST require the cookie or `Authorization: Bearer <token>` (for the CLI), unless `--no-auth` is given. Tokens MUST be compared in constant time (`hmac.compare_digest`). Host/Origin/JSON checks stay on with `--no-auth`. An unauthenticated `GET` whose `Accept` includes `text/html` MUST get a small HTML "Signed out" page (no app data) with the same `401` status, instead of the JSON envelope (added for F-UI-SHELL; not a loosening).
 - SECURITY-8: The token MUST be written to a file readable only by the user (mode 0600, user runtime dir) so `rifferr run` can talk to a running server, and MUST never be logged.
 - SECURITY-9: Binding to any address other than loopback MUST refuse to start unless real auth is configured (username + password, or trusted reverse-proxy header with a configured proxy address). In M0 no real auth exists yet, so any non-loopback bind MUST refuse to start with a message pointing at the docs.
 - SECURITY-10: Workflows MUST be trusted by content hash (SHA-256 of the file bytes) before any `shell` step (and later `python` actions) runs; workflows created in this install through the UI or CLI are trusted at save time; any edit changes the hash and resets trust. The server MUST check trust when a run is submitted, against the hash of the workflow text stored with the job (F-WORKER), and pass the result as the run's `trusted` flag; the worker runs that same text. Step types from installed plugins are outside this gate: installing a plugin is what trusts it.
@@ -55,6 +55,8 @@ As implemented:
   scripts are reported only where a program runs (first word, after `;` `&&` `||` `|` `&`,
   or the script an interpreter like `python3`/`sh` runs). Rule lists are module constants.
 - Wiring into `rifferr validate`, `rifferr trust` and the API arrives with F-CLI / F-API.
+- The signed-out page (SECURITY-7) is `SIGNED_OUT_PAGE` in `rifferr.api.security`, sent for
+  unauthenticated `GET`s whose `Accept` includes `text/html`.
 
 ## Examples
 - `curl -H 'Host: evil.example' http://127.0.0.1:8765/api/runs` → 400.
