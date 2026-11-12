@@ -1,5 +1,5 @@
 # S-SHELL: `shell` step
-Status: Draft
+Status: Approved
 Milestone: M1
 
 ## Context
@@ -9,7 +9,7 @@ which turns stdout into a ChangeSet, lands with C-CHANGESET in M1. Shell steps
 are the main reason the security model exists (F-SECURITY): they run only for
 trusted workflows.
 
-**M1 update (Draft, 2026-11-11).** SHELL-1 to -10 and -12, -13 are implemented and
+**M1 update (approved 2026-11-11).** SHELL-1 to -10 and -12, -13 are implemented and
 unchanged. SHELL-11 is replaced and SHELL-14 to -19 are new: with `emits: changes`,
 the script's stdout is a ChangeSetProposal (C-CHANGESET CHANGESET-3). Author
 decisions: in `per: album` / `per: item` a script may omit the target and mean the
@@ -37,7 +37,7 @@ C-CHANGESET amendments listed below.
 - SHELL-18: A valid proposal MUST go through `ctx.propose` (source `step` / `shell`). `old` values the script omits are filled from the snapshot it got on stdin (SHELL-5), so a value changed by someone else in between shows up as a conflict at apply time. The step's `apply` policy then applies (CHANGESET-6, -7).
 - SHELL-19: For each target, the step MUST log one summary line: the number of ChangeSets and field changes proposed, or "no changes".
 
-### C-CHANGESET amendments this update needs
+### C-CHANGESET amendments this update needs (approved with it; folded into C-CHANGESET)
 - CHANGESET-3 (amend): `ChangeSetProposal` MUST accept either `targets` or the short form `changes`. `ctx.propose(proposal, current=TargetRef | None)` resolves the short form to `current`, and rejects it without one. The published schema allows both forms, exclusively.
 - CHANGESET-14 (new): `ctx.propose` MUST split a proposal into one ChangeSet per album. Each holds the album's own target (if any) and the targets of its items, grouped by the snapshot's album membership, in the order they appear. Each ChangeSet keeps the proposal's `rationale`. `propose` returns the ids of the ChangeSets it created (empty when everything was a no-op, CHANGESET-4).
 
