@@ -17,8 +17,10 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, JsonValue
 
+from rifferr.core.changeset import ApplyResult, JournalEntry
 from rifferr.core.ids import new_ulid
 from rifferr.engine.events import Event
+from rifferr.engine.journal import JournalError, completed, failed, undone
 
 JobState = Literal["queued", "running", "succeeded", "failed", "cancelled"]
 JobKind = Literal["run"]
@@ -256,6 +258,83 @@ class AppDB:
             )
             for r in rows
         ]
+
+
+class AppJournal:
+    """``Journal`` backed by the app DB's ``journal`` table (JOURNAL-8)."""
+
+    def __init__(self, db: AppDB) -> None:
+        self.db = db
+
+    @property
+    def _conn(self) -> sqlite3.Connection:
+        return self.db._conn  # pyright: ignore[reportPrivateUsage]
+
+    def begin(self, entry: JournalEntry) -> None:
+        if entry.state != "pending":
+            raise JournalError(f"journal entry {entry.id} is {entry.state}, not pending")
+        try:
+            # Autocommit connection: the row is committed when execute returns (JOURNAL-1).
+            self._conn.execute(
+                "INSERT INTO journal (id, profile, changeset_id, run_id, state, body,"
+                " created_at) VALUES (?, ?, ?, ?, 'pending', ?, ?)",
+                (
+                    entry.id,
+                    entry.profile,
+                    entry.changeset_id,
+                    entry.run_id,
+                    entry.model_dump_json(),
+                    entry.created_at.isoformat(),
+                ),
+            )
+        except sqlite3.IntegrityError as exc:
+            raise JournalError(f"journal entry {entry.id} exists") from exc
+
+    def complete(self, entry_id: str, result: ApplyResult) -> JournalEntry:
+        return self._store(completed(self._get(entry_id), result, datetime.now(UTC)))
+
+    def fail(self, entry_id: str, error: str) -> JournalEntry:
+        return self._store(failed(self._get(entry_id), error, datetime.now(UTC)))
+
+    def pending(self, profile: str) -> list[JournalEntry]:
+        rows = self._conn.execute(
+            "SELECT body FROM journal WHERE profile = ? AND state = 'pending'"
+            " ORDER BY created_at, id",
+            (profile,),
+        ).fetchall()
+        return [JournalEntry.model_validate_json(r["body"]) for r in rows]
+
+    def get(self, entry_id: str) -> JournalEntry | None:
+        row = self._conn.execute("SELECT body FROM journal WHERE id = ?", (entry_id,)).fetchone()
+        return JournalEntry.model_validate_json(row["body"]) if row else None
+
+    def for_run(self, run_id: str) -> list[JournalEntry]:
+        rows = self._conn.execute(
+            "SELECT body FROM journal WHERE run_id = ? ORDER BY created_at, id", (run_id,)
+        ).fetchall()
+        return [JournalEntry.model_validate_json(r["body"]) for r in rows]
+
+    def mark_undone(self, entry_id: str, by: str) -> None:
+        self._store(undone(self._get(entry_id), by))
+
+    def _get(self, entry_id: str) -> JournalEntry:
+        entry = self.get(entry_id)
+        if entry is None:
+            raise JournalError(f"no journal entry {entry_id}")
+        return entry
+
+    def _store(self, entry: JournalEntry) -> JournalEntry:
+        self._conn.execute(
+            "UPDATE journal SET state = ?, body = ?, completed_at = ?, undone_by = ? WHERE id = ?",
+            (
+                entry.state,
+                entry.model_dump_json(),
+                entry.completed_at.isoformat() if entry.completed_at else None,
+                entry.undone_by,
+                entry.id,
+            ),
+        )
+        return entry
 
 
 class SqliteEventSink:

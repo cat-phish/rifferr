@@ -68,3 +68,19 @@ def test_WORKER_4_event_store_enforces_sequence(tmp_path: Path) -> None:
         db.append_event(Event(seq=3, ts=now, run_id="r", type="run.finished"))
     assert db.events_since("r", 0) == [e1]
     assert db.last_seq("r") == 1
+
+
+def test_CHANGESET_13_only_run_jobs_have_unique_run_ids(tmp_path: Path) -> None:
+    import sqlite3
+
+    db = AppDB(tmp_path / "a.db")
+    job = db.submit("main", payload())  # type: ignore[arg-type]
+    conn = db._conn  # pyright: ignore[reportPrivateUsage]
+    insert = (
+        "INSERT INTO jobs (id, profile, kind, run_id, state, payload, created_at)"
+        " VALUES (?, 'main', ?, ?, 'queued', '{}', 'now')"
+    )
+    conn.execute(insert, ("d1", "review_decision", job.run_id))
+    conn.execute(insert, ("d2", "review_decision", job.run_id))
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(insert, ("r2", "run", job.run_id))

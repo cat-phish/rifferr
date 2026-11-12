@@ -5,6 +5,7 @@ Pure: all I/O goes through injected interfaces.
 
 from rifferr.engine.events import ENGINE_EVENTS, Event, EventSink, InMemoryEventSink
 from rifferr.engine.executor import Clock, Engine, RunValidationError, SystemClock
+from rifferr.engine.journal import InMemoryJournal, Journal, JournalError
 from rifferr.engine.run import (
     FailedTarget,
     InvalidTransitionError,
@@ -33,7 +34,10 @@ __all__ = [
     "EventSink",
     "FailedTarget",
     "InMemoryEventSink",
+    "InMemoryJournal",
     "InvalidTransitionError",
+    "Journal",
+    "JournalError",
     "NoSecrets",
     "Run",
     "RunState",
