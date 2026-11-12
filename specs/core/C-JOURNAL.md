@@ -1,5 +1,5 @@
 # C-JOURNAL: Journal and undo
-Status: Approved
+Status: Implemented
 Milestone: M1
 
 ## Context
@@ -60,9 +60,28 @@ class Journal(Protocol):           # injected into the engine
     def for_run(self, run_id: str) -> list[JournalEntry]: ...
     def mark_undone(self, entry_id: str, by: str) -> None: ...
 ```
-- As implemented so far (2026-11-12, with C-CHANGESET): `rifferr.engine.journal` (`Journal`,
-  `InMemoryJournal`, `JournalError`) and `rifferr.appdb.AppJournal`. `Journal.fail(entry_id, error)`
-  and `JournalEntry.error` record an apply that raised before changing anything.
+- As implemented (2026-11-12):
+  - `rifferr.engine.journal`: `Journal` (also `fail(entry_id, error)`, `recover(entry)`,
+    `uncertain(profile)`), `InMemoryJournal`, `JournalError`; `rifferr.appdb.AppJournal`.
+    `JournalEntry.error` records an apply that raised, or "interrupted before apply".
+  - `rifferr.engine.recovery`: `reconcile` (pure) and `recover_pending`, which the worker runs when
+    it starts serving. Current values are read through `LibraryBackend.query` (the entry's run
+    albums first, the whole library only if a target is missing), so the protocol gains no
+    get-by-id method (B-033).
+  - Settling: an `applied` entry puts its ChangeSet in `applied` (`partially_applied` when only
+    part was accepted). For an uncertain entry, effects are the fields that reached their intended
+    value; the others are recorded as `conflicts`, and `Journal.uncertain()` lists these entries for
+    the review queue. An interrupted apply puts its ChangeSet back to `proposed`. An interrupted
+    *undo* is `rejected` instead, because a pending undo in review would be misleading; a completed
+    one still links `undone_by`. Recovery emits `changeset.*` events with `recovered: true`.
+  - `rifferr.engine.undo`: `inverse`, `undo_entry`, `undo_run`, `UndoError`. The undo ChangeSet keeps
+    the original's `run_id` and `step_id`, so its events appear on the run's stream. Run undo skips
+    undo entries, so after "undo the undo" the re-applied change is not part of a later run undo.
+    Undo emits `changeset.proposed` (with `undo_of`), the normal apply events, then `changeset.undone`.
+  - Jobs: kind `undo` with payload `entry_id` or `run_id` and `by`. The report
+    (`undone`, `undo_entries`, `stopped_at`, `conflicts` with `would_restore`, `problems`) is
+    stored in the new `jobs.result` column (migration 004). A stopped undo ends the job `failed`.
+    `WorkerSupervisor.undo()` validates the request first and refuses runs that are queued or running.
 - Undo requests arrive as worker jobs (`kind: undo`, target entry or run id), like review decisions (C-CHANGESET CHANGESET-13). Their API and UI belong to F-REVIEW-QUEUE.
 
 ## Examples
@@ -97,6 +116,6 @@ Worker killed between `begin` and `apply` → on restart, all old values current
 - [x] models + `Journal` protocol + in-memory journal for tests
 - [x] app DB `journal` table (migration) + `AppJournal`
 - [x] write-ahead begin / complete around apply
-- [ ] start-up reconciliation of pending entries
-- [ ] undo of an entry and of a run, with conflicts
-- [ ] `undo` worker jobs
+- [x] start-up reconciliation of pending entries
+- [x] undo of an entry and of a run, with conflicts
+- [x] `undo` worker jobs

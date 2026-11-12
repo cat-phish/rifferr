@@ -114,9 +114,9 @@ ChangeSets can be reviewed, applied and undone.
 Order: C-CHANGESET → C-JOURNAL → S-SHELL update (`emits: changes`) →
 S-TAGSCRIPT → S-REVIEW → S-BEETS-COMMAND → F-TAG-GRID → F-REVIEW-QUEUE.
 
-Progress: C-CHANGESET Implemented 2026-11-12, including C-JOURNAL's write-ahead
-part (JOURNAL-1, -2, -8) and RUN-14 suspension on ChangeSet holds. Next: the rest
-of C-JOURNAL (start-up reconciliation, undo, undo jobs).
+Progress: C-CHANGESET and C-JOURNAL Implemented 2026-11-12, including RUN-14
+suspension on ChangeSet holds (review gates come with S-REVIEW). Next: the S-SHELL
+update (`emits: changes`).
 
 ## M2 — Unattended imports
 

@@ -29,6 +29,7 @@ are **not** part of the current task. Append here instead of acting on them.
 - B-025 [idea] (2026-11-11, from F-UI-SHELL) `/api/events` has no event for a run being queued, so the Runs page shows runs queued by another client (CLI) only once they start. Consider a non-persisted `run.queued` notification on the dashboard stream.
 - B-028 [idea] (2026-11-11, from S-TAGSCRIPT) Tag-script visual builder: action-list builder with field autocomplete and a condition builder that writes beets queries (architecture §4 UI requirements), editing the same file as the YAML view (ruamel.yaml round-trip). Decide on a code editor component (e.g. CodeMirror 6, MIT) at the same time. Needs its own spec.
 - B-030 [idea] (2026-11-12, from C-CHANGESET) Manual ChangeSets (no run) need the profile event stream CHANGESET-5 mentions. Until then the worker only logs their `changeset.*` events. Add it with F-REVIEW-QUEUE / F-TAG-GRID.
+- B-033 [idea] (2026-11-12, from C-JOURNAL) Journal recovery reads current values through `LibraryBackend.query`, falling back to the whole library when an entry's targets aren't among its run's albums. Fine for rare crashes, but slow on big libraries. Consider a `LibraryBackend.fields(refs)` read by id (a C-BACKEND change) if recovery or the review queue needs it.
 
 ## Issues
 - B-004 [bug] (2026-11-11, from session) Nix `pre-commit` package fails to build Python hook environments (`ModuleNotFoundError: No module named 'packaging'` in its virtualenv). Use the distro package or pipx; mention in contributor docs.
