@@ -20,3 +20,15 @@ class TestBeetsBackendContract(BackendContract):
         backend = self.env.backend()
         seed(backend, albums)
         return backend
+
+
+def test_BEETS_IMPORT_11_contract_runs_for_declared_capabilities(beets_env: BeetsEnv) -> None:
+    """TestBeetsBackendContract above runs the shared suite; pin what it covers."""
+    from rifferr.backends.base import BackendCapabilities
+
+    backend = beets_env.backend()
+    assert isinstance(backend, LibraryBackend)
+    assert backend.capabilities == BackendCapabilities(
+        import_=True, query=True, templates=True, command_env=True
+    )
+    assert issubclass(TestBeetsBackendContract, BackendContract)
