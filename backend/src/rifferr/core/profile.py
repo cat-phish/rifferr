@@ -163,6 +163,18 @@ class BeetsSettings(BaseModel):
     )
 
 
+class ChangeSettings(BaseModel):
+    """How applied ChangeSets reach the library (C-CHANGESET CHANGESET-10)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    write_tags: bool = Field(
+        default=True,
+        description="Also write changed tags to the audio files (beets' own writer). "
+        "false: change only the library database.",
+    )
+
+
 VarName = Annotated[str, Field(pattern=VAR_NAME_PATTERN)]
 SecretRefField = Annotated[SecretRef, BeforeValidator(SecretRef.parse)]
 
@@ -175,6 +187,7 @@ class ProfileFile(BaseModel):
     backend: str = "beets"
     beets: BeetsSettings = Field(default_factory=BeetsSettings)
     worker: WorkerSettings = Field(default_factory=WorkerSettings)
+    changes: ChangeSettings = Field(default_factory=ChangeSettings)
     vars: dict[VarName, Annotated[str, Field(strict=True)]] = Field(default_factory=dict[str, str])
     secrets: dict[str, SecretRefField] = Field(default_factory=dict[str, SecretRef])
     timezone: str | None = Field(default=None, description="IANA time zone; default: system")
@@ -225,6 +238,7 @@ def parse_profile(
         backend=file.backend,
         beets=file.beets,
         worker=file.worker,
+        changes=file.changes,
         vars=resolve_vars(file.vars, env),
         secrets=file.secrets,
         timezone=file.timezone,

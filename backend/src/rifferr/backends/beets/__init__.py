@@ -21,7 +21,7 @@ from beets.library.queries import parse_query_parts
 from rifferr.backends.base import (
     RUN_MARKER,
     BackendCapabilities,
-    CapabilityError,
+    ChangeSetRejected,
     DecisionCallback,
     ImportDecision,
     ImportMode,
@@ -30,6 +30,7 @@ from rifferr.backends.base import (
     SkippedFolder,
     TemplateError,
 )
+from rifferr.backends.beets import apply as changes_apply
 from rifferr.backends.beets import config
 from rifferr.backends.beets.importer import QuietImportSession
 from rifferr.backends.beets.snapshots import album_snapshot, parse_id
@@ -39,14 +40,18 @@ from rifferr.core.profile import Profile
 from rifferr.core.selection import Selection
 from rifferr.core.snapshot import AlbumSnapshot, ItemSnapshot
 
-CAPABILITIES = BackendCapabilities(import_=True, query=True, templates=True, command_env=True)
+CAPABILITIES = BackendCapabilities(
+    import_=True, query=True, templates=True, apply=True, command_env=True
+)
 
 
 def from_profile(profile: Profile) -> BeetsBackend:
     """``rifferr.backends`` entry point (BEETS-IMPORT-15)."""
     beetsdir = profile.require_beetsdir()
     config.load(beetsdir)
-    return BeetsBackend(Path(beetsdir).expanduser().resolve())
+    return BeetsBackend(
+        Path(beetsdir).expanduser().resolve(), write_tags=profile.changes.write_tags
+    )
 
 
 _TEMPLATE_SPECIALS = re.compile(r"([$%},])")
@@ -61,10 +66,12 @@ def escape_template(value: str) -> str:
 class BeetsBackend:
     capabilities = CAPABILITIES
 
-    def __init__(self, beetsdir: Path) -> None:
+    def __init__(self, beetsdir: Path, *, write_tags: bool = True) -> None:
         if config.loaded_beetsdir() != beetsdir:
             raise RuntimeError(f"call config.load({beetsdir}) first")
         self.beetsdir = beetsdir
+        self.write_tags = write_tags
+        """Write changed tags to files after applying (profile ``changes.write_tags``)."""
 
     @contextlib.contextmanager
     def library(self) -> Iterator[Library]:
@@ -118,10 +125,15 @@ class BeetsBackend:
         return {"BEETSDIR": str(self.beetsdir)}
 
     def check(self, changes: ChangeSet) -> list[ChangeProblem]:
-        raise CapabilityError("BeetsBackend applies ChangeSets from M1 (C-CHANGESET)")
+        with self.library() as lib:
+            return changes_apply.check(lib, changes)
 
     def apply(self, changes: ChangeSet) -> ApplyResult:
-        raise CapabilityError("BeetsBackend applies ChangeSets from M1 (C-CHANGESET)")
+        with self.library() as lib:
+            problems = changes_apply.check(lib, changes)
+            if problems:
+                raise ChangeSetRejected(problems)
+            return changes_apply.apply(lib, changes, write_tags=self.write_tags)
 
     # -- import ----------------------------------------------------------------
 
