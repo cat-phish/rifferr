@@ -12,6 +12,8 @@ job/command table in the app DB plus a local IPC channel for events and
 The app DB arrives here in minimal form (jobs and events, SQLite via the Python
 standard library); F-API extends it.
 
+
+M1 additions (WORKER-11) are specified in [S-TAGSCRIPT](../steps/S-TAGSCRIPT.md) (approved 2026-11-11) and implemented with it.
 ## Behavior
 - WORKER-1: The API server MUST start at most one worker process per profile, on demand when a run for that profile starts, as `<server's own Python> -m rifferr.worker --profile <name>`, and MUST NOT import beets itself.
 - WORKER-2: A worker MUST load exactly one profile and one backend, and refuse commands for any other profile.

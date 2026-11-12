@@ -1,5 +1,5 @@
 # S-TAGSCRIPT: `tags.script` step, action set and live preview
-Status: Draft
+Status: Approved
 Milestone: M1
 
 ## Context
@@ -152,15 +152,16 @@ Without the `^album::\(EP\)$` guard, preview shows the second pass producing
 - Regexes come from the user's own scripts. A catastrophic regex is bounded by the preview timeout and the run's cancellation (RUN-8); a run's `tags.script` step checks cancellation between albums.
 
 ## Non-goals
-- Visual action-list builder and condition builder (architecture §4 UI requirements): see Open questions.
+- Visual action-list builder and condition builder (architecture §4 UI requirements): a later spec (B-028).
+- Syntax highlighting or autocomplete in the editor (B-028).
 - `python:` actions, custom action plugins.
 - File moves or renames from scripts (`beets.command move`, S-BEETS-COMMAND).
 - Per-album lanes (M2).
 
 ## Open questions
 - Reference "release-type suffix" logic: `docs/original-checklist.md` is still a placeholder. The author will paste the checklist; the M1 acceptance script (`examples/scripts/…` used by `examples/workflows/foobar-style.yaml`) and `docs/coverage.md` follow from it. Not invented here.
-- Visual builder: M1 ships the YAML editor with live preview (TAGSCRIPT-22). Is the visual action-list builder and condition builder part of M1, or a later spec?
-- Editor component: a plain monospace textarea in M1, or a code editor (e.g. CodeMirror 6, MIT), which is a new dependency?
+- ~~Visual builder in M1?~~ Resolved 2026-11-11 (author left it to the agent): no; M1 ships the YAML editor with live preview (TAGSCRIPT-22). The visual action-list and condition builders get their own later spec (B-028).
+- ~~Editor component?~~ Resolved 2026-11-11 (author left it to the agent): a plain monospace Mantine `Textarea` in M1, so no new dependency and no bundle growth (B-027). A code editor (e.g. CodeMirror 6, MIT) is considered with the visual builder (B-028).
 
 ## Tasks
 - [ ] action models + published `tagscript.schema.json`

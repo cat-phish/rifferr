@@ -10,6 +10,8 @@ AGENTS.md non-negotiable 2). This spec defines that protocol in
 `FakeBackend` used by all engine and step tests. `BeetsBackend` is specified in
 S-BEETS-IMPORT (M0 slice) and later specs.
 
+
+M1 additions (BACKEND-10 to -13) are specified in [S-TAGSCRIPT](../steps/S-TAGSCRIPT.md) (approved 2026-11-11) and implemented with it.
 ## Behavior
 - BACKEND-1: `rifferr.backends.base` MUST define `LibraryBackend` as a `typing.Protocol` with `capabilities`, `query`, `evaluate`, `matches`, `apply`, `import_folder` and `command_env`, as in architecture §8.
 - BACKEND-2: `BackendCapabilities` MUST be a frozen model of booleans (`import_`, `query`, `templates`, `apply`, `undo`, `command_env`); a backend MUST raise `CapabilityError` when a method it doesn't support is called.

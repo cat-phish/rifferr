@@ -11,6 +11,8 @@ record is the job row (one job per run); runs are submitted through
 never polls (AGENTS.md conventions). The OpenAPI document generates the
 frontend's TypeScript types (DEV-TOOLING-10).
 
+
+M1 additions (API-18) are specified in [S-TAGSCRIPT](../steps/S-TAGSCRIPT.md) (approved 2026-11-11) and implemented with it.
 ## Behavior
 - API-1: The app DB MUST be the SQLite file at `profile_store.app_db_path()` (F-WORKER), opened in WAL mode. Schema changes MUST be numbered, hand-written SQL files (`rifferr/migrations/NNN_name.sql`, stdlib `sqlite3` only), applied in order at startup and recorded in a `schema_version` table. `001_init.sql` MUST create the tables F-WORKER and F-SECURITY already use, so existing DB files upgrade without loss.
 - API-2: `GET /api/profiles` MUST list profiles (name, backend, var names) without secret values or references' targets.
