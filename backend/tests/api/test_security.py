@@ -277,3 +277,26 @@ def test_SECURITY_8_token_never_logged(
     token = generate_token()
     write_token_file(PORT, token)
     assert token not in caplog.text
+
+
+async def test_API_11_security_rejections_use_the_error_envelope(c: httpx.AsyncClient) -> None:
+    cases = [
+        (await c.get("/x", headers={"host": "evil"}), "host_not_allowed"),
+        (await c.get("/x", headers={"origin": "https://evil"}), "cross_origin"),
+        (await c.post("/x", content=b"a", headers={"origin": BASE}), "unsupported_media_type"),
+        (await c.get("/x"), "unauthenticated"),
+        (await c.get(EXCHANGE_PATH, params={"token": "no"}), "invalid_token"),
+    ]
+    for response, code in cases:
+        assert response.json()["error"]["code"] == code
+        assert response.json()["error"]["message"]
+
+
+async def test_API_13_dev_origin_is_accepted_only_when_configured(token: str) -> None:
+    vite = "http://localhost:5173"
+    async with client(SecurityConfig(port=PORT, token=token, no_auth=True)) as cl:
+        assert (await cl.get("/x", headers={"origin": vite})).status_code == 403
+    config = SecurityConfig(port=PORT, token=token, no_auth=True, dev_origins=(vite,))
+    async with client(config) as cl:
+        assert (await cl.get("/x", headers={"origin": vite})).status_code == 200
+        assert (await cl.get("/x", headers={"origin": vite, "host": "evil"})).status_code == 400

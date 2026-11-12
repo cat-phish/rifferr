@@ -12,7 +12,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from rifferr import __version__
 from rifferr.core.workflow import StepRegistry, workflow_json_schema
 from rifferr.schemas import PUBLISHED
 
@@ -21,12 +20,10 @@ DEFAULT_OUT = REPO_ROOT / "schemas"
 
 
 def openapi_document() -> dict[str, Any]:
-    """The API's OpenAPI document. A stub until F-API provides the FastAPI app."""
-    return {
-        "openapi": "3.1.0",
-        "info": {"title": "Rifferr", "version": __version__},
-        "paths": {},
-    }
+    """The API's OpenAPI document (API-10), from the FastAPI app; no server is started."""
+    from rifferr.api.app import ApiSettings, create_api
+
+    return create_api(ApiSettings(frontend_dir=None, token="")).openapi()
 
 
 def step_registry() -> StepRegistry:

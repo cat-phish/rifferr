@@ -1,5 +1,5 @@
 # F-API: HTTP API, SSE event stream and app DB (M0 slice)
-Status: Draft
+Status: Implemented
 Milestone: M0
 
 ## Context
@@ -48,6 +48,23 @@ DB tables (M0): `schema_version`, `jobs` (also the run record: adds `workflow`,
 `workflow_hash`, `started_at`), `events`, `trusted_files`. A `settings` table waits until
 there is a setting to store.
 
+As implemented:
+- `rifferr.api.app`: `ApiSettings(port, host, no_auth, dev, vite_port, frontend_dir, config_root,
+  db_path, token, worker_command, registry, keepalive, write_token)`; `create_api(settings)` returns
+  the bare FastAPI app (used for `openapi.json` export), `create_app(settings)` wraps it in
+  `security.secure()`. `/healthz` is public; `/openapi.json` sits behind auth like everything else.
+- `rifferr.api.routes.{profiles,workflows,runs}`, `rifferr.api.sse` (per-run replay + live stream,
+  dashboard stream), `rifferr.api.state` (`EventHub`, `ServerState`, the `State` dependency),
+  `rifferr.api.errors` (`ApiError`, handlers), `rifferr.api.models`.
+- A profile that exists but fails to load answers `422 validation_failed` in workflow and run
+  routes; `GET /api/profiles` lists it with `error` set.
+- Run step statuses are folded from events; steps still `pending` in a finished run read
+  `skipped`, steps still `running` read `cancelled`.
+- `/api/events` starts with a `: connected` comment so clients see the stream open.
+- Tests drive the never-ending `/api/events` stream through the ASGI interface directly, not
+  uvicorn, because the test network guard blocks loopback TCP too (DEV-TOOLING-7). uvicorn stays
+  a runtime dependency for `rifferr serve` (F-CLI).
+
 ## Examples
 SSE message:
 ```
@@ -76,11 +93,11 @@ Step types cannot add routes in M0. Event `data` shapes are owned by the emittin
 - ~~Dev proxy direction?~~ Resolved 2026-11-11 (author): Vite proxies to the backend, with a dev-only allowed origin (API-13).
 
 ## Tasks
-- [ ] app DB + migrations (and security middleware on the error envelope)
-- [ ] profile and workflow routes
-- [ ] run routes
-- [ ] SSE with replay
-- [ ] error envelope
-- [ ] static frontend serving + dev proxy
-- [ ] trust route
-- [ ] OpenAPI completeness test (and real `openapi.json` export, B-016)
+- [x] app DB + migrations (and security middleware on the error envelope)
+- [x] profile and workflow routes
+- [x] run routes
+- [x] SSE with replay
+- [x] error envelope
+- [x] static frontend serving + dev proxy
+- [x] trust route
+- [x] OpenAPI completeness test (and real `openapi.json` export, B-016)

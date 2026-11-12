@@ -102,6 +102,7 @@ class WorkerSupervisor:
         *,
         source_name: str,
         run_vars: dict[str, str] | None = None,
+        workflow: str | None = None,
     ) -> str:
         """Queue a run and make sure the profile's worker is up. Returns the run id.
 
@@ -115,9 +116,9 @@ class WorkerSupervisor:
             "source": source,
             "source_name": source_name,
             "vars": dict(run_vars or {}),
-            "trusted": self.db.is_trusted(workflow_hash(source)),
+            "trusted": self.db.is_trusted(digest := workflow_hash(source)),
         }
-        job = self.db.submit(profile, payload)
+        job = self.db.submit(profile, payload, workflow=workflow, workflow_hash=digest)
         await self._wake(profile)
         return job.run_id
 
@@ -278,6 +279,8 @@ class WorkerSupervisor:
         except ValueError as exc:
             log.warning("dropping out-of-order event: %s", exc)
             return
+        if event.type == "run.started":
+            self.db.mark_started(event.run_id)
         for listener in self._listeners:
             listener(event)
 

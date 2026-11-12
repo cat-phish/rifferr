@@ -50,6 +50,8 @@ class SecurityConfig:
     no_auth: bool = False
     extra_hosts: tuple[str, ...] = ()
     """Extra ``Host`` values to accept (e.g. a reverse proxy name), with port if any."""
+    dev_origins: tuple[str, ...] = ()
+    """Extra allowed origins for ``--dev`` only: the Vite dev server (API-13)."""
     exempt_prefixes: tuple[str, ...] = ()
     """Path prefixes exempt from the Origin and JSON checks (webhooks, M2)."""
     public_paths: frozenset[str] = field(default_factory=lambda: frozenset({HEALTH_PATH}))
@@ -72,6 +74,7 @@ class SecurityConfig:
     def allowed_origins(self) -> frozenset[str]:
         origins = {f"http://{h}" for h in self.allowed_hosts()}
         origins |= {f"https://{h}" for h in self.extra_hosts}
+        origins |= set(self.dev_origins)
         return frozenset(o.lower() for o in origins)
 
     def token_ok(self, candidate: str | None) -> bool:
@@ -146,10 +149,12 @@ def check_bind(host: str, *, real_auth: bool = False) -> None:
 async def _respond(
     send: Send,
     status: int,
+    code: str,
     message: str,
     headers: Iterable[tuple[bytes, bytes]] = (),
 ) -> None:
-    body = json.dumps({"error": message}).encode()
+    """The API error envelope (API-11)."""
+    body = json.dumps({"error": {"code": code, "message": message}}).encode()
     await send(
         {
             "type": "http.response.start",
@@ -239,7 +244,7 @@ class HostAllowlist:
                 if scope["type"] == "websocket":
                     await send({"type": "websocket.close", "code": 1008})
                     return
-                await _respond(send, 400, "unexpected Host header")
+                await _respond(send, 400, "host_not_allowed", "unexpected Host header")
                 return
         await self.app(scope, receive, send)
 
@@ -258,13 +263,13 @@ class OriginCheck:
             return
         origin = _header(scope, b"origin")
         if origin is not None and origin.lower() not in self.origins:
-            await _respond(send, 403, "cross-origin request refused")
+            await _respond(send, 403, "cross_origin", "cross-origin request refused")
             return
         mutating = scope["type"] == "http" and scope.get("method", "GET").upper() in MUTATING
         if mutating and origin is None:
             same_site = (_header(scope, b"sec-fetch-site") or "").lower() == "same-origin"
             if not same_site and not self.config.token_ok(_bearer(scope)):
-                await _respond(send, 403, "request without Origin refused")
+                await _respond(send, 403, "cross_origin", "request without Origin refused")
                 return
         await self.app(scope, receive, send)
 
@@ -284,7 +289,9 @@ class JsonOnly:
         ):
             media = (_header(scope, b"content-type") or "").split(";", 1)[0].strip().lower()
             if media != "application/json":
-                await _respond(send, 415, "only application/json is accepted")
+                await _respond(
+                    send, 415, "unsupported_media_type", "only application/json is accepted"
+                )
                 return
         await self.app(scope, receive, send)
 
@@ -315,7 +322,7 @@ class TokenAuth:
         if scope["type"] == "websocket":
             await send({"type": "websocket.close", "code": 1008})
             return
-        await _respond(send, 401, "authentication required")
+        await _respond(send, 401, "unauthenticated", "authentication required")
 
     async def _exchange(self, scope: Scope, send: Send) -> None:
         query = parse_qs(scope.get("query_string", b"").decode("latin-1"))
@@ -323,7 +330,7 @@ class TokenAuth:
         headers: list[tuple[bytes, bytes]] = [(b"location", b"/"), (b"cache-control", b"no-store")]
         if not self.config.no_auth:
             if not self.config.token_ok(token):
-                await _respond(send, 403, "invalid or expired token")
+                await _respond(send, 403, "invalid_token", "invalid or expired token")
                 return
             cookie = (
                 f"{self.config.cookie_name}={self.config.token}; HttpOnly; SameSite=Strict; Path=/"

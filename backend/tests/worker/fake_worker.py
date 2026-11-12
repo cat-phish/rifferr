@@ -72,12 +72,16 @@ class PidStep:
         return StepResult(outputs={"pid": os.getpid()})
 
 
+def registry() -> StepTypeRegistry:
+    return StepTypeRegistry([*ALL, BlockStep(), PrintStep(), PidStep(), ShellStep()])
+
+
 if __name__ == "__main__":
     sys.exit(
         main(
             sys.argv[1:],
             backend_factory=lambda profile: FakeBackend(),
-            registry=StepTypeRegistry([*ALL, BlockStep(), PrintStep(), PidStep(), ShellStep()]),
+            registry=registry(),
             heartbeat_interval=float(os.environ.get("RIFFERR_TEST_HEARTBEAT", "5")),
         )
     )

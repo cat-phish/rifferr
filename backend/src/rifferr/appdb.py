@@ -6,7 +6,9 @@ schema migrations). Access goes through the standard library ``sqlite3`` module.
 
 from __future__ import annotations
 
+import importlib.resources
 import json
+import re
 import sqlite3
 from collections.abc import Iterable
 from datetime import UTC, datetime
@@ -21,36 +23,52 @@ from rifferr.engine.events import Event
 JobState = Literal["queued", "running", "succeeded", "failed", "cancelled"]
 JobKind = Literal["run"]
 
-_SCHEMA = """
-CREATE TABLE IF NOT EXISTS jobs (
-    id          TEXT PRIMARY KEY,
-    profile     TEXT NOT NULL,
-    kind        TEXT NOT NULL,
-    run_id      TEXT NOT NULL UNIQUE,
-    state       TEXT NOT NULL,
-    payload     TEXT NOT NULL,
-    error       TEXT,
-    created_at  TEXT NOT NULL,
-    claimed_at  TEXT,
-    finished_at TEXT
-);
-CREATE INDEX IF NOT EXISTS jobs_queue ON jobs (profile, state, created_at);
-CREATE TABLE IF NOT EXISTS trusted_files (
-    sha256     TEXT PRIMARY KEY,
-    path_hint  TEXT NOT NULL,
-    trusted_at TEXT NOT NULL,
-    trusted_by TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS events (
-    run_id  TEXT NOT NULL,
-    seq     INTEGER NOT NULL,
-    ts      TEXT NOT NULL,
-    type    TEXT NOT NULL,
-    step_id TEXT,
-    data    TEXT NOT NULL,
-    PRIMARY KEY (run_id, seq)
-);
-"""
+_MIGRATION_FILE = re.compile(r"^(\d{3})_([a-z0-9_]+)\.sql$")
+
+
+def migrations() -> list[tuple[int, str, str]]:
+    """``(version, name, sql)`` for every migration shipped in ``rifferr.migrations``."""
+    found: list[tuple[int, str, str]] = []
+    for entry in importlib.resources.files("rifferr.migrations").iterdir():
+        m = _MIGRATION_FILE.match(entry.name)
+        if m:
+            found.append((int(m[1]), m[2], entry.read_text(encoding="utf-8")))
+    found.sort()
+    versions = [v for v, _, _ in found]
+    if versions != list(range(1, len(found) + 1)):
+        raise RuntimeError(
+            f"app DB migrations must be numbered 001, 002, ... without gaps: {versions}"
+        )
+    return found
+
+
+def schema_version(conn: sqlite3.Connection) -> int:
+    row = conn.execute("SELECT COALESCE(MAX(version), 0) FROM schema_version").fetchone()
+    return int(row[0])
+
+
+def migrate(conn: sqlite3.Connection) -> int:
+    """Apply pending migrations in order (API-1). Safe when several processes start at once:
+    each migration records its version first, so a second process applying the same one
+    fails on the primary key and rolls back. Returns the resulting version."""
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS schema_version ("
+        " version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL)"
+    )
+    for version, name, sql in migrations():
+        if version <= schema_version(conn):
+            continue
+        script = (
+            "BEGIN IMMEDIATE;\n"
+            "INSERT INTO schema_version (version, name, applied_at)"
+            f" VALUES ({version}, '{name}', '{_now()}');\n"
+            f"{sql}\nCOMMIT;"
+        )
+        try:
+            conn.executescript(script)
+        except sqlite3.IntegrityError:
+            conn.rollback()  # applied by another process meanwhile
+    return schema_version(conn)
 
 
 class Job(BaseModel):
@@ -63,7 +81,10 @@ class Job(BaseModel):
     error: str | None = None
     created_at: datetime
     claimed_at: datetime | None = None
+    started_at: datetime | None = None
     finished_at: datetime | None = None
+    workflow: str | None = None
+    workflow_hash: str | None = None
 
 
 def _now() -> str:
@@ -80,7 +101,7 @@ class AppDB:
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA busy_timeout=10000")
-        self._conn.executescript(_SCHEMA)
+        migrate(self._conn)
         path.chmod(0o600)
 
     def close(self) -> None:
@@ -88,12 +109,20 @@ class AppDB:
 
     # -- jobs ------------------------------------------------------------------
 
-    def submit(self, profile: str, payload: dict[str, JsonValue], run_id: str | None = None) -> Job:
+    def submit(
+        self,
+        profile: str,
+        payload: dict[str, JsonValue],
+        run_id: str | None = None,
+        *,
+        workflow: str | None = None,
+        workflow_hash: str | None = None,
+    ) -> Job:
         job_id, run_id = new_ulid(), run_id or new_ulid()
         self._conn.execute(
-            "INSERT INTO jobs (id, profile, kind, run_id, state, payload, created_at)"
-            " VALUES (?, ?, 'run', ?, 'queued', ?, ?)",
-            (job_id, profile, run_id, json.dumps(payload), _now()),
+            "INSERT INTO jobs (id, profile, kind, run_id, state, payload, created_at,"
+            " workflow, workflow_hash) VALUES (?, ?, 'run', ?, 'queued', ?, ?, ?, ?)",
+            (job_id, profile, run_id, json.dumps(payload), _now(), workflow, workflow_hash),
         )
         job = self.job_for_run(run_id)
         assert job is not None
@@ -135,6 +164,22 @@ class AppDB:
             f"UPDATE jobs SET state = 'failed', error = ?, finished_at = ?"
             f" WHERE profile = ? AND state IN ({marks}) RETURNING *",
             (error, _now(), profile, *wanted),
+        ).fetchall()
+        return [_job(r) for r in rows]
+
+    def mark_started(self, run_id: str) -> None:
+        self._conn.execute(
+            "UPDATE jobs SET started_at = COALESCE(started_at, ?) WHERE run_id = ?",
+            (_now(), run_id),
+        )
+
+    def list_runs(self, profile: str | None = None, limit: int = 50) -> list[Job]:
+        """Newest first."""
+        sql, args = "SELECT * FROM jobs", list[Any]()
+        if profile is not None:
+            sql, args = sql + " WHERE profile = ?", [profile]
+        rows = self._conn.execute(
+            sql + " ORDER BY created_at DESC, id DESC LIMIT ?", [*args, limit]
         ).fetchall()
         return [_job(r) for r in rows]
 
