@@ -251,6 +251,7 @@
             "enum": [
               "queued",
               "running",
+              "waiting_review",
               "succeeded",
               "failed",
               "cancelled"
@@ -363,6 +364,7 @@
             "enum": [
               "queued",
               "running",
+              "waiting_review",
               "succeeded",
               "failed",
               "cancelled"

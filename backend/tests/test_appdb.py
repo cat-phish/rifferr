@@ -53,9 +53,9 @@ def test_WORKER_3_claim_is_exclusive_across_connections(tmp_path: Path) -> None:
 def test_WORKER_3_finish_and_cancel_only_from_the_right_state(tmp_path: Path) -> None:
     db = AppDB(tmp_path / "a.db")
     job = db.submit("main", payload())  # type: ignore[arg-type]
-    assert not db.finish(job.run_id, "succeeded")  # not running yet
-    assert db.cancel_queued(job.run_id)
-    assert not db.cancel_queued(job.run_id)
+    assert not db.finish(job.run, "succeeded")  # not running yet
+    assert db.cancel_queued(job.run)
+    assert not db.cancel_queued(job.run)
     assert db.claim_next("main") is None
 
 

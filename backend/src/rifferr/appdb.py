@@ -17,13 +17,16 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, JsonValue
 
-from rifferr.core.changeset import ApplyResult, JournalEntry
+from rifferr.core.changeset import ApplyResult, ChangeSet, ChangeSetState, JournalEntry
 from rifferr.core.ids import new_ulid
+from rifferr.engine.changesets import StoredChangeSet
 from rifferr.engine.events import Event
 from rifferr.engine.journal import JournalError, completed, failed, undone
 
-JobState = Literal["queued", "running", "succeeded", "failed", "cancelled"]
-JobKind = Literal["run"]
+JobState = Literal["queued", "running", "waiting_review", "succeeded", "failed", "cancelled"]
+#: ``run``: the run record itself (API-6). ``review_decision``: apply or reject a
+#: ChangeSet (CHANGESET-13).
+JobKind = Literal["run", "review_decision"]
 
 _MIGRATION_FILE = re.compile(r"^(\d{3})_([a-z0-9_]+)\.sql$")
 
@@ -77,7 +80,7 @@ class Job(BaseModel):
     id: str
     profile: str
     kind: JobKind
-    run_id: str
+    run_id: str | None
     state: JobState
     payload: dict[str, JsonValue]
     error: str | None = None
@@ -87,6 +90,13 @@ class Job(BaseModel):
     finished_at: datetime | None = None
     workflow: str | None = None
     workflow_hash: str | None = None
+
+    @property
+    def run(self) -> str:
+        """The run id of a ``run`` job (always set for that kind)."""
+        if self.run_id is None:
+            raise ValueError(f"job {self.id} ({self.kind}) has no run")
+        return self.run_id
 
 
 def _now() -> str:
@@ -130,6 +140,24 @@ class AppDB:
         assert job is not None
         return job
 
+    def submit_job(
+        self, profile: str, kind: JobKind, payload: dict[str, JsonValue], run_id: str | None
+    ) -> Job:
+        """Queue a job that isn't a run (e.g. a review decision about one of its ChangeSets)."""
+        if kind == "run":
+            raise ValueError("use submit() for runs")
+        job_id = new_ulid()
+        row = self._conn.execute(
+            "INSERT INTO jobs (id, profile, kind, run_id, state, payload, created_at)"
+            " VALUES (?, ?, ?, ?, 'queued', ?, ?) RETURNING *",
+            (job_id, profile, kind, run_id, json.dumps(payload), _now()),
+        ).fetchone()
+        return _job(row)
+
+    def job(self, job_id: str) -> Job | None:
+        row = self._conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        return _job(row) if row else None
+
     def claim_next(self, profile: str) -> Job | None:
         """Atomically move the oldest queued job of ``profile`` to ``running``."""
         row = self._conn.execute(
@@ -145,15 +173,52 @@ class AppDB:
         """Mark a running job finished. False if it wasn't running (e.g. already failed)."""
         cur = self._conn.execute(
             "UPDATE jobs SET state = ?, error = ?, finished_at = ?"
-            " WHERE run_id = ? AND state = 'running'",
+            " WHERE run_id = ? AND kind = 'run' AND state = 'running'",
             (state, error, _now(), run_id),
+        )
+        return cur.rowcount == 1
+
+    def finish_job(self, job_id: str, state: JobState, error: str | None = None) -> bool:
+        """Like ``finish``, by job id (for jobs that aren't runs)."""
+        cur = self._conn.execute(
+            "UPDATE jobs SET state = ?, error = ?, finished_at = ?"
+            " WHERE id = ? AND state = 'running'",
+            (state, error, _now(), job_id),
+        )
+        return cur.rowcount == 1
+
+    def suspend(self, run_id: str, after: str, holds: list[str]) -> bool:
+        """running -> waiting_review until ``holds`` are resolved; the run then resumes
+        after step ``after`` (RUN-14)."""
+        cur = self._conn.execute(
+            "UPDATE jobs SET state = 'waiting_review',"
+            " payload = json_set(payload, '$.resume_after', ?, '$.holds', json(?))"
+            " WHERE run_id = ? AND kind = 'run' AND state = 'running'",
+            (after, json.dumps(holds), run_id),
+        )
+        return cur.rowcount == 1
+
+    def requeue(self, run_id: str) -> bool:
+        """waiting_review -> queued, so a worker resumes the run (RUN-14)."""
+        cur = self._conn.execute(
+            "UPDATE jobs SET state = 'queued', claimed_at = NULL"
+            " WHERE run_id = ? AND kind = 'run' AND state = 'waiting_review'",
+            (run_id,),
+        )
+        return cur.rowcount == 1
+
+    def cancel_waiting(self, run_id: str) -> bool:
+        cur = self._conn.execute(
+            "UPDATE jobs SET state = 'cancelled', finished_at = ?"
+            " WHERE run_id = ? AND kind = 'run' AND state = 'waiting_review'",
+            (_now(), run_id),
         )
         return cur.rowcount == 1
 
     def cancel_queued(self, run_id: str) -> bool:
         cur = self._conn.execute(
             "UPDATE jobs SET state = 'cancelled', finished_at = ?"
-            " WHERE run_id = ? AND state = 'queued'",
+            " WHERE run_id = ? AND kind = 'run' AND state = 'queued'",
             (_now(), run_id),
         )
         return cur.rowcount == 1
@@ -171,22 +236,25 @@ class AppDB:
 
     def mark_started(self, run_id: str) -> None:
         self._conn.execute(
-            "UPDATE jobs SET started_at = COALESCE(started_at, ?) WHERE run_id = ?",
+            "UPDATE jobs SET started_at = COALESCE(started_at, ?)"
+            " WHERE run_id = ? AND kind = 'run'",
             (_now(), run_id),
         )
 
     def list_runs(self, profile: str | None = None, limit: int = 50) -> list[Job]:
         """Newest first."""
-        sql, args = "SELECT * FROM jobs", list[Any]()
+        sql, args = "SELECT * FROM jobs WHERE kind = 'run'", list[Any]()
         if profile is not None:
-            sql, args = sql + " WHERE profile = ?", [profile]
+            sql, args = sql + " AND profile = ?", [profile]
         rows = self._conn.execute(
             sql + " ORDER BY created_at DESC, id DESC LIMIT ?", [*args, limit]
         ).fetchall()
         return [_job(r) for r in rows]
 
     def job_for_run(self, run_id: str) -> Job | None:
-        row = self._conn.execute("SELECT * FROM jobs WHERE run_id = ?", (run_id,)).fetchone()
+        row = self._conn.execute(
+            "SELECT * FROM jobs WHERE run_id = ? AND kind = 'run'", (run_id,)
+        ).fetchone()
         return _job(row) if row else None
 
     def jobs(self, profile: str | None = None, state: JobState | None = None) -> list[Job]:
@@ -258,6 +326,86 @@ class AppDB:
             )
             for r in rows
         ]
+
+
+class AppChangeSets:
+    """``ChangeSetStore`` backed by the ``changesets`` tables (CHANGESET-5)."""
+
+    def __init__(self, db: AppDB) -> None:
+        self.db = db
+
+    @property
+    def _conn(self) -> sqlite3.Connection:
+        return self.db._conn  # pyright: ignore[reportPrivateUsage]
+
+    def add(self, changeset: ChangeSet) -> None:
+        self._conn.execute(
+            "INSERT INTO changesets (id, profile, run_id, step_id, state, body, created_at)"
+            " VALUES (?, ?, ?, ?, 'proposed', ?, ?)",
+            (
+                changeset.id,
+                changeset.profile,
+                changeset.run_id,
+                changeset.step_id,
+                changeset.model_dump_json(),
+                changeset.created_at.isoformat(),
+            ),
+        )
+
+    def get(self, changeset_id: str) -> StoredChangeSet | None:
+        row = self._conn.execute(
+            "SELECT * FROM changesets WHERE id = ?", (changeset_id,)
+        ).fetchone()
+        return self._stored(row) if row else None
+
+    def set_state(
+        self,
+        changeset_id: str,
+        state: ChangeSetState,
+        *,
+        resolved_by: str | None = None,
+        decisions: dict[int, bool] | None = None,
+    ) -> None:
+        with self._conn:
+            self._conn.execute("BEGIN IMMEDIATE")
+            cur = self._conn.execute(
+                "UPDATE changesets SET state = ?, resolved_at = ?,"
+                " resolved_by = COALESCE(?, resolved_by) WHERE id = ?",
+                (state, None if state == "proposed" else _now(), resolved_by, changeset_id),
+            )
+            if cur.rowcount != 1:
+                raise KeyError(changeset_id)
+            if decisions is not None:
+                self._conn.execute(
+                    "DELETE FROM changeset_decisions WHERE changeset_id = ?", (changeset_id,)
+                )
+                self._conn.executemany(
+                    "INSERT INTO changeset_decisions (changeset_id, idx, accepted)"
+                    " VALUES (?, ?, ?)",
+                    [(changeset_id, i, int(ok)) for i, ok in sorted(decisions.items())],
+                )
+
+    def for_run(self, run_id: str, state: ChangeSetState | None = None) -> list[StoredChangeSet]:
+        sql, args = "SELECT * FROM changesets WHERE run_id = ?", [run_id]
+        if state is not None:
+            sql, args = sql + " AND state = ?", [*args, state]
+        rows = self._conn.execute(sql + " ORDER BY created_at, id", args).fetchall()
+        return [self._stored(r) for r in rows]
+
+    def _stored(self, row: sqlite3.Row) -> StoredChangeSet:
+        decisions = {
+            int(r["idx"]): bool(r["accepted"])
+            for r in self._conn.execute(
+                "SELECT idx, accepted FROM changeset_decisions WHERE changeset_id = ?",
+                (row["id"],),
+            )
+        }
+        return StoredChangeSet(
+            ChangeSet.model_validate_json(row["body"]),
+            row["state"],
+            row["resolved_by"],
+            decisions,
+        )
 
 
 class AppJournal:

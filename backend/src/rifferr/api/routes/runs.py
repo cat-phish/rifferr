@@ -112,7 +112,7 @@ async def all_events(state: State) -> StreamingResponse:
 
 def summary(job: Job) -> RunSummary:
     return RunSummary(
-        id=job.run_id,
+        id=job.run,
         profile=job.profile,
         workflow=job.workflow,
         workflow_hash=job.workflow_hash,
@@ -132,7 +132,7 @@ def steps(state: ServerState, job: Job) -> list[StepState]:
     except WorkflowLoadError:
         return []
     out = {s.id: StepState(id=s.id, uses=s.uses, status="pending") for s in wf.steps}
-    for event in state.db.events_since(job.run_id, 0):
+    for event in state.db.events_since(job.run, 0):
         step = out.get(event.step_id or "")
         if step is None:
             continue

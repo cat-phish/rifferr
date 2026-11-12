@@ -319,7 +319,7 @@ export interface components {
              * State
              * @enum {string}
              */
-            state: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+            state: "queued" | "running" | "waiting_review" | "succeeded" | "failed" | "cancelled";
             /** Steps */
             steps: components["schemas"]["StepState"][];
             /** Trusted */
@@ -350,7 +350,7 @@ export interface components {
              * State
              * @enum {string}
              */
-            state: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+            state: "queued" | "running" | "waiting_review" | "succeeded" | "failed" | "cancelled";
             /** Trusted */
             trusted: boolean;
             /** Workflow */

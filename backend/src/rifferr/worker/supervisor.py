@@ -16,11 +16,11 @@ import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Literal, cast
 
 from pydantic import JsonValue, ValidationError
 
-from rifferr.appdb import AppDB
+from rifferr.appdb import AppChangeSets, AppDB
 from rifferr.engine.events import Event, EventSink
 from rifferr.trust import workflow_hash
 from rifferr.worker.protocol import (
@@ -120,21 +120,78 @@ class WorkerSupervisor:
         }
         job = self.db.submit(profile, payload, workflow=workflow, workflow_hash=digest)
         await self._wake(profile)
-        return job.run_id
+        return job.run
+
+    async def decide(
+        self,
+        changeset_id: str,
+        *,
+        accept: bool,
+        accepted: list[int] | None = None,
+        by: str | None = None,
+    ) -> str:
+        """Queue a review decision on a ChangeSet as a worker job (CHANGESET-13).
+
+        ``accept=False`` rejects it; ``accepted`` accepts only those field-change
+        indexes (CHANGESET-9). Returns the job id. Raises ``KeyError`` for an unknown
+        ChangeSet and ``ValueError`` for one that no longer waits for a decision.
+        """
+        if self._shutting_down:
+            raise RuntimeError("server is shutting down")
+        stored = AppChangeSets(self.db).get(changeset_id)
+        if stored is None:
+            raise KeyError(changeset_id)
+        if stored.state not in ("proposed", "conflicted"):
+            raise ValueError(f"ChangeSet {changeset_id} is already {stored.state}")
+        if accept and stored.state == "conflicted":
+            raise ValueError(f"ChangeSet {changeset_id} conflicted; reject it or propose it again")
+        if accepted is not None:
+            total = len(stored.changeset.field_changes())
+            if not accepted or not set(accepted) <= set(range(total)):
+                raise ValueError(f"accepted field changes must be indexes 0..{total - 1}")
+        payload: dict[str, JsonValue] = {
+            "changeset_id": changeset_id,
+            "decision": "accept" if accept else "reject",
+            "accepted": cast(list[JsonValue], sorted(set(accepted))) if accepted else None,
+            "by": by,
+        }
+        cs = stored.changeset
+        job = self.db.submit_job(cs.profile, "review_decision", payload, cs.run_id)
+        await self._wake(cs.profile)
+        return job.id
 
     async def cancel(self, run_id: str) -> None:
-        """Cancel a queued or running run (WORKER-5). No effect on finished runs."""
+        """Cancel a queued, running or waiting run (WORKER-5, CHANGESET-7). No effect on
+        finished runs."""
         job = self.db.job_for_run(run_id)
         if job is None:
             raise KeyError(run_id)
         if self.db.cancel_queued(run_id):
-            self._persist(self._event(run_id, 1, "run.finished", {"status": "cancelled"}))
+            seq = self.db.last_seq(run_id) + 1
+            self._persist(self._event(run_id, seq, "run.finished", {"status": "cancelled"}))
+            return
+        if self.db.cancel_waiting(run_id):
+            self._reject_holds(run_id, job.payload.get("holds"))
+            seq = self.db.last_seq(run_id) + 1
+            self._persist(self._event(run_id, seq, "run.finished", {"status": "cancelled"}))
             return
         handle = self._workers.get(job.profile)
         if job.state == "running" and handle is not None:
             await self._send(
                 handle, WorkerCommand(kind="cancel_run", profile=job.profile, run_id=run_id)
             )
+
+    def _reject_holds(self, run_id: str, holds: JsonValue) -> None:
+        """A run cancelled while waiting rejects its pending ChangeSets (CHANGESET-7)."""
+        store = AppChangeSets(self.db)
+        for hold in holds if isinstance(holds, list) else []:
+            stored = store.get(str(hold))
+            if stored is None or stored.state not in ("proposed", "conflicted"):
+                continue
+            store.set_state(stored.changeset.id, "rejected", resolved_by="cancel")
+            seq = self.db.last_seq(run_id) + 1
+            event = self._event(run_id, seq, "changeset.rejected", {"changeset_id": str(hold)})
+            self._persist(event.model_copy(update={"step_id": stored.changeset.step_id}))
 
     def worker_pid(self, profile: str) -> int | None:
         handle = self._workers.get(profile)
@@ -248,14 +305,19 @@ class WorkerSupervisor:
             reason = "worker_failed_to_start"
             error = handle.start_error or f"worker exited with status {code} before it was ready"
         for job in self.db.fail_jobs(handle.profile, ["running"], reason):
-            seq = self.db.last_seq(job.run_id) + 1
+            if job.kind != "run":
+                continue  # e.g. a review decision: its run stays waiting_review
+            seq = self.db.last_seq(job.run) + 1
             data: dict[str, JsonValue] = {"status": "failed", "reason": reason, "error": error}
-            self._persist(self._event(job.run_id, seq, "run.finished", data))
+            self._persist(self._event(job.run, seq, "run.finished", data))
         if not handle.ready:
             # Don't respawn in a loop: a worker that can't start fails the whole queue.
             for job in self.db.fail_jobs(handle.profile, ["queued"], error):
+                if job.kind != "run":
+                    continue
                 data = {"status": "failed", "reason": reason, "error": error}
-                self._persist(self._event(job.run_id, 1, "run.finished", data))
+                seq = self.db.last_seq(job.run) + 1
+                self._persist(self._event(job.run, seq, "run.finished", data))
         handle.exited.set()
         if self._workers.get(handle.profile) is handle:
             del self._workers[handle.profile]
