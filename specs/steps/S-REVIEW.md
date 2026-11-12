@@ -1,5 +1,5 @@
 # S-REVIEW: `review` gate step
-Status: Draft
+Status: Approved
 Milestone: M1
 
 ## Context

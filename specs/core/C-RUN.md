@@ -10,6 +10,8 @@ over SSE and never polls (AGENTS.md conventions). This spec covers the M0
 engine in `rifferr.engine`: sequential steps over a whole run. Lanes (one per
 album) arrive in M2.
 
+
+M1 addition RUN-14 (run suspension on holds, state `waiting_review`) is specified in [S-REVIEW](../steps/S-REVIEW.md) (approved 2026-11-11), generalizing C-CHANGESET CHANGESET-7.
 ## Behavior
 - RUN-1: A run MUST move through states `queued → running → (succeeded | failed | cancelled)`; any other transition MUST raise.
 - RUN-2: Steps MUST execute in file order. Before each step, the engine MUST interpolate its `with:` values (C-WORKFLOW) and evaluate its selection; a step with a `when:` condition acts only on targets for which `backend.matches` is true.
