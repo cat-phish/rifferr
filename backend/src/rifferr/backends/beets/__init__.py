@@ -33,7 +33,7 @@ from rifferr.backends.base import (
 from rifferr.backends.beets import config
 from rifferr.backends.beets.importer import QuietImportSession
 from rifferr.backends.beets.snapshots import album_snapshot, parse_id
-from rifferr.core.changeset import ChangeSet, JournalEntry
+from rifferr.core.changeset import ApplyResult, ChangeProblem, ChangeSet
 from rifferr.core.ids import new_ulid
 from rifferr.core.profile import Profile
 from rifferr.core.selection import Selection
@@ -117,7 +117,10 @@ class BeetsBackend:
     def command_env(self) -> Mapping[str, str]:
         return {"BEETSDIR": str(self.beetsdir)}
 
-    def apply(self, changes: ChangeSet) -> JournalEntry:
+    def check(self, changes: ChangeSet) -> list[ChangeProblem]:
+        raise CapabilityError("BeetsBackend applies ChangeSets from M1 (C-CHANGESET)")
+
+    def apply(self, changes: ChangeSet) -> ApplyResult:
         raise CapabilityError("BeetsBackend applies ChangeSets from M1 (C-CHANGESET)")
 
     # -- import ----------------------------------------------------------------

@@ -13,7 +13,7 @@ from typing import Final, Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from rifferr.core.changeset import ChangeSet, JournalEntry
+from rifferr.core.changeset import ApplyResult, ChangeProblem, ChangeSet
 from rifferr.core.selection import Selection
 from rifferr.core.snapshot import AlbumSnapshot, ItemSnapshot
 
@@ -37,6 +37,14 @@ class QueryError(ValueError):
 
 class TemplateError(ValueError):
     """A template is invalid or uses something this backend doesn't support."""
+
+
+class ChangeSetRejected(ValueError):
+    """``apply`` was given changes that ``check`` refuses (CHANGESET-2). Nothing was applied."""
+
+    def __init__(self, problems: list[ChangeProblem]) -> None:
+        self.problems = problems
+        super().__init__("; ".join(f"{p.target.label()} {p.field}: {p.message}" for p in problems))
 
 
 class BackendCapabilities(BaseModel):
@@ -113,7 +121,20 @@ class LibraryBackend(Protocol):
 
     def matches(self, condition: str, target: ItemSnapshot | AlbumSnapshot) -> bool: ...
 
-    def apply(self, changes: ChangeSet) -> JournalEntry: ...
+    def check(self, changes: ChangeSet) -> list[ChangeProblem]:
+        """Problems that stop ``changes`` from being applied: unknown targets, read-only
+        fields, values the field can't store (CHANGESET-2). Empty when it can apply."""
+        ...
+
+    def apply(self, changes: ChangeSet) -> ApplyResult:
+        """Apply all of ``changes`` or nothing (CHANGESET-8).
+
+        Every field's ``old`` is compared with its current value first; on any
+        difference nothing is written and the conflicts are returned. Raises
+        ``ChangeSetRejected`` if ``check`` finds problems. Only the engine calls this,
+        after journaling the intent (CHANGESET-13, JOURNAL-1).
+        """
+        ...
 
     def import_folder(
         self,

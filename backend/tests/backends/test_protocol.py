@@ -11,6 +11,7 @@ def test_BACKEND_1_protocol_members() -> None:
         "query",
         "evaluate",
         "matches",
+        "check",
         "apply",
         "import_folder",
         "command_env",

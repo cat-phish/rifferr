@@ -19,6 +19,13 @@ Bare terms without a field and beets' other query types are rejected with
 Templates support ``$field``, ``${field}``, ``$$`` and ``$path``. Unknown fields
 are left as written, like beets. Item templates also see their album's fields.
 Template functions (``%func{}``) raise ``TemplateError``.
+
+ChangeSets (CHANGESET-12) follow beets semantics: album-scoped changes are
+carried to the album's items for the fields in ``inherited_fields`` (default:
+all album fields, as beets 2.x does); ``delete`` removes the field. Fields in
+``read_only`` can't be changed, and values must fit ``field_types`` (fields not
+listed there take strings only, like an untyped beets flexible attribute).
+``fail_writes`` simulates tag-write failures for items, by item id.
 """
 
 from __future__ import annotations
@@ -34,6 +41,7 @@ from rifferr.backends.base import (
     RUN_MARKER,
     BackendCapabilities,
     CapabilityError,
+    ChangeSetRejected,
     DecisionCallback,
     ImportDecision,
     ImportMode,
@@ -42,13 +50,50 @@ from rifferr.backends.base import (
     SkippedFolder,
     TemplateError,
 )
-from rifferr.core.changeset import ChangeSet, JournalEntry
+from rifferr.core.changeset import (
+    ApplyResult,
+    ChangeProblem,
+    ChangeSet,
+    FieldEffect,
+    TargetRef,
+    WriteFailure,
+    diff_effects,
+    find_conflicts,
+)
 from rifferr.core.selection import Selection
 from rifferr.core.snapshot import AlbumSnapshot, FieldValue, ItemSnapshot
 
 DEFAULT_CAPABILITIES = BackendCapabilities(
-    import_=True, query=True, templates=True, command_env=True
+    import_=True, query=True, templates=True, apply=True, command_env=True
 )
+#: Fields a ChangeSet can't touch (as in beets: ids, paths and bookkeeping).
+READ_ONLY_FIELDS = frozenset({"id", "path", "album_id", "mtime", "added"})
+_INT, _FLOAT, _BOOL, _STR, _LIST = int, float, bool, str, list
+#: Field types for type checks; any other field takes strings only.
+DEFAULT_FIELD_TYPES: dict[str, type] = {
+    **{
+        f: _INT
+        for f in (
+            "year",
+            "month",
+            "day",
+            "original_year",
+            "original_month",
+            "original_day",
+            "track",
+            "tracktotal",
+            "disc",
+            "disctotal",
+            "bpm",
+            "length_s",
+        )
+    },
+    **{f: _FLOAT for f in ("rg_track_gain", "rg_album_gain", "length")},
+    "comp": _BOOL,
+    "genres": _LIST,
+    "artists": _LIST,
+    "albumartists": _LIST,
+}
 TRUE_WORDS = {"1", "true", "t", "yes", "y", "on"}
 FALSE_WORDS = {"0", "false", "f", "no", "n", "off"}
 
@@ -90,9 +135,20 @@ class FakeBackend:
         self,
         capabilities: BackendCapabilities | None = None,
         env: Mapping[str, str] | None = None,
+        *,
+        inherited_fields: frozenset[str] | None = None,
+        read_only: frozenset[str] = READ_ONLY_FIELDS,
+        field_types: Mapping[str, type] | None = None,
     ) -> None:
         self.capabilities = capabilities or DEFAULT_CAPABILITIES
         self._env = dict(env or {})
+        self.inherited_fields = inherited_fields
+        """Album fields carried to items on apply; ``None`` = all (beets 2.x)."""
+        self.read_only = read_only
+        self.field_types = dict(DEFAULT_FIELD_TYPES if field_types is None else field_types)
+        self.fail_writes: dict[str, str] = {}
+        """item id -> error message, to simulate tag-write failures (CHANGESET-10)."""
+        self.apply_calls: list[ChangeSet] = []
         self._albums: list[_Album] = []
         self._next_id = 0
         self._import_fixtures: dict[str, list[dict[str, Any]] | str] = {}
@@ -107,9 +163,14 @@ class FakeBackend:
         data: Mapping[str, Any],
         capabilities: BackendCapabilities | None = None,
         env: Mapping[str, str] | None = None,
+        **options: Any,
     ) -> FakeBackend:
-        """``{"albums": [{<album fields>, "path"?: ..., "items": [{<item fields>}]}]}``."""
-        fb = cls(capabilities, env)
+        """``{"albums": [{<album fields>, "path"?: ..., "items": [{<item fields>}]}]}``.
+
+        ``options`` go to the constructor (``inherited_fields``, ``read_only``, ...).
+        Items get the album's inherited fields unless they set them, as in beets.
+        """
+        fb = cls(capabilities, env, **options)
         for album in data.get("albums", []):
             fb.add_album(album)
         return fb
@@ -121,7 +182,8 @@ class FakeBackend:
         )
         album = _Album(self._new_id("album"), str(path), dict(fields))
         for item_spec in spec.get("items", []):
-            item_fields = {k: v for k, v in item_spec.items() if k != "path"}
+            inherited = {k: v for k, v in fields.items() if self._inherits(k)}
+            item_fields = {**inherited, **{k: v for k, v in item_spec.items() if k != "path"}}
             track = item_fields.get("track")
             name = f"{track:02d} " if isinstance(track, int) else ""
             item_path = (
@@ -182,9 +244,49 @@ class FakeBackend:
         album_fields = self._album_fields_for(target)
         return render_template(template, _snapshot_env(target, album_fields))
 
-    def apply(self, changes: ChangeSet) -> JournalEntry:
+    def check(self, changes: ChangeSet) -> list[ChangeProblem]:
         self._need("apply")
-        raise NotImplementedError("ChangeSets arrive with C-CHANGESET (M1)")
+        problems: list[ChangeProblem] = []
+        for t in changes.targets:
+            if self._find(t.target) is None:
+                problems.append(ChangeProblem(target=t.target, field="", message="not found"))
+                continue
+            for c in t.changes:
+                message = self._field_problem(c.field, c.op, c.new)
+                if message is not None:
+                    problems.append(ChangeProblem(target=t.target, field=c.field, message=message))
+        return problems
+
+    def apply(self, changes: ChangeSet) -> ApplyResult:
+        self._need("apply")
+        self.apply_calls.append(changes)
+        problems = self.check(changes)
+        if problems:
+            raise ChangeSetRejected(problems)
+        conflicts = find_conflicts(changes, self._current_fields)
+        if conflicts:
+            return ApplyResult(applied=False, conflicts=conflicts)
+        touched = self._touched_albums(changes)
+        before = {ref: dict(fields) for ref, fields in self._all_fields(touched)}
+        for t in changes.targets:
+            obj = self._find(t.target)
+            assert obj is not None
+            for c in t.changes:
+                self._set(obj, c.field, c.new, delete=c.op == "delete")
+                if isinstance(obj, _Album) and self._inherits(c.field):
+                    for item in obj.items:
+                        self._set(item, c.field, c.new, delete=c.op == "delete")
+        effects: list[FieldEffect] = []
+        for ref, fields in self._all_fields(touched):
+            effects += diff_effects(ref, before[ref], fields)
+        changed_items = {e.target.id for e in effects if e.target.scope == "item"}
+        failures = [
+            WriteFailure(target=TargetRef(scope="item", id=i.id), path=i.path, error=error)
+            for a in touched
+            for i in a.items
+            if i.id in changed_items and (error := self.fail_writes.get(i.id)) is not None
+        ]
+        return ApplyResult(applied=True, effects=effects, write_failures=failures)
 
     def import_folder(
         self,
@@ -237,6 +339,56 @@ class FakeBackend:
         return dict(self._env)
 
     # -- helpers -------------------------------------------------------------
+
+    def _find(self, ref: TargetRef) -> _Album | _Item | None:
+        for album in self._albums:
+            if ref.scope == "album" and album.id == ref.id:
+                return album
+            if ref.scope == "item":
+                for item in album.items:
+                    if item.id == ref.id:
+                        return item
+        return None
+
+    def _current_fields(self, ref: TargetRef) -> dict[str, FieldValue] | None:
+        obj = self._find(ref)
+        return None if obj is None else obj.fields
+
+    def _touched_albums(self, changes: ChangeSet) -> list[_Album]:
+        ids = {t.target.id for t in changes.targets}
+        return [a for a in self._albums if a.id in ids or any(i.id in ids for i in a.items)]
+
+    @staticmethod
+    def _all_fields(albums: list[_Album]) -> list[tuple[TargetRef, dict[str, FieldValue]]]:
+        out: list[tuple[TargetRef, dict[str, FieldValue]]] = []
+        for album in albums:
+            out.append((TargetRef(scope="album", id=album.id), album.fields))
+            out += [(TargetRef(scope="item", id=i.id), i.fields) for i in album.items]
+        return out
+
+    def _inherits(self, name: str) -> bool:
+        return self.inherited_fields is None or name in self.inherited_fields
+
+    @staticmethod
+    def _set(obj: _Album | _Item, name: str, value: FieldValue, *, delete: bool) -> None:
+        if delete:
+            obj.fields.pop(name, None)
+        else:
+            obj.fields[name] = list(value) if isinstance(value, list) else value
+
+    def _field_problem(self, name: str, op: str, value: FieldValue) -> str | None:
+        if name in self.read_only:
+            return "read-only field"
+        if op == "delete":
+            return None
+        wanted = self.field_types.get(name, _STR)
+        ok = {
+            _INT: isinstance(value, int) and not isinstance(value, bool),
+            _FLOAT: isinstance(value, int | float) and not isinstance(value, bool),
+            _BOOL: isinstance(value, bool),
+            _LIST: isinstance(value, list),
+        }.get(wanted, isinstance(value, str))
+        return None if ok else f"expects {wanted.__name__}, got {type(value).__name__}"
 
     def _album_fields_for(self, target: ItemSnapshot | AlbumSnapshot) -> dict[str, FieldValue]:
         if isinstance(target, AlbumSnapshot):

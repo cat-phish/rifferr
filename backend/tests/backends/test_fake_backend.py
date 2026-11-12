@@ -15,9 +15,9 @@ from rifferr.backends.base import (
     TemplateError,
 )
 from rifferr.backends.fake import FakeBackend
-from rifferr.core.changeset import ChangeSet
+from rifferr.core.changeset import FieldChange, TargetRef
 from rifferr.core.selection import Selection
-from tests.backends.contract import BackendContract, album_names
+from tests.backends.contract import BackendContract, album_names, changeset
 
 
 class TestFakeBackendContract(BackendContract):
@@ -34,7 +34,9 @@ class TestFakeBackendWithoutCapabilities(BackendContract):
 
 def test_BACKEND_2_capabilities_default() -> None:
     caps = FakeBackend().capabilities
-    assert caps == BackendCapabilities(import_=True, query=True, templates=True, command_env=True)
+    assert caps == BackendCapabilities(
+        import_=True, query=True, templates=True, apply=True, command_env=True
+    )
 
 
 def test_BACKEND_2_disabled_templates_raise() -> None:
@@ -46,11 +48,60 @@ def test_BACKEND_2_disabled_templates_raise() -> None:
         fb.evaluate("$album", album)
 
 
-def test_BACKEND_9_apply_is_declared_but_unavailable_until_changesets() -> None:
-    fb = FakeBackend()
-    assert not fb.capabilities.apply
+def test_BACKEND_9_apply_needs_the_apply_capability() -> None:
+    fb = FakeBackend.from_fixture(
+        {"albums": [{"album": "A", "items": [{"title": "x"}]}]},
+        capabilities=BackendCapabilities(query=True),
+    )
+    item = fb.query(Selection())[0].items[0]
+    cs = changeset((TargetRef(scope="item", id=item.id), [FieldChange(field="title", new="y")]))
     with pytest.raises(CapabilityError):
-        fb.apply(ChangeSet())
+        fb.apply(cs)
+    with pytest.raises(CapabilityError):
+        fb.check(cs)
+
+
+def test_CHANGESET_12_inherited_fields_are_configurable() -> None:
+    fb = FakeBackend.from_fixture(
+        {"albums": [{"album": "A", "label": "L", "items": [{"title": "x", "album": "A"}]}]},
+        inherited_fields=frozenset({"album"}),
+    )
+    album = fb.query(Selection())[0]
+    ref = TargetRef(scope="album", id=album.id)
+    result = fb.apply(
+        changeset(
+            (
+                ref,
+                [
+                    FieldChange(field="album", old="A", new="B"),
+                    FieldChange(field="label", old="L", new="M"),
+                ],
+            )
+        )
+    )
+    assert {(e.target.scope, e.field) for e in result.effects} == {
+        ("album", "album"),
+        ("album", "label"),
+        ("item", "album"),
+    }
+
+
+def test_CHANGESET_10_simulated_write_failures_are_reported_per_item() -> None:
+    fb = FakeBackend.from_fixture(
+        {"albums": [{"album": "A", "items": [{"title": "x"}, {"title": "y"}]}]}
+    )
+    album = fb.query(Selection())[0]
+    fb.fail_writes[album.items[0].id] = "read-only file system"
+    result = fb.apply(
+        changeset(
+            (TargetRef(scope="album", id=album.id), [FieldChange(field="album", old="A", new="B")])
+        )
+    )
+    assert result.applied
+    (failure,) = result.write_failures
+    assert failure.target.id == album.items[0].id
+    assert failure.error == "read-only file system"
+    assert fb.query(Selection())[0].fields["album"] == "B"  # the DB change stays
 
 
 def test_BACKEND_6_fixture_defaults() -> None:

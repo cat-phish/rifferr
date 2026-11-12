@@ -12,6 +12,7 @@ then raise ``CapabilityError`` instead (checked by ``test_BACKEND_2_...``).
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from typing import Any, ClassVar
 
 import pytest
@@ -20,7 +21,16 @@ from rifferr.backends.base import (
     RUN_MARKER,
     BackendCapabilities,
     CapabilityError,
+    ChangeSetRejected,
     LibraryBackend,
+)
+from rifferr.core.changeset import (
+    ChangeSet,
+    ChangeSource,
+    FieldChange,
+    FieldEffect,
+    TargetChange,
+    TargetRef,
 )
 from rifferr.core.selection import Selection
 from rifferr.core.snapshot import AlbumSnapshot
@@ -58,6 +68,28 @@ STANDARD_LIBRARY: list[dict[str, Any]] = [
         "items": [{"title": "Three", "track": 1, "artist": "Fixture Artist"}],
     },
 ]
+
+
+def changeset(*targets: tuple[TargetRef, list[FieldChange]]) -> ChangeSet:
+    return ChangeSet(
+        id="cs-contract",
+        profile="test",
+        source=ChangeSource(kind="manual", name="contract"),
+        created_at=datetime(2026, 11, 12, tzinfo=UTC),
+        targets=[TargetChange(target=t, changes=c) for t, c in targets],
+    )
+
+
+def album_ref(album: AlbumSnapshot) -> TargetRef:
+    return TargetRef(scope="album", id=album.id)
+
+
+def item_ref(album: AlbumSnapshot, index: int) -> TargetRef:
+    return TargetRef(scope="item", id=album.items[index].id)
+
+
+def effect_keys(effects: list[FieldEffect]) -> set[tuple[str, str]]:
+    return {(e.target.id, e.field) for e in effects}
 
 
 def album_names(albums: list[AlbumSnapshot]) -> set[str]:
@@ -100,6 +132,9 @@ class BackendContract:
             "query": lambda: backend.query(Selection()),
             "command_env": backend.command_env,
             "import_": lambda: backend.import_folder(tmp_path, "quiet", None),
+            "apply": lambda: backend.apply(
+                changeset((TargetRef(scope="item", id="x"), [FieldChange(field="t", new="x")]))
+            ),
         }
         for cap, call in calls.items():
             if not getattr(caps, cap):
@@ -226,3 +261,130 @@ class BackendContract:
         env = backend.command_env()
         assert isinstance(env, Mapping)
         assert all(isinstance(k, str) and isinstance(v, str) for k, v in env.items())
+
+    # -- ChangeSets (C-CHANGESET) ---------------------------------------------
+
+    def test_CHANGESET_10_album_change_is_stored_and_carried_to_items(
+        self, backend: LibraryBackend
+    ) -> None:
+        self.need(backend, "apply")
+        ep = self.by_album(backend, "First EP")
+        change = FieldChange(field="album", old="First EP", new="First EP (Live)")
+        result = backend.apply(changeset((album_ref(ep), [change])))
+        assert result.applied
+        assert not result.conflicts
+        after = self.by_album(backend, "First EP (Live)")
+        assert [i.fields["album"] for i in after.items] == ["First EP (Live)"] * 2
+        assert self.by_album(backend, "Long Player").items[0].fields["album"] == "Long Player"
+
+    def test_CHANGESET_11_effects_include_propagated_item_fields(
+        self, backend: LibraryBackend
+    ) -> None:
+        self.need(backend, "apply")
+        ep = self.by_album(backend, "First EP")
+        change = FieldChange(field="year", old=2001, new=2002)
+        result = backend.apply(changeset((album_ref(ep), [change])))
+        assert effect_keys(result.effects) == {
+            (ep.id, "year"),
+            (ep.items[0].id, "year"),
+            (ep.items[1].id, "year"),
+        }
+        assert all(e.before == 2001 and e.after == 2002 for e in result.effects)
+
+    def test_CHANGESET_10_item_change_stays_on_the_item(self, backend: LibraryBackend) -> None:
+        self.need(backend, "apply")
+        ep = self.by_album(backend, "First EP")
+        change = FieldChange(field="title", old="One", new="One (Intro)")
+        result = backend.apply(changeset((item_ref(ep, 0), [change])))
+        assert effect_keys(result.effects) == {(ep.items[0].id, "title")}
+        after = self.by_album(backend, "First EP")
+        assert [i.fields["title"] for i in after.items] == ["One (Intro)", "Two"]
+
+    def test_CHANGESET_11_new_field_records_that_it_did_not_exist(
+        self, backend: LibraryBackend
+    ) -> None:
+        self.need(backend, "apply")
+        ep = self.by_album(backend, "First EP")
+        result = backend.apply(
+            changeset((item_ref(ep, 1), [FieldChange(field="mood", old=None, new="calm")]))
+        )
+        (effect,) = result.effects
+        assert (effect.before, effect.after, effect.existed_before) == (None, "calm", False)
+        assert self.by_album(backend, "First EP").items[1].fields["mood"] == "calm"
+
+    def test_CHANGESET_10_delete_removes_a_flexible_attribute(
+        self, backend: LibraryBackend
+    ) -> None:
+        self.need(backend, "apply")
+        ep = self.by_album(backend, "First EP")
+        add = FieldChange(field="mood", old=None, new="calm")
+        backend.apply(changeset((item_ref(ep, 0), [add])))
+        remove = FieldChange(field="mood", op="delete", old="calm")
+        result = backend.apply(changeset((item_ref(ep, 0), [remove])))
+        (effect,) = result.effects
+        assert (effect.before, effect.after, effect.existed_before) == ("calm", None, True)
+        assert "mood" not in self.by_album(backend, "First EP").items[0].fields
+
+    def test_CHANGESET_8_conflict_applies_nothing(self, backend: LibraryBackend) -> None:
+        self.need(backend, "apply")
+        ep = self.by_album(backend, "First EP")
+        good = FieldChange(field="year", old=2001, new=2003)
+        stale = FieldChange(field="title", old="Not One", new="X")
+        result = backend.apply(changeset((album_ref(ep), [good]), (item_ref(ep, 0), [stale])))
+        assert not result.applied
+        assert not result.effects
+        (conflict,) = result.conflicts
+        assert (conflict.field, conflict.expected, conflict.current) == ("title", "Not One", "One")
+        after = self.by_album(backend, "First EP")
+        assert after.fields["year"] == 2001
+        assert after.items[0].fields["title"] == "One"
+
+    def test_CHANGESET_8_old_none_conflicts_with_an_existing_value(
+        self, backend: LibraryBackend
+    ) -> None:
+        self.need(backend, "apply")
+        ep = self.by_album(backend, "First EP")
+        result = backend.apply(
+            changeset((album_ref(ep), [FieldChange(field="albumtype", old=None, new="live")]))
+        )
+        assert not result.applied
+        assert result.conflicts[0].current == "ep"
+
+    @pytest.mark.parametrize("field", ["id", "path", "album_id", "mtime", "added"])
+    def test_CHANGESET_2_read_only_fields_are_rejected(
+        self, backend: LibraryBackend, field: str
+    ) -> None:
+        self.need(backend, "apply")
+        ep = self.by_album(backend, "First EP")
+        cs = changeset((item_ref(ep, 0), [FieldChange(field=field, new="x")]))
+        (problem,) = backend.check(cs)
+        assert problem.field == field
+        with pytest.raises(ChangeSetRejected):
+            backend.apply(cs)
+
+    def test_CHANGESET_2_values_must_fit_the_field_type(self, backend: LibraryBackend) -> None:
+        self.need(backend, "apply")
+        ep = self.by_album(backend, "First EP")
+        bad = changeset((album_ref(ep), [FieldChange(field="year", old=2001, new="soon")]))
+        assert [p.field for p in backend.check(bad)] == ["year"]
+        with pytest.raises(ChangeSetRejected):
+            backend.apply(bad)
+        assert self.by_album(backend, "First EP").fields["year"] == 2001
+        good = changeset((album_ref(ep), [FieldChange(field="year", old=2001, new=1999)]))
+        assert backend.check(good) == []
+
+    def test_CHANGESET_2_unknown_targets_are_problems(self, backend: LibraryBackend) -> None:
+        self.need(backend, "apply")
+        ep = self.by_album(backend, "First EP")
+        missing = TargetRef(scope="item", id=ep.id + "-gone")
+        problems = backend.check(changeset((missing, [FieldChange(field="title", new="x")])))
+        assert [p.target for p in problems] == [missing]
+
+    def test_CHANGESET_12_list_fields_round_trip(self, backend: LibraryBackend) -> None:
+        self.need(backend, "apply")
+        ep = self.by_album(backend, "First EP")
+        change = FieldChange(field="genres", old=["Rock"], new=["Rock", "Live"])
+        assert backend.apply(changeset((album_ref(ep), [change]))).applied
+        after = self.by_album(backend, "First EP")
+        assert after.fields["genres"] == ["Rock", "Live"]
+        assert after.items[0].fields["genres"] == ["Rock", "Live"]

@@ -1,0 +1,206 @@
+{
+  "$defs": {
+    "ProposedFieldChange": {
+      "additionalProperties": false,
+      "description": "A field change as a step proposes it. Without ``old`` the engine fills it in.",
+      "properties": {
+        "field": {
+          "title": "Field",
+          "type": "string"
+        },
+        "new": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The new value; required for op 'set'.",
+          "title": "New"
+        },
+        "old": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The value the proposer saw. Omit it and the engine fills it in from the snapshot the step was given.",
+          "title": "Old"
+        },
+        "op": {
+          "default": "set",
+          "enum": [
+            "set",
+            "delete"
+          ],
+          "title": "Op",
+          "type": "string"
+        },
+        "rationale": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rationale"
+        }
+      },
+      "required": [
+        "field"
+      ],
+      "title": "ProposedFieldChange",
+      "type": "object"
+    },
+    "ProposedTargetChange": {
+      "additionalProperties": false,
+      "properties": {
+        "changes": {
+          "items": {
+            "$ref": "#/$defs/ProposedFieldChange"
+          },
+          "minItems": 1,
+          "title": "Changes",
+          "type": "array"
+        },
+        "target": {
+          "$ref": "#/$defs/TargetRef"
+        }
+      },
+      "required": [
+        "target",
+        "changes"
+      ],
+      "title": "ProposedTargetChange",
+      "type": "object"
+    },
+    "TargetRef": {
+      "additionalProperties": false,
+      "description": "One album or item, by the backend id from its snapshot.",
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "scope": {
+          "enum": [
+            "album",
+            "item"
+          ],
+          "title": "Scope",
+          "type": "string"
+        }
+      },
+      "required": [
+        "scope",
+        "id"
+      ],
+      "title": "TargetRef",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "What a step proposes (CHANGESET-3). Published as ``changeset-proposal.schema.json``;\nalso the stdout format of ``shell`` steps with ``emits: changes``.\n\nExactly one of ``targets`` or the short form ``changes`` (which applies to the\nstep's current album or item).",
+  "oneOf": [
+    {
+      "required": [
+        "targets"
+      ]
+    },
+    {
+      "required": [
+        "changes"
+      ]
+    }
+  ],
+  "properties": {
+    "changes": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/ProposedFieldChange"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Short form: field changes to the step's current album or item.",
+      "title": "Changes"
+    },
+    "rationale": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Rationale"
+    },
+    "targets": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/ProposedTargetChange"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Targets"
+    }
+  },
+  "title": "ChangeSetProposal",
+  "type": "object"
+}
