@@ -72,6 +72,24 @@ class PidStep:
         return StepResult(outputs={"pid": os.getpid()})
 
 
+class SlowFake(FakeBackend):
+    """Each template evaluation takes RIFFERR_TEST_EVAL_DELAY seconds."""
+
+    def evaluate(self, template, target):  # type: ignore[no-untyped-def]
+        time.sleep(float(os.environ.get("RIFFERR_TEST_EVAL_DELAY", "0")))
+        return super().evaluate(template, target)
+
+
+def preview_library() -> FakeBackend:
+    """For --read-only: a few albums, opened read-only (WORKER-11)."""
+    fb = SlowFake()
+    for n in range(int(os.environ.get("RIFFERR_TEST_ALBUMS", "3"))):
+        fb.add_album(
+            {"album": f"Album {n}", "albumtype": "ep", "items": [{"title": "a/b", "track": 1}]}
+        )
+    return fb.read_only_view() if os.environ.get("RIFFERR_TEST_WRITABLE") != "1" else fb
+
+
 def registry() -> StepTypeRegistry:
     return StepTypeRegistry([*ALL, BlockStep(), PrintStep(), PidStep(), ShellStep()])
 
@@ -80,7 +98,11 @@ if __name__ == "__main__":
     sys.exit(
         main(
             sys.argv[1:],
-            backend_factory=lambda profile: FakeBackend(),
+            backend_factory=(
+                (lambda profile: preview_library())
+                if "--read-only" in sys.argv
+                else (lambda profile: FakeBackend())
+            ),
             registry=registry(),
             heartbeat_interval=float(os.environ.get("RIFFERR_TEST_HEARTBEAT", "5")),
         )

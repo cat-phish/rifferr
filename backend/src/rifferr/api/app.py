@@ -22,7 +22,7 @@ from starlette.types import Scope
 from rifferr import __version__
 from rifferr.api import errors
 from rifferr.api.models import Health
-from rifferr.api.routes import profiles, runs, workflows
+from rifferr.api.routes import profiles, runs, scripts, workflows
 from rifferr.api.security import (
     ASGIApp,
     SecurityConfig,
@@ -36,6 +36,7 @@ from rifferr.appdb import AppDB, SqliteEventSink
 from rifferr.engine import StepTypeRegistry
 from rifferr.profile_store import app_db_path, config_root
 from rifferr.steps.registry import load_step_types
+from rifferr.worker.previews import PreviewSupervisor
 from rifferr.worker.supervisor import Command, WorkerSupervisor
 
 DEFAULT_PORT = 8765
@@ -89,6 +90,8 @@ class ApiSettings:
     db_path: Path | None = None
     token: str = field(default_factory=generate_token)
     worker_command: Command | None = None
+    preview_command: Command | None = None
+    """Read-only worker command (WORKER-11); default: ``python -m rifferr.worker --read-only``."""
     registry: StepTypeRegistry | None = None
     """Step types the server validates against; default: the installed entry points."""
     keepalive: float = KEEPALIVE
@@ -114,10 +117,12 @@ def create_api(settings: ApiSettings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         db = AppDB(settings.db_path or app_db_path())  # migrates (API-1)
         supervisor = WorkerSupervisor(db, SqliteEventSink(db), command=settings.worker_command)
+        previews = PreviewSupervisor(command=settings.preview_command)
         state = ServerState(
             config_root=settings.config_root or config_root(),
             db=db,
             supervisor=supervisor,
+            previews=previews,
             registry=settings.registry or load_step_types(),
             keepalive=settings.keepalive,
         )
@@ -128,6 +133,7 @@ def create_api(settings: ApiSettings | None = None) -> FastAPI:
         try:
             yield
         finally:
+            await previews.shutdown()
             await supervisor.shutdown()
             if settings.write_token and not settings.no_auth:
                 remove_token_file(settings.port)
@@ -145,6 +151,7 @@ def create_api(settings: ApiSettings | None = None) -> FastAPI:
     app.include_router(profiles.router)
     app.include_router(workflows.router)
     app.include_router(runs.router)
+    app.include_router(scripts.router)
 
     @app.get("/healthz", response_model=Health, tags=["health"])
     async def healthz() -> Health:

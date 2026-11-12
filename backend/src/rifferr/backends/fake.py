@@ -209,7 +209,7 @@ class FakeBackend:
 
     def read_only_view(self) -> FakeBackend:
         """The same library, opened read-only (BACKEND-13): no apply, no import."""
-        view = FakeBackend(
+        view = type(self)(
             self.capabilities.model_copy(update={"apply": False, "import_": False, "undo": False}),
             self._env,
             inherited_fields=self.inherited_fields,

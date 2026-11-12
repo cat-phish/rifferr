@@ -11,6 +11,7 @@ from fastapi import Depends, Request
 
 from rifferr.appdb import AppDB
 from rifferr.engine import Event, StepTypeRegistry
+from rifferr.worker.previews import PreviewSupervisor
 from rifferr.worker.supervisor import WorkerSupervisor
 
 RUN_LEVEL_EVENTS = frozenset({"run.started", "run.finished"})
@@ -42,6 +43,7 @@ class ServerState:
     config_root: Path
     db: AppDB
     supervisor: WorkerSupervisor
+    previews: PreviewSupervisor
     registry: StepTypeRegistry
     keepalive: float
     hub: EventHub = field(default_factory=EventHub)

@@ -90,6 +90,397 @@
         "type": "object"
       },
       "JsonValue": {},
+      "PreviewError": {
+        "additionalProperties": false,
+        "properties": {
+          "column": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Column"
+          },
+          "line": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "message"
+        ],
+        "title": "PreviewError",
+        "type": "object"
+      },
+      "PreviewField": {
+        "additionalProperties": false,
+        "properties": {
+          "actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Actions",
+            "type": "array"
+          },
+          "after": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After"
+          },
+          "before": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before"
+          },
+          "deleted": {
+            "default": false,
+            "title": "Deleted",
+            "type": "boolean"
+          },
+          "field": {
+            "title": "Field",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "before",
+          "after",
+          "actions"
+        ],
+        "title": "PreviewField",
+        "type": "object"
+      },
+      "PreviewIssue": {
+        "additionalProperties": false,
+        "description": "A field a second pass changes (TAGSCRIPT-16).",
+        "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action"
+          },
+          "action_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Index"
+          },
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "first": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First"
+          },
+          "second": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Second"
+          },
+          "target": {
+            "$ref": "#/components/schemas/TargetRef"
+          }
+        },
+        "required": [
+          "target",
+          "field",
+          "action",
+          "action_index",
+          "first",
+          "second"
+        ],
+        "title": "PreviewIssue",
+        "type": "object"
+      },
+      "PreviewRequest": {
+        "additionalProperties": false,
+        "description": "A script as text (the editor's buffer) or a file in ``scripts/``, and a query.",
+        "properties": {
+          "client": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Caller id; a newer preview from the same client cancels an older one",
+            "title": "Client"
+          },
+          "limit": {
+            "default": 50,
+            "description": "Albums at most",
+            "maximum": 500.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "query": {
+            "default": "",
+            "description": "beets query selecting the albums",
+            "title": "Query",
+            "type": "string"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "enum": [
+                  "album",
+                  "item"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Override the script's scope",
+            "title": "Scope"
+          },
+          "script": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A file in the profile's scripts/",
+            "title": "Script"
+          },
+          "script_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "YAML text of a script",
+            "title": "Script Text"
+          }
+        },
+        "title": "PreviewRequest",
+        "type": "object"
+      },
+      "PreviewResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "albums": {
+            "default": 0,
+            "description": "Albums evaluated",
+            "title": "Albums",
+            "type": "integer"
+          },
+          "idempotence": {
+            "items": {
+              "$ref": "#/components/schemas/PreviewIssue"
+            },
+            "title": "Idempotence",
+            "type": "array"
+          },
+          "idempotence_checked": {
+            "default": false,
+            "title": "Idempotence Checked",
+            "type": "boolean"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/PreviewTarget"
+            },
+            "title": "Targets",
+            "type": "array"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
+          },
+          "validation_errors": {
+            "items": {
+              "$ref": "#/components/schemas/PreviewError"
+            },
+            "title": "Validation Errors",
+            "type": "array"
+          }
+        },
+        "title": "PreviewResponse",
+        "type": "object"
+      },
+      "PreviewTarget": {
+        "additionalProperties": false,
+        "properties": {
+          "actions": {
+            "description": "Actions that changed this target",
+            "items": {
+              "type": "string"
+            },
+            "title": "Actions",
+            "type": "array"
+          },
+          "album": {
+            "description": "Id of the album this target belongs to",
+            "title": "Album",
+            "type": "string"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/PreviewField"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "target": {
+            "$ref": "#/components/schemas/TargetRef"
+          }
+        },
+        "required": [
+          "target",
+          "album",
+          "label"
+        ],
+        "title": "PreviewTarget",
+        "type": "object"
+      },
       "ProfileSummary": {
         "additionalProperties": false,
         "properties": {
@@ -438,6 +829,154 @@
         "title": "SafetyFinding",
         "type": "object"
       },
+      "ScriptDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/ScriptError"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "file": {
+            "title": "File",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "valid": {
+            "title": "Valid",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "file",
+          "sha256",
+          "valid",
+          "errors",
+          "text"
+        ],
+        "title": "ScriptDetail",
+        "type": "object"
+      },
+      "ScriptError": {
+        "additionalProperties": false,
+        "description": "A problem in a script file, with its YAML location (TAGSCRIPT-2).",
+        "properties": {
+          "column": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Column"
+          },
+          "line": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "message"
+        ],
+        "title": "ScriptError",
+        "type": "object"
+      },
+      "ScriptSave": {
+        "additionalProperties": false,
+        "properties": {
+          "sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hash of the text the editor loaded; 409 hash_mismatch if the file changed",
+            "title": "Sha256"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "ScriptSave",
+        "type": "object"
+      },
+      "ScriptSummary": {
+        "additionalProperties": false,
+        "description": "A file in the profile's ``scripts/`` folder (API-18).",
+        "properties": {
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/ScriptError"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "file": {
+            "title": "File",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "valid": {
+            "title": "Valid",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "file",
+          "sha256",
+          "valid",
+          "errors"
+        ],
+        "title": "ScriptSummary",
+        "type": "object"
+      },
       "StepState": {
         "additionalProperties": false,
         "properties": {
@@ -486,6 +1025,31 @@
           "status"
         ],
         "title": "StepState",
+        "type": "object"
+      },
+      "TargetRef": {
+        "additionalProperties": false,
+        "description": "One album or item, by the backend id from its snapshot.",
+        "properties": {
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "album",
+              "item"
+            ],
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope",
+          "id"
+        ],
+        "title": "TargetRef",
         "type": "object"
       },
       "TrustRequest": {
@@ -861,6 +1425,357 @@
         "summary": "Get Profiles",
         "tags": [
           "profiles"
+        ]
+      }
+    },
+    "/api/profiles/{profile}/scripts": {
+      "get": {
+        "description": "Script files with their hash and validity (API-18).",
+        "operationId": "list_scripts_api_profiles__profile__scripts_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ScriptSummary"
+                  },
+                  "title": "Response List Scripts Api Profiles  Profile  Scripts Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "List Scripts",
+        "tags": [
+          "scripts"
+        ]
+      }
+    },
+    "/api/profiles/{profile}/scripts/{name}": {
+      "get": {
+        "operationId": "get_script_api_profiles__profile__scripts__name__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScriptDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Get Script",
+        "tags": [
+          "scripts"
+        ]
+      },
+      "put": {
+        "description": "Save the text as typed; with ``sha256``, only if the file is unchanged (API-18).",
+        "operationId": "put_script_api_profiles__profile__scripts__name__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScriptSave"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScriptDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Put Script",
+        "tags": [
+          "scripts"
+        ]
+      }
+    },
+    "/api/profiles/{profile}/tagscript/preview": {
+      "post": {
+        "description": "Evaluate a script against a query in the read-only worker (TAGSCRIPT-20, -21).\n\nNothing is proposed, written or stored.",
+        "operationId": "preview_script_api_profiles__profile__tagscript_preview_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
+          }
+        },
+        "summary": "Preview Script",
+        "tags": [
+          "scripts"
         ]
       }
     },

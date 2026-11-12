@@ -256,6 +256,7 @@ class Worker:
                 redactor=Redactor([]),
                 trusted=payload.get("trusted") is True,
                 work_dir=self.profile.root,
+                profile_dir=self.profile.root,
                 secrets=self.secrets,
                 last_seq=self._next_seq(job.run) - 1 if resume_after else 0,
             )
@@ -536,6 +537,11 @@ def main(
     parser = argparse.ArgumentParser(prog="python -m rifferr.worker")
     parser.add_argument("--profile", required=True)
     parser.add_argument("--db", type=Path, default=None)
+    parser.add_argument(
+        "--read-only",
+        action="store_true",
+        help="preview and query requests only; the library is opened read-only (WORKER-11)",
+    )
     args = parser.parse_args(argv)
     channel = _claim_channel()
     logging.basicConfig(
@@ -545,6 +551,11 @@ def main(
     threading.Thread(
         target=_heartbeat, args=(channel.send, heartbeat_interval, stop), daemon=True
     ).start()
+    if args.read_only:
+        try:
+            return _main_read_only(args.profile, channel, backend_factory)
+        finally:
+            stop.set()
     try:
         profile = load_profile(config_root(), args.profile)
         backend = (backend_factory or load_backend)(profile)
@@ -579,4 +590,36 @@ def main(
     finally:
         stop.set()
         db.close()
+    return 0
+
+
+def _main_read_only(
+    profile_name: str,
+    channel: Channel,
+    backend_factory: Callable[[Profile], LibraryBackend] | None,
+) -> int:
+    from rifferr.worker.readonly import ReadOnlyWorker
+
+    try:
+        profile = load_profile(config_root(), profile_name)
+        if backend_factory is not None:
+            backend = backend_factory(profile)
+        else:
+            backend = load_backend(profile, read_only=True)
+        worker = ReadOnlyWorker(
+            profile, backend, channel.send, idle_timeout=profile.worker.idle_timeout
+        )
+    except Exception as exc:
+        channel.send(WorkerMessage(kind="error", message=f"worker failed to start: {exc}"))
+        return 2
+
+    async def serve() -> None:
+        queue: Commands = asyncio.Queue()
+        loop = asyncio.get_running_loop()
+        threading.Thread(
+            target=_read_commands, args=(_lines(sys.stdin.fileno()), loop, queue), daemon=True
+        ).start()
+        await worker.serve(queue)
+
+    asyncio.run(serve())
     return 0

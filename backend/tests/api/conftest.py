@@ -41,6 +41,7 @@ def settings(tmp_path: Path, **kw: Any) -> ApiSettings:
         "db_path": db,
         "frontend_dir": None,
         "worker_command": lambda p: [sys.executable, FAKE_WORKER, "--profile", p, "--db", str(db)],
+        "preview_command": lambda p: [sys.executable, FAKE_WORKER, "--profile", p, "--read-only"],
         "registry": registry(),
         "keepalive": 0.2,
         "write_token": False,

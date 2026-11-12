@@ -136,3 +136,34 @@ class RunDetail(RunSummary):
 class Accepted(_Model):
     id: str
     status: Literal["cancel_requested"] = "cancel_requested"
+
+
+class ScriptError(_Model):
+    """A problem in a script file, with its YAML location (TAGSCRIPT-2)."""
+
+    path: str
+    message: str
+    line: int | None = None
+    column: int | None = None
+
+
+class ScriptSummary(_Model):
+    """A file in the profile's ``scripts/`` folder (API-18)."""
+
+    name: str
+    file: str
+    sha256: str
+    valid: bool
+    errors: list[ScriptError]
+
+
+class ScriptDetail(ScriptSummary):
+    text: str
+
+
+class ScriptSave(_Model):
+    text: str
+    sha256: str | None = Field(
+        default=None,
+        description="Hash of the text the editor loaded; 409 hash_mismatch if the file changed",
+    )
