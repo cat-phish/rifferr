@@ -1,5 +1,5 @@
 # C-CHANGESET: ChangeSet model, apply policy and review states
-Status: Draft
+Status: Approved
 Milestone: M1
 
 ## Context

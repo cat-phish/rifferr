@@ -29,8 +29,8 @@ A row gets a link once its spec file exists. Build order: [docs/roadmap.md](../d
 | [C-WORKFLOW](core/C-WORKFLOW.md) | Workflow YAML schema, steps, interpolation | 2 | M0 | Implemented |
 | [C-BACKEND](core/C-BACKEND.md) | LibraryBackend protocol, snapshots, capabilities | 8 | M0 | Implemented |
 | [C-RUN](core/C-RUN.md) | Run state machine, lanes, events | 2, 2a | M0 | Implemented |
-| [C-CHANGESET](core/C-CHANGESET.md) | ChangeSet model and apply/review policy | 2 | M1 | Draft |
-| [C-JOURNAL](core/C-JOURNAL.md) | Journal and undo | 2 | M1 | Draft |
+| [C-CHANGESET](core/C-CHANGESET.md) | ChangeSet model and apply/review policy | 2 | M1 | Approved |
+| [C-JOURNAL](core/C-JOURNAL.md) | Journal and undo | 2 | M1 | Approved |
 | [S-BEETS-IMPORT](steps/S-BEETS-IMPORT.md) | `beets.import` step | 3, 8 | M0 | Implemented |
 | [S-SHELL](steps/S-SHELL.md) | `shell` step | 5 | M0 | Implemented |
 | S-BEETS-COMMAND | `beets.command` step | 3 | M1 | Planned |

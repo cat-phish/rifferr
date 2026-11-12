@@ -1,5 +1,5 @@
 # C-JOURNAL: Journal and undo
-Status: Draft
+Status: Approved
 Milestone: M1
 
 ## Context
