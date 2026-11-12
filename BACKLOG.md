@@ -25,6 +25,8 @@ are **not** part of the current task. Append here instead of acting on them.
 
 - B-021 [idea] (2026-11-11, from F-API) Per-profile setting to prune events of finished runs after N days. M0 keeps events forever.
 - B-023 [idea] (2026-11-11, from F-CLI) Serverless `rifferr run`: host a `WorkerSupervisor` in the CLI process when no server is running. Needs a system-wide per-profile worker lock (e.g. `flock` on `<data_root>/workers/<profile>.lock`, held by the worker) so a server started mid-run can't spawn a second worker on the same library (WORKER-1).
+- B-024 [idea] (2026-11-11, from F-UI-SHELL) Importing part of a workflow (pasting or importing steps in the M1 editor) MUST always show the review (YAML of the imported part + safety report) and ask for trust, like importing a whole workflow (author's trust model, F-UI-SHELL Context). The M1 editor spec must cover it.
+- B-025 [idea] (2026-11-11, from F-UI-SHELL) `/api/events` has no event for a run being queued, so the Runs page shows runs queued by another client (CLI) only once they start. Consider a non-persisted `run.queued` notification on the dashboard stream.
 
 ## Issues
 - B-004 [bug] (2026-11-11, from session) Nix `pre-commit` package fails to build Python hook environments (`ModuleNotFoundError: No module named 'packaging'` in its virtualenv). Use the distro package or pipx; mention in contributor docs.
@@ -39,11 +41,11 @@ are **not** part of the current task. Append here instead of acting on them.
 - B-017 [debt] (2026-11-11, from C-WORKFLOW) WORKFLOW-5 checks `with:` values before interpolation, so a non-string parameter written as an expression (e.g. `timeout: "{{ vars.t }}"`) fails validation. Decide whether typed params may take `{{ }}` and validate them after interpolation.
 
 ## Questions
-- B-008 [question] (2026-11-11, from architecture §12) Which UI component library (shadcn/ui, Mantine, …)? Needed for F-UI-SHELL.
 - B-010 [question] (2026-11-11, from architecture §12) Should `when:` also accept a simpler expression language that compiles to beets queries?
 - B-011 [question] (2026-11-11, from architecture §12) Add a plugin exception to the AGPL so in-process plugins can use any license?
 
 ## Done
+- B-008 [question] (2026-11-11, from architecture §12) Which UI component library (shadcn/ui, Mantine, …)? Needed for F-UI-SHELL. → F-UI-SHELL (author: Mantine, 2026-11-11)
 - B-022 [bug] (2026-11-11, from F-API) A worker told to stop exits with SIGABRT (status 134/-6): "Fatal Python error: _enter_buffered_busy: could not acquire lock for <_io.BufferedReader name='<stdin>'> at interpreter shutdown, possibly due to daemon threads". The daemon thread in `worker.process._read_commands` is blocked reading `sys.stdin.buffer`. Job states stay correct, but the supervisor logs a normal stop as `worker_crashed`. Likely fix: read commands from the raw fd (or `os._exit` after cleanup), plus a test that a stopped worker exits 0. → fixed: commands are read from fd 0 with `os.read` (2026-11-11)
 - B-016 [debt] (2026-11-11, from F-DEV-TOOLING) `schemas/openapi.json` is a stub until F-API provides the FastAPI app; `export.openapi_document()` must switch to `app.openapi()` then. → F-API
 - B-009 [question] (2026-11-11, from architecture §12) Server ↔ worker IPC: multiprocessing pipes or a local socket? → F-WORKER (author: inherited pipes, 2026-11-11)
