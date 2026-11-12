@@ -44,7 +44,7 @@ A row gets a link once its spec file exists. Build order: [docs/roadmap.md](../d
 | [F-DEV-TOOLING](features/F-DEV-TOOLING.md) | Project skeleton, checks, CI, fixtures | 9, 10 | M0 | Implemented |
 | [F-SECURITY](features/F-SECURITY.md) | Host/Origin checks, local token, remote auth, workflow trust | 8 | M0 | Implemented |
 | [F-API](features/F-API.md) | HTTP API and SSE event stream | 8 | M0 | Implemented |
-| [F-CLI](features/F-CLI.md) | `rifferr serve`, `run`, `validate` | 9 | M0 | Draft |
+| [F-CLI](features/F-CLI.md) | `rifferr serve`, `run`, `validate` | 9 | M0 | Approved |
 | [F-WORKER](features/F-WORKER.md) | Worker process per profile and IPC | 8 | M0 | Implemented |
 | [F-UI-SHELL](features/F-UI-SHELL.md) | UI shell and run log | 11 | M0 | Draft |
 | F-TAG-GRID | Library/tag grid and script preview UI | 4 | M1 | Planned |

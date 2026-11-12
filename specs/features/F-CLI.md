@@ -1,5 +1,5 @@
 # F-CLI: `rifferr` command line (M0 slice)
-Status: Draft
+Status: Approved
 Milestone: M0
 
 ## Context
@@ -32,7 +32,7 @@ runs, which would need a system-wide worker lock per profile, are B-023.
 ## Interfaces
 - Standard library `argparse` with subparsers (author, 2026-11-11). Entry point: `[project.scripts] rifferr = "rifferr.cli:main"`; `main(argv: list[str] | None = None) -> int`.
 - `rifferr.cli` package: `main.py` (parser, dispatch), `serve.py`, `run.py`, `files.py` (validate, trust), `profiles.py`, `client.py` (server discovery from `server.json`, token from the token file, a small httpx client with `Authorization: Bearer` and `Host: 127.0.0.1:<port>`).
-- The CLI client needs an HTTP client with streaming; `httpx` is installed today only for tests. **Dependency question** (see Open questions).
+- HTTP client: `httpx` (runtime dependency, author 2026-11-11). **Dependency question** (see Open questions).
 - Server file (`<data_root>/server.json`):
   ```json
   {"port": 8765, "pid": 4242, "no_auth": false, "started_at": "2026-11-11T12:00:00Z"}
@@ -71,8 +71,8 @@ Plugins cannot add subcommands in M0.
 - ~~Serverless `run`?~~ Resolved 2026-11-11 (author): M0 requires `serve`; serverless → B-023.
 - ~~Workflow argument?~~ Resolved 2026-11-11 (author): `run` takes a file stem in the profile; `validate` and `trust` take file paths.
 - ~~`serve --dev`?~~ Resolved 2026-11-11 (author): also spawns Vite (`pnpm dev`) and opens its URL.
-- `httpx` as a runtime dependency (BSD-3-Clause; today it is installed only through the dev group, via respx)? The alternative is `urllib.request` plus a hand-written SSE line reader.
-- AGENTS.md lists `uv run rifferr serve --profile dev --dev`. `serve` has no `--profile` (the server serves every profile), so that line becomes `uv run rifferr serve --dev`. Is that OK?
+- ~~`httpx` as a runtime dependency?~~ Resolved 2026-11-11 (author): yes.
+- ~~AGENTS.md `serve --profile dev --dev`?~~ Resolved 2026-11-11 (author): becomes `uv run rifferr serve --dev`.
 
 ## Tasks
 - [ ] `[project.scripts]` entry, parser, `--version`, `-v`

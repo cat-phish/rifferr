@@ -77,7 +77,7 @@ pnpm lint && pnpm typecheck && pnpm test
 pnpm e2e                # Playwright; starts backend against a temp profile
 
 # dev
-uv run rifferr serve --profile dev --dev      # backend + Vite proxy
+uv run rifferr serve --dev                    # backend + Vite proxy
 ```
 
 ## Testing rules
