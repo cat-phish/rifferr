@@ -23,6 +23,8 @@ are **not** part of the current task. Append here instead of acting on them.
 
 - B-020 [idea] (2026-11-11, from F-SECURITY) Extend workflow trust to the local scripts and rules files a workflow references, so editing `./scripts/x.sh` resets trust like editing the workflow does (architecture §8 counts them as untrusted content). M0 only lists them in the safety report.
 
+- B-021 [idea] (2026-11-11, from F-API) Per-profile setting to prune events of finished runs after N days. M0 keeps events forever.
+
 ## Issues
 - B-004 [bug] (2026-11-11, from session) Nix `pre-commit` package fails to build Python hook environments (`ModuleNotFoundError: No module named 'packaging'` in its virtualenv). Use the distro package or pipx; mention in contributor docs.
 - B-012 [bug] (2026-11-11, from F-DEV-TOOLING) The dev shell exports `LD_LIBRARY_PATH` pointing at a Nix alsa-lib, which breaks system `ffmpeg`/`ffprobe` (`GLIBC_2.43 not found`). The ffmpeg fixture test skips locally; run `env -u LD_LIBRARY_PATH uv run pytest` or fix the shell profile.

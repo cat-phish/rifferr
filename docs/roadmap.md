@@ -43,8 +43,8 @@ Every runtime or dev dependency needs the author's OK before it is added
 | Package | Use | License | Milestone | Approved |
 |---|---|---|---|---|
 | beets (`>=2.14,<2.15`) | library backend | MIT; transitive deps MIT/BSD/Apache-2.0/PSF/MPL-2.0, Unidecode and mutagen GPL-2.0-or-later (checked 2026-11-11) | M0 | 2026-11-11 |
-| fastapi | API server | MIT | M0 | |
-| uvicorn | ASGI server | BSD-3-Clause | M0 | |
+| fastapi | API server | MIT | M0 || 2026-11-11 |
+| uvicorn | ASGI server | BSD-3-Clause | M0 || 2026-11-11 |
 | pydantic v2 | models, JSON Schema | MIT | M0 | 2026-11-11 |
 | ruamel.yaml | round-trip YAML | MIT | M0 | 2026-11-11 |
 | keyring | secrets | MIT | M0 | 2026-11-11 |
