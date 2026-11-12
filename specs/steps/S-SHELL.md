@@ -1,5 +1,5 @@
 # S-SHELL: `shell` step
-Status: Approved
+Status: Implemented
 Milestone: M1
 
 ## Context
@@ -67,6 +67,20 @@ As implemented (`rifferr.steps.shell`, entry point `shell`):
 - Output lines longer than 64 KiB are split into several events; output pipes held open by a
   background child are not waited for after the process exits (1 s).
 - The step stops starting new targets once the run is cancelled.
+- M1 (2026-11-12), `emits: changes`:
+  - stdout is read in chunks and kept up to 16 MiB. Past that it is still drained, so the child
+    never blocks, and the target fails with `stdout is larger than 16 MiB`.
+  - Scope and `backend.check` run before `ctx.propose`, so failures name a JSON path, e.g.
+    `invalid ChangeSet proposal at $.changes[1].year: expects int, got str`,
+    `… at $.targets[1].target: album X is outside this invocation (per: album may change its album
+    and its items)`, `stdout is not valid JSON: … (line L, column C)`.
+  - With `per: item` each item is its own invocation, so each gives its own proposal and
+    ChangeSet(s).
+  - Summary lines are `run.step.log` info lines tagged with the target:
+    `<target>: proposed N ChangeSet(s), M field change(s)` or `<target>: no changes`
+    (`run` for `per: run`). The counts come from `ctx.proposed`, after no-op dropping.
+  - `requires` is unchanged (query + templates). On a backend without `apply`, an
+    `emits: changes` invocation fails its target ("this profile's backend can't apply changes").
 
 ## Examples
 ```yaml
@@ -127,7 +141,7 @@ None beyond parameters; users extend behavior with their own scripts.
   `RIFFERR_ITEM_PATH` or stdin, or use `[sh, -c, '…"$1"…', sh, $path]`.
 
 ## Tasks
-- [ ] M1: `emits: changes` (SHELL-11, -14 to -19) + CHANGESET-3 short form, CHANGESET-14 split
+- [x] M1: `emits: changes` (SHELL-11, -14 to -19) + CHANGESET-3 short form, CHANGESET-14 split
 - [x] params model + validation
 - [x] argv templating without word splitting
 - [x] env + stdin snapshot

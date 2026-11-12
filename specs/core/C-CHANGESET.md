@@ -102,6 +102,8 @@ As implemented (2026-11-12):
 - `rifferr.engine.changesets`: `ChangeSetStore` protocol + `InMemoryChangeSetStore`,
   `SnapshotIndex`, `build_changesets`, `apply_changeset`, `reject_changeset`. `rifferr.appdb.AppChangeSets` is the
   app DB store (migration `003_changesets_journal.sql`).
+- `ctx.proposed` lists every ChangeSet the step proposed so far (after no-op dropping), e.g. for
+  summaries (S-SHELL SHELL-19).
 - `ctx.propose` only accepts targets the step got from `ctx.albums()` (that is where `old` comes
   from). It runs `backend.check` before storing anything, and problems fail the step.
   `ChangeSource.kind` is `step`; AI steps will pass `ai` once S-AI-TAG exists.
