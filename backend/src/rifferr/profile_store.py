@@ -24,6 +24,26 @@ PROFILE_FILE = "profile.yaml"
 WORKFLOWS_DIR = "workflows"
 
 
+APP_DB_FILE = "rifferr.db"
+
+
+def data_root(env: Mapping[str, str] | None = None) -> Path:
+    """Where the app DB lives: ``RIFFERR_DATA_DIR``, else ``RIFFERR_CONFIG_DIR`` (Docker keeps
+    everything in ``/config``), else ``$XDG_DATA_HOME/rifferr``, else ~/.local/share/rifferr."""
+    env = os.environ if env is None else env
+    if env.get("RIFFERR_DATA_DIR"):
+        return Path(env["RIFFERR_DATA_DIR"])
+    if env.get("RIFFERR_CONFIG_DIR"):
+        return Path(env["RIFFERR_CONFIG_DIR"])
+    if env.get("XDG_DATA_HOME"):
+        return Path(env["XDG_DATA_HOME"]) / "rifferr"
+    return Path(env.get("HOME") or Path.home()) / ".local" / "share" / "rifferr"
+
+
+def app_db_path(env: Mapping[str, str] | None = None) -> Path:
+    return data_root(env) / APP_DB_FILE
+
+
 def config_root(env: Mapping[str, str] | None = None) -> Path:
     """``RIFFERR_CONFIG_DIR`` (the Docker image sets ``/config``), else XDG, else ~/.config."""
     env = os.environ if env is None else env
@@ -111,6 +131,7 @@ def create_profile(root: Path, name: str, beetsdir: Path | None = None) -> Path:
         "# secrets: { name: keyring:<service>/<name> | env:<VAR> | file:/path }\n"
         "secrets: {}\n"
         "# timezone: Europe/Amsterdam   # default: system time zone\n"
+        "# worker: { idle_timeout: 600 }  # seconds without a run; null = stay up\n"
     )
     (directory / WORKFLOWS_DIR).mkdir(parents=True)
     (directory / PROFILE_FILE).write_text(text, encoding="utf-8")

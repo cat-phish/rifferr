@@ -66,6 +66,10 @@ As implemented:
   `effective_timezone`. `~` in `beets.beetsdir` expands to `$HOME`.
 - `Profile.require_beetsdir()` raises the "set beets.beetsdir" error (PROFILE-8).
 - Var names match `^[A-Za-z_][A-Za-z0-9_]*$` and values must be strings (quote numbers).
+- Extended by F-WORKER: `worker.idle_timeout` (positive seconds or `null`, default 600);
+  `profile_store.data_root()` / `app_db_path()` locate the app DB.
+- Extended by S-SHELL: `credentials.ProfileSecrets` gives a run on-demand access to the
+  profile's named secrets.
 
 ## Examples
 - `secrets: { x: "abc123" }` → error `secrets.x: must be keyring:… or env:…, not a literal value`.

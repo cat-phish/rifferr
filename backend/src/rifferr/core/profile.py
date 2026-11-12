@@ -12,7 +12,7 @@ from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from typing import Annotated, Any, Final, Literal
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, PositiveInt
 from pydantic_core import PydanticCustomError
 
 from rifferr.core.workflow import VarDecl, substitute
@@ -142,6 +142,18 @@ class Redactor:
 # -- models -------------------------------------------------------------------
 
 
+DEFAULT_IDLE_TIMEOUT = 600
+
+
+class WorkerSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    idle_timeout: PositiveInt | None = Field(
+        default=DEFAULT_IDLE_TIMEOUT,
+        description="Seconds a worker with no run stays up; null: until server shutdown",
+    )
+
+
 class BeetsSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -162,6 +174,7 @@ class ProfileFile(BaseModel):
 
     backend: str = "beets"
     beets: BeetsSettings = Field(default_factory=BeetsSettings)
+    worker: WorkerSettings = Field(default_factory=WorkerSettings)
     vars: dict[VarName, Annotated[str, Field(strict=True)]] = Field(default_factory=dict[str, str])
     secrets: dict[str, SecretRefField] = Field(default_factory=dict[str, SecretRef])
     timezone: str | None = Field(default=None, description="IANA time zone; default: system")
@@ -211,6 +224,7 @@ def parse_profile(
     return Profile(
         backend=file.backend,
         beets=file.beets,
+        worker=file.worker,
         vars=resolve_vars(file.vars, env),
         secrets=file.secrets,
         timezone=file.timezone,

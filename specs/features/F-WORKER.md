@@ -1,5 +1,5 @@
 # F-WORKER: Worker process per profile and server ↔ worker channel
-Status: Draft
+Status: Implemented
 Milestone: M0
 
 ## Context
@@ -42,6 +42,26 @@ worker:
   idle_timeout: 600        # seconds; null = stay up until server shutdown
 ```
 
+As implemented:
+- `rifferr.appdb`: `AppDB` (SQLite, WAL, file mode 0600) with `jobs` and `events` tables, and
+  `SqliteEventSink`. Jobs also store `payload` (workflow **text**, source name, run vars,
+  `trusted`), `error` and `finished_at`. The worker runs the stored text, so it runs exactly
+  what the server checked. Job states: queued, running, succeeded, failed, cancelled.
+- App DB location: `RIFFERR_DATA_DIR`, else `RIFFERR_CONFIG_DIR` (Docker `/config`), else
+  `$XDG_DATA_HOME/rifferr`, else `~/.local/share/rifferr`; file `rifferr.db`.
+- `rifferr.worker.protocol`: `WorkerCommand` carries `profile`; `WorkerMessage` adds
+  `kind: "error"` with `message`. `start_run` only wakes the worker; it claims jobs itself.
+- `rifferr.worker.process`: `Worker` (testable in-process) and `main()` for
+  `python -m rifferr.worker --profile <name> [--db <path>]`. Startup failures (missing
+  profile, backend not installed) are reported as an `error` message and exit status 2.
+- `rifferr.worker.supervisor.WorkerSupervisor(db, sink, command=, hung_after=30,
+  stop_grace=10)`: `submit_run`, `cancel`, `subscribe`, `shutdown`. Workers run in their own
+  process group.
+- `run.finished` written by the server carries `reason`: `worker_crashed`, `worker_hung`,
+  `server_shutdown` (killed after the stop grace), or `worker_failed_to_start`. A worker that
+  fails before `ready` fails the profile's queued jobs too, instead of restarting in a loop.
+- A stop leaves queued jobs queued for the next worker.
+
 ## Examples
 Start run → server inserts job, spawns `python -m rifferr.worker --profile main`,
 worker claims job, streams `run.*` events; server persists them and pushes them
@@ -67,9 +87,9 @@ None; internal mechanism. The message models are internal, not published schemas
 - ~~Heartbeat?~~ Resolved 2026-11-11 (author): every 5 s, hung after 30 s (WORKER-10).
 
 ## Tasks
-- [ ] worker entrypoint
-- [ ] job table + claim logic
-- [ ] IPC channel
-- [ ] crash and hang detection and recovery
-- [ ] `worker.idle_timeout` profile setting (C-PROFILE extension)
-- [ ] idle exit + shutdown
+- [x] worker entrypoint
+- [x] job table + claim logic
+- [x] IPC channel
+- [x] crash and hang detection and recovery
+- [x] `worker.idle_timeout` profile setting (C-PROFILE extension)
+- [x] idle exit + shutdown

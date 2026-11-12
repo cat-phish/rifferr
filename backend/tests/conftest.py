@@ -23,6 +23,7 @@ ISOLATED_ENV_DIRS = {
     "XDG_RUNTIME_DIR": "run",
     "BEETSDIR": "beets",
     "RIFFERR_CONFIG_DIR": "rifferr-config",
+    "RIFFERR_DATA_DIR": "rifferr-data",
 }
 
 # Variables that could point a test at real user data or real credentials.
