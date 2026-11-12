@@ -82,10 +82,9 @@ None beyond parameters; users extend behavior with their own scripts.
 - ~~Default timeout?~~ Resolved 2026-11-11 (author): 600 s.
 - ~~Windows?~~ Resolved 2026-11-11 (author): Linux and macOS only (SHELL-13).
 - Trust before F-SECURITY: approved 2026-11-11 (author): per-run `trusted` flag, default false (SHELL-12).
-- Beets templates in a `shell: true` string? SHELL-2 covers argv elements only. Implemented
-  as **not evaluated**, because tag values would become shell code; scripts read
-  `RIFFERR_ALBUM_DIR`/`RIFFERR_ITEM_PATH` or stdin, or use `[sh, -c, '…"$1"…', sh, $path]`.
-  Needs author confirmation.
+- ~~Beets templates in a `shell: true` string?~~ Resolved 2026-11-11 (author): not evaluated,
+  because tag values would become shell code; scripts read `RIFFERR_ALBUM_DIR` /
+  `RIFFERR_ITEM_PATH` or stdin, or use `[sh, -c, '…"$1"…', sh, $path]`.
 
 ## Tasks
 - [x] params model + validation
