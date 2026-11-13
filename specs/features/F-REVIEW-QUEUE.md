@@ -1,5 +1,5 @@
 # F-REVIEW-QUEUE: Review queue
-Status: Draft
+Status: Approved
 Milestone: M1
 
 ## Context
@@ -102,22 +102,22 @@ Between proposal and decision someone sets the album to `Live!` → accepting gi
 
 ## Open questions
 1. Re-propose (REVIEW-QUEUE-5): CHANGESET-8 allows it but doesn't say how the run's holds
-   follow. Recommendation: the conflicted ChangeSet becomes `rejected` (resolved_by
+   follow. Resolved (approved 2026-11-13): as recommended — the conflicted ChangeSet becomes `rejected` (resolved_by
    `re-proposed as <id>`) and the new one takes its place in the run's holds in one
    transaction, so the run waits for the new one.
 2. Scope of the page: M1 adds `/review` only; `/` stays Runs until the M2 dashboard.
-   Recommendation: yes.
+   Resolved (approved 2026-11-13): as recommended — yes.
 3. Live updates: extend `GET /api/events` (API-9) with review-level and `changeset.*`
    events of runs (additive, compatible), or add a separate `/api/review/events` stream?
-   Recommendation: extend `/api/events`.
-4. Editing a proposed value before accepting: keep it a non-goal for M1? Recommendation: yes.
+   Resolved (approved 2026-11-13): as recommended — extend `/api/events`.
+4. Editing a proposed value before accepting: keep it a non-goal for M1? Resolved (approved 2026-11-13): as recommended — yes.
 5. "Accept all" / "Reject all" per run (REVIEW-QUEUE-7, -14): include in M1?
-   Recommendation: yes, with confirmation.
-6. Run undo on the run page (REVIEW-QUEUE-15) rather than in the queue? Recommendation: yes.
+   Resolved (approved 2026-11-13): as recommended — yes, with confirmation.
+6. Run undo on the run page (REVIEW-QUEUE-15) rather than in the queue? Resolved (approved 2026-11-13): as recommended — yes.
 7. CLI (`rifferr review list`, `accept`, `reject`): defer to a backlog entry?
-   Recommendation: defer.
+   Resolved (approved 2026-11-13): as recommended — defer.
 8. `decided_by`: there are no user accounts in M1, so record `ui` for every UI decision
-   (S-REVIEW already uses `ui`, `cli`, `timeout`). Recommendation: `ui`.
+   (S-REVIEW already uses `ui`, `cli`, `timeout`). Resolved (approved 2026-11-13): as recommended — `ui`.
 
 ## Tasks
 - [ ] read-only worker: `changes.current`
