@@ -1895,6 +1895,12 @@
             "title": "Trusted",
             "type": "boolean"
           },
+          "undoable": {
+            "default": 0,
+            "description": "The run's applied journal entries not undone yet; undo the run to revert them (REVIEW-QUEUE-15)",
+            "title": "Undoable",
+            "type": "integer"
+          },
           "workflow": {
             "anyOf": [
               {

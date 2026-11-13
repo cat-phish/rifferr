@@ -84,6 +84,8 @@ Implementation details (filled in while building):
   (`job_id`, `kind`, `state`, `error`, `result`) on that run's stream, as jobs without
   a run already do on the profile stream (TAG-GRID-9). `/api/events` carries it, so the
   run page shows the undo report from its `result`.
+- `RunDetail.undoable` counts the run's applied, not undone journal entries, so the run
+  page knows when to offer "Undo this run".
 
 ## Examples
 A run's `tags.script` step (`apply: review`) proposes `album: Live → Live (EP)` and

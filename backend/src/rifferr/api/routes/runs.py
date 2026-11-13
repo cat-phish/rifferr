@@ -19,8 +19,9 @@ from rifferr.api.models import (
 )
 from rifferr.api.routes.workflows import check, error_out, find_workflow, get_profile
 from rifferr.api.state import ServerState, State
-from rifferr.appdb import Job
+from rifferr.appdb import AppJournal, Job
 from rifferr.core.workflow import WorkflowLoadError, load_workflow
+from rifferr.engine.undo import run_entries
 
 router = APIRouter(prefix="/api", tags=["runs"])
 
@@ -61,7 +62,8 @@ async def get_run(run_id: str, state: State) -> RunDetail:
     job = state.db.job_for_run(run_id)
     if job is None:
         raise not_found(f"run {run_id}")
-    return RunDetail(**summary(job).model_dump(), steps=steps(state, job))
+    undoable = len(run_entries(AppJournal(state.db), run_id))
+    return RunDetail(**summary(job).model_dump(), steps=steps(state, job), undoable=undoable)
 
 
 @router.post(

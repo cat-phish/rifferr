@@ -326,7 +326,9 @@ async def test_REVIEW_QUEUE_8_run_undo(api: Api) -> None:
         )
     )
     effect = FieldEffect(target=target, field="year", before=1, after=2, existed_before=True)
+    assert (await api.client.get(f"/api/runs/{run_id}")).json()["undoable"] == 0
     journal.complete("j1", ApplyResult(applied=True, effects=[effect]))
+    assert (await api.client.get(f"/api/runs/{run_id}")).json()["undoable"] == 1
     r = await post(api, f"/api/runs/{run_id}/undo")
     assert r.status_code == 202, r.text
     job = api.state.db.job(r.json()["job_id"])

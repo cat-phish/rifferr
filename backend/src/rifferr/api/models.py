@@ -138,6 +138,11 @@ class StepState(_Model):
 
 class RunDetail(RunSummary):
     steps: list[StepState]
+    undoable: int = Field(
+        default=0,
+        description="The run's applied journal entries not undone yet; undo the run to "
+        "revert them (REVIEW-QUEUE-15)",
+    )
 
 
 class Accepted(_Model):

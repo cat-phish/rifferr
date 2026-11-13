@@ -1222,6 +1222,12 @@ export interface components {
             steps: components["schemas"]["StepState"][];
             /** Trusted */
             trusted: boolean;
+            /**
+             * Undoable
+             * @description The run's applied journal entries not undone yet; undo the run to revert them (REVIEW-QUEUE-15)
+             * @default 0
+             */
+            undoable: number;
             /** Workflow */
             workflow: string | null;
             /** Workflow Hash */
