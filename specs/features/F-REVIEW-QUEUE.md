@@ -71,6 +71,20 @@ Routes: `GET /api/review`, `GET /api/changesets/{id}`, `GET /api/changesets/{id}
 `POST /api/runs/{id}/undo`. Read-only worker request kind `changes.current`.
 Job kind `repropose`. UI routes: `/review`, `/review?item=`.
 
+Implementation details (filled in while building):
+- `GET /api/changesets/{id}/current` answers `{targets: [CurrentTarget]}`. It reads the
+  targets through `Selection.ids` (C-BACKEND BACKEND-5): album or item ids, since a
+  backend query string can't name ids in a backend-neutral way.
+- `ChangeSetDetail` also carries the decision's `note` (stored in `changesets.note`,
+  migration 007).
+- Decision and re-propose routes answer `404` for a ChangeSet without a run (manual
+  ones never wait for review). Re-proposing one that is still `proposed` answers
+  `409 not_conflicted`. `POST /api/runs/{id}/decisions` answers `202 {job_ids}`.
+- Every non-run job with a run (decision, re-propose, undo) ends with `job.finished`
+  (`job_id`, `kind`, `state`, `error`, `result`) on that run's stream, as jobs without
+  a run already do on the profile stream (TAG-GRID-9). `/api/events` carries it, so the
+  run page shows the undo report from its `result`.
+
 ## Examples
 A run's `tags.script` step (`apply: review`) proposes `album: Live → Live (EP)` and
 `albumdisambig: → EP` for one album; the run is `waiting_review`. In `/review` the user
@@ -120,10 +134,10 @@ Between proposal and decision someone sets the album to `Live!` → accepting gi
    (S-REVIEW already uses `ui`, `cli`, `timeout`). Resolved (approved 2026-11-13): as recommended — `ui`.
 
 ## Tasks
-- [ ] read-only worker: `changes.current`
-- [ ] routes: queue, ChangeSet detail and current values, decisions, re-propose, gate decision, run decisions, run undo
-- [ ] `repropose` worker job with the holds swap
-- [ ] `/api/events` carries review-level events
+- [x] read-only worker: `changes.current`
+- [x] routes: queue, ChangeSet detail and current values, decisions, re-propose, gate decision, run decisions, run undo
+- [x] `repropose` worker job with the holds swap
+- [x] `/api/events` carries review-level events
 - [ ] `/review` page: ChangeSet and gate cards, partial accept, bulk per run, deep links
 - [ ] run page: waiting link, undo run
 - [ ] Playwright test (REVIEW-QUEUE-18)

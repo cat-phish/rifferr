@@ -42,7 +42,8 @@ async def run_events(state: ServerState, run_id: str, after: int) -> AsyncGenera
 
 
 async def all_run_events(state: ServerState) -> AsyncGenerator[str]:
-    """run.started / run.finished of every run, live only."""
+    """Run-level, review-level and ``changeset.*`` events of every run, live only
+    (API-9, REVIEW-QUEUE-10)."""
     queue = state.hub.subscribe(None)
     try:
         yield ": connected\n\n"

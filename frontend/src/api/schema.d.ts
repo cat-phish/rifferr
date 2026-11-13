@@ -4,6 +4,87 @@
  */
 
 export interface paths {
+    "/api/changesets/{changeset_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Changeset
+         * @description A ChangeSet with its state, decisions and journal entries (REVIEW-QUEUE-2).
+         */
+        get: operations["get_changeset_api_changesets__changeset_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/changesets/{changeset_id}/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Current
+         * @description The current values of the fields the ChangeSet changes, per target; writes
+         *     nothing (REVIEW-QUEUE-3).
+         */
+        get: operations["current_api_changesets__changeset_id__current_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/changesets/{changeset_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decide
+         * @description Queue a decision job (REVIEW-QUEUE-4, CHANGESET-9, -13).
+         */
+        post: operations["decide_api_changesets__changeset_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/changesets/{changeset_id}/repropose": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Repropose
+         * @description Propose a conflicted ChangeSet again on the current values (REVIEW-QUEUE-5).
+         */
+        post: operations["repropose_api_changesets__changeset_id__repropose_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/events": {
         parameters: {
             query?: never;
@@ -13,7 +94,8 @@ export interface paths {
         };
         /**
          * All Events
-         * @description run.started / run.finished across all runs (API-9).
+         * @description run.started / run.finished across all runs (API-9), plus the review-level and
+         *     ``changeset.*`` events of runs (REVIEW-QUEUE-10).
          */
         get: operations["all_events_api_events_get"];
         put?: never;
@@ -216,6 +298,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Review Queue
+         * @description What waits for a decision, oldest first: run ChangeSets that are proposed or
+         *     conflicted, and pending review gates (REVIEW-QUEUE-1).
+         */
+        get: operations["review_queue_api_review_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reviews/{gate_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decide Gate
+         * @description Continue or reject a review gate (REVIEW-QUEUE-6, S-REVIEW REVIEW-6 .. -8).
+         */
+        post: operations["decide_gate_api_reviews__gate_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs": {
         parameters: {
             query?: never;
@@ -274,6 +397,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs/{run_id}/decisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decide Run
+         * @description Decide every proposed ChangeSet of the run the same way, one job each; conflicted
+         *     ones are left alone (REVIEW-QUEUE-7).
+         */
+        post: operations["decide_run_api_runs__run_id__decisions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs/{run_id}/events": {
         parameters: {
             query?: never;
@@ -285,6 +429,27 @@ export interface paths {
         get: operations["run_events_api_runs__run_id__events_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{run_id}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo Run
+         * @description Queue the undo of the run's applied changes, newest first (REVIEW-QUEUE-8,
+         *     JOURNAL-6). The result arrives as ``job.finished`` on the run's stream.
+         */
+        post: operations["undo_run_api_runs__run_id__undo_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -448,6 +613,31 @@ export interface components {
             /** Targets */
             targets: components["schemas"]["TargetChange"][];
         };
+        /**
+         * ChangeSetDetail
+         * @description A ChangeSet with its review state (REVIEW-QUEUE-2).
+         */
+        ChangeSetDetail: {
+            changeset: components["schemas"]["ChangeSet"];
+            /**
+             * Decisions
+             * @description Field-change index -> accepted
+             */
+            decisions?: {
+                [key: string]: boolean;
+            };
+            /** Journal Ids */
+            journal_ids?: string[];
+            /** Note */
+            note?: string | null;
+            /** Resolved By */
+            resolved_by?: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "proposed" | "applied" | "partially_applied" | "rejected" | "conflicted" | "undone";
+        };
         /** ChangeSource */
         ChangeSource: {
             /**
@@ -487,6 +677,50 @@ export interface components {
             /** Targets */
             targets: components["schemas"]["ManualChange"][];
         };
+        /**
+         * CurrentTarget
+         * @description What one target of a ChangeSet holds now (REVIEW-QUEUE-3).
+         */
+        CurrentTarget: {
+            /**
+             * Fields
+             * @description Only the fields the ChangeSet changes; an absent field is left out
+             */
+            fields?: {
+                [key: string]: boolean | number | string | string[] | null;
+            };
+            /** Label */
+            label: string;
+            /**
+             * Missing
+             * @default false
+             */
+            missing: boolean;
+            target: components["schemas"]["TargetRef"];
+        };
+        /**
+         * CurrentValues
+         * @description What a ChangeSet's targets hold now, from the read-only worker (REVIEW-QUEUE-3).
+         */
+        CurrentValues: {
+            /** Targets */
+            targets: components["schemas"]["CurrentTarget"][];
+        };
+        /** Decision */
+        Decision: {
+            /**
+             * Accepted
+             * @description Field-change indexes to accept; absent = all
+             */
+            accepted?: number[] | null;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "accept" | "reject";
+            /** Note */
+            note?: string | null;
+        };
         /** ErrorBody */
         ErrorBody: {
             /** Code */
@@ -521,6 +755,64 @@ export interface components {
             op: "set" | "delete";
             /** Rationale */
             rationale?: string | null;
+        };
+        /**
+         * FieldEffect
+         * @description What applying actually changed, including propagated item fields (CHANGESET-11).
+         */
+        FieldEffect: {
+            /** After */
+            after: boolean | number | string | string[] | null;
+            /** Before */
+            before: boolean | number | string | string[] | null;
+            /**
+             * Existed Before
+             * @default true
+             */
+            existed_before: boolean;
+            /** Field */
+            field: string;
+            target: components["schemas"]["TargetRef"];
+        };
+        /**
+         * GateAlbum
+         * @description One album as the reviewer sees it at the gate (REVIEW-3).
+         */
+        GateAlbum: {
+            /**
+             * Changes
+             * @description The run's changes to the album and its items so far (REVIEW-4)
+             */
+            changes?: components["schemas"]["FieldEffect"][];
+            /**
+             * Conflicted
+             * @description Ids of the run's conflicted ChangeSets
+             */
+            conflicted?: string[];
+            /**
+             * Imported By Run
+             * @default false
+             */
+            imported_by_run: boolean;
+            /** Label */
+            label: string;
+            /** Message */
+            message?: string | null;
+            /** Shown */
+            shown?: {
+                [key: string]: boolean | number | string | string[] | null;
+            };
+            target: components["schemas"]["TargetRef"];
+        };
+        /** GateDecisionBody */
+        GateDecisionBody: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "continue" | "reject";
+            /** Note */
+            note?: string | null;
         };
         /**
          * GridColumns
@@ -570,6 +862,11 @@ export interface components {
         JobQueued: {
             /** Job Id */
             job_id: string;
+        };
+        /** JobsQueued */
+        JobsQueued: {
+            /** Job Ids */
+            job_ids: string[];
         };
         JsonValue: unknown;
         /**
@@ -796,6 +1093,77 @@ export interface components {
              */
             vars?: string[];
         };
+        /**
+         * QueueItem
+         * @description One thing that waits for a decision (REVIEW-QUEUE-1). ``kind`` says which of
+         *     ``changeset`` / ``gate`` is set; later milestones add kinds.
+         */
+        QueueItem: {
+            changeset?: components["schemas"]["ChangeSet"] | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            gate?: components["schemas"]["ReviewGate"] | null;
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "changeset" | "gate";
+            /** Profile */
+            profile: string;
+            /** Run Id */
+            run_id: string;
+            /** State */
+            state?: ("proposed" | "applied" | "partially_applied" | "rejected" | "conflicted" | "undone") | null;
+            /** Step Id */
+            step_id?: string | null;
+            /** Workflow */
+            workflow?: string | null;
+        };
+        /** ReviewGate */
+        ReviewGate: {
+            /** Albums */
+            albums: components["schemas"]["GateAlbum"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Deadline */
+            deadline?: string | null;
+            /** Decided At */
+            decided_at?: string | null;
+            /** Decided By */
+            decided_by?: string | null;
+            /** Id */
+            id: string;
+            /** Note */
+            note?: string | null;
+            /**
+             * On Reject
+             * @default stop
+             * @enum {string}
+             */
+            on_reject: "stop" | "undo";
+            /** On Timeout */
+            on_timeout?: ("continue" | "reject") | null;
+            /** Profile */
+            profile: string;
+            /** Run Id */
+            run_id: string;
+            /**
+             * State
+             * @default pending
+             * @enum {string}
+             */
+            state: "pending" | "continued" | "rejected" | "cancelled";
+            /** Step Id */
+            step_id: string;
+        };
         /** RunCreate */
         RunCreate: {
             /** Profile */
@@ -819,6 +1187,14 @@ export interface components {
         RunCreated: {
             /** Id */
             id: string;
+        };
+        /** RunDecision */
+        RunDecision: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "accept" | "reject";
         };
         /** RunDetail */
         RunDetail: {
@@ -1106,6 +1482,260 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    get_changeset_api_changesets__changeset_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                changeset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeSetDetail"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    current_api_changesets__changeset_id__current_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                changeset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CurrentValues"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Gateway Timeout */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    decide_api_changesets__changeset_id__decision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                changeset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Decision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobQueued"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    repropose_api_changesets__changeset_id__repropose_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                changeset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobQueued"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     all_events_api_events_get: {
         parameters: {
             query?: never;
@@ -1810,6 +2440,100 @@ export interface operations {
             };
         };
     };
+    review_queue_api_review_get: {
+        parameters: {
+            query?: {
+                profile?: string | null;
+                run?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueueItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decide_gate_api_reviews__gate_id__decision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                gate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GateDecisionBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewGate"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     list_runs_api_runs_get: {
         parameters: {
             query?: {
@@ -2018,6 +2742,68 @@ export interface operations {
             };
         };
     };
+    decide_run_api_runs__run_id__decisions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunDecision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobsQueued"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     run_events_api_runs__run_id__events_get: {
         parameters: {
             query?: never;
@@ -2056,6 +2842,64 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    undo_run_api_runs__run_id__undo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobQueued"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
         };

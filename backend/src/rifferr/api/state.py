@@ -11,10 +11,27 @@ from fastapi import Depends, Request
 
 from rifferr.appdb import AppDB
 from rifferr.engine import Event, StepTypeRegistry
+from rifferr.engine.events import PROFILE_STREAM_PREFIX
 from rifferr.worker.previews import PreviewSupervisor
 from rifferr.worker.supervisor import WorkerSupervisor
 
 RUN_LEVEL_EVENTS = frozenset({"run.started", "run.finished"})
+#: Also on ``/api/events``, so the review queue updates without polling (REVIEW-QUEUE-10).
+REVIEW_EVENTS = frozenset(
+    {"run.waiting_review", "run.resumed", "review.requested", "review.resolved", "job.finished"}
+)
+
+
+def on_all_stream(event: Event) -> bool:
+    """Whether ``GET /api/events`` carries ``event`` (API-9, REVIEW-QUEUE-10): run-level
+    and review-level events and the ``changeset.*`` events of runs."""
+    if event.run_id.startswith(PROFILE_STREAM_PREFIX):
+        return False
+    return (
+        event.type in RUN_LEVEL_EVENTS
+        or event.type in REVIEW_EVENTS
+        or event.type.startswith("changeset.")
+    )
 
 
 class EventHub:
@@ -24,7 +41,7 @@ class EventHub:
         self._subscribers: dict[asyncio.Queue[Event], str | None] = {}
 
     def subscribe(self, run_id: str | None) -> asyncio.Queue[Event]:
-        """``run_id=None``: run-level events of every run."""
+        """``run_id=None``: the events of every run that ``on_all_stream`` picks."""
         queue: asyncio.Queue[Event] = asyncio.Queue()
         self._subscribers[queue] = run_id
         return queue
@@ -34,7 +51,7 @@ class EventHub:
 
     def publish(self, event: Event) -> None:
         for queue, run_id in list(self._subscribers.items()):
-            if run_id == event.run_id or (run_id is None and event.type in RUN_LEVEL_EVENTS):
+            if run_id == event.run_id or (run_id is None and on_all_stream(event)):
                 queue.put_nowait(event)
 
 

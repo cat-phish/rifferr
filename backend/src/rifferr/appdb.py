@@ -29,7 +29,8 @@ JobState = Literal["queued", "running", "waiting_review", "succeeded", "failed",
 #: ChangeSet (CHANGESET-13). ``undo``: undo a journal entry or a run (C-JOURNAL).
 #: ``review_reject``: undo a run rejected at a review gate, then end it (REVIEW-8).
 #: ``manual_apply``: apply manual ChangeSets from the tag grid (TAG-GRID-8).
-JobKind = Literal["run", "review_decision", "undo", "review_reject", "manual_apply"]
+#: ``repropose``: propose a conflicted ChangeSet again on current values (REVIEW-QUEUE-5).
+JobKind = Literal["run", "review_decision", "undo", "review_reject", "manual_apply", "repropose"]
 
 #: ChangeSet states that still hold a suspended run (CHANGESET-7).
 HOLDING_CHANGESETS = ("proposed", "conflicted")
@@ -445,6 +446,74 @@ class AppChangeSets:
                     [(changeset_id, i, int(ok)) for i, ok in sorted(decisions.items())],
                 )
 
+    def replace(self, old_id: str, new: ChangeSet | None, *, resolved_by: str) -> bool:
+        """Reject ``old_id`` and put ``new`` (if any) in its place among the holds of its
+        waiting run, in one transaction (REVIEW-QUEUE-5). False, with nothing changed,
+        if ``old_id`` no longer waits for a decision."""
+        with self._conn:
+            self._conn.execute("BEGIN IMMEDIATE")
+            row = self._conn.execute(
+                "SELECT run_id FROM changesets WHERE id = ? AND state = 'conflicted'", (old_id,)
+            ).fetchone()
+            if row is None:
+                return False
+            if new is not None:
+                self._conn.execute(
+                    "INSERT INTO changesets (id, profile, run_id, step_id, state, body,"
+                    " created_at) VALUES (?, ?, ?, ?, 'proposed', ?, ?)",
+                    (
+                        new.id,
+                        new.profile,
+                        new.run_id,
+                        new.step_id,
+                        new.model_dump_json(),
+                        new.created_at.isoformat(),
+                    ),
+                )
+            self._conn.execute(
+                "UPDATE changesets SET state = 'rejected', resolved_at = ?, resolved_by = ?"
+                " WHERE id = ?",
+                (_now(), resolved_by, old_id),
+            )
+            run_id = row["run_id"]
+            job = self._conn.execute(
+                "SELECT id, payload FROM jobs WHERE run_id = ? AND kind = 'run'"
+                " AND state = 'waiting_review'",
+                (run_id,),
+            ).fetchone()
+            if job is not None and new is not None:
+                payload = json.loads(job["payload"])
+                holds = [str(h) for h in payload.get("holds") or []]
+                payload["holds"] = [new.id if h == old_id else h for h in holds]
+                self._conn.execute(
+                    "UPDATE jobs SET payload = ? WHERE id = ?", (json.dumps(payload), job["id"])
+                )
+            return True
+
+    def set_note(self, changeset_id: str, note: str | None) -> None:
+        """The reviewer's note on the decision (REVIEW-QUEUE-9)."""
+        self._conn.execute("UPDATE changesets SET note = ? WHERE id = ?", (note, changeset_id))
+
+    def note(self, changeset_id: str) -> str | None:
+        row = self._conn.execute(
+            "SELECT note FROM changesets WHERE id = ?", (changeset_id,)
+        ).fetchone()
+        return str(row["note"]) if row and row["note"] is not None else None
+
+    def waiting(
+        self, profile: str | None = None, run_id: str | None = None
+    ) -> list[StoredChangeSet]:
+        """ChangeSets of runs that wait for a decision (proposed or conflicted), oldest
+        first (REVIEW-QUEUE-1)."""
+        sql = f"SELECT * FROM changesets WHERE run_id IS NOT NULL AND state IN {HOLDING_CHANGESETS}"
+        args: list[Any] = []
+        if profile is not None:
+            sql, args = sql + " AND profile = ?", [*args, profile]
+        if run_id is not None:
+            sql, args = sql + " AND run_id = ?", [*args, run_id]
+        rows = self._conn.execute(sql + " ORDER BY created_at, id", args).fetchall()
+        return [self._stored(r) for r in rows]
+
     def manual(self, profile: str, source_name: str, limit: int) -> list[StoredChangeSet]:
         """The profile's ChangeSets without a run from source ``manual`` / ``source_name``,
         newest first (TAG-GRID-11)."""
@@ -522,6 +591,16 @@ class AppReviewGates:
         sql, args = "SELECT * FROM review_gates WHERE run_id = ?", [run_id]
         if state is not None:
             sql, args = sql + " AND state = ?", [*args, state]
+        rows = self._conn.execute(sql + " ORDER BY created_at, id", args).fetchall()
+        return [self._gate(r) for r in rows]
+
+    def pending(self, profile: str | None = None, run_id: str | None = None) -> list[ReviewGate]:
+        """Pending gates, oldest first (REVIEW-QUEUE-1)."""
+        sql, args = "SELECT * FROM review_gates WHERE state = 'pending'", list[Any]()
+        if profile is not None:
+            sql, args = sql + " AND profile = ?", [*args, profile]
+        if run_id is not None:
+            sql, args = sql + " AND run_id = ?", [*args, run_id]
         rows = self._conn.execute(sql + " ORDER BY created_at, id", args).fetchall()
         return [self._gate(r) for r in rows]
 

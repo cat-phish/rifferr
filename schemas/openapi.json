@@ -181,6 +181,70 @@
         "title": "ChangeSet",
         "type": "object"
       },
+      "ChangeSetDetail": {
+        "additionalProperties": false,
+        "description": "A ChangeSet with its review state (REVIEW-QUEUE-2).",
+        "properties": {
+          "changeset": {
+            "$ref": "#/components/schemas/ChangeSet"
+          },
+          "decisions": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "description": "Field-change index -> accepted",
+            "title": "Decisions",
+            "type": "object"
+          },
+          "journal_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Journal Ids",
+            "type": "array"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "resolved_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved By"
+          },
+          "state": {
+            "enum": [
+              "proposed",
+              "applied",
+              "partially_applied",
+              "rejected",
+              "conflicted",
+              "undone"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "changeset",
+          "state"
+        ],
+        "title": "ChangeSetDetail",
+        "type": "object"
+      },
       "ChangeSource": {
         "additionalProperties": false,
         "properties": {
@@ -264,6 +328,123 @@
           "targets"
         ],
         "title": "CheckResult",
+        "type": "object"
+      },
+      "CurrentTarget": {
+        "additionalProperties": false,
+        "description": "What one target of a ChangeSet holds now (REVIEW-QUEUE-3).",
+        "properties": {
+          "fields": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "description": "Only the fields the ChangeSet changes; an absent field is left out",
+            "title": "Fields",
+            "type": "object"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "missing": {
+            "default": false,
+            "title": "Missing",
+            "type": "boolean"
+          },
+          "target": {
+            "$ref": "#/components/schemas/TargetRef"
+          }
+        },
+        "required": [
+          "target",
+          "label"
+        ],
+        "title": "CurrentTarget",
+        "type": "object"
+      },
+      "CurrentValues": {
+        "additionalProperties": false,
+        "description": "What a ChangeSet's targets hold now, from the read-only worker (REVIEW-QUEUE-3).",
+        "properties": {
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/CurrentTarget"
+            },
+            "title": "Targets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "targets"
+        ],
+        "title": "CurrentValues",
+        "type": "object"
+      },
+      "Decision": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Field-change indexes to accept; absent = all",
+            "title": "Accepted"
+          },
+          "decision": {
+            "enum": [
+              "accept",
+              "reject"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "title": "Decision",
         "type": "object"
       },
       "ErrorBody": {
@@ -396,6 +577,194 @@
         "title": "FieldChange",
         "type": "object"
       },
+      "FieldEffect": {
+        "additionalProperties": false,
+        "description": "What applying actually changed, including propagated item fields (CHANGESET-11).",
+        "properties": {
+          "after": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After"
+          },
+          "before": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before"
+          },
+          "existed_before": {
+            "default": true,
+            "title": "Existed Before",
+            "type": "boolean"
+          },
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "target": {
+            "$ref": "#/components/schemas/TargetRef"
+          }
+        },
+        "required": [
+          "target",
+          "field",
+          "before",
+          "after"
+        ],
+        "title": "FieldEffect",
+        "type": "object"
+      },
+      "GateAlbum": {
+        "additionalProperties": false,
+        "description": "One album as the reviewer sees it at the gate (REVIEW-3).",
+        "properties": {
+          "changes": {
+            "description": "The run's changes to the album and its items so far (REVIEW-4)",
+            "items": {
+              "$ref": "#/components/schemas/FieldEffect"
+            },
+            "title": "Changes",
+            "type": "array"
+          },
+          "conflicted": {
+            "description": "Ids of the run's conflicted ChangeSets",
+            "items": {
+              "type": "string"
+            },
+            "title": "Conflicted",
+            "type": "array"
+          },
+          "imported_by_run": {
+            "default": false,
+            "title": "Imported By Run",
+            "type": "boolean"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "shown": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Shown",
+            "type": "object"
+          },
+          "target": {
+            "$ref": "#/components/schemas/TargetRef"
+          }
+        },
+        "required": [
+          "target",
+          "label"
+        ],
+        "title": "GateAlbum",
+        "type": "object"
+      },
+      "GateDecisionBody": {
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "enum": [
+              "continue",
+              "reject"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "title": "GateDecisionBody",
+        "type": "object"
+      },
       "GridColumns": {
         "additionalProperties": false,
         "description": "Default tag-grid columns per scope (TAG-GRID-3). Unset: the UI's built-in default.",
@@ -522,6 +891,23 @@
           "job_id"
         ],
         "title": "JobQueued",
+        "type": "object"
+      },
+      "JobsQueued": {
+        "additionalProperties": false,
+        "properties": {
+          "job_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Job Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "job_ids"
+        ],
+        "title": "JobsQueued",
         "type": "object"
       },
       "JsonValue": {},
@@ -1139,6 +1525,231 @@
         "title": "ProfileSummary",
         "type": "object"
       },
+      "QueueItem": {
+        "additionalProperties": false,
+        "description": "One thing that waits for a decision (REVIEW-QUEUE-1). ``kind`` says which of\n``changeset`` / ``gate`` is set; later milestones add kinds.",
+        "properties": {
+          "changeset": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChangeSet"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "gate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReviewGate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "changeset",
+              "gate"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "profile": {
+            "title": "Profile",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "enum": [
+                  "proposed",
+                  "applied",
+                  "partially_applied",
+                  "rejected",
+                  "conflicted",
+                  "undone"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "step_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Id"
+          },
+          "workflow": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workflow"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "profile",
+          "run_id",
+          "created_at"
+        ],
+        "title": "QueueItem",
+        "type": "object"
+      },
+      "ReviewGate": {
+        "additionalProperties": false,
+        "properties": {
+          "albums": {
+            "items": {
+              "$ref": "#/components/schemas/GateAlbum"
+            },
+            "title": "Albums",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "deadline": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "decided_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided By"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "on_reject": {
+            "default": "stop",
+            "enum": [
+              "stop",
+              "undo"
+            ],
+            "title": "On Reject",
+            "type": "string"
+          },
+          "on_timeout": {
+            "anyOf": [
+              {
+                "enum": [
+                  "continue",
+                  "reject"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "On Timeout"
+          },
+          "profile": {
+            "title": "Profile",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "state": {
+            "default": "pending",
+            "enum": [
+              "pending",
+              "continued",
+              "rejected",
+              "cancelled"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "step_id": {
+            "title": "Step Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "profile",
+          "run_id",
+          "step_id",
+          "albums",
+          "created_at"
+        ],
+        "title": "ReviewGate",
+        "type": "object"
+      },
       "RunCreate": {
         "additionalProperties": false,
         "properties": {
@@ -1190,6 +1801,24 @@
           "id"
         ],
         "title": "RunCreated",
+        "type": "object"
+      },
+      "RunDecision": {
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "enum": [
+              "accept",
+              "reject"
+            ],
+            "title": "Decision",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "title": "RunDecision",
         "type": "object"
       },
       "RunDetail": {
@@ -2007,9 +2636,331 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/changesets/{changeset_id}": {
+      "get": {
+        "description": "A ChangeSet with its state, decisions and journal entries (REVIEW-QUEUE-2).",
+        "operationId": "get_changeset_api_changesets__changeset_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "changeset_id",
+            "required": true,
+            "schema": {
+              "title": "Changeset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeSetDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Get Changeset",
+        "tags": [
+          "review"
+        ]
+      }
+    },
+    "/api/changesets/{changeset_id}/current": {
+      "get": {
+        "description": "The current values of the fields the ChangeSet changes, per target; writes\nnothing (REVIEW-QUEUE-3).",
+        "operationId": "current_api_changesets__changeset_id__current_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "changeset_id",
+            "required": true,
+            "schema": {
+              "title": "Changeset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentValues"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
+          }
+        },
+        "summary": "Current",
+        "tags": [
+          "review"
+        ]
+      }
+    },
+    "/api/changesets/{changeset_id}/decision": {
+      "post": {
+        "description": "Queue a decision job (REVIEW-QUEUE-4, CHANGESET-9, -13).",
+        "operationId": "decide_api_changesets__changeset_id__decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "changeset_id",
+            "required": true,
+            "schema": {
+              "title": "Changeset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Decision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobQueued"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Decide",
+        "tags": [
+          "review"
+        ]
+      }
+    },
+    "/api/changesets/{changeset_id}/repropose": {
+      "post": {
+        "description": "Propose a conflicted ChangeSet again on the current values (REVIEW-QUEUE-5).",
+        "operationId": "repropose_api_changesets__changeset_id__repropose_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "changeset_id",
+            "required": true,
+            "schema": {
+              "title": "Changeset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobQueued"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Repropose",
+        "tags": [
+          "review"
+        ]
+      }
+    },
     "/api/events": {
       "get": {
-        "description": "run.started / run.finished across all runs (API-9).",
+        "description": "run.started / run.finished across all runs (API-9), plus the review-level and\n``changeset.*`` events of runs (REVIEW-QUEUE-10).",
         "operationId": "all_events_api_events_get",
         "responses": {
           "200": {
@@ -3000,6 +3951,159 @@
         ]
       }
     },
+    "/api/review": {
+      "get": {
+        "description": "What waits for a decision, oldest first: run ChangeSets that are proposed or\nconflicted, and pending review gates (REVIEW-QUEUE-1).",
+        "operationId": "review_queue_api_review_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "profile",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Profile"
+            }
+          },
+          {
+            "in": "query",
+            "name": "run",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/QueueItem"
+                  },
+                  "title": "Response Review Queue Api Review Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Queue",
+        "tags": [
+          "review"
+        ]
+      }
+    },
+    "/api/reviews/{gate_id}/decision": {
+      "post": {
+        "description": "Continue or reject a review gate (REVIEW-QUEUE-6, S-REVIEW REVIEW-6 .. -8).",
+        "operationId": "decide_gate_api_reviews__gate_id__decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "gate_id",
+            "required": true,
+            "schema": {
+              "title": "Gate Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GateDecisionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewGate"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Decide Gate",
+        "tags": [
+          "review"
+        ]
+      }
+    },
     "/api/runs": {
       "get": {
         "operationId": "list_runs_api_runs_get",
@@ -3280,6 +4384,89 @@
         ]
       }
     },
+    "/api/runs/{run_id}/decisions": {
+      "post": {
+        "description": "Decide every proposed ChangeSet of the run the same way, one job each; conflicted\nones are left alone (REVIEW-QUEUE-7).",
+        "operationId": "decide_run_api_runs__run_id__decisions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunDecision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobsQueued"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Decide Run",
+        "tags": [
+          "review"
+        ]
+      }
+    },
     "/api/runs/{run_id}/events": {
       "get": {
         "operationId": "run_events_api_runs__run_id__events_get",
@@ -3345,6 +4532,79 @@
         "summary": "Run Events",
         "tags": [
           "runs"
+        ]
+      }
+    },
+    "/api/runs/{run_id}/undo": {
+      "post": {
+        "description": "Queue the undo of the run's applied changes, newest first (REVIEW-QUEUE-8,\nJOURNAL-6). The result arrives as ``job.finished`` on the run's stream.",
+        "operationId": "undo_run_api_runs__run_id__undo_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobQueued"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Undo Run",
+        "tags": [
+          "review"
         ]
       }
     },

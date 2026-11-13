@@ -19,6 +19,7 @@ from pydantic import BaseModel, JsonValue
 from pydantic import ValidationError as PydanticValidationError
 
 from rifferr.backends.base import LibraryBackend, QueryError
+from rifferr.core.changeset import ChangeSet
 from rifferr.core.profile import Profile
 from rifferr.core.selection import Selection
 from rifferr.core.workflow.errors import ValidationError
@@ -27,6 +28,7 @@ from rifferr.core.workflow.interpolation import (
     InterpolationError,
     interpolate,
 )
+from rifferr.engine.changesets import current_values
 from rifferr.engine.manual import LibraryQuery, ManualChanges, check_manual, library_page
 from rifferr.script_store import ScriptPathError, resolve_script
 from rifferr.tagscript.loader import parse_script
@@ -222,6 +224,13 @@ class ReadOnlyWorker:
         if kind == "changes.check":  # TAG-GRID-7
             changes = _parse(ManualChanges, request)
             return check_manual(self.backend, changes).model_dump(mode="json")
+        if kind == "changes.current":  # REVIEW-QUEUE-3
+            changeset = _parse(ChangeSet, request)
+            try:
+                targets = current_values(self.backend, changeset)
+            except QueryError as exc:
+                raise RequestFailed("bad_query", str(exc)) from None
+            return {"targets": [t.model_dump(mode="json") for t in targets]}
         raise RequestFailed("bad_request", f"unknown request kind {kind!r}")
 
     def _reply(

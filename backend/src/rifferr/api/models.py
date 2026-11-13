@@ -11,6 +11,8 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue
 from rifferr.appdb import JobState
 from rifferr.core.changeset import ChangeSet, ChangeSetState
 from rifferr.core.profile import GridColumns
+from rifferr.core.review import ReviewGate
+from rifferr.engine.changesets import CurrentTarget
 
 
 class _Model(BaseModel):
@@ -200,3 +202,62 @@ class ManualEdit(_Model):
 
 class JobQueued(_Model):
     job_id: str
+
+
+# -- review queue (F-REVIEW-QUEUE) ------------------------------------------------------
+
+
+class QueueItem(_Model):
+    """One thing that waits for a decision (REVIEW-QUEUE-1). ``kind`` says which of
+    ``changeset`` / ``gate`` is set; later milestones add kinds."""
+
+    kind: Literal["changeset", "gate"]
+    id: str
+    profile: str
+    run_id: str
+    workflow: str | None = None
+    step_id: str | None = None
+    created_at: datetime
+    changeset: ChangeSet | None = None
+    state: ChangeSetState | None = None
+    gate: ReviewGate | None = None
+
+
+class ChangeSetDetail(_Model):
+    """A ChangeSet with its review state (REVIEW-QUEUE-2)."""
+
+    changeset: ChangeSet
+    state: ChangeSetState
+    decisions: dict[int, bool] = Field(
+        default_factory=dict[int, bool], description="Field-change index -> accepted"
+    )
+    resolved_by: str | None = None
+    note: str | None = None
+    journal_ids: list[str] = Field(default_factory=list[str])
+
+
+class CurrentValues(_Model):
+    """What a ChangeSet's targets hold now, from the read-only worker (REVIEW-QUEUE-3)."""
+
+    targets: list[CurrentTarget]
+
+
+class Decision(_Model):
+    decision: Literal["accept", "reject"]
+    accepted: list[int] | None = Field(
+        default=None, description="Field-change indexes to accept; absent = all"
+    )
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class GateDecisionBody(_Model):
+    decision: Literal["continue", "reject"]
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class RunDecision(_Model):
+    decision: Literal["accept", "reject"]
+
+
+class JobsQueued(_Model):
+    job_ids: list[str]

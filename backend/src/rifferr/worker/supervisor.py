@@ -148,6 +148,7 @@ class WorkerSupervisor:
         accept: bool,
         accepted: list[int] | None = None,
         by: str | None = None,
+        note: str | None = None,
     ) -> str:
         """Queue a review decision on a ChangeSet as a worker job (CHANGESET-13).
 
@@ -174,8 +175,27 @@ class WorkerSupervisor:
             "accepted": cast(list[JsonValue], sorted(set(accepted))) if accepted else None,
             "by": by,
         }
+        if note is not None:
+            payload["note"] = note
         cs = stored.changeset
         job = self.db.submit_job(cs.profile, "review_decision", payload, cs.run_id)
+        await self._wake(cs.profile)
+        return job.id
+
+    async def repropose(self, changeset_id: str, *, by: str | None = None) -> str:
+        """Queue a job that proposes a conflicted ChangeSet again on the current values
+        (REVIEW-QUEUE-5). Returns the job id. Raises ``KeyError`` for an unknown
+        ChangeSet and ``ValueError`` for one that isn't conflicted."""
+        if self._shutting_down:
+            raise RuntimeError("server is shutting down")
+        stored = AppChangeSets(self.db).get(changeset_id)
+        if stored is None:
+            raise KeyError(changeset_id)
+        if stored.state != "conflicted":
+            raise ValueError(f"ChangeSet {changeset_id} is {stored.state}, not conflicted")
+        cs = stored.changeset
+        payload: dict[str, JsonValue] = {"changeset_id": changeset_id, "by": by}
+        job = self.db.submit_job(cs.profile, "repropose", payload, cs.run_id)
         await self._wake(cs.profile)
         return job.id
 
@@ -515,10 +535,9 @@ class WorkerSupervisor:
         return Event(seq=seq, ts=datetime.now(UTC), run_id=run_id, type=type, data=data)
 
     def _job_failed(self, job: Job, error: str) -> None:
-        """A job without a run tells the profile stream it failed (TAG-GRID-9)."""
-        if job.run_id is not None:
-            return
-        stream = profile_stream(job.profile)
+        """A failed job tells its run's stream, or the profile stream for one without a
+        run (TAG-GRID-9, REVIEW-QUEUE-10)."""
+        stream = job.run_id if job.run_id is not None else profile_stream(job.profile)
         data: dict[str, JsonValue] = {
             "job_id": job.id,
             "kind": job.kind,

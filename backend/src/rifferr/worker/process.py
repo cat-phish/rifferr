@@ -33,6 +33,7 @@ from rifferr.appdb import (
 )
 from rifferr.backends.base import CapabilityError, LibraryBackend
 from rifferr.backends.loader import load_backend
+from rifferr.core.changeset import ChangeSet
 from rifferr.core.ids import new_ulid
 from rifferr.core.profile import Profile, Redactor
 from rifferr.core.selection import Selection
@@ -49,7 +50,13 @@ from rifferr.engine import (
     StepRecord,
     StepTypeRegistry,
 )
-from rifferr.engine.changesets import apply_changeset, reject_changeset
+from rifferr.engine.changesets import (
+    apply_changeset,
+    current_values,
+    proposed_event,
+    reject_changeset,
+    repropose_targets,
+)
 from rifferr.engine.events import profile_stream
 from rifferr.engine.recovery import recover_pending
 from rifferr.engine.undo import UndoContext, UndoError, undo_entry, undo_run
@@ -246,6 +253,9 @@ class Worker:
         if job.kind == "manual_apply":
             self._apply_manual(job)
             return
+        if job.kind == "repropose":
+            self._repropose(job)
+            return
         payload = job.payload
         source = str(payload.get("source", ""))
         source_name = str(payload.get("source_name", "<workflow>"))
@@ -380,7 +390,61 @@ class Worker:
             log.warning("review decision on %s failed: %s", changeset_id, exc)
             self._finish_job(job, "failed", f"{type(exc).__name__}: {exc}")
             return
+        note = payload.get("note")
+        if isinstance(note, str):
+            self.changesets.set_note(changeset_id, note)
         self._finish_job(job, "succeeded")
+        if cs.run_id is not None:
+            self._resume_if_released(cs.run_id)
+
+    def _repropose(self, job: Job) -> None:
+        """Propose a conflicted ChangeSet again with each ``old`` from the current values;
+        the new one replaces it among its run's holds (REVIEW-QUEUE-5, CHANGESET-8)."""
+        changeset_id = str(job.payload.get("changeset_id"))
+        stored = self.changesets.get(changeset_id)
+        if stored is None or stored.state != "conflicted":
+            state = stored.state if stored is not None else "missing"
+            self._finish_job(job, "failed", f"ChangeSet {changeset_id} is {state}, not conflicted")
+            return
+        cs = stored.changeset
+        accepted = [i for i, ok in sorted(stored.decisions.items()) if ok] or None
+        try:
+            targets = repropose_targets(cs, current_values(self.backend, cs), accepted)
+        except Exception as exc:
+            log.warning("re-proposing %s failed: %s", changeset_id, exc)
+            self._finish_job(job, "failed", f"{type(exc).__name__}: {exc}")
+            return
+        new = (
+            ChangeSet(
+                id=new_ulid(),
+                profile=cs.profile,
+                run_id=cs.run_id,
+                step_id=cs.step_id,
+                source=cs.source,
+                rationale=cs.rationale,
+                created_at=datetime.now(UTC),
+                targets=targets,
+            )
+            if targets
+            else None
+        )
+        by = job.payload.get("by")
+        resolved_by = (
+            f"re-proposed as {new.id}"
+            if new is not None
+            else (by if isinstance(by, str) else "re-proposed: nothing left to change")
+        )
+        if not self.changesets.replace(changeset_id, new, resolved_by=resolved_by):
+            self._finish_job(job, "failed", f"ChangeSet {changeset_id} is no longer conflicted")
+            return
+        emit = self._changeset_emitter(cs.run_id, cs.step_id)
+        if new is not None:
+            emit("changeset.proposed", {**proposed_event(new), "replaces": changeset_id})
+        emit(
+            "changeset.rejected",
+            {"changeset_id": changeset_id, "replaced_by": new.id if new is not None else None},
+        )
+        self._finish_job(job, "succeeded", result={"changeset_id": new.id if new else None})
         if cs.run_id is not None:
             self._resume_if_released(cs.run_id)
 
@@ -462,18 +526,17 @@ class Worker:
     def _finish_job(
         self, job: Job, state: JobState, error: str | None = None, result: JsonValue = None
     ) -> None:
-        """Finish a job that isn't a run; one without a run also tells the profile stream
-        (TAG-GRID-9, -11), since nothing else would."""
+        """Finish a job that isn't a run and say so on its run's stream, or on the profile
+        stream for one without a run (TAG-GRID-9, -11, REVIEW-QUEUE-10)."""
         self.db.finish_job(job.id, state, error, result)
-        if job.run_id is None:
-            data: dict[str, JsonValue] = {
-                "job_id": job.id,
-                "kind": job.kind,
-                "state": state,
-                "error": error,
-                "result": result,
-            }
-            self._changeset_emitter(None, None)("job.finished", data)
+        data: dict[str, JsonValue] = {
+            "job_id": job.id,
+            "kind": job.kind,
+            "state": state,
+            "error": error,
+            "result": result,
+        }
+        self._changeset_emitter(job.run_id, None)("job.finished", data)
 
     def _resume_if_released(self, run_id: str) -> None:
         self.db.requeue_if_released(run_id)  # the serve loop claims it next (RUN-14)

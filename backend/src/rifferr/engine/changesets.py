@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Protocol, cast
 
-from pydantic import JsonValue
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from rifferr.backends.base import ChangeSetRejected, LibraryBackend
 from rifferr.core.changeset import (
@@ -29,7 +29,8 @@ from rifferr.core.changeset import (
     TargetRef,
     same_value,
 )
-from rifferr.core.snapshot import AlbumSnapshot, FieldValue
+from rifferr.core.selection import Selection
+from rifferr.core.snapshot import AlbumSnapshot, FieldValue, label
 from rifferr.engine.journal import Journal
 
 #: (event type, data) -> None. Events go on the run's stream (CHANGESET-5).
@@ -324,3 +325,86 @@ def reject_changeset(
 ) -> None:
     store.set_state(changeset_id, "rejected", resolved_by=resolved_by)
     emit("changeset.rejected", {"changeset_id": changeset_id})
+
+
+# -- current values and re-proposing (REVIEW-QUEUE-3, -5, CHANGESET-8) ---------------
+
+
+class CurrentTarget(BaseModel):
+    """What one target of a ChangeSet holds now (REVIEW-QUEUE-3)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    target: TargetRef
+    label: str
+    missing: bool = False
+    fields: dict[str, FieldValue] = Field(
+        default_factory=dict[str, FieldValue],
+        description="Only the fields the ChangeSet changes; an absent field is left out",
+    )
+
+
+def current_values(backend: LibraryBackend, changeset: ChangeSet) -> list[CurrentTarget]:
+    """The current values of the fields ``changeset`` changes, per target, read from the
+    backend's snapshots. Writes nothing."""
+    out: list[CurrentTarget] = []
+    found: dict[TargetRef, AlbumSnapshot | None] = {}
+    for scope in ("album", "item"):
+        ids = tuple(t.target.id for t in changeset.targets if t.target.scope == scope)
+        if not ids:
+            continue
+        for album in backend.query(Selection(scope=scope, ids=ids)):
+            if scope == "album":
+                found[TargetRef(scope="album", id=album.id)] = album
+            for item in album.items if scope == "item" else []:
+                found[TargetRef(scope="item", id=item.id)] = album
+    for t in changeset.targets:
+        album = found.get(t.target)
+        if album is None:
+            out.append(CurrentTarget(target=t.target, label=t.target.label(), missing=True))
+            continue
+        snap = (
+            album
+            if t.target.scope == "album"
+            else next(i for i in album.items if i.id == t.target.id)
+        )
+        wanted = {c.field for c in t.changes}
+        out.append(
+            CurrentTarget(
+                target=t.target,
+                label=label(snap),
+                fields={k: v for k, v in snap.fields.items() if k in wanted},
+            )
+        )
+    return out
+
+
+def repropose_targets(
+    changeset: ChangeSet, current: list[CurrentTarget], accepted: list[int] | None = None
+) -> list[TargetChange]:
+    """The field changes of ``changeset`` again, each ``old`` taken from ``current``
+    (CHANGESET-8). Only the ``accepted`` ones if review accepted a subset; no-ops on
+    the current values (CHANGESET-4) and targets that no longer exist are dropped."""
+    now = {c.target: c for c in current}
+    wanted = None if accepted is None else set(accepted)
+    out: list[TargetChange] = []
+    index = 0
+    for t in changeset.targets:
+        kept: list[FieldChange] = []
+        cur = now.get(t.target)
+        for c in t.changes:
+            i, index = index, index + 1
+            if wanted is not None and i not in wanted:
+                continue
+            if cur is None or cur.missing:
+                continue
+            present = c.field in cur.fields
+            value = cur.fields.get(c.field)
+            if c.op == "delete" and not present:
+                continue
+            if c.op == "set" and present and same_value(value, c.new):
+                continue
+            kept.append(c.model_copy(update={"old": value}))
+        if kept:
+            out.append(TargetChange(target=t.target, changes=kept))
+    return out

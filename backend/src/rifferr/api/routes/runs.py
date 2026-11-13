@@ -101,7 +101,8 @@ async def run_events(
 
 @router.get("/events", response_class=StreamingResponse, responses=SSE_RESPONSE)
 async def all_events(state: State) -> StreamingResponse:
-    """run.started / run.finished across all runs (API-9)."""
+    """run.started / run.finished across all runs (API-9), plus the review-level and
+    ``changeset.*`` events of runs (REVIEW-QUEUE-10)."""
     return StreamingResponse(
         sse.all_run_events(state), media_type="text/event-stream", headers=sse.STREAM_HEADERS
     )
