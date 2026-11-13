@@ -116,12 +116,15 @@ S-TAGSCRIPT → S-REVIEW → S-BEETS-COMMAND → F-TAG-GRID → F-REVIEW-QUEUE.
 
 Progress: C-CHANGESET, C-JOURNAL, the S-SHELL update and S-TAGSCRIPT Implemented
 2026-11-12, including RUN-14 suspension on ChangeSet holds. S-REVIEW Implemented
-2026-11-12 (review gates as RUN-14 holds, timeouts, reject with undo); gates and
-ChangeSets can only be decided from code until F-REVIEW-QUEUE adds the API and screen.
+2026-11-12 (review gates as RUN-14 holds, timeouts, reject with undo).
 The done-when still needs the reference release-type suffix script, which waits for
 `docs/original-checklist.md` (S-TAGSCRIPT Open questions). S-BEETS-COMMAND Implemented
 2026-11-12. F-TAG-GRID Implemented 2026-11-12 (library browser, manual edits as
-ChangeSets, profile event stream, undo of manual edits). Next: F-REVIEW-QUEUE.
+ChangeSets, profile event stream, undo of manual edits). F-REVIEW-QUEUE Implemented
+2026-11-13 (queue API and `/review` page, partial accept, re-propose after a conflict,
+gate decisions, run undo from the run page). Every M1 spec is now Implemented; M1 is
+done once the reference release-type suffix script exists, which waits for
+`docs/original-checklist.md`.
 
 ### To verify on a full dev machine
 

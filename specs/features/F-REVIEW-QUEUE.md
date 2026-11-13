@@ -1,5 +1,5 @@
 # F-REVIEW-QUEUE: Review queue
-Status: Approved
+Status: Implemented
 Milestone: M1
 
 ## Context
@@ -144,4 +144,4 @@ Between proposal and decision someone sets the album to `Live!` → accepting gi
 - [x] `/api/events` carries review-level events
 - [x] `/review` page: ChangeSet and gate cards, partial accept, bulk per run, deep links
 - [x] run page: waiting link, undo run
-- [ ] Playwright test (REVIEW-QUEUE-18)
+- [x] Playwright test (REVIEW-QUEUE-18)

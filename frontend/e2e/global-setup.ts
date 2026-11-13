@@ -95,6 +95,10 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     join(repo, "examples", "workflows", "two-step.yaml"),
     join(dirs.config, "profiles", "main", "workflows", "two-step.yaml"),
   );
+  cpSync(
+    join(here, "review-flow.yaml"),
+    join(dirs.config, "profiles", "main", "workflows", "review-flow.yaml"),
+  );
 
   const server: ChildProcess = spawn(
     uv,

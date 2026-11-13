@@ -1,0 +1,28 @@
+# Workflow for the review queue e2e test (F-REVIEW-QUEUE REVIEW-QUEUE-18): import an
+# album, propose a suffix for review, then stop at a review gate.
+name: review-flow
+description: Import, propose tag changes for review, then a review gate.
+vars:
+  inbox:
+    description: Folder with an album to import
+steps:
+  - id: import
+    uses: beets.import
+    with:
+      path: "{{ vars.inbox }}"
+      set: { album: Review Sessions }
+      # The two-step test imports the same files; keep both, whatever the order.
+      options: { duplicate_action: keep }
+  - id: suffix
+    uses: tags.script
+    apply: review
+    with:
+      actions:
+        - name: ep-suffix
+          when: '^album::\(EP\)$'
+          set: { album: "$album (EP)", albumdisambig: EP }
+  - id: check
+    uses: review
+    with:
+      message: Check the suffix
+      show: [album, albumdisambig]

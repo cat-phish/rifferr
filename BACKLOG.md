@@ -14,6 +14,7 @@ are **not** part of the current task. Append here instead of acting on them.
   `spec.py lint` checks IDs are unique and well-formed.
 
 ## Ideas
+- B-042 [idea] (2026-11-13, from F-REVIEW-QUEUE) A `rifferr review` CLI (`list`, `accept`, `reject`, `continue`) over the F-REVIEW-QUEUE routes, recording `decided_by: cli` (S-REVIEW already allows it). Deferred from M1 by the author (F-REVIEW-QUEUE open question 7).
 - B-039 [idea] (2026-11-12, from S-BEETS-COMMAND) Record a `beets.command` step's before/after diff as an *observed* journal entry (written after the fact, marked as not write-ahead), so later review gates show the changes and undo can revert tag fields (never file moves). Needs a C-JOURNAL amendment.
 - B-001 [idea] (2026-11-11, from architecture §12) Deeper *arr integration as an `integrations` plugin type.
   Examples: tell Lidarr to rescan after import, read Lidarr's wanted list to flag incomplete albums, refresh Navidrome/Jellyfin after a run.
@@ -33,6 +34,7 @@ are **not** part of the current task. Append here instead of acting on them.
 - B-033 [idea] (2026-11-12, from C-JOURNAL) Journal recovery reads current values through `LibraryBackend.query`, falling back to the whole library when an entry's targets aren't among its run's albums. Fine for rare crashes, but slow on big libraries. Consider a `LibraryBackend.fields(refs)` read by id (a C-BACKEND change) if recovery or the review queue needs it.
 
 ## Issues
+- B-043 [bug] (2026-11-13, from F-REVIEW-QUEUE) The Playwright suite is flaky before F-REVIEW-QUEUE too: on `facf9be`, 2 of 8 full `pnpm e2e` runs failed. `TAGSCRIPT_22` timed out with the preview grid still showing the new-script template's result (the edited script's preview never replaced it), and `TAG_GRID_15` failed once. Suspect the preview's supersede flow (a newer preview answered `409 superseded`, or a late answer for an older key); an in-process test of `PreviewSupervisor` didn't reproduce it, so start from a failing Playwright trace (network log). Also: Playwright's Chromium needs `LD_LIBRARY_PATH` unset in this dev shell (see B-012).
 - B-004 [bug] (2026-11-11, from session) Nix `pre-commit` package fails to build Python hook environments (`ModuleNotFoundError: No module named 'packaging'` in its virtualenv). Use the distro package or pipx; mention in contributor docs.
 - B-012 [bug] (2026-11-11, from F-DEV-TOOLING) The dev shell exports `LD_LIBRARY_PATH` pointing at a Nix alsa-lib, which breaks system `ffmpeg`/`ffprobe` (`GLIBC_2.43 not found`). The ffmpeg fixture test skips locally; run `env -u LD_LIBRARY_PATH uv run pytest` or fix the shell profile.
   2026-11-12: the same `LD_LIBRARY_PATH` also breaks Playwright's Chromium (`libasound.so.2` needs `GLIBC_2.43`). `pnpm e2e` works with `env -u LD_LIBRARY_PATH pnpm e2e`.
@@ -56,6 +58,7 @@ are **not** part of the current task. Append here instead of acting on them.
 
 ## Questions
 - B-038 [question] (2026-11-12, from S-REVIEW) Cancelling a waiting run sets its gates to `cancelled` (REVIEW-10) but emits no gate event, only `run.finished`. Should F-REVIEW-QUEUE get a `review.cancelled` event (or `review.resolved` with decision `cancelled`) so an open queue drops the gate live?
+  2026-11-13: F-REVIEW-QUEUE's page refetches the queue on every `run.finished` from `/api/events`, so a cancelled run's gates already drop out live. A dedicated event is only needed if something else must react to the gate itself.
 - B-010 [question] (2026-11-11, from architecture §12) Should `when:` also accept a simpler expression language that compiles to beets queries?
 - B-011 [question] (2026-11-11, from architecture §12) Add a plugin exception to the AGPL so in-process plugins can use any license?
 
