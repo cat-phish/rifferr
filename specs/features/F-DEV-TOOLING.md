@@ -1,5 +1,5 @@
 # F-DEV-TOOLING: Project skeleton, checks and CI
-Status: Implemented
+Status: Verified
 Milestone: M0
 
 ## Context

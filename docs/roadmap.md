@@ -155,7 +155,8 @@ pushing, run these on a normal desktop and tick them off:
 - [ ] Manual check with `uv run rifferr serve --dev` against a test profile (never a
   real library): open `/scripts`, edit a script, and confirm the preview answers while
   a run is importing (read-only worker, WORKER-11).
-- [ ] Then commit any fixes, push, and confirm CI is green (B-014).
+- [x] Then commit any fixes, push, and confirm CI is green (B-014).
+  2026-11-12: green on `d3062c9`, after fixing the py3.12 OpenAPI drift (422 description).
 
 ## M2 — Unattended imports
 
