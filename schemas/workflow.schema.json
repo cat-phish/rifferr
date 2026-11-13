@@ -44,6 +44,75 @@
               "type": "string"
             },
             "uses": {
+              "const": "beets.command",
+              "title": "Uses"
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Backend condition (a beets query).",
+              "title": "When"
+            },
+            "with": {
+              "$ref": "#/$defs/With_beets_command"
+            }
+          },
+          "required": [
+            "id",
+            "uses"
+          ],
+          "title": "Step: beets.command",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One entry of ``steps:`` (WORKFLOW-2, WORKFLOW-3).",
+          "properties": {
+            "apply": {
+              "default": "review",
+              "description": "Whether this step's ChangeSets apply automatically or wait for review. Ignored by steps that don't produce ChangeSets.",
+              "enum": [
+                "auto",
+                "review"
+              ],
+              "title": "Apply",
+              "type": "string"
+            },
+            "id": {
+              "pattern": "^[a-z][a-z0-9_-]*$",
+              "title": "Id",
+              "type": "string"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Name"
+            },
+            "on_error": {
+              "default": "stop",
+              "enum": [
+                "stop",
+                "skip",
+                "continue"
+              ],
+              "title": "On Error",
+              "type": "string"
+            },
+            "uses": {
               "const": "beets.import",
               "title": "Uses"
             },
@@ -395,6 +464,37 @@
         "name"
       ],
       "title": "WebhookTrigger",
+      "type": "object"
+    },
+    "With_beets_command": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "description": "Options and arguments for the subcommand, e.g. [-a]. beets templates ($path, %if{}) reach beets unchanged. The run's albums are added as the query.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Args",
+          "type": "array"
+        },
+        "command": {
+          "description": "One beet subcommand, e.g. move, replaygain, fetchart, mbsync (https://beets.readthedocs.io/en/stable/reference/cli.html). Options go in args.",
+          "pattern": "^[a-z][a-z0-9_-]*$",
+          "title": "Command",
+          "type": "string"
+        },
+        "timeout": {
+          "default": "1h",
+          "description": "Stop the command after this long",
+          "pattern": "^(\\d+[dhms])+$",
+          "title": "Timeout",
+          "type": "string"
+        }
+      },
+      "required": [
+        "command"
+      ],
+      "title": "BeetsCommandParams",
       "type": "object"
     },
     "With_beets_import": {

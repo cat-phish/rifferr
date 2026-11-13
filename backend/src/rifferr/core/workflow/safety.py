@@ -50,6 +50,8 @@ FindingKind = Literal[
     "local_script",
     "auto_apply",
 ]
+#: Library subcommands that delete files or library entries (``beets.command``).
+DESTRUCTIVE_LIBRARY_COMMANDS: frozenset[str] = frozenset({"remove"})
 #: Step types that only propose ChangeSets; with ``apply: auto`` they change tags
 #: without review, which the report lists as information (TAGSCRIPT-18).
 PROPOSING_STEPS: frozenset[str] = frozenset({"tags.script"})
@@ -83,6 +85,9 @@ def safety_report(wf: Workflow) -> SafetyReport:
                     detail=f"{step.uses} applies its changes without review (apply: auto)",
                 )
             )
+        if step.uses == "beets.command":
+            findings += _library_command_findings(step.id, step.with_)
+            continue
         if step.uses != "shell":
             continue
         params = step.with_
@@ -108,6 +113,17 @@ def safety_report(wf: Workflow) -> SafetyReport:
                     Finding(step_id=step.id, kind="secret", detail=f"exposes secret '{name}'")
                 )
     return SafetyReport(findings=findings)
+
+
+def _library_command_findings(step_id: str, params: dict[str, Any]) -> list[Finding]:
+    """A ``beets.command`` step changes the library outside ChangeSets (BEETS-COMMAND-13)."""
+    command = str(params.get("command", ""))
+    args = params.get("args")
+    words = [str(a) for a in cast(list[Any], args)] if isinstance(args, list) else []
+    out = [Finding(step_id=step_id, kind="command", detail=shlex.join(["beet", command, *words]))]
+    if command in DESTRUCTIVE_LIBRARY_COMMANDS:
+        out.append(Finding(step_id=step_id, kind="destructive", detail=f"beet {command}"))
+    return out
 
 
 def _split(command: str) -> list[str]:

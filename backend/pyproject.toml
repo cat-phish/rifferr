@@ -39,6 +39,7 @@ shell = "rifferr.steps.shell:ShellStep"
 "beets.import" = "rifferr.steps.beets_import:BeetsImportStep"
 "tags.script" = "rifferr.steps.tagscript:TagScriptStep"
 review = "rifferr.steps.review:ReviewStep"
+"beets.command" = "rifferr.steps.beets_command:BeetsCommandStep"
 
 [project.entry-points."rifferr.backends"]
 beets = "rifferr.backends.beets:from_profile"
