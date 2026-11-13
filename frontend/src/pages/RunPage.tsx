@@ -1,13 +1,15 @@
-import { Alert, Button, Group, Stack, Table, Text, Title } from "@mantine/core";
+import { Alert, Anchor, Button, Group, Modal, Stack, Table, Text, Title } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { useParams } from "react-router";
+import { useRef, useState } from "react";
+import { Link, useParams } from "react-router";
 import { api, ok } from "../api/client";
 import type { RunDetail, RunEvent } from "../api/types";
 import { LogView } from "../components/LogView";
 import { StatusBadge } from "../components/StatusBadge";
 import { useEventStream } from "../hooks/useEventStream";
+import { useProfile } from "../hooks/useProfile";
 import { duration } from "../lib/format";
+import { count, formatValue, reviewLink, type Value } from "../lib/review";
 import { applyEvent, initialView, isTerminal, type RunView } from "../lib/runState";
 
 const RUN_EVENTS = [
@@ -15,6 +17,8 @@ const RUN_EVENTS = [
   "run.step.started",
   "run.step.log",
   "run.step.finished",
+  "run.waiting_review",
+  "run.resumed",
   "run.finished",
 ] as const;
 
@@ -81,6 +85,8 @@ function LiveRun({ run, onFinished }: { run: RunDetail; onFinished: () => void }
         )}
       </Group>
       {view.error !== null && <Alert color="red">{view.error}</Alert>}
+      {view.status === "waiting_review" && <WaitingForReview runId={run.id} />}
+      {isTerminal(view.status) && <UndoRun run={run} />}
       <Table data-testid="steps">
         <Table.Thead>
           <Table.Tr>
@@ -103,5 +109,173 @@ function LiveRun({ run, onFinished }: { run: RunDetail; onFinished: () => void }
       </Table>
       <LogView lines={view.log} />
     </Stack>
+  );
+}
+
+/** A waiting run links to its items in the review queue (REVIEW-QUEUE-15). */
+function WaitingForReview({ runId }: { runId: string }) {
+  const { profile } = useProfile();
+  return (
+    <Alert color="blue" data-testid="waiting-review">
+      Waiting for review.{" "}
+      <Anchor component={Link} to={reviewLink(profile, "run", runId)}>
+        Open its items in the review queue
+      </Anchor>
+    </Alert>
+  );
+}
+
+interface UndoConflict {
+  target: string;
+  field: string;
+  expected: Value;
+  current: Value;
+}
+
+interface UndoReport {
+  undone: string[];
+  stopped_at: string | null;
+  conflicts: UndoConflict[];
+  problems: string[];
+}
+
+interface JobFinished {
+  type: string;
+  data: { job_id?: string; state?: string; error?: string | null; result?: unknown };
+}
+
+/** "Undo this run" for a finished run with applied changes (REVIEW-QUEUE-15, JOURNAL-6).
+ * The undo job's report arrives as ``job.finished`` on ``/api/events``. */
+function UndoRun({ run }: { run: RunDetail }) {
+  const queryClient = useQueryClient();
+  const [confirming, setConfirming] = useState(false);
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [report, setReport] = useState<JobFinished["data"] | null>(null);
+  // The job can finish before the POST that queued it returns.
+  const finished = useRef<Record<string, JobFinished["data"]>>({});
+  useEventStream<JobFinished>(jobId !== null || confirming ? "/api/events" : null, {
+    types: ["job.finished"],
+    onEvent: (_type, event) => {
+      const id = event.data.job_id;
+      if (id === undefined) return;
+      finished.current[id] = event.data;
+      if (id === jobId) {
+        setReport(event.data);
+        void queryClient.invalidateQueries({ queryKey: ["run", run.id] });
+      }
+    },
+  });
+  const undo = useMutation({
+    mutationFn: async () =>
+      ok(await api.POST("/api/runs/{run_id}/undo", { params: { path: { run_id: run.id } } })),
+    onSuccess: ({ job_id }) => {
+      setConfirming(false);
+      setJobId(job_id);
+      const early = finished.current[job_id];
+      if (early !== undefined) {
+        setReport(early);
+        void queryClient.invalidateQueries({ queryKey: ["run", run.id] });
+      }
+    },
+  });
+  const changes = run.undoable;
+  if (changes === 0 && jobId === null) return null;
+  return (
+    <Stack gap="xs">
+      {jobId === null && (
+        <Group>
+          <Button
+            variant="light"
+            color="orange"
+            onClick={() => {
+              setConfirming(true);
+            }}
+          >
+            Undo this run
+          </Button>
+          <Text size="sm" c="dimmed">
+            {count(changes, "applied change")} can be undone.
+          </Text>
+        </Group>
+      )}
+      {jobId !== null && report === null && (
+        <Text size="sm" c="dimmed" data-testid="undo-pending">
+          Undoing…
+        </Text>
+      )}
+      {report !== null && <UndoReportView data={report} />}
+      <Modal
+        opened={confirming}
+        onClose={() => {
+          setConfirming(false);
+        }}
+        title="Undo this run"
+      >
+        <Stack>
+          <Text data-testid="undo-confirm">
+            Undo the {count(changes, "tag change")} this run applied, newest first? The undo stops
+            at the first field that changed again since; older changes then stay. Albums the run
+            imported stay in the library.
+          </Text>
+          {undo.error && <Alert color="red">{undo.error.message}</Alert>}
+          <Group justify="flex-end">
+            <Button
+              variant="default"
+              onClick={() => {
+                setConfirming(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              color="orange"
+              loading={undo.isPending}
+              onClick={() => {
+                undo.mutate();
+              }}
+            >
+              Undo
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+    </Stack>
+  );
+}
+
+function UndoReportView({ data }: { data: JobFinished["data"] }) {
+  const result = data.result as Partial<UndoReport> | null | undefined;
+  const undone = result?.undone?.length ?? 0;
+  if (result?.stopped_at == null && data.state !== "succeeded") {
+    return (
+      <Alert color="red" data-testid="undo-report">
+        Undo failed: {data.error ?? "unknown error"}
+      </Alert>
+    );
+  }
+  if (result?.stopped_at == null) {
+    return (
+      <Alert color="green" data-testid="undo-report">
+        Undone: {count(undone, "change")} reverted.
+      </Alert>
+    );
+  }
+  return (
+    <Alert color="orange" data-testid="undo-report">
+      <Text size="sm">
+        Reverted {count(undone, "change")}, then stopped at journal entry {result.stopped_at}: older
+        changes stay.
+      </Text>
+      {(result.conflicts ?? []).map((c) => (
+        <Text size="sm" key={`${c.target}/${c.field}`}>
+          {c.target} {c.field}: expected {formatValue(c.expected)}, now {formatValue(c.current)}
+        </Text>
+      ))}
+      {(result.problems ?? []).map((p) => (
+        <Text size="sm" key={p}>
+          {p}
+        </Text>
+      ))}
+    </Alert>
   );
 }

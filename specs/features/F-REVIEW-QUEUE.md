@@ -86,6 +86,8 @@ Implementation details (filled in while building):
   run page shows the undo report from its `result`.
 - `RunDetail.undoable` counts the run's applied, not undone journal entries, so the run
   page knows when to offer "Undo this run".
+- The app shell holds the one `/api/events` connection: it refreshes the runs list and
+  the queue (and the nav count) from it.
 
 ## Examples
 A run's `tags.script` step (`apply: review`) proposes `album: Live → Live (EP)` and
@@ -140,6 +142,6 @@ Between proposal and decision someone sets the album to `Live!` → accepting gi
 - [x] routes: queue, ChangeSet detail and current values, decisions, re-propose, gate decision, run decisions, run undo
 - [x] `repropose` worker job with the holds swap
 - [x] `/api/events` carries review-level events
-- [ ] `/review` page: ChangeSet and gate cards, partial accept, bulk per run, deep links
-- [ ] run page: waiting link, undo run
+- [x] `/review` page: ChangeSet and gate cards, partial accept, bulk per run, deep links
+- [x] run page: waiting link, undo run
 - [ ] Playwright test (REVIEW-QUEUE-18)

@@ -46,7 +46,11 @@ export function applyEvent(view: RunView, e: RunEvent): RunView {
   };
   switch (e.type) {
     case "run.started":
+    case "run.resumed":
       next.status = "running";
+      break;
+    case "run.waiting_review":
+      next.status = "waiting_review";
       break;
     case "run.step.started":
       setStep({ status: "running" });

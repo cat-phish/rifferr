@@ -50,6 +50,7 @@ function runDetail(over: Partial<RunDetail> = {}): RunDetail {
       { id: "import", uses: "beets.import", status: "pending", outputs: {} },
       { id: "list", uses: "shell", status: "pending", outputs: {} },
     ],
+    undoable: 0,
     ...over,
   };
 }

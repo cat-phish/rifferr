@@ -1,27 +1,19 @@
 import { Anchor, Stack, Table, Text, Title } from "@mantine/core";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { api, ok } from "../api/client";
 import { StatusBadge } from "../components/StatusBadge";
-import { useEventStream } from "../hooks/useEventStream";
 import { useProfile, withProfile } from "../hooks/useProfile";
 import { duration, time } from "../lib/format";
 
-const DASHBOARD_EVENTS = ["run.started", "run.finished"] as const;
-
-/** Recent runs, refreshed live from /api/events (UI-SHELL-9). */
+/** Recent runs, refreshed live from /api/events by the app shell (UI-SHELL-9). */
 export function RunsPage() {
   const { profile } = useProfile();
-  const queryClient = useQueryClient();
   const runs = useQuery({
     queryKey: ["runs", profile],
     enabled: profile !== null,
     queryFn: async () =>
       ok(await api.GET("/api/runs", { params: { query: { profile, limit: 50 } } })),
-  });
-  useEventStream("/api/events", {
-    types: DASHBOARD_EVENTS,
-    onEvent: () => void queryClient.invalidateQueries({ queryKey: ["runs"] }),
   });
 
   return (

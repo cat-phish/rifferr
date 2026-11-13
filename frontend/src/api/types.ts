@@ -28,3 +28,10 @@ export interface RunEvent {
   step_id?: string | null;
   data: Record<string, unknown>;
 }
+export type QueueItem = S["QueueItem"];
+export type ChangeSet = S["ChangeSet"];
+export type ChangeSetDetail = S["ChangeSetDetail"];
+export type CurrentTarget = S["CurrentTarget"];
+export type ReviewGate = S["ReviewGate"];
+export type GateAlbum = S["GateAlbum"];
+export type TargetRef = S["TargetRef"];

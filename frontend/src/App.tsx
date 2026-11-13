@@ -1,9 +1,11 @@
-import { AppShell, Group, NavLink, Select, Title } from "@mantine/core";
+import { AppShell, Badge, Group, NavLink, Select, Title } from "@mantine/core";
 import { useSyncExternalStore } from "react";
 import { Link, Route, Routes, useLocation } from "react-router";
 import { auth } from "./api/auth";
 import { useProfile, withProfile } from "./hooks/useProfile";
+import { useAppEvents, useReviewQueue } from "./hooks/useReviewQueue";
 import { LibraryPage } from "./pages/LibraryPage";
+import { ReviewPage } from "./pages/ReviewPage";
 import { RunPage } from "./pages/RunPage";
 import { RunsPage } from "./pages/RunsPage";
 import { ScriptPage } from "./pages/ScriptPage";
@@ -12,7 +14,8 @@ import { SignedOut } from "./pages/SignedOut";
 import { WorkflowPage } from "./pages/WorkflowPage";
 import { WorkflowsPage } from "./pages/WorkflowsPage";
 
-/** Routes (F-UI-SHELL Interfaces). `/` is Runs in M0; the M2 dashboard takes it later. */
+/** Routes (F-UI-SHELL Interfaces). `/` is Runs until the M2 dashboard takes it (F-REVIEW-QUEUE
+ * open question 2). */
 export function App() {
   const signedOut = useSyncExternalStore(auth.subscribe, auth.isSignedOut);
   if (signedOut) return <SignedOut />;
@@ -27,6 +30,7 @@ export function App() {
         <Route path="/scripts" element={<ScriptsPage />} />
         <Route path="/scripts/:name" element={<ScriptPage />} />
         <Route path="/library" element={<LibraryPage />} />
+        <Route path="/review" element={<ReviewPage />} />
       </Routes>
     </Shell>
   );
@@ -36,8 +40,17 @@ export function App() {
 function Shell({ children }: { children: React.ReactNode }) {
   const { profile, profiles, setProfile } = useProfile();
   const { pathname } = useLocation();
-  const nav = [
+  const queue = useReviewQueue(profile);
+  useAppEvents();
+  const waiting = queue.data?.length ?? 0;
+  const nav: { label: string; to: string; active: boolean; count?: number }[] = [
     { label: "Runs", to: "/runs", active: pathname === "/" || pathname.startsWith("/runs") },
+    {
+      label: "Review",
+      to: "/review",
+      active: pathname.startsWith("/review"),
+      count: waiting,
+    },
     { label: "Workflows", to: "/workflows", active: pathname.startsWith("/workflows") },
     { label: "Library", to: "/library", active: pathname.startsWith("/library") },
     { label: "Scripts", to: "/scripts", active: pathname.startsWith("/scripts") },
@@ -73,6 +86,13 @@ function Shell({ children }: { children: React.ReactNode }) {
             to={withProfile(n.to, profile)}
             label={n.label}
             active={n.active}
+            rightSection={
+              n.count !== undefined && n.count > 0 ? (
+                <Badge size="sm" circle data-testid="review-count">
+                  {n.count}
+                </Badge>
+              ) : undefined
+            }
           />
         ))}
       </AppShell.Navbar>
