@@ -282,7 +282,7 @@ specs/  docs/
 |---|---|
 | Backend | Python ≥ 3.12, uv, FastAPI, Pydantic v2, httpx, ruamel.yaml, keyring, SQLite (stdlib + simple migrations) |
 | beets | Regular dependency from PyPI, pinned to a compatible range (e.g. `beets>=2.14,<2.15`). Never forked or vendored. Bumps require a spec and passing contract tests. |
-| Frontend | TypeScript, React, Vite, TanStack Query + Table + Virtual (tag grid for thousands of rows), component library TBD |
+| Frontend | TypeScript, React, Vite, TanStack Query + Virtual (tag grid for thousands of rows; no Table library, F-TAG-GRID), component library TBD |
 | API contract | FastAPI OpenAPI → `openapi-typescript` generated client types; Pydantic → JSON Schema for workflow files (editor autocomplete + UI forms) |
 | Quality | ruff, pyright (strict on core/engine/tagscript), eslint, prettier, tsc --noEmit |
 | Tests | pytest, hypothesis, respx (HTTP mocks), Vitest + Testing Library, Playwright e2e |

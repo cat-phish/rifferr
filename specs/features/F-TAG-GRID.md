@@ -1,5 +1,5 @@
 # F-TAG-GRID: Library and tag grid
-Status: Approved
+Status: Implemented
 Milestone: M1
 
 ## Context
@@ -27,7 +27,7 @@ profile event stream.
 - TAG-GRID-6: With several rows selected, "Set field" (field name and one literal value) and "Delete field" MUST add a pending edit to each selected row. Values are literal text; beets templates belong to tag scripts (TAG-GRID-12).
 - TAG-GRID-7: Pending edits MUST be checked by the server before they're applied: `POST /api/profiles/{profile}/changes/check` coerces each value to its field's type (`backend.coerce`, BACKEND-11) and runs `backend.check` (CHANGESET-2) in the read-only worker, and answers the problems per target and field. Cells with problems MUST show the message and block Apply until fixed or discarded.
 - TAG-GRID-8: Apply MUST send all pending edits in one request, `POST /api/profiles/{profile}/changes {targets, rationale?}`. The server MUST turn them into ChangeSets with source `manual` / `ui`, one per album (CHANGESET-14), with each field's `old` taken from the snapshot the user edited (so changes made meanwhile come back as conflicts, CHANGESET-8), and queue one worker job that applies them through the journal (CHANGESET-13). Manual ChangeSets apply immediately; they don't go to the review queue (open question 2). The response gives the ChangeSet ids and the job id.
-- TAG-GRID-9: `GET /api/profiles/{profile}/events` (SSE) MUST carry the `changeset.*` events of the profile's ChangeSets that have no run, and a `job.finished` event (`job_id`, `kind`, `state`, `error`, `result`) when a job without a run ends, including one failed because its worker crashed. Events are persisted before they're sent, with `Last-Event-ID` replay as API-8. This closes B-030.
+- TAG-GRID-9: `GET /api/profiles/{profile}/events` (SSE) MUST carry the `changeset.*` events of the profile's ChangeSets that have no run, and a `job.finished` event (`job_id`, `kind`, `state`, `error`, `result`) when a job without a run ends, including one failed because its worker crashed. Events are persisted before they're sent, with `Last-Event-ID` replay as API-8; without `Last-Event-ID` the stream starts with new events, because a profile's history never ends. This closes B-030.
 - TAG-GRID-10: After Apply, the grid MUST show each ChangeSet's outcome from the event stream: applied cells refresh from a new query; conflicted cells show the current value next to the one the user wanted, with "apply on top" (a new edit whose `old` is the current value) and "discard". Tag-write failures (CHANGESET-10) MUST be shown on their rows.
 - TAG-GRID-11: A "Recent edits" panel MUST list the profile's manual ChangeSets, newest first, with their state, and offer Undo for applied ones, which queues the C-JOURNAL undo job for its journal entry (JOURNAL-4, -5) and shows the result, including a conflict that stopped it.
 - TAG-GRID-12: "Preview a script on these" MUST open the script editor (`/scripts`) with the grid's current query filled in.
@@ -117,7 +117,7 @@ Resolved 2026-11-12 (author: "go with your recommendations, approved"):
 - [x] read-only worker: `library.query`, `changes.check`
 - [x] routes: library, changes/check, changes, recent changes, journal undo
 - [x] worker job applying manual ChangeSets; profile event stream (B-030)
-- [ ] `/library` page: query, scope, virtualized grid, column picker, expand albums
-- [ ] pending edits, bulk set/delete, check, apply, outcome, conflicts
-- [ ] recent edits panel with undo; script hand-off
-- [ ] Playwright test (TAG-GRID-15)
+- [x] `/library` page: query, scope, virtualized grid, column picker, expand albums
+- [x] pending edits, bulk set/delete, check, apply, outcome, conflicts
+- [x] recent edits panel with undo; script hand-off
+- [x] Playwright test (TAG-GRID-15)

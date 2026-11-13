@@ -67,7 +67,7 @@ Every runtime or dev dependency needs the author's OK before it is added
 | eslint, prettier | frontend lint | MIT | M0 | 2026-11-11 |
 | @vitejs/plugin-react, @types/react, @types/react-dom, @types/node, @eslint/js, typescript-eslint, eslint-plugin-react-hooks, globals, @testing-library/jest-dom, jsdom | companions of the approved frontend tools | MIT | M0 | 2026-11-11 (with F-DEV-TOOLING) |
 | uv_build | backend build backend | MIT / Apache-2.0 | M0 | 2026-11-11 (with F-DEV-TOOLING) |
-| @tanstack/react-table, react-virtual | tag grid | MIT | M1 | |
+| @tanstack/react-virtual | tag grid, run log (react-table not added: F-TAG-GRID, 2026-11-12) | MIT | M1 | |
 | watchfiles | folder triggers | MIT | M2 | |
 | apprise | notifications | BSD-2-Clause | M2 | |
 | mutagen | FilesBackend | GPL-2.0-or-later | later | |
@@ -120,7 +120,8 @@ Progress: C-CHANGESET, C-JOURNAL, the S-SHELL update and S-TAGSCRIPT Implemented
 ChangeSets can only be decided from code until F-REVIEW-QUEUE adds the API and screen.
 The done-when still needs the reference release-type suffix script, which waits for
 `docs/original-checklist.md` (S-TAGSCRIPT Open questions). S-BEETS-COMMAND Implemented
-2026-11-12. Next: F-TAG-GRID.
+2026-11-12. F-TAG-GRID Implemented 2026-11-12 (library browser, manual edits as
+ChangeSets, profile event stream, undo of manual edits). Next: F-REVIEW-QUEUE.
 
 ### To verify on a full dev machine
 
