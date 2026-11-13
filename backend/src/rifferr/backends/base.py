@@ -78,6 +78,8 @@ class BackendCapabilities(BaseModel):
     apply: bool = False
     undo: bool = False
     command_env: bool = False
+    cli: bool = False
+    """The backend has a command-line tool steps can run (BACKEND-14)."""
 
     @staticmethod
     def display_name(field: str) -> str:
@@ -190,4 +192,11 @@ class LibraryBackend(Protocol):
 
     def command_env(self) -> Mapping[str, str]:
         """Environment for CLI subprocess steps (e.g. ``BEETSDIR``)."""
+        ...
+
+    def cli_command(self, subcommand: str, args: list[str], selection: Selection) -> list[str]:
+        """The argv that runs ``subcommand`` of the backend's command-line tool on
+        ``selection`` (BACKEND-14): the tool, ``subcommand``, ``args``, then the selection
+        as query arguments, last. Raises ``ValueError`` for a selection that would match
+        the whole library."""
         ...

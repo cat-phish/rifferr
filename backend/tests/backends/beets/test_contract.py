@@ -33,6 +33,6 @@ def test_BEETS_IMPORT_11_contract_runs_for_declared_capabilities(beets_env: Beet
     backend = beets_env.backend()
     assert isinstance(backend, LibraryBackend)
     assert backend.capabilities == BackendCapabilities(
-        import_=True, query=True, templates=True, apply=True, command_env=True
+        import_=True, query=True, templates=True, apply=True, command_env=True, cli=True
     )
     assert issubclass(TestBeetsBackendContract, BackendContract)

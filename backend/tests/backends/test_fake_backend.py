@@ -39,7 +39,7 @@ class TestFakeBackendWithoutCapabilities(BackendContract):
 def test_BACKEND_2_capabilities_default() -> None:
     caps = FakeBackend().capabilities
     assert caps == BackendCapabilities(
-        import_=True, query=True, templates=True, apply=True, command_env=True
+        import_=True, query=True, templates=True, apply=True, command_env=True, cli=True
     )
 
 

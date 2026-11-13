@@ -11,6 +11,7 @@ import os
 import re
 import shlex
 import sqlite3
+import sys
 from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
 from typing import Any
@@ -45,11 +46,13 @@ from rifferr.core.selection import Selection
 from rifferr.core.snapshot import AlbumSnapshot, FieldValue, ItemSnapshot
 
 CAPABILITIES = BackendCapabilities(
-    import_=True, query=True, templates=True, apply=True, command_env=True
+    import_=True, query=True, templates=True, apply=True, command_env=True, cli=True
 )
 
 
-READ_ONLY_CAPABILITIES = CAPABILITIES.model_copy(update={"import_": False, "apply": False})
+READ_ONLY_CAPABILITIES = CAPABILITIES.model_copy(
+    update={"import_": False, "apply": False, "cli": False}
+)
 
 
 def from_profile(profile: Profile, *, read_only: bool = False) -> BeetsBackend:
@@ -165,6 +168,20 @@ class BeetsBackend:
 
     def command_env(self) -> Mapping[str, str]:
         return {"BEETSDIR": str(self.beetsdir)}
+
+    def cli_command(self, subcommand: str, args: list[str], selection: Selection) -> list[str]:
+        """``python -m beets`` from this Python: the same beets and plugins (BACKEND-14).
+
+        Each query part is one argv element, as beets reads its command line; the
+        ``when`` string is split by beets' own rule first.
+        """
+        self._writable(f"run beet {subcommand}")
+        query = _split(selection.query) if selection.query else []
+        if selection.run_id is not None:
+            query.insert(0, _run_term(selection.run_id))
+        if not query:
+            raise ValueError("an empty selection would run on the whole library")
+        return [sys.executable, "-m", "beets", subcommand, *args, *query]
 
     def check(self, changes: ChangeSet) -> list[ChangeProblem]:
         with self.library() as lib:

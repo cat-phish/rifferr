@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import re
 import shlex
+import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -66,8 +67,10 @@ from rifferr.core.selection import Selection
 from rifferr.core.snapshot import AlbumSnapshot, FieldValue, ItemSnapshot
 
 DEFAULT_CAPABILITIES = BackendCapabilities(
-    import_=True, query=True, templates=True, apply=True, command_env=True
+    import_=True, query=True, templates=True, apply=True, command_env=True, cli=True
 )
+#: Default command-line tool of a FakeBackend: prints its arguments as JSON (BACKEND-14).
+ECHO_CLI = (sys.executable, "-c", "import json, sys; print(json.dumps(sys.argv[1:]))")
 #: Fields a ChangeSet can't touch (as in beets: ids, paths and bookkeeping).
 READ_ONLY_FIELDS = frozenset({"id", "path", "album_id", "mtime", "added"})
 _INT, _FLOAT, _BOOL, _STR, _LIST = int, float, bool, str, list
@@ -140,8 +143,11 @@ class FakeBackend:
         inherited_fields: frozenset[str] | None = None,
         read_only: frozenset[str] = READ_ONLY_FIELDS,
         field_types: Mapping[str, type] | None = None,
+        cli: Sequence[str] = ECHO_CLI,
     ) -> None:
         self.capabilities = capabilities or DEFAULT_CAPABILITIES
+        self.cli = list(cli)
+        """argv prefix ``cli_command`` starts with; tests point it at their own script."""
         self._env = dict(env or {})
         self.inherited_fields = inherited_fields
         """Album fields carried to items on apply; ``None`` = all (beets 2.x)."""
@@ -210,7 +216,9 @@ class FakeBackend:
     def read_only_view(self) -> FakeBackend:
         """The same library, opened read-only (BACKEND-13): no apply, no import."""
         view = type(self)(
-            self.capabilities.model_copy(update={"apply": False, "import_": False, "undo": False}),
+            self.capabilities.model_copy(
+                update={"apply": False, "import_": False, "undo": False, "cli": False}
+            ),
             self._env,
             inherited_fields=self.inherited_fields,
             read_only=self.read_only,
@@ -354,6 +362,16 @@ class FakeBackend:
             report(ImportDecision(path=album.path or key, outcome="imported"))
         self._imported.add(key)
         return ImportResult(imported=imported)
+
+    def cli_command(self, subcommand: str, args: list[str], selection: Selection) -> list[str]:
+        """``self.cli``, then the subcommand, args and query parts (BACKEND-14)."""
+        self._need("cli")
+        query = shlex.split(selection.query) if selection.query else []
+        if selection.run_id is not None:
+            query.insert(0, f"{RUN_MARKER}::^{re.escape(selection.run_id)}$")
+        if not query:
+            raise ValueError("an empty selection would run on the whole library")
+        return [*self.cli, subcommand, *args, *query]
 
     def command_env(self) -> Mapping[str, str]:
         self._need("command_env")
