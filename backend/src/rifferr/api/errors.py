@@ -35,8 +35,17 @@ def not_found(what: str) -> ApiError:
     return ApiError(404, "not_found", f"{what} not found")
 
 
+# Explicit descriptions: FastAPI would otherwise use Python's http.HTTPStatus
+# phrases, which differ between versions (422 is "Unprocessable Entity" before
+# 3.13), and the committed OpenAPI document must not depend on the Python version.
 ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
-    status: {"model": ErrorEnvelope} for status in (400, 404, 409, 422)
+    status: {"model": ErrorEnvelope, "description": description}
+    for status, description in (
+        (400, "Bad Request"),
+        (404, "Not Found"),
+        (409, "Conflict"),
+        (422, "Unprocessable Content"),
+    )
 }
 
 _HTTP_CODES = {404: "not_found", 405: "method_not_allowed"}
