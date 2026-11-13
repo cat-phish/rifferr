@@ -113,6 +113,75 @@
               "type": "string"
             },
             "uses": {
+              "const": "review",
+              "title": "Uses"
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Backend condition (a beets query).",
+              "title": "When"
+            },
+            "with": {
+              "$ref": "#/$defs/With_review"
+            }
+          },
+          "required": [
+            "id",
+            "uses"
+          ],
+          "title": "Step: review",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One entry of ``steps:`` (WORKFLOW-2, WORKFLOW-3).",
+          "properties": {
+            "apply": {
+              "default": "review",
+              "description": "Whether this step's ChangeSets apply automatically or wait for review. Ignored by steps that don't produce ChangeSets.",
+              "enum": [
+                "auto",
+                "review"
+              ],
+              "title": "Apply",
+              "type": "string"
+            },
+            "id": {
+              "pattern": "^[a-z][a-z0-9_-]*$",
+              "title": "Id",
+              "type": "string"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Name"
+            },
+            "on_error": {
+              "default": "stop",
+              "enum": [
+                "stop",
+                "skip",
+                "continue"
+              ],
+              "title": "On Error",
+              "type": "string"
+            },
+            "uses": {
               "const": "shell",
               "title": "Uses"
             },
@@ -501,6 +570,76 @@
         }
       },
       "title": "ImporterOptions",
+      "type": "object"
+    },
+    "With_review": {
+      "additionalProperties": false,
+      "properties": {
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Shown for each album: a beets template, e.g. 'Check $albumartist - $album before the files move' (https://beets.readthedocs.io/en/stable/reference/pathformat.html)",
+          "title": "Message"
+        },
+        "on_reject": {
+          "default": "stop",
+          "description": "On reject, stop the run (stop) or also undo its applied tag changes (undo). Imports are never undone.",
+          "enum": [
+            "stop",
+            "undo"
+          ],
+          "title": "On Reject",
+          "type": "string"
+        },
+        "on_timeout": {
+          "anyOf": [
+            {
+              "enum": [
+                "continue",
+                "reject"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The decision taken once timeout passes (default reject)",
+          "title": "On Timeout"
+        },
+        "show": {
+          "description": "Fields to show for each album",
+          "items": {
+            "type": "string"
+          },
+          "title": "Show",
+          "type": "array"
+        },
+        "timeout": {
+          "anyOf": [
+            {
+              "description": "A duration: whole numbers with d, h, m or s, e.g. 30m, 12h, 3d, 1d12h",
+              "pattern": "^(\\d+[dhms])+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Decide automatically after this long, e.g. 3d",
+          "title": "Timeout"
+        }
+      },
+      "title": "ReviewParams",
       "type": "object"
     },
     "With_shell": {
