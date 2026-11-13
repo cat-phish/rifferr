@@ -43,6 +43,7 @@ are **not** part of the current task. Append here instead of acting on them.
   2026-11-12: on the Fedora desktop all 952 backend tests pass, including the shell tests, so this is NixOS-only. On that desktop a zsh alias made `uv` launch an editor, so `pnpm e2e` needs `UV=<path to uv>` (`e2e/global-setup.ts` reads `UV`).
 - B-035 [bug] (2026-11-12, from S-TAGSCRIPT) In beets, an item-scoped template or condition still sees the stored album's value of a flexible attribute that an earlier album-scoped action in the same script deleted, because beets items fall back to their album for fields they don't have. Rare; fixing it means overlaying the album's working values too (the evaluator would pass them to `evaluate`/`matches`).
 - B-036 [bug] (2026-11-12, from session) `backends/beets/apply.py` finds effects and items to write by walking each target's album, so a ChangeSet on a singleton item (no album) would store the DB change but report no effects (the journal couldn't undo it) and write no file tags. Not reachable yet, because proposals must target albums from a snapshot. Handle albumless items before singleton imports can be edited, and add a contract test.
+- B-037 [bug] (2026-11-12, from S-REVIEW) The server and the worker both append events to a run's stream with `seq = last_seq + 1`. If both write at once (e.g. a user cancels a run while its `review_reject` undo job is logging, or a ChangeSet decision races `supervisor.cancel`), one event is dropped as out of order ("dropping out-of-order event"). Rare; a fix would route all of a run's events through one writer or retry with the next seq.
 
 ## Tech debt
 - B-007 [debt] (2026-11-11, from session) Decide a cadence for `pre-commit autoupdate` (or let Renovate/Dependabot do it).
@@ -53,6 +54,7 @@ are **not** part of the current task. Append here instead of acting on them.
 - B-027 [debt] (2026-11-11, from F-UI-SHELL) The production JS bundle is ~560 kB (Mantine), above Vite's 500 kB warning. Code-split per route or accept and raise `chunkSizeWarningLimit`.
 
 ## Questions
+- B-038 [question] (2026-11-12, from S-REVIEW) Cancelling a waiting run sets its gates to `cancelled` (REVIEW-10) but emits no gate event, only `run.finished`. Should F-REVIEW-QUEUE get a `review.cancelled` event (or `review.resolved` with decision `cancelled`) so an open queue drops the gate live?
 - B-010 [question] (2026-11-11, from architecture §12) Should `when:` also accept a simpler expression language that compiles to beets queries?
 - B-011 [question] (2026-11-11, from architecture §12) Add a plugin exception to the AGPL so in-process plugins can use any license?
 

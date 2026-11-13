@@ -1,5 +1,5 @@
 # S-REVIEW: `review` gate step
-Status: Approved
+Status: Implemented
 Milestone: M1
 
 ## Context
@@ -66,6 +66,13 @@ class ReviewGate(BaseModel, frozen=True):
 - Events: `review.requested {gate_id, albums}`, `review.resolved {gate_id, decision, decided_by}`.
 - The decision API (`POST /api/reviews/{id}/decision {decision, note?}`) and the review-queue screen belong to F-REVIEW-QUEUE.
 
+Implementation notes (2026-11-12, added while implementing; not new behavior):
+- `ReviewGate` also stores `on_reject` and `on_timeout`, so the server can act on a decision without reloading the workflow.
+- Step API: `ctx.open_gate(requests: list[GateRequest], options: GateOptions) -> gate_id` (RUN-14 holds for any step type). `GateRequest` is `{album_id, message, shown}`; the engine adds label, changes, conflicted ChangeSets and the run marker check. Stores implement `engine.review.GateStore` (app DB: `AppReviewGates`).
+- Server side: `WorkerSupervisor.decide_gate(gate_id, decision, by=, note=)` raises `GateResolvedError` (→ `409 already_resolved` in F-REVIEW-QUEUE), `KeyError` for an unknown gate, and `ValueError` while the run isn't suspended yet. `decide_overdue_gates()` runs at start-up and from a timer that sleeps until the next deadline (at most 60 s).
+- `on_reject: undo` runs as worker job kind `review_reject`. Holds are released by `AppDB.requeue_if_released`, one transaction over ChangeSet holds and gates.
+- The `review` step's outputs: `gate`, `albums`; after the decision also `decision`, `decided_by`, `decided_at`, `note` (folded from `review.resolved`, REVIEW-7). Durations: `core.duration.Duration` (`30m`, `12h`, `3d`, `1d12h`).
+
 ## Examples
 ```yaml
 - id: check-compilations
@@ -105,9 +112,9 @@ and cover picks. The gate's content model is fixed.
 - None yet.
 
 ## Tasks
-- [ ] `ReviewParams` + validation (timeout / on_timeout)
-- [ ] RUN-14 holds: `waiting_review`, resume after the suspending step, outputs restored
-- [ ] gate creation: selection, message, shown fields, journal fold, conflicted ChangeSets
-- [ ] app DB `review_gates` + decide once + events
-- [ ] reject: stop / undo; cancel while waiting
-- [ ] deadlines and timeout decisions, including at start-up
+- [x] `ReviewParams` + validation (timeout / on_timeout)
+- [x] RUN-14 holds: `waiting_review`, resume after the suspending step, outputs restored
+- [x] gate creation: selection, message, shown fields, journal fold, conflicted ChangeSets
+- [x] app DB `review_gates` + decide once + events
+- [x] reject: stop / undo; cancel while waiting
+- [x] deadlines and timeout decisions, including at start-up

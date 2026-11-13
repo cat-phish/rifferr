@@ -115,9 +115,11 @@ Order: C-CHANGESET → C-JOURNAL → S-SHELL update (`emits: changes`) →
 S-TAGSCRIPT → S-REVIEW → S-BEETS-COMMAND → F-TAG-GRID → F-REVIEW-QUEUE.
 
 Progress: C-CHANGESET, C-JOURNAL, the S-SHELL update and S-TAGSCRIPT Implemented
-2026-11-12, including RUN-14 suspension on ChangeSet holds (review gates come with
-S-REVIEW). The done-when still needs the reference release-type suffix script, which
-waits for `docs/original-checklist.md` (S-TAGSCRIPT Open questions). Next: S-REVIEW.
+2026-11-12, including RUN-14 suspension on ChangeSet holds. S-REVIEW Implemented
+2026-11-12 (review gates as RUN-14 holds, timeouts, reject with undo); gates and
+ChangeSets can only be decided from code until F-REVIEW-QUEUE adds the API and screen.
+The done-when still needs the reference release-type suffix script, which waits for
+`docs/original-checklist.md` (S-TAGSCRIPT Open questions). Next: S-BEETS-COMMAND.
 
 ### To verify on a full dev machine
 
