@@ -162,14 +162,16 @@ async def profile_events(
     last_event_id: Annotated[str | None, Header()] = None,
 ) -> StreamingResponse:
     """Events of the profile's work without a run: ``changeset.*`` of manual ChangeSets
-    and ``job.finished`` (TAG-GRID-9). Replays after ``Last-Event-ID`` (API-8)."""
+    and ``job.finished`` (TAG-GRID-9). Replays after ``Last-Event-ID`` (API-8); without
+    it the stream starts with new events, since the profile's history never ends."""
     get_profile(state, profile)
+    stream = profile_stream(profile)
     try:
-        after = max(int(last_event_id or 0), 0)
+        after = state.db.last_seq(stream) if last_event_id is None else int(last_event_id)
     except ValueError:
         raise ApiError(400, "bad_request", "Last-Event-ID must be an event seq") from None
     return StreamingResponse(
-        sse.run_events(state, profile_stream(profile), after),
+        sse.run_events(state, stream, max(after, 0)),
         media_type="text/event-stream",
         headers=sse.STREAM_HEADERS,
     )

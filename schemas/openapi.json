@@ -2350,7 +2350,7 @@
     },
     "/api/profiles/{profile}/events": {
       "get": {
-        "description": "Events of the profile's work without a run: ``changeset.*`` of manual ChangeSets\nand ``job.finished`` (TAG-GRID-9). Replays after ``Last-Event-ID`` (API-8).",
+        "description": "Events of the profile's work without a run: ``changeset.*`` of manual ChangeSets\nand ``job.finished`` (TAG-GRID-9). Replays after ``Last-Event-ID`` (API-8); without\nit the stream starts with new events, since the profile's history never ends.",
         "operationId": "profile_events_api_profiles__profile__events_get",
         "parameters": [
           {

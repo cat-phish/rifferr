@@ -100,7 +100,8 @@ export interface paths {
         /**
          * Profile Events
          * @description Events of the profile's work without a run: ``changeset.*`` of manual ChangeSets
-         *     and ``job.finished`` (TAG-GRID-9). Replays after ``Last-Event-ID`` (API-8).
+         *     and ``job.finished`` (TAG-GRID-9). Replays after ``Last-Event-ID`` (API-8); without
+         *     it the stream starts with new events, since the profile's history never ends.
          */
         get: operations["profile_events_api_profiles__profile__events_get"];
         put?: never;

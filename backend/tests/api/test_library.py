@@ -212,10 +212,17 @@ async def test_TAG_GRID_8_apply_report_on_the_stream_list_and_undo(api: Api) -> 
     assert edit["undo_journal_id"] is not None
     r = await api.client.post(f"/api/profiles/main/journal/{edit['journal_id']}/undo", json={})
     assert (r.status_code, r.json()["error"]["code"]) == (409, "not_undoable")
-    # Replay after Last-Event-ID (API-8).
+    # Replay after Last-Event-ID (API-8); without it, only new events.
     async with stream(api, "/api/profiles/main/events", last_event_id="2") as until:
         seen = await until("job.finished")
         assert [int(m["id"]) for m in seen] == [3, 4, 5, 6]
+    async with stream(api, "/api/profiles/main/events") as until:
+        r = await api.client.post(
+            "/api/profiles/main/changes", json={"targets": [year_edit(album, "2003", old=2001)]}
+        )
+        assert r.status_code == 202, r.text
+        seen = await until("job.finished")
+        assert int(seen[0]["id"]) == 7
 
 
 async def test_TAG_GRID_8_problems_refuse_the_apply(api: Api) -> None:
