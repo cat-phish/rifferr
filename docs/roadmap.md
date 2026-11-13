@@ -119,7 +119,8 @@ Progress: C-CHANGESET, C-JOURNAL, the S-SHELL update and S-TAGSCRIPT Implemented
 2026-11-12 (review gates as RUN-14 holds, timeouts, reject with undo); gates and
 ChangeSets can only be decided from code until F-REVIEW-QUEUE adds the API and screen.
 The done-when still needs the reference release-type suffix script, which waits for
-`docs/original-checklist.md` (S-TAGSCRIPT Open questions). Next: S-BEETS-COMMAND.
+`docs/original-checklist.md` (S-TAGSCRIPT Open questions). S-BEETS-COMMAND Implemented
+2026-11-12. Next: F-TAG-GRID.
 
 ### To verify on a full dev machine
 

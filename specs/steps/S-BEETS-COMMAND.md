@@ -1,5 +1,5 @@
 # S-BEETS-COMMAND: `beets.command` step
-Status: Approved
+Status: Implemented
 Milestone: M1
 
 ## Context
@@ -52,6 +52,13 @@ class BeetsCommandParams(BaseModel):
 - Entry point `beets.command` → `rifferr.steps.beets_command:BeetsCommandStep`; `requires` query + cli.
 - Events: `run.step.log` only (BEETS-COMMAND-8, -12).
 - Outputs: `albums`, `changed` (BEETS-COMMAND-12).
+
+As implemented (2026-11-12):
+- The subprocess runner moved from `rifferr.steps.shell` to `rifferr.steps.process.run_process`, used by both steps; `shell` behaves as before.
+- Failure messages are prefixed with the subcommand: `beet move exited with status 3`, `beet move timed out after 1h`.
+- The change log ignores `mtime` (bookkeeping beets updates whenever it touches a file). Album fields copied to items show once, as the album field. An album no longer selected afterwards is logged as "no longer selected (removed from the library?)" and counts as changed.
+- The safety report lists each step as a `command` finding (`beet move -a`) and `beet remove` also as `destructive`.
+- `BeetsBackend` opened read-only and `FakeBackend.read_only_view()` have no `cli` capability. `FakeBackend.cli` is the argv prefix (default: a script that prints its arguments as JSON).
 
 ## Examples
 ```yaml
@@ -106,10 +113,10 @@ Resolved 2026-11-12 (author: "go with your recommendations, approved"):
 6. ~~Which `beet`?~~ `python -m beets` from the worker's Python (BACKEND-14).
 
 ## Tasks
-- [ ] BACKEND-14: `cli` capability, `cli_command` on BeetsBackend and FakeBackend, contract test
-- [ ] params model + validation (refused subcommands, single-string errors)
-- [ ] share the process runner with `shell` (streaming, redaction, timeout, cancel)
-- [ ] selection query + nothing-to-do check
-- [ ] before/after diff log and outputs
-- [ ] trust check and safety report entry
-- [ ] beets-backend test: `move` on a temp profile moves the files (no real library)
+- [x] BACKEND-14: `cli` capability, `cli_command` on BeetsBackend and FakeBackend, contract test
+- [x] params model + validation (refused subcommands, single-string errors)
+- [x] share the process runner with `shell` (streaming, redaction, timeout, cancel)
+- [x] selection query + nothing-to-do check
+- [x] before/after diff log and outputs
+- [x] trust check and safety report entry
+- [x] beets-backend test: `move` on a temp profile moves the files (no real library)

@@ -77,7 +77,7 @@ steps: [...]
 | `uses:` | Purpose | Notes |
 |---|---|---|
 | `beets.import` | Import a folder | `mode: quiet | auto | interactive`. Interactive decisions (candidate choice, as-is, skip, search by ID) are made in the UI via a custom `ImportSession`. |
-| `beets.command` | Run any beet subcommand on the selection | e.g. `replaygain -a`, `fetchart`, `move`, `mbsync`. Runs the `beet` CLI as a **subprocess** with the profile's `BEETSDIR`, exactly as in a terminal. The selection is passed as a query (`rifferr_run:<id>`). Output streams to the run log. |
+| `beets.command` | Run any beet subcommand on the selection | e.g. `replaygain -a`, `fetchart`, `move`, `mbsync`. Runs the `beet` CLI as a **subprocess** with the profile's `BEETSDIR`, exactly as in a terminal. The selection is passed as a query (`rifferr_run::^<id>$` plus the step's `when`), and only in trusted workflows; it is the one step that changes the library outside ChangeSets (S-BEETS-COMMAND). Output streams to the run log. |
 | `tags.script` | Masstagger-style tag actions | See §4. |
 | `shell` | Run any command/script | See §5. |
 | `covers.search` | Multi-provider cover search | Auto-pick by score, or queue for UI choice. See §6. |
