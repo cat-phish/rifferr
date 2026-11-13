@@ -1,5 +1,5 @@
 # F-TAG-GRID: Library and tag grid
-Status: Draft
+Status: Approved
 Milestone: M1
 
 ## Context
@@ -21,7 +21,7 @@ profile event stream.
 ## Behavior
 - TAG-GRID-1: The page `/library` (nav item "Library") MUST show a query box (beets query syntax, with a link to the beets query docs), a scope switch (`album` | `item`), and the matching albums or items in a virtualized grid. An empty query lists the whole library, which is read-only browsing.
 - TAG-GRID-2: `GET /api/profiles/{profile}/library?query=&scope=&limit=` MUST answer from the profile's read-only worker with snapshots (C-BACKEND), `truncated`, and the field names seen, and MUST NOT write anything. `limit` defaults to 1000 and is at most 10000. A query error MUST answer `400 bad_query` with the backend's message. Timeout and supersede behave as TAGSCRIPT-21 (`504 query_timeout`, `409 superseded`).
-- TAG-GRID-3: Columns MUST be chosen from the field names seen, per scope. The default columns come from the profile setting `ui.grid_columns.{album,item}`, falling back to a default in the UI (open question 1). Column choice and widths changed in the UI MUST be remembered per browser and profile, not written to the profile file.
+- TAG-GRID-3: Columns MUST be chosen from the field names seen, per scope. The default columns come from the profile setting `ui.grid_columns.{album,item}`, falling back to a default in the UI (open question 1, resolved). Column choice and widths changed in the UI MUST be remembered per browser and profile, not written to the profile file.
 - TAG-GRID-4: In album scope a row MUST expand to show the album's items; the item rows are editable like item-scope rows.
 - TAG-GRID-5: A cell MUST be editable in place (double-click or Enter). Multi-value fields MUST be edited as a list, one value per entry, never by splitting text on a separator (open question 3). An edit MUST NOT change the library yet: it becomes a *pending edit*, shown in the cell as before → after.
 - TAG-GRID-6: With several rows selected, "Set field" (field name and one literal value) and "Delete field" MUST add a pending edit to each selected row. Values are literal text; beets templates belong to tag scripts (TAG-GRID-12).
@@ -90,24 +90,15 @@ conflicts; the cell shows "now 1999, you wanted 2001" with "apply on top".
 - The review queue and dashboard (F-REVIEW-QUEUE).
 
 ## Open questions
-1. Default columns: a built-in UI default of beets' standard fields
-   (album scope `albumartist, album, year, albumtype, genre`; item scope
-   `track, title, artist, album, length`), overridable by `ui.grid_columns` in the
-   profile. These are beets' own field names, not one person's conventions; is a
-   built-in default acceptable under non-negotiable 1, or must the default live
-   only in the profile (empty grid until set)? Recommendation: built-in default.
-2. Manual edits apply immediately (the edit is the human decision; Undo exists), or
-   go to the review queue first? Recommendation: immediately.
-3. Multi-value fields (`genres`, `artists`, …): edit as a list of entries.
-   Recommendation: yes; no `;` splitting.
-4. Dependency: `@tanstack/react-table` is listed in the roadmap for the grid but not
-   approved. Recommendation: don't add it; Mantine's table plus the already
-   approved `@tanstack/react-virtual` is enough for these features.
-5. Apply while a run is active: queue the edit behind it (TAG-GRID-13), or refuse
-   with "the library is busy"? Recommendation: queue.
-6. Undo scope in "Recent edits": only manual ChangeSets, or every applied ChangeSet
-   of the profile (including runs')? Recommendation: manual only here; runs' undo
-   belongs to the run page / F-REVIEW-QUEUE.
+Resolved 2026-11-12 (author: "go with your recommendations, approved"):
+1. ~~Default columns?~~ A built-in UI default of beets' standard fields (album scope
+   `albumartist, album, year, albumtype, genre`; item scope
+   `track, title, artist, album, length`), overridden by `ui.grid_columns` (TAG-GRID-3).
+2. ~~Apply immediately or review first?~~ Immediately (TAG-GRID-8).
+3. ~~Multi-value fields?~~ Edited as a list of entries; no `;` splitting (TAG-GRID-5).
+4. ~~`@tanstack/react-table`?~~ Not added; Mantine's table plus `@tanstack/react-virtual`.
+5. ~~Apply while a run is active?~~ Queue behind it (TAG-GRID-13).
+6. ~~Undo scope?~~ Manual ChangeSets only (TAG-GRID-11).
 
 ## Tasks
 - [ ] read-only worker: `library.query`, `changes.check`
