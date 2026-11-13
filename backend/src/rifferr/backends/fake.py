@@ -274,7 +274,7 @@ class FakeBackend:
         return SharedFields(include=self.inherited_fields, exclude=frozenset({"id", "path"}))
 
     def check(self, changes: ChangeSet) -> list[ChangeProblem]:
-        self._need("apply")
+        self._need("query")  # read only: works on a read-only view too (TAG-GRID-7)
         problems: list[ChangeProblem] = []
         for t in changes.targets:
             if self._find(t.target) is None:

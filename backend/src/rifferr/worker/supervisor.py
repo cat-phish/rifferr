@@ -20,9 +20,17 @@ from typing import Literal, cast
 
 from pydantic import JsonValue, ValidationError
 
-from rifferr.appdb import AppChangeSets, AppDB, AppJournal, AppReviewGates, GateResolvedError
+from rifferr.appdb import (
+    AppChangeSets,
+    AppDB,
+    AppJournal,
+    AppReviewGates,
+    GateResolvedError,
+    Job,
+)
+from rifferr.core.changeset import ChangeSet
 from rifferr.core.review import GateDecision
-from rifferr.engine.events import Event, EventSink
+from rifferr.engine.events import Event, EventSink, profile_stream
 from rifferr.engine.undo import run_entries, undoable
 from rifferr.trust import workflow_hash
 from rifferr.worker.gates import finish_rejected
@@ -205,6 +213,31 @@ class WorkerSupervisor:
         job = self.db.submit_job(profile, "undo", payload, ref_run)
         await self._wake(profile)
         return job.id
+
+    async def apply_manual(
+        self, profile: str, changesets: list[ChangeSet], *, by: str | None = None
+    ) -> tuple[str, list[str]]:
+        """Store the tag grid's ChangeSets and queue one job that applies them
+        (TAG-GRID-8). Returns the job id and the runs it waits for (TAG-GRID-13)."""
+        if self._shutting_down:
+            raise RuntimeError("server is shutting down")
+        if not changesets:
+            raise ValueError("no changes to apply")
+        store = AppChangeSets(self.db)
+        for cs in changesets:
+            store.add(cs)
+        ahead = [
+            j.run
+            for j in self.db.jobs(profile)
+            if j.kind == "run" and j.state in ("running", "queued")
+        ]
+        payload: dict[str, JsonValue] = {
+            "changesets": [cs.id for cs in changesets],
+            "by": by,
+        }
+        job = self.db.submit_job(profile, "manual_apply", payload, None)
+        await self._wake(profile)
+        return job.id, ahead
 
     # -- review gates (S-REVIEW) ---------------------------------------------------
 
@@ -449,7 +482,9 @@ class WorkerSupervisor:
             error = handle.start_error or f"worker exited with status {code} before it was ready"
         for job in self.db.fail_jobs(handle.profile, ["running"], reason):
             if job.kind != "run":
-                continue  # e.g. a review decision: its run stays waiting_review
+                # e.g. a review decision: its run stays waiting_review
+                self._job_failed(job, reason)
+                continue
             seq = self.db.last_seq(job.run) + 1
             data: dict[str, JsonValue] = {"status": "failed", "reason": reason, "error": error}
             self._persist(self._event(job.run, seq, "run.finished", data))
@@ -457,6 +492,7 @@ class WorkerSupervisor:
             # Don't respawn in a loop: a worker that can't start fails the whole queue.
             for job in self.db.fail_jobs(handle.profile, ["queued"], error):
                 if job.kind != "run":
+                    self._job_failed(job, error)
                     continue
                 data = {"status": "failed", "reason": reason, "error": error}
                 seq = self.db.last_seq(job.run) + 1
@@ -477,6 +513,20 @@ class WorkerSupervisor:
 
     def _event(self, run_id: str, seq: int, type: str, data: dict[str, JsonValue]) -> Event:
         return Event(seq=seq, ts=datetime.now(UTC), run_id=run_id, type=type, data=data)
+
+    def _job_failed(self, job: Job, error: str) -> None:
+        """A job without a run tells the profile stream it failed (TAG-GRID-9)."""
+        if job.run_id is not None:
+            return
+        stream = profile_stream(job.profile)
+        data: dict[str, JsonValue] = {
+            "job_id": job.id,
+            "kind": job.kind,
+            "state": "failed",
+            "error": error,
+            "result": None,
+        }
+        self._persist(self._event(stream, self.db.last_seq(stream) + 1, "job.finished", data))
 
     def _persist(self, event: Event) -> None:
         try:

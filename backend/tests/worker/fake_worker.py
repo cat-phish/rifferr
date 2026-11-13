@@ -90,6 +90,11 @@ def preview_library() -> FakeBackend:
     return fb.read_only_view() if os.environ.get("RIFFERR_TEST_WRITABLE") != "1" else fb
 
 
+def preview_library_writable() -> FakeBackend:
+    os.environ["RIFFERR_TEST_WRITABLE"] = "1"
+    return preview_library()
+
+
 def registry() -> StepTypeRegistry:
     return StepTypeRegistry([*ALL, BlockStep(), PrintStep(), PidStep(), ShellStep()])
 
@@ -101,7 +106,12 @@ if __name__ == "__main__":
             backend_factory=(
                 (lambda profile: preview_library())
                 if "--read-only" in sys.argv
-                else (lambda profile: FakeBackend())
+                # The same albums as the read-only library, writable (F-TAG-GRID tests).
+                else (
+                    (lambda profile: preview_library_writable())
+                    if os.environ.get("RIFFERR_TEST_MAIN_LIBRARY") == "1"
+                    else (lambda profile: FakeBackend())
+                )
             ),
             registry=registry(),
             heartbeat_interval=float(os.environ.get("RIFFERR_TEST_HEARTBEAT", "5")),

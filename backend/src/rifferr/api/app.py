@@ -22,7 +22,7 @@ from starlette.types import Scope
 from rifferr import __version__
 from rifferr.api import errors
 from rifferr.api.models import Health
-from rifferr.api.routes import profiles, runs, scripts, workflows
+from rifferr.api.routes import library, profiles, runs, scripts, workflows
 from rifferr.api.security import (
     ASGIApp,
     SecurityConfig,
@@ -153,6 +153,7 @@ def create_api(settings: ApiSettings | None = None) -> FastAPI:
     app.include_router(workflows.router)
     app.include_router(runs.router)
     app.include_router(scripts.router)
+    app.include_router(library.router)
 
     @app.get("/healthz", response_model=Health, tags=["health"])
     async def healthz() -> Health:

@@ -26,8 +26,18 @@ ENGINE_EVENTS = frozenset(
         # S-REVIEW
         "review.requested",
         "review.resolved",
+        # F-TAG-GRID: a job without a run finished (profile stream)
+        "job.finished",
     }
 )
+
+PROFILE_STREAM_PREFIX = "profile:"
+
+
+def profile_stream(profile: str) -> str:
+    """The event stream of a profile's work that has no run: manual ChangeSets and
+    their undo (TAG-GRID-9). Stored like a run's stream, under this id."""
+    return PROFILE_STREAM_PREFIX + profile
 
 
 class Event(BaseModel):

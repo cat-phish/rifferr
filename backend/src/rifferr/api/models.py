@@ -9,6 +9,8 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from rifferr.appdb import JobState
+from rifferr.core.changeset import ChangeSet, ChangeSetState
+from rifferr.core.profile import GridColumns
 
 
 class _Model(BaseModel):
@@ -34,6 +36,9 @@ class ProfileSummary(_Model):
     backend: str | None = None
     vars: list[str] = Field(default_factory=list[str], description="Variable names only")
     secrets: list[str] = Field(default_factory=list[str], description="Secret names only")
+    grid_columns: GridColumns = Field(
+        default_factory=GridColumns, description="Default tag-grid columns (TAG-GRID-3)"
+    )
     error: str | None = Field(default=None, description="Why the profile can't be loaded")
 
 
@@ -167,3 +172,31 @@ class ScriptSave(_Model):
         default=None,
         description="Hash of the text the editor loaded; 409 hash_mismatch if the file changed",
     )
+
+
+class ChangesCreated(_Model):
+    """Manual ChangeSets queued for applying (TAG-GRID-8, -13)."""
+
+    changesets: list[str]
+    job_id: str
+    queued_behind: list[str] = Field(
+        description="Runs running or queued before the edit job; it applies after them"
+    )
+
+
+class ManualEdit(_Model):
+    """A manual ChangeSet in the recent-edits list (TAG-GRID-11)."""
+
+    changeset: ChangeSet
+    state: ChangeSetState
+    resolved_by: str | None = None
+    journal_id: str | None = Field(
+        default=None, description="Journal entry of the apply; undo it to revert the edit"
+    )
+    undo_journal_id: str | None = Field(
+        default=None, description="Journal entry of the undo, once undone"
+    )
+
+
+class JobQueued(_Model):
+    job_id: str

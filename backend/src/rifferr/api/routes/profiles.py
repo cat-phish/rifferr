@@ -22,7 +22,11 @@ async def get_profiles(state: State) -> list[ProfileSummary]:
             continue
         out.append(
             ProfileSummary(
-                name=name, backend=p.backend, vars=sorted(p.vars), secrets=sorted(p.secrets)
+                name=name,
+                backend=p.backend,
+                vars=sorted(p.vars),
+                secrets=sorted(p.secrets),
+                grid_columns=p.ui.grid_columns,
             )
         )
     return out

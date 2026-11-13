@@ -22,7 +22,15 @@ from typing import BinaryIO
 
 from pydantic import JsonValue, ValidationError
 
-from rifferr.appdb import HOLDING_CHANGESETS, AppChangeSets, AppDB, AppJournal, AppReviewGates, Job
+from rifferr.appdb import (
+    HOLDING_CHANGESETS,
+    AppChangeSets,
+    AppDB,
+    AppJournal,
+    AppReviewGates,
+    Job,
+    JobState,
+)
 from rifferr.backends.base import CapabilityError, LibraryBackend
 from rifferr.backends.loader import load_backend
 from rifferr.core.ids import new_ulid
@@ -42,6 +50,7 @@ from rifferr.engine import (
     StepTypeRegistry,
 )
 from rifferr.engine.changesets import apply_changeset, reject_changeset
+from rifferr.engine.events import profile_stream
 from rifferr.engine.recovery import recover_pending
 from rifferr.engine.undo import UndoContext, UndoError, undo_entry, undo_run
 from rifferr.profile_store import app_db_path, config_root, load_profile
@@ -234,6 +243,9 @@ class Worker:
         if job.kind == "review_reject":
             self._reject_at_review(job)
             return
+        if job.kind == "manual_apply":
+            self._apply_manual(job)
+            return
         payload = job.payload
         source = str(payload.get("source", ""))
         source_name = str(payload.get("source_name", "<workflow>"))
@@ -320,7 +332,7 @@ class Worker:
         changeset_id = str(payload.get("changeset_id"))
         stored = self.changesets.get(changeset_id)
         if stored is None:
-            self.db.finish_job(job.id, "failed", f"no ChangeSet {changeset_id}")
+            self._finish_job(job, "failed", f"no ChangeSet {changeset_id}")
             return
         cs = stored.changeset
         by = payload.get("by")
@@ -366,9 +378,9 @@ class Worker:
                     )
         except Exception as exc:
             log.warning("review decision on %s failed: %s", changeset_id, exc)
-            self.db.finish_job(job.id, "failed", f"{type(exc).__name__}: {exc}")
+            self._finish_job(job, "failed", f"{type(exc).__name__}: {exc}")
             return
-        self.db.finish_job(job.id, "succeeded")
+        self._finish_job(job, "succeeded")
         if cs.run_id is not None:
             self._resume_if_released(cs.run_id)
 
@@ -405,11 +417,63 @@ class Worker:
                 raise UndoError("an undo job needs entry_id or run_id")
         except Exception as exc:
             log.warning("undo failed: %s", exc)
-            self.db.finish_job(job.id, "failed", f"{type(exc).__name__}: {exc}")
+            self._finish_job(job, "failed", f"{type(exc).__name__}: {exc}")
             return
         stopped = result.get("stopped_at")
         error = f"undo stopped at journal entry {stopped}" if stopped else None
-        self.db.finish_job(job.id, "failed" if stopped else "succeeded", error, result)
+        self._finish_job(job, "failed" if stopped else "succeeded", error, result)
+
+    # -- manual edits (TAG-GRID-8) ------------------------------------------------
+
+    def _apply_manual(self, job: Job) -> None:
+        """Apply the tag grid's ChangeSets through the journal, oldest first. Their
+        events go on the profile stream (TAG-GRID-9); a conflict or refusal of one
+        doesn't stop the others."""
+        raw = job.payload.get("changesets")
+        ids = [str(i) for i in raw] if isinstance(raw, list) else []  # pyright: ignore[reportUnknownVariableType, reportUnknownArgumentType]
+        by = job.payload.get("by")
+        outcomes: dict[str, JsonValue] = {}
+        errors: list[str] = []
+        for changeset_id in ids:
+            stored = self.changesets.get(changeset_id)
+            if stored is None or stored.state != "proposed":
+                outcomes[changeset_id] = stored.state if stored is not None else "missing"
+                continue
+            try:
+                outcome = apply_changeset(
+                    stored.changeset,
+                    backend=self.backend,
+                    journal=self.journal,
+                    store=self.changesets,
+                    new_id=new_ulid,
+                    now=lambda: datetime.now(UTC),
+                    emit=self._changeset_emitter(None, None),
+                    resolved_by=by if isinstance(by, str) else None,
+                )
+            except Exception as exc:  # e.g. the library is locked: the next ones may work
+                log.warning("manual ChangeSet %s failed: %s", changeset_id, exc)
+                outcomes[changeset_id] = "failed"
+                errors.append(f"{changeset_id}: {type(exc).__name__}: {exc}")
+                continue
+            outcomes[changeset_id] = outcome.state
+        error = "; ".join(errors) or None
+        self._finish_job(job, "failed" if errors else "succeeded", error, {"outcomes": outcomes})
+
+    def _finish_job(
+        self, job: Job, state: JobState, error: str | None = None, result: JsonValue = None
+    ) -> None:
+        """Finish a job that isn't a run; one without a run also tells the profile stream
+        (TAG-GRID-9, -11), since nothing else would."""
+        self.db.finish_job(job.id, state, error, result)
+        if job.run_id is None:
+            data: dict[str, JsonValue] = {
+                "job_id": job.id,
+                "kind": job.kind,
+                "state": state,
+                "error": error,
+                "result": result,
+            }
+            self._changeset_emitter(None, None)("job.finished", data)
 
     def _resume_if_released(self, run_id: str) -> None:
         self.db.requeue_if_released(run_id)  # the serve loop claims it next (RUN-14)
@@ -491,15 +555,14 @@ class Worker:
     def _changeset_emitter(
         self, run_id: str | None, step_id: str | None
     ) -> Callable[[str, dict[str, JsonValue]], None]:
+        # ChangeSets without a run go on the profile's stream (TAG-GRID-9).
+        stream = run_id if run_id is not None else profile_stream(self.profile.name)
+
         def emit(type: str, data: dict[str, JsonValue]) -> None:
-            if run_id is None:
-                # Manual ChangeSets get a profile stream with F-REVIEW-QUEUE.
-                log.info("%s %s", type, data.get("changeset_id"))
-                return
-            seq = self._next_seq(run_id)
-            self._sent[run_id] = seq
+            seq = self._next_seq(stream)
+            self._sent[stream] = seq
             event = Event(
-                seq=seq, ts=datetime.now(UTC), run_id=run_id, type=type, step_id=step_id, data=data
+                seq=seq, ts=datetime.now(UTC), run_id=stream, type=type, step_id=step_id, data=data
             )
             self.send(WorkerMessage(kind="event", event=event))
 

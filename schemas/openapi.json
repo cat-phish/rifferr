@@ -21,6 +21,251 @@
         "title": "Accepted",
         "type": "object"
       },
+      "AlbumSnapshot": {
+        "additionalProperties": false,
+        "description": "An album with its items in track order (disc, then track).",
+        "properties": {
+          "fields": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Fields",
+            "type": "object"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ItemSnapshot"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          }
+        },
+        "required": [
+          "id",
+          "path",
+          "fields"
+        ],
+        "title": "AlbumSnapshot",
+        "type": "object"
+      },
+      "ChangeProblem": {
+        "additionalProperties": false,
+        "description": "Why a backend refuses a field change (``LibraryBackend.check``, CHANGESET-2).",
+        "properties": {
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "target": {
+            "$ref": "#/components/schemas/TargetRef"
+          }
+        },
+        "required": [
+          "target",
+          "field",
+          "message"
+        ],
+        "title": "ChangeProblem",
+        "type": "object"
+      },
+      "ChangeSet": {
+        "additionalProperties": false,
+        "description": "Proposed field changes to one album and/or its items (CHANGESET-1, -14).",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "profile": {
+            "title": "Profile",
+            "type": "string"
+          },
+          "rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rationale"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ChangeSource"
+          },
+          "step_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Id"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/TargetChange"
+            },
+            "minItems": 1,
+            "title": "Targets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "profile",
+          "source",
+          "created_at",
+          "targets"
+        ],
+        "title": "ChangeSet",
+        "type": "object"
+      },
+      "ChangeSource": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "step",
+              "manual",
+              "chat",
+              "ai"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "description": "e.g. the step type, or 'ui'",
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "name"
+        ],
+        "title": "ChangeSource",
+        "type": "object"
+      },
+      "ChangesCreated": {
+        "additionalProperties": false,
+        "description": "Manual ChangeSets queued for applying (TAG-GRID-8, -13).",
+        "properties": {
+          "changesets": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Changesets",
+            "type": "array"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "queued_behind": {
+            "description": "Runs running or queued before the edit job; it applies after them",
+            "items": {
+              "type": "string"
+            },
+            "title": "Queued Behind",
+            "type": "array"
+          }
+        },
+        "required": [
+          "changesets",
+          "job_id",
+          "queued_behind"
+        ],
+        "title": "ChangesCreated",
+        "type": "object"
+      },
+      "CheckResult": {
+        "additionalProperties": false,
+        "description": "Problems per target and field, and the edits with values coerced to their field\ntypes (TAG-GRID-7). Apply only when ``problems`` is empty.",
+        "properties": {
+          "problems": {
+            "items": {
+              "$ref": "#/components/schemas/ChangeProblem"
+            },
+            "title": "Problems",
+            "type": "array"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/ManualChange"
+            },
+            "title": "Targets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "problems",
+          "targets"
+        ],
+        "title": "CheckResult",
+        "type": "object"
+      },
       "ErrorBody": {
         "additionalProperties": false,
         "properties": {
@@ -63,6 +308,132 @@
         "title": "ErrorEnvelope",
         "type": "object"
       },
+      "FieldChange": {
+        "additionalProperties": false,
+        "description": "One field change. ``old`` is the value the proposer saw (``None`` = absent).",
+        "properties": {
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "new": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The new value; required for op 'set'.",
+            "title": "New"
+          },
+          "old": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Old"
+          },
+          "op": {
+            "default": "set",
+            "enum": [
+              "set",
+              "delete"
+            ],
+            "title": "Op",
+            "type": "string"
+          },
+          "rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rationale"
+          }
+        },
+        "required": [
+          "field"
+        ],
+        "title": "FieldChange",
+        "type": "object"
+      },
+      "GridColumns": {
+        "additionalProperties": false,
+        "description": "Default tag-grid columns per scope (TAG-GRID-3). Unset: the UI's built-in default.",
+        "properties": {
+          "album": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Field names, in order",
+            "title": "Album"
+          },
+          "item": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Field names, in order",
+            "title": "Item"
+          }
+        },
+        "title": "GridColumns",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -89,7 +460,237 @@
         "title": "Health",
         "type": "object"
       },
+      "ItemSnapshot": {
+        "additionalProperties": false,
+        "description": "One track. ``id`` is opaque and assigned by the backend.",
+        "properties": {
+          "fields": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Fields",
+            "type": "object"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "path",
+          "fields"
+        ],
+        "title": "ItemSnapshot",
+        "type": "object"
+      },
+      "JobQueued": {
+        "additionalProperties": false,
+        "properties": {
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id"
+        ],
+        "title": "JobQueued",
+        "type": "object"
+      },
       "JsonValue": {},
+      "LibraryPage": {
+        "additionalProperties": false,
+        "description": "Matching albums (TAG-GRID-2). In item scope each album has only its matching items.",
+        "properties": {
+          "album_fields": {
+            "description": "Album field names seen, sorted",
+            "items": {
+              "type": "string"
+            },
+            "title": "Album Fields",
+            "type": "array"
+          },
+          "albums": {
+            "items": {
+              "$ref": "#/components/schemas/AlbumSnapshot"
+            },
+            "title": "Albums",
+            "type": "array"
+          },
+          "item_fields": {
+            "description": "Item field names seen, sorted",
+            "items": {
+              "type": "string"
+            },
+            "title": "Item Fields",
+            "type": "array"
+          },
+          "truncated": {
+            "description": "More matched than 'limit'",
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "albums",
+          "album_fields",
+          "item_fields",
+          "truncated"
+        ],
+        "title": "LibraryPage",
+        "type": "object"
+      },
+      "ManualChange": {
+        "additionalProperties": false,
+        "description": "Pending edits to one album or item, as the grid sends them (TAG-GRID-7, -8).",
+        "properties": {
+          "album": {
+            "description": "Id of the album the target belongs to (the album itself for an album)",
+            "minLength": 1,
+            "title": "Album",
+            "type": "string"
+          },
+          "changes": {
+            "description": "'old' is the value the user saw; null or absent = no value",
+            "items": {
+              "$ref": "#/components/schemas/FieldChange"
+            },
+            "minItems": 1,
+            "title": "Changes",
+            "type": "array"
+          },
+          "target": {
+            "$ref": "#/components/schemas/TargetRef"
+          }
+        },
+        "required": [
+          "target",
+          "album",
+          "changes"
+        ],
+        "title": "ManualChange",
+        "type": "object"
+      },
+      "ManualChanges": {
+        "additionalProperties": false,
+        "properties": {
+          "rationale": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rationale"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/ManualChange"
+            },
+            "maxItems": 10000,
+            "minItems": 1,
+            "title": "Targets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "targets"
+        ],
+        "title": "ManualChanges",
+        "type": "object"
+      },
+      "ManualEdit": {
+        "additionalProperties": false,
+        "description": "A manual ChangeSet in the recent-edits list (TAG-GRID-11).",
+        "properties": {
+          "changeset": {
+            "$ref": "#/components/schemas/ChangeSet"
+          },
+          "journal_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Journal entry of the apply; undo it to revert the edit",
+            "title": "Journal Id"
+          },
+          "resolved_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved By"
+          },
+          "state": {
+            "enum": [
+              "proposed",
+              "applied",
+              "partially_applied",
+              "rejected",
+              "conflicted",
+              "undone"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "undo_journal_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Journal entry of the undo, once undone",
+            "title": "Undo Journal Id"
+          }
+        },
+        "required": [
+          "changeset",
+          "state"
+        ],
+        "title": "ManualEdit",
+        "type": "object"
+      },
       "PreviewError": {
         "additionalProperties": false,
         "properties": {
@@ -506,6 +1107,10 @@
             ],
             "description": "Why the profile can't be loaded",
             "title": "Error"
+          },
+          "grid_columns": {
+            "$ref": "#/components/schemas/GridColumns",
+            "description": "Default tag-grid columns (TAG-GRID-3)"
           },
           "name": {
             "title": "Name",
@@ -1027,6 +1632,28 @@
         "title": "StepState",
         "type": "object"
       },
+      "TargetChange": {
+        "additionalProperties": false,
+        "properties": {
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/FieldChange"
+            },
+            "minItems": 1,
+            "title": "Changes",
+            "type": "array"
+          },
+          "target": {
+            "$ref": "#/components/schemas/TargetRef"
+          }
+        },
+        "required": [
+          "target",
+          "changes"
+        ],
+        "title": "TargetChange",
+        "type": "object"
+      },
       "TargetRef": {
         "additionalProperties": false,
         "description": "One album or item, by the backend id from its snapshot.",
@@ -1425,6 +2052,600 @@
         "summary": "Get Profiles",
         "tags": [
           "profiles"
+        ]
+      }
+    },
+    "/api/profiles/{profile}/changes": {
+      "get": {
+        "description": "The profile's manual ChangeSets from the grid, newest first (TAG-GRID-11).",
+        "operationId": "recent_changes_api_profiles__profile__changes_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ManualEdit"
+                  },
+                  "title": "Response Recent Changes Api Profiles  Profile  Changes Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Recent Changes",
+        "tags": [
+          "library"
+        ]
+      },
+      "post": {
+        "description": "Turn edits into manual ChangeSets, one per album, and queue them to apply now\n(TAG-GRID-8). Checked again first: ``422 invalid_changes`` lists the problems.",
+        "operationId": "create_changes_api_profiles__profile__changes_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualChanges"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangesCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
+          }
+        },
+        "summary": "Create Changes",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/api/profiles/{profile}/changes/check": {
+      "post": {
+        "description": "Coerce each value to its field's type and check the edits; changes nothing\n(TAG-GRID-7).",
+        "operationId": "check_changes_api_profiles__profile__changes_check_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualChanges"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
+          }
+        },
+        "summary": "Check Changes",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/api/profiles/{profile}/events": {
+      "get": {
+        "description": "Events of the profile's work without a run: ``changeset.*`` of manual ChangeSets\nand ``job.finished`` (TAG-GRID-9). Replays after ``Last-Event-ID`` (API-8).",
+        "operationId": "profile_events_api_profiles__profile__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "last-event-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "SSE"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Profile Events",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/api/profiles/{profile}/journal/{entry_id}/undo": {
+      "post": {
+        "description": "Queue the undo of one journal entry (JOURNAL-4, -5). The result arrives as\n``job.finished`` on the profile stream (TAG-GRID-11).",
+        "operationId": "undo_entry_api_profiles__profile__journal__entry_id__undo_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "entry_id",
+            "required": true,
+            "schema": {
+              "title": "Entry Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobQueued"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Undo Entry",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/api/profiles/{profile}/library": {
+      "get": {
+        "description": "Albums or items matching a beets query; writes nothing (TAG-GRID-2).",
+        "operationId": "library_api_profiles__profile__library_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          },
+          {
+            "description": "beets query",
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "beets query",
+              "title": "Query",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "album",
+              "enum": [
+                "album",
+                "item"
+              ],
+              "title": "Scope",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 1000,
+              "maximum": 10000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "A newer query from it cancels this one",
+            "in": "query",
+            "name": "client",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A newer query from it cancels this one",
+              "title": "Client"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
+          }
+        },
+        "summary": "Library",
+        "tags": [
+          "library"
         ]
       }
     },

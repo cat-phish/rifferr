@@ -175,6 +175,21 @@ class ChangeSettings(BaseModel):
     )
 
 
+class GridColumns(BaseModel):
+    """Default tag-grid columns per scope (TAG-GRID-3). Unset: the UI's built-in default."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    album: list[str] | None = Field(default=None, description="Field names, in order")
+    item: list[str] | None = Field(default=None, description="Field names, in order")
+
+
+class UiSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    grid_columns: GridColumns = Field(default_factory=GridColumns)
+
+
 VarName = Annotated[str, Field(pattern=VAR_NAME_PATTERN)]
 SecretRefField = Annotated[SecretRef, BeforeValidator(SecretRef.parse)]
 
@@ -188,6 +203,7 @@ class ProfileFile(BaseModel):
     beets: BeetsSettings = Field(default_factory=BeetsSettings)
     worker: WorkerSettings = Field(default_factory=WorkerSettings)
     changes: ChangeSettings = Field(default_factory=ChangeSettings)
+    ui: UiSettings = Field(default_factory=UiSettings)
     vars: dict[VarName, Annotated[str, Field(strict=True)]] = Field(default_factory=dict[str, str])
     secrets: dict[str, SecretRefField] = Field(default_factory=dict[str, SecretRef])
     timezone: str | None = Field(default=None, description="IANA time zone; default: system")
@@ -239,6 +255,7 @@ def parse_profile(
         beets=file.beets,
         worker=file.worker,
         changes=file.changes,
+        ui=file.ui,
         vars=resolve_vars(file.vars, env),
         secrets=file.secrets,
         timezone=file.timezone,

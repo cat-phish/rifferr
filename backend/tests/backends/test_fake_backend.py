@@ -61,8 +61,7 @@ def test_BACKEND_9_apply_needs_the_apply_capability() -> None:
     cs = changeset((TargetRef(scope="item", id=item.id), [FieldChange(field="title", new="y")]))
     with pytest.raises(CapabilityError):
         fb.apply(cs)
-    with pytest.raises(CapabilityError):
-        fb.check(cs)
+    assert fb.check(cs) == []  # check only reads: the read-only worker runs it (TAG-GRID-7)
 
 
 def test_CHANGESET_12_inherited_fields_are_configurable() -> None:

@@ -480,3 +480,37 @@ class BackendContract:
         with pytest.raises(CapabilityError):
             ro.apply(cs)
         assert self.by_album(backend, "First EP").fields["album"] == "First EP"
+
+    def test_TAG_GRID_7_read_only_backend_checks_grid_edits(self, backend: LibraryBackend) -> None:
+        """The tag grid browses and checks edits in the read-only worker (TAG-GRID-2, -7)."""
+        from rifferr.engine.manual import (
+            LibraryQuery,
+            ManualChange,
+            ManualChanges,
+            check_manual,
+            library_page,
+        )
+
+        self.need(backend, "apply")
+        ro = self.read_only(backend)
+        page = library_page(ro, LibraryQuery(query="albumtype:ep"))
+        assert sorted(str(a.fields["album"]) for a in page.albums) == ["First EP", "Second (EP)"]
+        assert {"album", "year", "genres"} <= set(page.album_fields)
+        assert {"title", "track"} <= set(page.item_fields)
+        ep = self.by_album(ro, "First EP")
+        edit = ManualChange(
+            target=album_ref(ep),
+            album=ep.id,
+            changes=[
+                FieldChange(field="year", old=2001, new="2002"),
+                FieldChange(field="genres", old=["Rock"], new=["Rock", "Live"]),
+            ],
+        )
+        result = check_manual(ro, ManualChanges(targets=[edit]))
+        assert result.problems == []
+        assert [c.new for c in result.targets[0].changes] == [2002, ["Rock", "Live"]]
+        bad = edit.model_copy(update={"changes": [FieldChange(field="path", new="/x")]})
+        assert [p.field for p in check_manual(ro, ManualChanges(targets=[bad])).problems] == [
+            "path"
+        ]
+        assert self.by_album(backend, "First EP").fields["year"] == 2001

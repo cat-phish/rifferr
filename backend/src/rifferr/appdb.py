@@ -28,7 +28,8 @@ JobState = Literal["queued", "running", "waiting_review", "succeeded", "failed",
 #: ``run``: the run record itself (API-6). ``review_decision``: apply or reject a
 #: ChangeSet (CHANGESET-13). ``undo``: undo a journal entry or a run (C-JOURNAL).
 #: ``review_reject``: undo a run rejected at a review gate, then end it (REVIEW-8).
-JobKind = Literal["run", "review_decision", "undo", "review_reject"]
+#: ``manual_apply``: apply manual ChangeSets from the tag grid (TAG-GRID-8).
+JobKind = Literal["run", "review_decision", "undo", "review_reject", "manual_apply"]
 
 #: ChangeSet states that still hold a suspended run (CHANGESET-7).
 HOLDING_CHANGESETS = ("proposed", "conflicted")
@@ -444,6 +445,18 @@ class AppChangeSets:
                     [(changeset_id, i, int(ok)) for i, ok in sorted(decisions.items())],
                 )
 
+    def manual(self, profile: str, source_name: str, limit: int) -> list[StoredChangeSet]:
+        """The profile's ChangeSets without a run from source ``manual`` / ``source_name``,
+        newest first (TAG-GRID-11)."""
+        rows = self._conn.execute(
+            "SELECT * FROM changesets WHERE profile = ? AND run_id IS NULL"
+            " AND json_extract(body, '$.source.kind') = 'manual'"
+            " AND json_extract(body, '$.source.name') = ?"
+            " ORDER BY created_at DESC, id DESC LIMIT ?",
+            (profile, source_name, limit),
+        ).fetchall()
+        return [self._stored(r) for r in rows]
+
     def for_run(self, run_id: str, state: ChangeSetState | None = None) -> list[StoredChangeSet]:
         sql, args = "SELECT * FROM changesets WHERE run_id = ?", [run_id]
         if state is not None:
@@ -623,6 +636,13 @@ class AppJournal:
     def for_run(self, run_id: str) -> list[JournalEntry]:
         rows = self._conn.execute(
             "SELECT body FROM journal WHERE run_id = ? ORDER BY created_at, id", (run_id,)
+        ).fetchall()
+        return [JournalEntry.model_validate_json(r["body"]) for r in rows]
+
+    def for_changeset(self, changeset_id: str) -> list[JournalEntry]:
+        rows = self._conn.execute(
+            "SELECT body FROM journal WHERE changeset_id = ? ORDER BY created_at, id",
+            (changeset_id,),
         ).fetchall()
         return [JournalEntry.model_validate_json(r["body"]) for r in rows]
 

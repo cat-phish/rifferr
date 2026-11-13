@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 from fastapi import APIRouter
 
 from rifferr.api.errors import ERROR_RESPONSES, ApiError, not_found
-from rifferr.api.models import ErrorEnvelope, ScriptDetail, ScriptError, ScriptSave, ScriptSummary
+from rifferr.api.models import ScriptDetail, ScriptError, ScriptSave, ScriptSummary
+from rifferr.api.readonly import READ_ONLY_RESPONSES, STATUS, ask
 from rifferr.api.routes.workflows import get_profile
 from rifferr.api.state import State
 from rifferr.profile_store import profile_dir
@@ -21,26 +21,8 @@ from rifferr.script_store import (
 )
 from rifferr.tagscript.loader import parse_script
 from rifferr.tagscript.preview import TIMEOUT, PreviewRequest, PreviewResponse
-from rifferr.worker.previews import (
-    PreviewFailed,
-    PreviewSuperseded,
-    PreviewTimeout,
-    PreviewUnavailable,
-)
 
 router = APIRouter(prefix="/api/profiles/{profile}", tags=["scripts"])
-
-PREVIEW_RESPONSES: dict[int | str, dict[str, Any]] = {
-    **ERROR_RESPONSES,
-    503: {"model": ErrorEnvelope},
-    504: {"model": ErrorEnvelope},
-}
-_STATUS = {
-    "invalid_script_name": 400,
-    "ambiguous_script_name": 409,
-    "script_not_found": 404,
-    "bad_request": 400,
-}
 
 
 def _folder(state: State, profile: str) -> Path:
@@ -49,7 +31,7 @@ def _folder(state: State, profile: str) -> Path:
 
 
 def _path_error(exc: ScriptPathError) -> ApiError:
-    return ApiError(_STATUS.get(exc.code, 400), exc.code, str(exc))
+    return ApiError(STATUS.get(exc.code, 400), exc.code, str(exc))
 
 
 def _errors(text: str, name: str) -> list[ScriptError]:
@@ -118,25 +100,20 @@ async def put_script(profile: str, name: str, body: ScriptSave, state: State) ->
     return _detail(name, saved.path, saved.text, saved.sha256)
 
 
-@router.post("/tagscript/preview", response_model=PreviewResponse, responses=PREVIEW_RESPONSES)
+@router.post("/tagscript/preview", response_model=PreviewResponse, responses=READ_ONLY_RESPONSES)
 async def preview_script(profile: str, body: PreviewRequest, state: State) -> PreviewResponse:
     """Evaluate a script against a query in the read-only worker (TAGSCRIPT-20, -21).
 
     Nothing is proposed, written or stored.
     """
     _folder(state, profile)
-    request: dict[str, Any] = {
-        "kind": "tagscript.preview",
-        "payload": body.model_dump(mode="json", exclude_none=True),
-    }
-    try:
-        result = await state.previews.request(profile, request, timeout=TIMEOUT, client=body.client)
-    except PreviewTimeout as exc:
-        raise ApiError(504, "preview_timeout", str(exc)) from None
-    except PreviewSuperseded as exc:
-        raise ApiError(409, "superseded", str(exc)) from None
-    except PreviewUnavailable as exc:
-        raise ApiError(503, "preview_unavailable", str(exc)) from None
-    except PreviewFailed as exc:
-        raise ApiError(_STATUS.get(exc.code, 500), exc.code, str(exc)) from None
+    result = await ask(
+        state,
+        profile,
+        "tagscript.preview",
+        body.model_dump(mode="json", exclude_none=True),
+        timeout=TIMEOUT,
+        timeout_code="preview_timeout",
+        client=body.client,
+    )
     return PreviewResponse.model_validate(result)

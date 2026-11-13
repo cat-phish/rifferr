@@ -15,7 +15,7 @@ import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from pydantic import JsonValue
+from pydantic import BaseModel, JsonValue
 from pydantic import ValidationError as PydanticValidationError
 
 from rifferr.backends.base import LibraryBackend, QueryError
@@ -27,6 +27,7 @@ from rifferr.core.workflow.interpolation import (
     InterpolationError,
     interpolate,
 )
+from rifferr.engine.manual import LibraryQuery, ManualChanges, check_manual, library_page
 from rifferr.script_store import ScriptPathError, resolve_script
 from rifferr.tagscript.loader import parse_script
 from rifferr.tagscript.models import with_overrides
@@ -87,6 +88,13 @@ def run_preview(
     except QueryError as exc:
         return _invalid(ValidationError("<query>", "query", str(exc)))
     return preview(script, albums, backend, limit=request.limit, cancelled=cancelled)
+
+
+def _parse[M: BaseModel](model: type[M], request: dict[str, JsonValue]) -> M:
+    try:
+        return model.model_validate(request.get("payload") or {})
+    except PydanticValidationError as exc:
+        raise RequestFailed("bad_request", str(exc)) from None
 
 
 @dataclass
@@ -204,6 +212,16 @@ class ReadOnlyWorker:
                 raise RequestFailed("bad_request", str(exc)) from None
             response = run_preview(self.profile, self.backend, req, cancelled)
             return response.model_dump(mode="json")
+        if kind == "library.query":  # TAG-GRID-2
+            query = _parse(LibraryQuery, request)
+            try:
+                page = library_page(self.backend, query)
+            except QueryError as exc:
+                raise RequestFailed("bad_query", str(exc)) from None
+            return page.model_dump(mode="json")
+        if kind == "changes.check":  # TAG-GRID-7
+            changes = _parse(ManualChanges, request)
+            return check_manual(self.backend, changes).model_dump(mode="json")
         raise RequestFailed("bad_request", f"unknown request kind {kind!r}")
 
     def _reply(

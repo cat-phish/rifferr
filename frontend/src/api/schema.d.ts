@@ -44,6 +44,114 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/profiles/{profile}/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Recent Changes
+         * @description The profile's manual ChangeSets from the grid, newest first (TAG-GRID-11).
+         */
+        get: operations["recent_changes_api_profiles__profile__changes_get"];
+        put?: never;
+        /**
+         * Create Changes
+         * @description Turn edits into manual ChangeSets, one per album, and queue them to apply now
+         *     (TAG-GRID-8). Checked again first: ``422 invalid_changes`` lists the problems.
+         */
+        post: operations["create_changes_api_profiles__profile__changes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profiles/{profile}/changes/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Changes
+         * @description Coerce each value to its field's type and check the edits; changes nothing
+         *     (TAG-GRID-7).
+         */
+        post: operations["check_changes_api_profiles__profile__changes_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profiles/{profile}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Profile Events
+         * @description Events of the profile's work without a run: ``changeset.*`` of manual ChangeSets
+         *     and ``job.finished`` (TAG-GRID-9). Replays after ``Last-Event-ID`` (API-8).
+         */
+        get: operations["profile_events_api_profiles__profile__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profiles/{profile}/journal/{entry_id}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo Entry
+         * @description Queue the undo of one journal entry (JOURNAL-4, -5). The result arrives as
+         *     ``job.finished`` on the profile stream (TAG-GRID-11).
+         */
+        post: operations["undo_entry_api_profiles__profile__journal__entry_id__undo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profiles/{profile}/library": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Library
+         * @description Albums or items matching a beets query; writes nothing (TAG-GRID-2).
+         */
+        get: operations["library_api_profiles__profile__library_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/profiles/{profile}/scripts": {
         parameters: {
             query?: never;
@@ -288,6 +396,96 @@ export interface components {
              */
             status: "cancel_requested";
         };
+        /**
+         * AlbumSnapshot
+         * @description An album with its items in track order (disc, then track).
+         */
+        AlbumSnapshot: {
+            /** Fields */
+            fields: {
+                [key: string]: boolean | number | string | string[] | null;
+            };
+            /** Id */
+            id: string;
+            /** Items */
+            items?: components["schemas"]["ItemSnapshot"][];
+            /** Path */
+            path: string | null;
+        };
+        /**
+         * ChangeProblem
+         * @description Why a backend refuses a field change (``LibraryBackend.check``, CHANGESET-2).
+         */
+        ChangeProblem: {
+            /** Field */
+            field: string;
+            /** Message */
+            message: string;
+            target: components["schemas"]["TargetRef"];
+        };
+        /**
+         * ChangeSet
+         * @description Proposed field changes to one album and/or its items (CHANGESET-1, -14).
+         */
+        ChangeSet: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: string;
+            /** Profile */
+            profile: string;
+            /** Rationale */
+            rationale?: string | null;
+            /** Run Id */
+            run_id?: string | null;
+            source: components["schemas"]["ChangeSource"];
+            /** Step Id */
+            step_id?: string | null;
+            /** Targets */
+            targets: components["schemas"]["TargetChange"][];
+        };
+        /** ChangeSource */
+        ChangeSource: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "step" | "manual" | "chat" | "ai";
+            /**
+             * Name
+             * @description e.g. the step type, or 'ui'
+             */
+            name: string;
+        };
+        /**
+         * ChangesCreated
+         * @description Manual ChangeSets queued for applying (TAG-GRID-8, -13).
+         */
+        ChangesCreated: {
+            /** Changesets */
+            changesets: string[];
+            /** Job Id */
+            job_id: string;
+            /**
+             * Queued Behind
+             * @description Runs running or queued before the edit job; it applies after them
+             */
+            queued_behind: string[];
+        };
+        /**
+         * CheckResult
+         * @description Problems per target and field, and the edits with values coerced to their field
+         *     types (TAG-GRID-7). Apply only when ``problems`` is empty.
+         */
+        CheckResult: {
+            /** Problems */
+            problems: components["schemas"]["ChangeProblem"][];
+            /** Targets */
+            targets: components["schemas"]["ManualChange"][];
+        };
         /** ErrorBody */
         ErrorBody: {
             /** Code */
@@ -299,6 +497,45 @@ export interface components {
         /** ErrorEnvelope */
         ErrorEnvelope: {
             error: components["schemas"]["ErrorBody"];
+        };
+        /**
+         * FieldChange
+         * @description One field change. ``old`` is the value the proposer saw (``None`` = absent).
+         */
+        FieldChange: {
+            /** Field */
+            field: string;
+            /**
+             * New
+             * @description The new value; required for op 'set'.
+             */
+            new?: boolean | number | string | string[] | null;
+            /** Old */
+            old?: boolean | number | string | string[] | null;
+            /**
+             * Op
+             * @default set
+             * @enum {string}
+             */
+            op: "set" | "delete";
+            /** Rationale */
+            rationale?: string | null;
+        };
+        /**
+         * GridColumns
+         * @description Default tag-grid columns per scope (TAG-GRID-3). Unset: the UI's built-in default.
+         */
+        GridColumns: {
+            /**
+             * Album
+             * @description Field names, in order
+             */
+            album?: string[] | null;
+            /**
+             * Item
+             * @description Field names, in order
+             */
+            item?: string[] | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -314,7 +551,97 @@ export interface components {
              */
             status: "ok";
         };
+        /**
+         * ItemSnapshot
+         * @description One track. ``id`` is opaque and assigned by the backend.
+         */
+        ItemSnapshot: {
+            /** Fields */
+            fields: {
+                [key: string]: boolean | number | string | string[] | null;
+            };
+            /** Id */
+            id: string;
+            /** Path */
+            path: string;
+        };
+        /** JobQueued */
+        JobQueued: {
+            /** Job Id */
+            job_id: string;
+        };
         JsonValue: unknown;
+        /**
+         * LibraryPage
+         * @description Matching albums (TAG-GRID-2). In item scope each album has only its matching items.
+         */
+        LibraryPage: {
+            /**
+             * Album Fields
+             * @description Album field names seen, sorted
+             */
+            album_fields: string[];
+            /** Albums */
+            albums: components["schemas"]["AlbumSnapshot"][];
+            /**
+             * Item Fields
+             * @description Item field names seen, sorted
+             */
+            item_fields: string[];
+            /**
+             * Truncated
+             * @description More matched than 'limit'
+             */
+            truncated: boolean;
+        };
+        /**
+         * ManualChange
+         * @description Pending edits to one album or item, as the grid sends them (TAG-GRID-7, -8).
+         */
+        ManualChange: {
+            /**
+             * Album
+             * @description Id of the album the target belongs to (the album itself for an album)
+             */
+            album: string;
+            /**
+             * Changes
+             * @description 'old' is the value the user saw; null or absent = no value
+             */
+            changes: components["schemas"]["FieldChange"][];
+            target: components["schemas"]["TargetRef"];
+        };
+        /** ManualChanges */
+        ManualChanges: {
+            /** Rationale */
+            rationale?: string | null;
+            /** Targets */
+            targets: components["schemas"]["ManualChange"][];
+        };
+        /**
+         * ManualEdit
+         * @description A manual ChangeSet in the recent-edits list (TAG-GRID-11).
+         */
+        ManualEdit: {
+            changeset: components["schemas"]["ChangeSet"];
+            /**
+             * Journal Id
+             * @description Journal entry of the apply; undo it to revert the edit
+             */
+            journal_id?: string | null;
+            /** Resolved By */
+            resolved_by?: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "proposed" | "applied" | "partially_applied" | "rejected" | "conflicted" | "undone";
+            /**
+             * Undo Journal Id
+             * @description Journal entry of the undo, once undone
+             */
+            undo_journal_id?: string | null;
+        };
         /** PreviewError */
         PreviewError: {
             /** Column */
@@ -453,6 +780,8 @@ export interface components {
              * @description Why the profile can't be loaded
              */
             error?: string | null;
+            /** @description Default tag-grid columns (TAG-GRID-3) */
+            grid_columns?: components["schemas"]["GridColumns"];
             /** Name */
             name: string;
             /**
@@ -632,6 +961,12 @@ export interface components {
             /** Uses */
             uses: string;
         };
+        /** TargetChange */
+        TargetChange: {
+            /** Changes */
+            changes: components["schemas"]["FieldChange"][];
+            target: components["schemas"]["TargetRef"];
+        };
         /**
          * TargetRef
          * @description One album or item, by the backend id from its snapshot.
@@ -806,6 +1141,410 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProfileSummary"][];
+                };
+            };
+        };
+    };
+    recent_changes_api_profiles__profile__changes_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                profile: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManualEdit"][];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    create_changes_api_profiles__profile__changes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManualChanges"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangesCreated"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Gateway Timeout */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    check_changes_api_profiles__profile__changes_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManualChanges"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Gateway Timeout */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    profile_events_api_profiles__profile__events_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "last-event-id"?: string | null;
+            };
+            path: {
+                profile: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description SSE */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    undo_entry_api_profiles__profile__journal__entry_id__undo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile: string;
+                entry_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobQueued"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    library_api_profiles__profile__library_get: {
+        parameters: {
+            query?: {
+                /** @description beets query */
+                query?: string;
+                scope?: "album" | "item";
+                limit?: number;
+                /** @description A newer query from it cancels this one */
+                client?: string | null;
+            };
+            header?: never;
+            path: {
+                profile: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryPage"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Gateway Timeout */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
         };
