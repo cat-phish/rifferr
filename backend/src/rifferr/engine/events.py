@@ -23,6 +23,9 @@ ENGINE_EVENTS = frozenset(
         "changeset.rejected",
         "changeset.conflicted",
         "changeset.undone",
+        # S-REVIEW
+        "review.requested",
+        "review.resolved",
     }
 )
 

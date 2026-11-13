@@ -74,6 +74,8 @@ class Run:
     """Step id the run is suspended after while ``waiting_review`` (RUN-14)."""
     holds: list[str] = field(default_factory=list[str])
     """ChangeSet ids the suspended run waits for (RUN-14)."""
+    gates: list[str] = field(default_factory=list[str])
+    """Review gate ids the suspended run waits for (RUN-14, S-REVIEW)."""
 
     def transition(self, to: RunState) -> None:
         if to not in _ALLOWED[self.state]:

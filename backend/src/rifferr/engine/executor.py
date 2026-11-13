@@ -18,7 +18,7 @@ from typing import Any, Protocol, cast
 from pydantic import BaseModel, JsonValue
 from pydantic import ValidationError as PydanticValidationError
 
-from rifferr.backends.base import CapabilityError, LibraryBackend
+from rifferr.backends.base import RUN_MARKER, CapabilityError, LibraryBackend
 from rifferr.core.changeset import (
     ChangeSet,
     ChangeSetProposal,
@@ -28,7 +28,9 @@ from rifferr.core.changeset import (
 )
 from rifferr.core.ids import new_ulid
 from rifferr.core.profile import Redactor, merged_vars
+from rifferr.core.review import GateAlbum, GateRequest, ReviewGate
 from rifferr.core.selection import Selection
+from rifferr.core.snapshot import label
 from rifferr.core.workflow import (
     InterpolationContext,
     InterpolationError,
@@ -51,8 +53,10 @@ from rifferr.engine.changesets import (
 )
 from rifferr.engine.events import Event, EventSink
 from rifferr.engine.journal import InMemoryJournal, Journal
+from rifferr.engine.review import GateStore, InMemoryGateStore, conflicted_for, fold_changes
 from rifferr.engine.run import Run, RunState, Scalar, StepRecord
 from rifferr.engine.steps import (
+    GateOptions,
     NoSecrets,
     SecretAccess,
     StepContext,
@@ -107,6 +111,8 @@ class _RunState:
         self.cancel = asyncio.Event()
         self.holds: dict[str, list[str]] = {}
         """step id -> ChangeSet ids it proposed that wait for review (CHANGESET-7)."""
+        self.gates: dict[str, list[str]] = {}
+        """step id -> review gates it opened (S-REVIEW)."""
 
 
 class Engine:
@@ -120,11 +126,13 @@ class Engine:
         cancel_grace: float = DEFAULT_CANCEL_GRACE,
         journal: Journal | None = None,
         changesets: ChangeSetStore | None = None,
+        gates: GateStore | None = None,
     ) -> None:
         self.registry = registry
         self.sink = sink
         self.journal: Journal = journal or InMemoryJournal()
         self.changesets: ChangeSetStore = changesets or InMemoryChangeSetStore()
+        self.gates: GateStore = gates or InMemoryGateStore()
         self.clock = clock or SystemClock()
         self._new_id = new_id
         self.cancel_grace = cancel_grace
@@ -240,21 +248,27 @@ class Engine:
                     later.status = "skipped"
                 break
             holds = state.holds.pop(spec.id, [])
-            if holds:
-                self._suspend(run, spec.id, holds)
+            gates = state.gates.pop(spec.id, [])
+            if holds or gates:
+                self._suspend(run, spec.id, holds, gates)
                 return
         run.transition(outcome)
         self._finish(run)
 
-    def _suspend(self, run: Run, step_id: str, holds: list[str]) -> None:
+    def _suspend(self, run: Run, step_id: str, holds: list[str], gates: list[str]) -> None:
         run.transition(RunState.waiting_review)
         run.suspended_after = step_id
         run.holds = list(holds)
+        run.gates = list(gates)
         self._emit(
             run,
             "run.waiting_review",
             None,
-            {"after": step_id, "changesets": cast(list[JsonValue], list(holds)), "gates": []},
+            {
+                "after": step_id,
+                "changesets": cast(list[JsonValue], list(holds)),
+                "gates": cast(list[JsonValue], list(gates)),
+            },
         )
 
     # -- steps ---------------------------------------------------------------
@@ -290,6 +304,9 @@ class Engine:
                 ),
                 profile_dir=state.profile_dir,
                 interpolate=lambda value: self._interpolate_text(run, value),
+                open_gate=lambda requests, options, snapshots: self._open_gate(
+                    state, spec, requests, options, snapshots
+                ),
             )
             result = await self._run_cancellable(state, step_type.run(ctx))
             if state.cancel.is_set():
@@ -432,6 +449,55 @@ class Engine:
             else:
                 state.holds.setdefault(spec.id, []).append(cs.id)
         return changesets
+
+    # -- review gates (S-REVIEW) ---------------------------------------------------
+
+    def _open_gate(
+        self,
+        state: _RunState,
+        spec: StepSpec,
+        requests: list[GateRequest],
+        options: GateOptions,
+        snapshots: SnapshotIndex,
+    ) -> str:
+        run = state.run
+        entries = self.journal.for_run(run.id)
+        changesets = self.changesets.for_run(run.id, "conflicted")
+        albums: list[GateAlbum] = []
+        for request in requests:
+            album = snapshots.album(request.album_id)
+            if album is None:
+                raise StepFailure(f"album {request.album_id} is not one of this step's targets")
+            albums.append(
+                GateAlbum(
+                    target=TargetRef(scope="album", id=album.id),
+                    label=label(album),
+                    message=request.message,
+                    shown=dict(request.shown),
+                    changes=fold_changes(entries, album),
+                    conflicted=conflicted_for(changesets, album),
+                    imported_by_run=album.fields.get(RUN_MARKER) == run.id,
+                )
+            )
+        now = self.clock.now()
+        gate = ReviewGate(
+            id=new_ulid(),
+            profile=run.profile,
+            run_id=run.id,
+            step_id=spec.id,
+            albums=albums,
+            on_reject=options.on_reject,
+            on_timeout=options.on_timeout,
+            created_at=now,
+            deadline=now + options.timeout if options.timeout is not None else None,
+        )
+        self.gates.add(gate)
+        state.gates.setdefault(spec.id, []).append(gate.id)
+        data: dict[str, JsonValue] = {"gate_id": gate.id, "albums": len(albums)}
+        if gate.deadline is not None:
+            data["deadline"] = gate.deadline.isoformat()
+        self._emit(run, "review.requested", spec.id, data)
+        return gate.id
 
     def _change_emitter(
         self, state: _RunState, step_id: str

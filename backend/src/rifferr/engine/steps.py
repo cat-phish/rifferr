@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
+from datetime import timedelta
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
@@ -12,6 +13,7 @@ from pydantic import BaseModel, JsonValue
 from rifferr.backends.base import BackendCapabilities, LibraryBackend
 from rifferr.core.changeset import ChangeSet, ChangeSetProposal, TargetRef
 from rifferr.core.profile import Secret
+from rifferr.core.review import GateDecision, GateRequest, OnReject
 from rifferr.core.selection import Scope, Selection
 from rifferr.core.snapshot import AlbumSnapshot
 from rifferr.core.workflow import StepSpec, StepTypeInfo
@@ -80,10 +82,27 @@ Emit = Callable[[str, dict[str, JsonValue]], None]
 Propose = Callable[[ChangeSetProposal, TargetRef | None, SnapshotIndex], list[ChangeSet]]
 
 
+@dataclass(frozen=True)
+class GateOptions:
+    """How a review gate is decided besides by a person (S-REVIEW)."""
+
+    on_reject: OnReject = "stop"
+    timeout: timedelta | None = None
+    on_timeout: GateDecision | None = None
+
+
+#: The engine's side of ``ctx.open_gate``: requests, options, snapshots -> gate id.
+OpenGate = Callable[[list[GateRequest], GateOptions, SnapshotIndex], str]
+
+
 def _no_propose(
     proposal: ChangeSetProposal, current: TargetRef | None, s: SnapshotIndex
 ) -> list[ChangeSet]:
     raise StepFailure("this run can't propose ChangeSets")
+
+
+def _no_gate(requests: list[GateRequest], options: GateOptions, s: SnapshotIndex) -> str:
+    raise StepFailure("this run can't open review gates")
 
 
 def _unchanged(value: str) -> str:
@@ -112,6 +131,7 @@ class StepContext:
         propose: Propose | None = None,
         profile_dir: Path | None = None,
         interpolate: Callable[[str], str] | None = None,
+        open_gate: OpenGate | None = None,
     ) -> None:
         self.run_id = run_id
         self.profile = profile
@@ -132,6 +152,7 @@ class StepContext:
         self._is_cancelled = is_cancelled
         self.failed_targets: list[FailedTarget] = []
         self._propose = propose or _no_propose
+        self._open_gate = open_gate or _no_gate
         self._snapshots = SnapshotIndex()
         self.proposed: list[ChangeSet] = []
         """Every ChangeSet this step proposed so far, in order (after no-op dropping)."""
@@ -194,6 +215,18 @@ class StepContext:
         made = self._propose(proposal, current, self._snapshots)
         self.proposed.extend(made)
         return [cs.id for cs in made]
+
+    def open_gate(self, requests: list[GateRequest], options: GateOptions | None = None) -> str:
+        """Hold the run for a human decision on albums from ``albums()`` (RUN-14, S-REVIEW).
+
+        The engine stores a review gate with each album's label, the run's changes to it
+        so far and its conflicted ChangeSets, emits ``review.requested`` and, once this
+        step finishes, suspends the run in ``waiting_review`` until the gate is decided.
+        Returns the gate id.
+        """
+        if not requests:
+            raise ValueError("a review gate needs at least one album")
+        return self._open_gate(list(requests), options or GateOptions(), self._snapshots)
 
     def fail_target(self, target: str, message: str) -> None:
         """Record a failed target. Returns under ``on_error: continue``; otherwise ends

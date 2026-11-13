@@ -120,9 +120,11 @@ class SnapshotIndex:
     def __init__(self) -> None:
         self._fields: dict[TargetRef, dict[str, FieldValue]] = {}
         self._album_of: dict[str, str] = {}
+        self._albums: dict[str, AlbumSnapshot] = {}
 
     def add(self, albums: Iterable[AlbumSnapshot]) -> None:
         for album in albums:
+            self._albums[album.id] = album
             self._fields[TargetRef(scope="album", id=album.id)] = dict(album.fields)
             for item in album.items:
                 self._fields[TargetRef(scope="item", id=item.id)] = dict(item.fields)
@@ -130,6 +132,10 @@ class SnapshotIndex:
 
     def fields(self, ref: TargetRef) -> dict[str, FieldValue] | None:
         return self._fields.get(ref)
+
+    def album(self, album_id: str) -> AlbumSnapshot | None:
+        """The latest snapshot of an album the step was given."""
+        return self._albums.get(album_id)
 
     def album_of(self, ref: TargetRef) -> str:
         return ref.id if ref.scope == "album" else self._album_of[ref.id]
