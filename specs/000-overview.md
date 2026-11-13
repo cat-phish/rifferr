@@ -47,7 +47,7 @@ A row gets a link once its spec file exists. Build order: [docs/roadmap.md](../d
 | [F-CLI](features/F-CLI.md) | `rifferr serve`, `run`, `validate` | 9 | M0 | Implemented |
 | [F-WORKER](features/F-WORKER.md) | Worker process per profile and IPC | 8 | M0 | Implemented |
 | [F-UI-SHELL](features/F-UI-SHELL.md) | UI shell and run log | 11 | M0 | Implemented |
-| F-TAG-GRID | Library/tag grid and script preview UI | 4 | M1 | Planned |
+| [F-TAG-GRID](features/F-TAG-GRID.md) | Library and tag grid (script preview: S-TAGSCRIPT) | 4 | M1 | Draft |
 | F-REVIEW-QUEUE | Review queue UI and dashboard | 2a | M1 | Planned |
 | F-IMPORT-UI | Interactive import decisions | 3, 8 | M2 | Planned |
 | F-TRIGGERS | watch, schedule, webhook triggers; dedup; concurrency | 2a | M2 | Planned |
