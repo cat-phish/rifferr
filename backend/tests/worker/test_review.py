@@ -52,6 +52,14 @@ class Harness:
         self.journal = AppJournal(self.db)
         self.supervisor = WorkerSupervisor(self.db, self.sink, command=lambda p: ["false"])
 
+        # Wake-ups go to the in-process worker. Spawning the command would start a
+        # worker that exits before it's ready, and the supervisor then fails every
+        # queued job of the profile, racing the in-process worker's claim (B-041).
+        async def wake(profile: str) -> None:
+            self.queue.put_nowait(WorkerCommand(kind="start_run", profile=profile))
+
+        self.supervisor._wake = wake  # type: ignore[method-assign]
+
     def _send(self, message: WorkerMessage) -> None:
         self.sent.append(message)
         if message.event is not None:
