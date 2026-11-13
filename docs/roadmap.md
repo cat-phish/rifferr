@@ -152,9 +152,11 @@ pushing, run these on a normal desktop and tick them off:
   2026-11-12: 5 runs alongside 2 full suites, 22/22 each time.
 - [x] `pre-commit run --all-files` (gitleaks + spec lint). It isn't installed on the VM.
   2026-11-12: all hooks pass.
-- [ ] Manual check with `uv run rifferr serve --dev` against a test profile (never a
+- [x] Manual check with `uv run rifferr serve --dev` against a test profile (never a
   real library): open `/scripts`, edit a script, and confirm the preview answers while
   a run is importing (read-only worker, WORKER-11).
+  2026-11-12: the preview answered while a run was active (temp profile; the run
+  imported, then held the main worker with a 90 s shell step).
 - [x] Then commit any fixes, push, and confirm CI is green (B-014).
   2026-11-12: green on `d3062c9`, after fixing the py3.12 OpenAPI drift (422 description).
 
