@@ -127,6 +127,7 @@ def create_api(settings: ApiSettings | None = None) -> FastAPI:
             keepalive=settings.keepalive,
         )
         supervisor.subscribe(state.hub.publish)
+        supervisor.start()  # decides overdue review gates now and as deadlines pass
         app.state.rifferr = state
         if settings.write_token and not settings.no_auth:
             write_token_file(settings.port, settings.token)

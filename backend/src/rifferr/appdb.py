@@ -19,6 +19,7 @@ from pydantic import BaseModel, JsonValue
 
 from rifferr.core.changeset import ApplyResult, ChangeSet, ChangeSetState, JournalEntry
 from rifferr.core.ids import new_ulid
+from rifferr.core.review import GateState, ReviewGate
 from rifferr.engine.changesets import StoredChangeSet
 from rifferr.engine.events import Event
 from rifferr.engine.journal import JournalError, completed, failed, recovered, undone
@@ -26,7 +27,11 @@ from rifferr.engine.journal import JournalError, completed, failed, recovered, u
 JobState = Literal["queued", "running", "waiting_review", "succeeded", "failed", "cancelled"]
 #: ``run``: the run record itself (API-6). ``review_decision``: apply or reject a
 #: ChangeSet (CHANGESET-13). ``undo``: undo a journal entry or a run (C-JOURNAL).
-JobKind = Literal["run", "review_decision", "undo"]
+#: ``review_reject``: undo a run rejected at a review gate, then end it (REVIEW-8).
+JobKind = Literal["run", "review_decision", "undo", "review_reject"]
+
+#: ChangeSet states that still hold a suspended run (CHANGESET-7).
+HOLDING_CHANGESETS = ("proposed", "conflicted")
 
 _MIGRATION_FILE = re.compile(r"^(\d{3})_([a-z0-9_]+)\.sql$")
 
@@ -195,16 +200,62 @@ class AppDB:
         )
         return cur.rowcount == 1
 
-    def suspend(self, run_id: str, after: str, holds: list[str]) -> bool:
-        """running -> waiting_review until ``holds`` are resolved; the run then resumes
-        after step ``after`` (RUN-14)."""
+    def suspend(
+        self, run_id: str, after: str, holds: list[str], gates: list[str] | None = None
+    ) -> bool:
+        """running -> waiting_review until ``holds`` (ChangeSet ids) and ``gates`` (review
+        gate ids) are resolved; the run then resumes after step ``after`` (RUN-14)."""
         cur = self._conn.execute(
-            "UPDATE jobs SET state = 'waiting_review',"
-            " payload = json_set(payload, '$.resume_after', ?, '$.holds', json(?))"
+            "UPDATE jobs SET state = 'waiting_review', payload = json_set(payload,"
+            " '$.resume_after', ?, '$.holds', json(?), '$.gates', json(?))"
             " WHERE run_id = ? AND kind = 'run' AND state = 'running'",
-            (after, json.dumps(holds), run_id),
+            (after, json.dumps(holds), json.dumps(gates or []), run_id),
         )
         return cur.rowcount == 1
+
+    def requeue_if_released(self, run_id: str) -> bool:
+        """Queue a waiting run once nothing holds it (RUN-14): none of its ChangeSet holds
+        is still proposed or conflicted, and every gate it waits for was continued.
+
+        One transaction, so two decisions finishing at once can't both see the other
+        still pending and leave the run waiting. True if the run was queued.
+        """
+        with self._conn:
+            self._conn.execute("BEGIN IMMEDIATE")
+            row = self._conn.execute(
+                "SELECT payload FROM jobs WHERE run_id = ? AND kind = 'run'"
+                " AND state = 'waiting_review'",
+                (run_id,),
+            ).fetchone()
+            if row is None:
+                return False
+            payload = json.loads(row["payload"])
+            holds = [str(h) for h in payload.get("holds") or []]
+            gates = [str(g) for g in payload.get("gates") or []]
+            if holds:
+                marks = ",".join("?" for _ in holds)
+                held = self._conn.execute(
+                    f"SELECT 1 FROM changesets WHERE id IN ({marks})"
+                    f" AND state IN {HOLDING_CHANGESETS} LIMIT 1",
+                    holds,
+                ).fetchone()
+                if held is not None:
+                    return False
+            if gates:
+                marks = ",".join("?" for _ in gates)
+                open_gate = self._conn.execute(
+                    f"SELECT 1 FROM review_gates WHERE id IN ({marks})"
+                    " AND state != 'continued' LIMIT 1",
+                    gates,
+                ).fetchone()
+                if open_gate is not None:
+                    return False
+            cur = self._conn.execute(
+                "UPDATE jobs SET state = 'queued', claimed_at = NULL"
+                " WHERE run_id = ? AND kind = 'run' AND state = 'waiting_review'",
+                (run_id,),
+            )
+            return cur.rowcount == 1
 
     def requeue(self, run_id: str) -> bool:
         """waiting_review -> queued, so a worker resumes the run (RUN-14)."""
@@ -215,11 +266,11 @@ class AppDB:
         )
         return cur.rowcount == 1
 
-    def cancel_waiting(self, run_id: str) -> bool:
+    def cancel_waiting(self, run_id: str, error: str | None = None) -> bool:
         cur = self._conn.execute(
-            "UPDATE jobs SET state = 'cancelled', finished_at = ?"
+            "UPDATE jobs SET state = 'cancelled', finished_at = ?, error = ?"
             " WHERE run_id = ? AND kind = 'run' AND state = 'waiting_review'",
-            (_now(), run_id),
+            (_now(), error, run_id),
         )
         return cur.rowcount == 1
 
@@ -414,6 +465,111 @@ class AppChangeSets:
             row["resolved_by"],
             decisions,
         )
+
+
+class GateResolvedError(ValueError):
+    """The gate was already decided or cancelled (REVIEW-6: ``409 already_resolved``)."""
+
+    def __init__(self, gate_id: str, state: str) -> None:
+        self.gate_id, self.state = gate_id, state
+        super().__init__(f"review gate {gate_id} is already {state}")
+
+
+class AppReviewGates:
+    """``GateStore`` backed by the ``review_gates`` table (S-REVIEW)."""
+
+    def __init__(self, db: AppDB) -> None:
+        self.db = db
+
+    @property
+    def _conn(self) -> sqlite3.Connection:
+        return self.db._conn  # pyright: ignore[reportPrivateUsage]
+
+    def add(self, gate: ReviewGate) -> None:
+        self._conn.execute(
+            "INSERT INTO review_gates (id, profile, run_id, step_id, state, body, created_at,"
+            " deadline) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                gate.id,
+                gate.profile,
+                gate.run_id,
+                gate.step_id,
+                gate.state,
+                gate.model_dump_json(),
+                gate.created_at.isoformat(),
+                _utc(gate.deadline) if gate.deadline is not None else None,
+            ),
+        )
+
+    def get(self, gate_id: str) -> ReviewGate | None:
+        row = self._conn.execute("SELECT * FROM review_gates WHERE id = ?", (gate_id,)).fetchone()
+        return self._gate(row) if row else None
+
+    def for_run(self, run_id: str, state: GateState | None = None) -> list[ReviewGate]:
+        sql, args = "SELECT * FROM review_gates WHERE run_id = ?", [run_id]
+        if state is not None:
+            sql, args = sql + " AND state = ?", [*args, state]
+        rows = self._conn.execute(sql + " ORDER BY created_at, id", args).fetchall()
+        return [self._gate(r) for r in rows]
+
+    def overdue(self, now: datetime) -> list[ReviewGate]:
+        """Pending gates whose deadline has passed (REVIEW-9), oldest deadline first."""
+        rows = self._conn.execute(
+            "SELECT * FROM review_gates WHERE state = 'pending' AND deadline IS NOT NULL"
+            " AND deadline <= ? ORDER BY deadline, id",
+            (_utc(now),),
+        ).fetchall()
+        return [self._gate(r) for r in rows]
+
+    def next_deadline(self) -> datetime | None:
+        row = self._conn.execute(
+            "SELECT MIN(deadline) FROM review_gates WHERE state = 'pending'"
+            " AND deadline IS NOT NULL"
+        ).fetchone()
+        return datetime.fromisoformat(row[0]) if row and row[0] else None
+
+    def decide(
+        self, gate_id: str, state: GateState, *, by: str | None, note: str | None = None
+    ) -> ReviewGate:
+        """pending -> ``state``, exactly once (REVIEW-6). Raises ``KeyError`` for an
+        unknown gate and ``GateResolvedError`` if it was already decided."""
+        cur = self._conn.execute(
+            "UPDATE review_gates SET state = ?, decided_at = ?, decided_by = ?, note = ?"
+            " WHERE id = ? AND state = 'pending'",
+            (state, _now(), by, note, gate_id),
+        )
+        gate = self.get(gate_id)
+        if gate is None:
+            raise KeyError(gate_id)
+        if cur.rowcount != 1:
+            raise GateResolvedError(gate_id, gate.state)
+        return gate
+
+    def cancel_for_run(self, run_id: str) -> list[str]:
+        """Cancel the run's pending gates (REVIEW-10). Returns their ids."""
+        rows = self._conn.execute(
+            "UPDATE review_gates SET state = 'cancelled', decided_at = ?"
+            " WHERE run_id = ? AND state = 'pending' RETURNING id",
+            (_now(), run_id),
+        ).fetchall()
+        return [str(r["id"]) for r in rows]
+
+    def _gate(self, row: sqlite3.Row) -> ReviewGate:
+        body = ReviewGate.model_validate_json(row["body"])
+        decided = row["decided_at"]
+        return body.model_copy(
+            update={
+                "state": row["state"],
+                "decided_at": datetime.fromisoformat(decided) if decided else None,
+                "decided_by": row["decided_by"],
+                "note": row["note"],
+            }
+        )
+
+
+def _utc(when: datetime) -> str:
+    """ISO text in UTC, so deadlines compare as strings."""
+    return when.astimezone(UTC).isoformat()
 
 
 class AppJournal:

@@ -589,3 +589,39 @@ async def test_API_13_spa_fallback_for_page_paths_only(tmp_path: Path) -> None:
         for server_path in ("/assets/missing.js", "/runs/01ABC"):
             r = await c.get(server_path)  # not a page navigation
             assert r.status_code == 404, server_path
+
+
+async def test_REVIEW_7_run_detail_shows_the_gate_decision_on_its_step(api: Api) -> None:
+    db = api.state.db
+    source = wf("{id: check, uses: review}", "{id: after, uses: test.echo}")
+    job = db.submit("main", {"source": source, "vars": {}})
+    assert db.claim_next("main") is not None
+
+    def event(seq: int, type: str, step: str | None, data: dict[str, Any]) -> Event:
+        return Event(
+            seq=seq, ts=datetime.now(UTC), run_id=job.run, type=type, step_id=step, data=data
+        )
+
+    db.append_event(event(1, "run.started", None, {}))
+    db.append_event(event(2, "run.step.started", "check", {"uses": "review"}))
+    finished = {"status": "succeeded", "outputs": {"gate": "g1", "albums": 1}}
+    db.append_event(event(3, "run.step.finished", "check", finished))
+    resolved = {
+        "gate_id": "g1",
+        "decision": "continue",
+        "decided_by": "ui",
+        "decided_at": "2026-11-12T12:00:00+00:00",
+        "note": "fine",
+    }
+    db.append_event(event(4, "review.resolved", "check", resolved))
+    r = await api.client.get(f"/api/runs/{job.run}")
+    assert r.status_code == 200
+    check = r.json()["steps"][0]
+    assert check["outputs"] == {
+        "gate": "g1",
+        "albums": 1,
+        "decision": "continue",
+        "decided_by": "ui",
+        "decided_at": "2026-11-12T12:00:00+00:00",
+        "note": "fine",
+    }

@@ -22,11 +22,12 @@ from typing import BinaryIO
 
 from pydantic import JsonValue, ValidationError
 
-from rifferr.appdb import AppChangeSets, AppDB, AppJournal, Job
-from rifferr.backends.base import LibraryBackend
+from rifferr.appdb import HOLDING_CHANGESETS, AppChangeSets, AppDB, AppJournal, AppReviewGates, Job
+from rifferr.backends.base import CapabilityError, LibraryBackend
 from rifferr.backends.loader import load_backend
 from rifferr.core.ids import new_ulid
 from rifferr.core.profile import Profile, Redactor
+from rifferr.core.selection import Selection
 from rifferr.core.workflow import WorkflowLoadError, load_workflow
 from rifferr.credentials import ProfileSecrets, SecretResolver
 from rifferr.engine import (
@@ -45,6 +46,7 @@ from rifferr.engine.recovery import recover_pending
 from rifferr.engine.undo import UndoContext, UndoError, undo_entry, undo_run
 from rifferr.profile_store import app_db_path, config_root, load_profile
 from rifferr.steps.registry import load_step_types
+from rifferr.worker.gates import finish_rejected
 from rifferr.worker.protocol import HEARTBEAT_INTERVAL, WorkerCommand, WorkerMessage, encode
 
 log = logging.getLogger("rifferr.worker")
@@ -74,7 +76,7 @@ class Channel:
 
 
 #: ChangeSet states that still hold a suspended run (CHANGESET-7).
-HOLDING = frozenset({"proposed", "conflicted"})
+HOLDING = frozenset(HOLDING_CHANGESETS)
 
 
 class _ForwardSink:
@@ -127,6 +129,7 @@ class Worker:
         self._sent: dict[str, int] = {}
         self.journal = AppJournal(db)
         self.changesets = AppChangeSets(db)
+        self.gates = AppReviewGates(db)
 
     async def serve(self, commands: Commands) -> None:
         """Run jobs until stopped, the server goes away, or idle too long (WORKER-7)."""
@@ -228,6 +231,9 @@ class Worker:
         if job.kind == "undo":
             self._undo(job)
             return
+        if job.kind == "review_reject":
+            self._reject_at_review(job)
+            return
         payload = job.payload
         source = str(payload.get("source", ""))
         source_name = str(payload.get("source_name", "<workflow>"))
@@ -242,6 +248,7 @@ class Worker:
             cancel_grace=self.cancel_grace,
             journal=self.journal,
             changesets=self.changesets,
+            gates=self.gates,
         )
         try:
             wf, doc = load_workflow(source, source_name)
@@ -275,7 +282,7 @@ class Worker:
             # Normally already done by _record_run_state; this covers anything missed.
             if run.state is RunState.waiting_review:
                 assert run.suspended_after is not None
-                self.db.suspend(job.run, run.suspended_after, run.holds)
+                self.db.suspend(job.run, run.suspended_after, run.holds, run.gates)
             else:
                 self.db.finish(job.run, run.state.value)  # type: ignore[arg-type]
         except Exception as exc:  # an engine bug: still end the run cleanly
@@ -295,8 +302,11 @@ class Worker:
                 self.db.finish(event.run_id, status)  # type: ignore[arg-type]
         elif event.type == "run.waiting_review":
             after, holds = event.data.get("after"), event.data.get("changesets")
-            if isinstance(after, str) and isinstance(holds, list):
-                self.db.suspend(event.run_id, after, [str(h) for h in holds])
+            gates = event.data.get("gates") or []
+            if isinstance(after, str) and isinstance(holds, list) and isinstance(gates, list):
+                self.db.suspend(
+                    event.run_id, after, [str(h) for h in holds], [str(g) for g in gates]
+                )
 
     def _fail_unstarted(self, job: Job, error: str) -> None:
         self.db.finish(job.run, "failed", error)
@@ -402,16 +412,81 @@ class Worker:
         self.db.finish_job(job.id, "failed" if stopped else "succeeded", error, result)
 
     def _resume_if_released(self, run_id: str) -> None:
+        self.db.requeue_if_released(run_id)  # the serve loop claims it next (RUN-14)
+
+    # -- rejected at a review gate (REVIEW-8) -----------------------------------------
+
+    def _reject_at_review(self, job: Job) -> None:
+        """``on_reject: undo``: undo the run's applied ChangeSets newest first, log what
+        happened, then end the run ``cancelled`` (``rejected_at_review``)."""
+        run_id = job.run
+        gate_id = job.payload.get("gate_id")
+        gate = self.gates.get(str(gate_id)) if isinstance(gate_id, str) else None
+        step_id = gate.step_id if gate is not None else None
+
+        def log_line(line: str, stream: str = "info") -> None:
+            self._changeset_emitter(run_id, step_id)(
+                "run.step.log", {"stream": stream, "line": line}
+            )
+
         run_job = self.db.job_for_run(run_id)
         if run_job is None or run_job.state != "waiting_review":
+            state = run_job.state if run_job is not None else "missing"
+            self.db.finish_job(job.id, "failed", f"run {run_id} is {state}, not waiting")
             return
-        holds = run_job.payload.get("holds") or []
-        assert isinstance(holds, list)
-        for hold in holds:
-            stored = self.changesets.get(str(hold))
-            if stored is not None and stored.state in HOLDING:
-                return
-        self.db.requeue(run_id)  # the serve loop claims it next (RUN-14)
+        by = job.payload.get("by")
+        ctx = UndoContext(
+            backend=self.backend,
+            journal=self.journal,
+            store=self.changesets,
+            new_id=new_ulid,
+            now=lambda: datetime.now(UTC),
+            emitter_for=self._changeset_emitter,
+            by=by if isinstance(by, str) else None,
+        )
+        result: dict[str, JsonValue] = {}
+        try:
+            outcome = undo_run(run_id, ctx)
+            result = outcome.as_json()
+            if not outcome.undone and outcome.stopped is None:
+                log_line("rejected: the run has no applied tag changes to undo")
+            for done in outcome.undone:
+                log_line(f"rejected: undid journal entry {done.entry_id}")
+            if outcome.stopped is not None:
+                stopped = outcome.stopped
+                details = [
+                    f"{c.target.label()} {c.field}: expected {c.expected!r}, now {c.current!r}"
+                    for c in stopped.conflicts
+                ] + [f"{p.target.label()} {p.field}: {p.message}" for p in stopped.problems]
+                log_line(
+                    f"undo stopped at journal entry {stopped.entry_id}; older changes stay: "
+                    + "; ".join(details),
+                    "error",
+                )
+            imported = self._imported_count(run_id)
+            if imported:
+                log_line(
+                    f"{imported} album(s) this run imported stay in the library: "
+                    "undo doesn't remove imports"
+                )
+        except Exception as exc:  # the run still ends rejected
+            log.warning("undo of rejected run %s failed: %s", run_id, exc)
+            log_line(f"undo failed: {type(exc).__name__}: {exc}", "error")
+            result = {"error": f"{type(exc).__name__}: {exc}"}
+
+        def emit(type: str, step: str | None, data: dict[str, JsonValue]) -> None:
+            self._changeset_emitter(run_id, step)(type, data)
+
+        finish_rejected(self.db, run_id, emit)
+        stopped_at = result.get("stopped_at") if isinstance(result, dict) else None
+        error = f"undo stopped at journal entry {stopped_at}" if stopped_at else None
+        self.db.finish_job(job.id, "failed" if error else "succeeded", error, result)
+
+    def _imported_count(self, run_id: str) -> int:
+        try:
+            return len(self.backend.query(Selection.for_run(run_id)))
+        except CapabilityError:
+            return 0
 
     def _changeset_emitter(
         self, run_id: str | None, step_id: str | None
@@ -452,6 +527,13 @@ def step_records(events: Iterable[Event]) -> dict[str, StepRecord]:
         if e.type == "run.step.started":
             uses[e.step_id] = str(e.data.get("uses", ""))
             started[e.step_id] = e.ts
+        elif e.type == "review.resolved" and e.step_id in records:
+            # The decision shows on the gate step's record (REVIEW-7).
+            record = records[e.step_id]
+            for key in ("decision", "decided_by", "decided_at", "note"):
+                value = e.data.get(key)
+                if isinstance(value, str):
+                    record.outputs[key] = value
         elif e.type == "run.step.finished":
             data = e.data
             outputs = data.get("outputs") or {}

@@ -138,6 +138,12 @@ def steps(state: ServerState, job: Job) -> list[StepState]:
             continue
         if event.type == "run.step.started":
             step.status = "running"
+        elif event.type == "review.resolved":
+            # The decision shows on the gate step (REVIEW-7).
+            for key in ("decision", "decided_by", "decided_at", "note"):
+                value = event.data.get(key)
+                if isinstance(value, str):
+                    step.outputs[key] = value
         elif event.type == "run.step.finished":
             step.status = cast(StepStatusOut, event.data.get("status", "failed"))
             error = event.data.get("error")

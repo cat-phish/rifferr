@@ -20,10 +20,12 @@ from typing import Literal, cast
 
 from pydantic import JsonValue, ValidationError
 
-from rifferr.appdb import AppChangeSets, AppDB, AppJournal
+from rifferr.appdb import AppChangeSets, AppDB, AppJournal, AppReviewGates, GateResolvedError
+from rifferr.core.review import GateDecision
 from rifferr.engine.events import Event, EventSink
 from rifferr.engine.undo import run_entries, undoable
 from rifferr.trust import workflow_hash
+from rifferr.worker.gates import finish_rejected
 from rifferr.worker.protocol import (
     HUNG_AFTER,
     MAX_MESSAGE,
@@ -37,6 +39,8 @@ log = logging.getLogger("rifferr.worker")
 STOP_GRACE = 10.0
 """Seconds a worker gets to exit after a stop request (WORKER-8)."""
 WATCHDOG_INTERVAL = 1.0
+GATE_CHECK_INTERVAL = 60.0
+"""Longest wait between checks for overdue review gates (REVIEW-9)."""
 
 Command = Callable[[str], list[str]]
 Listener = Callable[[Event], None]
@@ -66,6 +70,8 @@ class WorkerSupervisor:
         hung_after: float = HUNG_AFTER,
         stop_grace: float = STOP_GRACE,
         watchdog_interval: float = WATCHDOG_INTERVAL,
+        gate_check_interval: float = GATE_CHECK_INTERVAL,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         self.db = db
         self.sink = sink
@@ -77,6 +83,10 @@ class WorkerSupervisor:
         self._listeners: list[Listener] = []
         self._shutting_down = False
         self._lock = asyncio.Lock()
+        self.gate_check_interval = gate_check_interval
+        self._clock = clock or (lambda: datetime.now(UTC))
+        self._gate_timer: asyncio.Task[None] | None = None
+        self._gates_changed = asyncio.Event()
 
     def default_command(self, profile: str) -> list[str]:
         """The server's own interpreter, so the worker sees the same installed plugins."""
@@ -196,6 +206,97 @@ class WorkerSupervisor:
         await self._wake(profile)
         return job.id
 
+    # -- review gates (S-REVIEW) ---------------------------------------------------
+
+    async def decide_gate(
+        self,
+        gate_id: str,
+        decision: GateDecision,
+        *,
+        by: str | None = None,
+        note: str | None = None,
+    ) -> None:
+        """Decide a pending review gate, exactly once (REVIEW-6 .. -8).
+
+        ``continue`` needs no worker job: the run is queued to resume once nothing else
+        holds it (REVIEW-12). ``reject`` ends the run here (``on_reject: stop``) or
+        queues a worker job that undoes the run's changes first (``undo``). Raises
+        ``KeyError`` for an unknown gate, ``GateResolvedError`` when it was already
+        decided or cancelled, and ``ValueError`` while its run isn't waiting yet.
+        """
+        if self._shutting_down:
+            raise RuntimeError("server is shutting down")
+        gates = AppReviewGates(self.db)
+        gate = gates.get(gate_id)
+        if gate is None:
+            raise KeyError(gate_id)
+        if gate.state != "pending":
+            raise GateResolvedError(gate_id, gate.state)
+        job = self.db.job_for_run(gate.run_id)
+        if job is None or job.state != "waiting_review":
+            state = job.state if job is not None else "missing"
+            raise ValueError(f"run {gate.run_id} is {state}; the gate can't be decided yet")
+        decided = gates.decide(
+            gate_id, "continued" if decision == "continue" else "rejected", by=by, note=note
+        )
+        data: dict[str, JsonValue] = {
+            "gate_id": gate_id,
+            "decision": decision,
+            "decided_by": by,
+            "decided_at": decided.decided_at.isoformat() if decided.decided_at else None,
+        }
+        if note is not None:
+            data["note"] = note
+        self._emit_run(gate.run_id, "review.resolved", gate.step_id, data)
+        if decision == "continue":
+            if self.db.requeue_if_released(gate.run_id):
+                await self._wake(gate.profile)
+        elif gate.on_reject == "undo":
+            payload: dict[str, JsonValue] = {"gate_id": gate_id, "run_id": gate.run_id, "by": by}
+            self.db.submit_job(gate.profile, "review_reject", payload, gate.run_id)
+            await self._wake(gate.profile)
+        else:
+            run_id = gate.run_id
+            finish_rejected(self.db, run_id, lambda t, step, d: self._emit_run(run_id, t, step, d))
+
+    async def decide_overdue_gates(self) -> list[str]:
+        """Decide every pending gate whose deadline passed with its ``on_timeout``
+        (REVIEW-9). Returns the ids decided. Also runs at server start-up."""
+        decided: list[str] = []
+        for gate in AppReviewGates(self.db).overdue(self._clock()):
+            try:
+                await self.decide_gate(gate.id, gate.on_timeout or "reject", by="timeout")
+            except (GateResolvedError, ValueError, KeyError) as exc:
+                log.info("review gate %s: timeout decision skipped: %s", gate.id, exc)
+                continue
+            decided.append(gate.id)
+        return decided
+
+    def start(self) -> None:
+        """Start background work: the review-gate deadline timer (REVIEW-9)."""
+        if self._gate_timer is None:
+            self._gate_timer = asyncio.create_task(self._gate_timer_loop())
+
+    async def _gate_timer_loop(self) -> None:
+        while not self._shutting_down:
+            try:
+                await self.decide_overdue_gates()
+            except Exception:  # never let the timer die
+                log.exception("checking review gate deadlines failed")
+            wait = self.gate_check_interval
+            upcoming = AppReviewGates(self.db).next_deadline()
+            if upcoming is not None:
+                wait = max(0.0, min(wait, (upcoming - self._clock()).total_seconds()))
+            self._gates_changed.clear()
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(self._gates_changed.wait(), wait)
+
+    def _emit_run(
+        self, run_id: str, type: str, step_id: str | None, data: dict[str, JsonValue]
+    ) -> None:
+        seq = self.db.last_seq(run_id) + 1
+        self._persist(self._event(run_id, seq, type, data).model_copy(update={"step_id": step_id}))
+
     async def cancel(self, run_id: str) -> None:
         """Cancel a queued, running or waiting run (WORKER-5, CHANGESET-7). No effect on
         finished runs."""
@@ -208,6 +309,7 @@ class WorkerSupervisor:
             return
         if self.db.cancel_waiting(run_id):
             self._reject_holds(run_id, job.payload.get("holds"))
+            AppReviewGates(self.db).cancel_for_run(run_id)  # REVIEW-10
             seq = self.db.last_seq(run_id) + 1
             self._persist(self._event(run_id, seq, "run.finished", {"status": "cancelled"}))
             return
@@ -242,6 +344,11 @@ class WorkerSupervisor:
     async def shutdown(self) -> None:
         """Stop every worker: stop request, then SIGKILL after ``stop_grace`` (WORKER-8)."""
         self._shutting_down = True
+        if self._gate_timer is not None:
+            self._gate_timer.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._gate_timer
+            self._gate_timer = None
         handles = list(self._workers.values())
         for handle in handles:
             handle.stopping = True
@@ -379,6 +486,8 @@ class WorkerSupervisor:
             return
         if event.type == "run.started":
             self.db.mark_started(event.run_id)
+        elif event.type == "review.requested":
+            self._gates_changed.set()  # a new deadline may be the next one
         for listener in self._listeners:
             listener(event)
 
