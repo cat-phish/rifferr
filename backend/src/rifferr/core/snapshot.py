@@ -41,3 +41,15 @@ class AlbumSnapshot(BaseModel):
     path: str | None
     fields: dict[str, FieldValue]
     items: list[ItemSnapshot] = Field(default_factory=list[ItemSnapshot])
+
+
+def label(target: AlbumSnapshot | ItemSnapshot) -> str:
+    """A short name for people: ``albumartist - album`` or ``track. title``."""
+    f = target.fields
+    if isinstance(target, AlbumSnapshot):
+        parts = [str(f[k]) for k in ("albumartist", "album") if f.get(k)]
+        return " - ".join(parts) or target.id
+    track = f.get("track")
+    title = f.get("title")
+    head = f"{track}. " if isinstance(track, int) and not isinstance(track, bool) else ""
+    return f"{head}{title}" if title else head + target.id

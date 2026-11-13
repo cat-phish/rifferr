@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from rifferr.core.changeset import TargetRef
 from rifferr.core.selection import Scope
-from rifferr.core.snapshot import AlbumSnapshot, FieldValue, ItemSnapshot
+from rifferr.core.snapshot import AlbumSnapshot, FieldValue, label
 from rifferr.core.workflow.errors import ValidationError
 from rifferr.tagscript.evaluator import Evaluator, check_idempotence, run_script
 from rifferr.tagscript.models import TagScript
@@ -101,17 +101,6 @@ class PreviewResponse(BaseModel):
     validation_errors: list[PreviewError] = Field(default_factory=list[PreviewError])
     truncated: bool = False
     albums: int = Field(default=0, description="Albums evaluated")
-
-
-def label(target: AlbumSnapshot | ItemSnapshot) -> str:
-    f = target.fields
-    if isinstance(target, AlbumSnapshot):
-        parts = [str(f[k]) for k in ("albumartist", "album") if f.get(k)]
-        return " - ".join(parts) or target.id
-    track = f.get("track")
-    title = f.get("title")
-    head = f"{track}. " if isinstance(track, int) and not isinstance(track, bool) else ""
-    return f"{head}{title}" if title else head + target.id
 
 
 def preview(
