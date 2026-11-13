@@ -14,7 +14,7 @@ import sqlite3
 import sys
 from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from beets import dbcore
 from beets.library import Album, Item, Library
@@ -120,10 +120,18 @@ class BeetsBackend:
                 marker = _run_term(selection.run_id)
                 allowed = {a.id for a in _fetch(lambda: lib.albums([marker])) if a.id is not None}
             if selection.scope == "album":
-                albums = _fetch(lambda: lib.albums(parts))
+                if selection.ids is not None:
+                    albums = _by_ids(lib, Album, selection.ids, parts)
+                else:
+                    albums = _fetch(lambda: lib.albums(parts))
                 return [album_snapshot(a) for a in albums if allowed is None or a.id in allowed]
             by_album: dict[int, list[Item]] = {}
-            for item in _fetch(lambda: lib.items(parts)):
+            items = (
+                _by_ids(lib, Item, selection.ids, parts)
+                if selection.ids is not None
+                else _fetch(lambda: lib.items(parts))
+            )
+            for item in items:
                 if item.album_id is not None and (allowed is None or item.album_id in allowed):
                     by_album.setdefault(item.album_id, []).append(item)
             out: list[AlbumSnapshot] = []
@@ -267,6 +275,28 @@ def _parse(parts: list[str], model: type[Item] | type[Album]) -> tuple[Any, Any]
         return parse_query_parts(parts, model)
     except dbcore.InvalidQueryError as exc:
         raise QueryError(str(exc)) from exc
+
+
+def _by_ids[M: (Item, Album)](
+    lib: Library, model: type[M], ids: tuple[str, ...], parts: list[str]
+) -> list[M]:
+    """The albums or items with these snapshot ids (``Selection.ids``) that match
+    ``parts``; ids of the other kind, or that no longer exist, are skipped."""
+    query, _ = _parse(parts, model)
+    kind = "album" if model is Album else "item"
+    get = lib.get_album if model is Album else lib.get_item
+    found: list[M] = []
+    for raw in dict.fromkeys(ids):
+        try:
+            id_kind, number = parse_id(raw)
+        except KeyError:
+            continue
+        if id_kind != kind:
+            continue
+        obj = get(number)
+        if obj is not None and query.match(obj):
+            found.append(cast(M, obj))
+    return found
 
 
 def _fetch[T](fetch: Callable[[], T]) -> T:

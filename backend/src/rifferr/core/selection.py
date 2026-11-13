@@ -18,6 +18,8 @@ class Selection(BaseModel):
       have at least one matching item are returned with only those items.
     - ``run_id``: only albums carrying this run's marker (albums the run
       imported or touched). A step's default selection is ``for_run(run_id)``.
+    - ``ids``: only the albums (scope ``album``) or items (scope ``item``) with these
+      backend ids, e.g. to read the current values of a ChangeSet's targets.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -25,6 +27,7 @@ class Selection(BaseModel):
     query: str = ""
     scope: Scope = "album"
     run_id: str | None = None
+    ids: tuple[str, ...] | None = None
 
     @classmethod
     def for_run(cls, run_id: str) -> Selection:

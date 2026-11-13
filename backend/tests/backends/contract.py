@@ -221,6 +221,19 @@ class BackendContract:
         assert backend.query(Selection(run_id="run-1", query="albumtype:album")) == []
         assert backend.query(Selection(run_id="nope")) == []
 
+    def test_BACKEND_5_ids_restrict_to_those_albums_or_items(self, backend: LibraryBackend) -> None:
+        # Used for the current values of a ChangeSet's targets (REVIEW-QUEUE-3).
+        self.need(backend, "query")
+        first, second = self.by_album(backend, "First EP"), self.by_album(backend, "Second (EP)")
+        found = backend.query(Selection(ids=(second.id, first.id, "no-such-id")))
+        assert album_names(found) == {"First EP", "Second (EP)"}
+        assert backend.query(Selection(ids=(first.id,), query="albumtype:album")) == []
+        assert backend.query(Selection(ids=())) == []
+        item = first.items[1]
+        (album,) = backend.query(Selection(scope="item", ids=(item.id,)))
+        assert album.id == first.id
+        assert [i.id for i in album.items] == [item.id]
+
     def test_BACKEND_6_matches_album_and_item(self, backend: LibraryBackend) -> None:
         album = self.by_album(backend, "First EP")
         assert backend.matches("albumtype:ep", album)

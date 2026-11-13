@@ -47,6 +47,8 @@ class Selection(BaseModel, frozen=True):
     query: str = ""                       # backend condition syntax
     scope: Literal["album", "item"] = "album"
     run_id: str | None = None             # restrict to albums touched by this run
+    ids: tuple[str, ...] | None = None    # only these album (scope album) or item ids
+                                          # (added by F-REVIEW-QUEUE for current values)
 
 ImportMode = Literal["quiet", "auto", "interactive"]
 

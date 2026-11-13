@@ -242,14 +242,19 @@ class FakeBackend:
         self._need("query")
         terms = parse_query(selection.query)
         out: list[AlbumSnapshot] = []
+        ids = None if selection.ids is None else set(selection.ids)
         for album in self._albums:
             if selection.run_id is not None and album.fields.get(RUN_MARKER) != selection.run_id:
                 continue
             if selection.scope == "album":
-                if _matches_all(terms, _album_env(album)):
+                if (ids is None or album.id in ids) and _matches_all(terms, _album_env(album)):
                     out.append(_album_snapshot(album))
             else:
-                items = [i for i in album.items if _matches_all(terms, _item_env(i))]
+                items = [
+                    i
+                    for i in album.items
+                    if (ids is None or i.id in ids) and _matches_all(terms, _item_env(i))
+                ]
                 if items:
                     out.append(_album_snapshot(album, items))
         return out
