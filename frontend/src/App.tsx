@@ -3,6 +3,7 @@ import { useSyncExternalStore } from "react";
 import { Link, Route, Routes, useLocation } from "react-router";
 import { auth } from "./api/auth";
 import { useProfile, withProfile } from "./hooks/useProfile";
+import { LibraryPage } from "./pages/LibraryPage";
 import { RunPage } from "./pages/RunPage";
 import { RunsPage } from "./pages/RunsPage";
 import { ScriptPage } from "./pages/ScriptPage";
@@ -25,6 +26,7 @@ export function App() {
         <Route path="/workflows/:name" element={<WorkflowPage />} />
         <Route path="/scripts" element={<ScriptsPage />} />
         <Route path="/scripts/:name" element={<ScriptPage />} />
+        <Route path="/library" element={<LibraryPage />} />
       </Routes>
     </Shell>
   );
@@ -37,6 +39,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   const nav = [
     { label: "Runs", to: "/runs", active: pathname === "/" || pathname.startsWith("/runs") },
     { label: "Workflows", to: "/workflows", active: pathname.startsWith("/workflows") },
+    { label: "Library", to: "/library", active: pathname.startsWith("/library") },
     { label: "Scripts", to: "/scripts", active: pathname.startsWith("/scripts") },
   ];
   return (

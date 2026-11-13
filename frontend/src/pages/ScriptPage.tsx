@@ -14,7 +14,7 @@ import {
 import { useDebouncedValue } from "@mantine/hooks";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { useParams } from "react-router";
+import { useParams, useSearchParams } from "react-router";
 import { ApiError, api, ok } from "../api/client";
 import type { PreviewField, PreviewResponse, ScriptDetail } from "../api/types";
 import { BeetsTerm } from "../components/BeetsTerm";
@@ -78,10 +78,11 @@ function Editor({
   file: ScriptDetail | null;
 }) {
   const queryClient = useQueryClient();
+  const [params] = useSearchParams();
   const [text, setText] = useState(file?.text ?? NEW_SCRIPT);
   const [sha, setSha] = useState<string | null>(file?.sha256 ?? null);
   const [savedText, setSavedText] = useState(file?.text ?? null);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(() => params.get("query") ?? ""); // from the grid (TAG-GRID-12)
   const [conflict, setConflict] = useState(false);
   const [client] = useState(clientId);
   const [debouncedText] = useDebouncedValue(text, PREVIEW_DELAY_MS);

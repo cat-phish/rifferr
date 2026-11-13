@@ -12,7 +12,7 @@ import {
 } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { api, ok } from "../api/client";
 import { useProfile, withProfile } from "../hooks/useProfile";
 
@@ -22,6 +22,13 @@ const NAME = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 export function ScriptsPage() {
   const { profile } = useProfile();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  // A query handed over from the library grid (TAG-GRID-12) carries on to the editor.
+  const query = params.get("query");
+  const link = (to: string) =>
+    query === null
+      ? withProfile(to, profile)
+      : `${withProfile(to, profile)}&query=${encodeURIComponent(query)}`;
   const [name, setName] = useState("");
   const scripts = useQuery({
     queryKey: ["scripts", profile],
@@ -41,6 +48,11 @@ export function ScriptsPage() {
         Script files in this profile&apos;s <code>scripts/</code> folder. A <code>tags.script</code>{" "}
         step runs one and proposes the changes for review.
       </Text>
+      {query !== null && query !== "" && (
+        <Text size="sm" data-testid="handed-query">
+          Open a script to preview it on <code>{query}</code>.
+        </Text>
+      )}
       {scripts.error && <Alert color="red">{scripts.error.message}</Alert>}
       {scripts.data?.length === 0 && <Text c="dimmed">No script files yet.</Text>}
       {scripts.data !== undefined && scripts.data.length > 0 && (
@@ -56,7 +68,7 @@ export function ScriptsPage() {
             {scripts.data.map((s) => (
               <Table.Tr key={s.name}>
                 <Table.Td>
-                  <Anchor component={Link} to={withProfile(`/scripts/${s.name}`, profile)}>
+                  <Anchor component={Link} to={link(`/scripts/${s.name}`)}>
                     {s.name}
                   </Anchor>
                 </Table.Td>
@@ -88,7 +100,7 @@ export function ScriptsPage() {
         <Button
           disabled={!valid}
           onClick={() => {
-            void navigate(withProfile(`/scripts/${name}`, profile));
+            void navigate(link(`/scripts/${name}`));
           }}
         >
           Create

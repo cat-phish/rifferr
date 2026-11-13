@@ -191,3 +191,14 @@ test("TAGSCRIPT_22 a new script starts from a template and saves without a hash"
   const put = calls.find((c) => c.method === "PUT");
   expect(put?.body).toMatchObject({ sha256: null });
 });
+
+test("TAG_GRID_12 a query handed over from the library fills the preview query", async () => {
+  const { calls } = setup();
+  renderApp("/scripts?profile=main&query=albumtype%3Aep");
+  expect(await screen.findByTestId("handed-query")).toHaveTextContent("albumtype:ep");
+  fireEvent.click(within(await screen.findByTestId("scripts")).getByText("ep"));
+  expect(await screen.findByLabelText("Query")).toHaveValue("albumtype:ep");
+  await waitFor(() => {
+    expect((previews(calls).at(-1)?.body as { query: string }).query).toBe("albumtype:ep");
+  });
+});
