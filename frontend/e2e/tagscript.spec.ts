@@ -21,7 +21,9 @@ test("TAGSCRIPT_22 script editor: live preview, idempotence highlight, save", as
   await page.getByRole("button", { name: "Create" }).click();
   await expect(page).toHaveURL(/\/scripts\/release-types\?profile=main$/);
 
-  const editor = page.getByRole("textbox", { name: "Script" });
+  // Exact: "Script" would also match the list page's "New script" box, which stays on
+  // screen for a moment after the URL changes (react-router navigates in a transition).
+  const editor = page.getByRole("textbox", { name: "Script", exact: true });
   await editor.fill(UNGUARDED);
   await page.getByRole("textbox", { name: "Query" }).fill("albumtype:ep");
 
