@@ -9,18 +9,14 @@ process group so a timeout or cancellation can stop everything they started
 
 from __future__ import annotations
 
-import asyncio
-import contextlib
 import json
 import os
 import re
-import signal
 import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import (
     BaseModel,
@@ -44,16 +40,8 @@ from rifferr.core.changeset import (
 from rifferr.core.profile import env_var_name
 from rifferr.core.snapshot import AlbumSnapshot, ItemSnapshot
 from rifferr.engine import StepContext, StepFailure, StepRefused, StepResult
+from rifferr.steps.process import run_process
 
-KILL_GRACE = 5.0
-"""Seconds between SIGTERM and SIGKILL (SHELL-7)."""
-POLL_INTERVAL = 0.05
-"""How often a waiting step checks for cancellation."""
-READER_GRACE = 1.0
-"""How long to wait for output pipes to close after the process exits. A background
-child that keeps them open is not waited for."""
-MAX_LINE = 64 * 1024
-"""Longer lines are split into several log events."""
 SECRET_ENV_PREFIX = "RIFFERR_SECRET_"
 MAX_PROPOSAL = 16 * 1024 * 1024
 """Most stdout collected with ``emits: changes`` (SHELL-14)."""
@@ -174,7 +162,16 @@ class ShellStep:
             if cwd is None:
                 cwd = target.album_dir or (str(ctx.work_dir) if ctx.work_dir else None)
             collect = _Collector() if params.emits == "changes" else None
-            problem = await _execute(ctx, argv, cwd, env, target, params.timeout, collect)
+            problem = await run_process(
+                ctx,
+                argv,
+                cwd=cwd,
+                env=env,
+                timeout=params.timeout,
+                stdin=target.stdin,
+                target=target.id,
+                stdout_sink=collect.add if collect is not None else None,
+            )
             if ctx.cancelled:
                 continue
             if problem is None and collect is not None:
@@ -185,9 +182,7 @@ class ShellStep:
 
     def _base_env(self, ctx: StepContext, params: ShellParams) -> dict[str, str]:
         environ = os.environ if self._environ is None else self._environ
-        listed = set(params.secrets)
-        hidden = {var for name, var in ctx.secret_env_refs().items() if name not in listed}
-        env = {k: v for k, v in environ.items() if k not in hidden}
+        env = inherited_env(ctx, environ, keep=params.secrets)
         if ctx.backend.capabilities.command_env:
             env.update(ctx.backend.command_env())
         for name, value in ctx.vars.items():
@@ -195,6 +190,16 @@ class ShellStep:
         for name in params.secrets:
             env[secret_env_name(name)] = ctx.secret(name).reveal()
         return env
+
+
+def inherited_env(
+    ctx: StepContext, environ: Mapping[str, str], keep: list[str] | None = None
+) -> dict[str, str]:
+    """Rifferr's environment without variables holding profile ``env:`` secrets, except
+    the secrets named in ``keep`` (SHELL-4)."""
+    listed = set(keep or [])
+    hidden = {var for name, var in ctx.secret_env_refs().items() if name not in listed}
+    return {k: v for k, v in environ.items() if k not in hidden}
 
 
 def secret_env_name(name: str) -> str:
@@ -389,126 +394,3 @@ def _scope_name(per: str) -> str:
 
 def _count(n: int, word: str) -> str:
     return f"{n} {word}" + ("" if n == 1 else "s")
-
-
-# -- processes ----------------------------------------------------------------
-
-
-async def _execute(
-    ctx: StepContext,
-    argv: list[str],
-    cwd: str | None,
-    env: dict[str, str],
-    target: _Target,
-    timeout: int,
-    collect: _Collector | None = None,
-) -> str | None:
-    """Run one command; return a failure message, or None on success.
-
-    With ``collect``, stdout is gathered there instead of logged (SHELL-14).
-    """
-    if cwd is not None and not Path(cwd).is_dir():
-        return f"working directory {cwd} does not exist"
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            *argv,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=cwd,
-            env=env,
-            start_new_session=True,
-        )
-    except OSError as exc:
-        return f"could not start {argv[0]}: {exc.strerror or exc}"
-    io: list[asyncio.Task[Any]] = []
-    try:
-        assert proc.stdin is not None
-        assert proc.stdout is not None
-        assert proc.stderr is not None
-        io.append(asyncio.ensure_future(_feed(proc.stdin, target.stdin)))
-        if collect is None:
-            io.append(asyncio.ensure_future(_pump(ctx, proc.stdout, "stdout", target.id)))
-        else:
-            io.append(asyncio.ensure_future(_gather(proc.stdout, collect)))
-        io.append(asyncio.ensure_future(_pump(ctx, proc.stderr, "stderr", target.id)))
-        loop = asyncio.get_running_loop()
-        deadline = loop.time() + timeout
-        stopped: str | None = None
-        while proc.returncode is None:
-            with contextlib.suppress(TimeoutError):
-                await asyncio.wait_for(asyncio.shield(proc.wait()), POLL_INTERVAL)
-            if proc.returncode is not None:
-                break
-            if ctx.cancelled:
-                stopped = "cancelled"
-            elif loop.time() >= deadline:
-                stopped = f"timed out after {timeout} s"
-            if stopped is not None:
-                await _terminate(proc)
-                break
-        await asyncio.wait(io, timeout=READER_GRACE)
-        if stopped is not None:
-            return stopped
-        code = proc.returncode
-        if code is None or code == 0:
-            return None
-        if code < 0:
-            return f"killed by signal {signal.Signals(-code).name}"
-        return f"exited with status {code}"
-    finally:
-        for task in io:
-            task.cancel()
-        if proc.returncode is None:  # the step itself was cancelled mid-wait
-            _signal_group(proc.pid, signal.SIGKILL)
-
-
-async def _feed(stdin: asyncio.StreamWriter, data: bytes) -> None:
-    with contextlib.suppress(BrokenPipeError, ConnectionResetError):
-        stdin.write(data)
-        await stdin.drain()
-        stdin.close()
-        await stdin.wait_closed()
-
-
-async def _gather(stream: asyncio.StreamReader, collect: _Collector) -> None:
-    while chunk := await stream.read(MAX_LINE):
-        collect.add(chunk)  # keeps draining past the limit so the child never blocks
-
-
-async def _pump(
-    ctx: StepContext, stream: asyncio.StreamReader, name: str, target: str | None
-) -> None:
-    buffer = b""
-    while True:
-        chunk = await stream.read(MAX_LINE)
-        if not chunk:
-            break
-        buffer += chunk
-        *lines, buffer = buffer.split(b"\n")
-        while len(buffer) >= MAX_LINE:
-            lines.append(buffer[:MAX_LINE])
-            buffer = buffer[MAX_LINE:]
-        for line in lines:
-            ctx.log(_decode(line), stream=name, target=target)
-    if buffer:
-        ctx.log(_decode(buffer), stream=name, target=target)
-
-
-def _decode(line: bytes) -> str:
-    return line.decode(errors="replace").removesuffix("\r")
-
-
-async def _terminate(proc: asyncio.subprocess.Process) -> None:
-    """SIGTERM the process group, then SIGKILL after KILL_GRACE (SHELL-7, SHELL-9)."""
-    _signal_group(proc.pid, signal.SIGTERM)
-    with contextlib.suppress(TimeoutError):
-        await asyncio.wait_for(asyncio.shield(proc.wait()), KILL_GRACE)
-    # Kill the group even if the leader exited: its children may still be running.
-    _signal_group(proc.pid, signal.SIGKILL)
-    await proc.wait()
-
-
-def _signal_group(pgid: int, sig: signal.Signals) -> None:
-    with contextlib.suppress(ProcessLookupError, PermissionError):
-        os.killpg(pgid, sig)

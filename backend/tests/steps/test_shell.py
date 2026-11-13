@@ -14,7 +14,7 @@ from rifferr.core.profile import Secret, SecretRef
 from rifferr.core.workflow import load_workflow, validate
 from rifferr.credentials import ProfileSecrets, SecretResolver
 from rifferr.engine import RunState, StepTypeRegistry
-from rifferr.steps import shell
+from rifferr.steps import process, shell
 from tests.steps.conftest import RUN_ID, ShellHarness
 
 PY = sys.executable
@@ -278,9 +278,9 @@ async def test_SHELL_6_output_is_redacted(sh: ShellHarness) -> None:
 
 
 async def test_SHELL_6_long_lines_are_split(sh: ShellHarness) -> None:
-    code = f"print('x' * {shell.MAX_LINE * 2 + 5})"
+    code = f"print('x' * {process.MAX_LINE * 2 + 5})"
     run = await sh.run(step({"run": [PY, "-c", code], "per": "run"}))
-    assert [len(line) for line in sh.lines(run)] == [shell.MAX_LINE, shell.MAX_LINE, 5]
+    assert [len(line) for line in sh.lines(run)] == [process.MAX_LINE, process.MAX_LINE, 5]
 
 
 # -- SHELL-7, SHELL-9: timeout and cancellation --------------------------------
@@ -321,7 +321,7 @@ async def _wait_dead(pids: list[int]) -> bool:
 async def test_SHELL_7_timeout_kills_the_process_group(
     sh: ShellHarness, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(shell, "KILL_GRACE", 0.2)
+    monkeypatch.setattr(process, "KILL_GRACE", 0.2)
     sh.album("A")
     run = await sh.run(step({"run": [PY, "-c", STUBBORN], "timeout": 1}))
     assert run.state is RunState.failed
@@ -344,7 +344,7 @@ async def test_SHELL_7_sigterm_comes_first(sh: ShellHarness) -> None:
 async def test_SHELL_9_cancel_kills_the_process_group(
     sh: ShellHarness, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(shell, "KILL_GRACE", 0.2)
+    monkeypatch.setattr(process, "KILL_GRACE", 0.2)
     sh.album("A")
     sh.album("B")
     started = asyncio.Event()
@@ -366,7 +366,7 @@ async def test_SHELL_9_hard_cancel_after_grace_still_kills(
 ) -> None:
     # The engine's grace (0.5 s) is shorter than KILL_GRACE: the task is cancelled
     # while waiting and must still SIGKILL the group.
-    monkeypatch.setattr(shell, "KILL_GRACE", 30)
+    monkeypatch.setattr(process, "KILL_GRACE", 30)
     started = asyncio.Event()
     sh.engine.subscribe(lambda e: started.set() if e.type == "run.step.log" else None)
     run = sh.create(step({"run": [PY, "-c", STUBBORN], "per": "run"}))
