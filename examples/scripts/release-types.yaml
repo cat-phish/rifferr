@@ -1,0 +1,31 @@
+# Release-type suffixes for the reference workflow (docs/original-checklist.md:
+# "Run Conditional EP and Single tagging script", "Search for 'EP (EP)'").
+#
+# Rules decided by the author (2026-11-13):
+# - beets' `albumtype` (the MusicBrainz primary type) says whether a release is an
+#   EP or a Single.
+# - An album name that ends in the word EP or Single, in any case and optionally in
+#   parentheses or brackets ("Live EP", "Live (EP)", "Live [ep]"), means it is one:
+#   `albumtype` is set to match.
+# - An EP or Single whose name doesn't end that way gets " (EP)" / " (Single)", for
+#   players and file browsers that never read `albumtype` (e.g. Rockbox).
+# Only the end of the name counts, so "Single Mothers" or "Deep Cuts" are left alone.
+# The name rules run first, so the suffix rules see the corrected `albumtype`.
+#
+# Conditions are beets queries: `field::regex`, `^` negates. The character classes
+# avoid backslashes, which the query string's shell-style splitting would eat.
+scope: album
+idempotence: fail
+actions:
+  - name: ep-from-name
+    when: 'album::(?i)(^|[^a-z0-9])ep[])]?$ ^albumtype::^ep$'
+    set: { albumtype: ep }
+  - name: single-from-name
+    when: 'album::(?i)(^|[^a-z0-9])single[])]?$ ^albumtype::^single$'
+    set: { albumtype: single }
+  - name: ep-suffix
+    when: 'albumtype::^ep$ ^album::(?i)(^|[^a-z0-9])ep[])]?$'
+    set: { album: "$album (EP)" }
+  - name: single-suffix
+    when: 'albumtype::^single$ ^album::(?i)(^|[^a-z0-9])single[])]?$'
+    set: { album: "$album (Single)" }

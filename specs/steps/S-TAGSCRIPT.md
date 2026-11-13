@@ -207,7 +207,7 @@ Without the `^album::\(EP\)$` guard, preview shows the second pass producing
 - Per-album lanes (M2).
 
 ## Open questions
-- Reference "release-type suffix" logic: `docs/original-checklist.md` is still a placeholder. The author will paste the checklist; the M1 acceptance script (`examples/scripts/…` used by `examples/workflows/foobar-style.yaml`) and `docs/coverage.md` follow from it. Not invented here.
+- ~~Reference "release-type suffix" logic~~ Resolved 2026-11-13 (author): `albumtype` (MusicBrainz) decides EP / Single; an album name ending in the word EP / Single (any case, optionally in parentheses or brackets) sets `albumtype` to match; EPs and Singles whose name doesn't end that way get " (EP)" / " (Single)" (for players that don't read `albumtype`). Only the end of the name counts. Albums whose `albumtypes` include compilation get " (Compilation)" through review. Later, not M1: a track-count and running-time guess sent to review (B-044), Vinyl from rip logs (B-045), 24-bit in folder names only (B-046). Implemented as `examples/scripts/release-types.yaml` and `compilation.yaml`, used by `examples/workflows/foobar-style.yaml`.
 - ~~Visual builder in M1?~~ Resolved 2026-11-11 (author left it to the agent): no; M1 ships the YAML editor with live preview (TAGSCRIPT-22). The visual action-list and condition builders get their own later spec (B-028).
 - ~~Editor component?~~ Resolved 2026-11-11 (author left it to the agent): a plain monospace Mantine `Textarea` in M1, so no new dependency and no bundle growth (B-027). A code editor (e.g. CodeMirror 6, MIT) is considered with the visual builder (B-028).
 

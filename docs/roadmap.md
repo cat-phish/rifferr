@@ -32,7 +32,7 @@ live in [BACKLOG.md](../BACKLOG.md).
 | Real `uv` on PATH (installed; the shell still aliases `uv` to an editor) | M0 | Present |
 | `pnpm` | M0 | Present |
 | ffmpeg (fixtures, ReplayGain) | M0 | Present |
-| `docs/original-checklist.md` filled in by the author | M1 (release-type suffix logic), M5 | Placeholder |
+| `docs/original-checklist.md` filled in by the author | M1 (release-type suffix logic), M5 | Present (2026-11-13) |
 | Decisions in M0 specs' *Open questions* | M0 approval | Open |
 
 ## Dependency ledger
@@ -122,9 +122,11 @@ The done-when still needs the reference release-type suffix script, which waits 
 2026-11-12. F-TAG-GRID Implemented 2026-11-12 (library browser, manual edits as
 ChangeSets, profile event stream, undo of manual edits). F-REVIEW-QUEUE Implemented
 2026-11-13 (queue API and `/review` page, partial accept, re-propose after a conflict,
-gate decisions, run undo from the run page). Every M1 spec is now Implemented; M1 is
-done once the reference release-type suffix script exists, which waits for
-`docs/original-checklist.md`.
+gate decisions, run undo from the run page). The reference release-type scripts
+(`examples/scripts/release-types.yaml`, `compilation.yaml`) and the first
+`examples/workflows/foobar-style.yaml` landed 2026-11-13, tested on the fake backend
+and real beets, with `docs/coverage.md` mapping every checklist line.
+**M1 done 2026-11-13.**
 
 ### To verify on a full dev machine
 

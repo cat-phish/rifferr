@@ -1,0 +1,14 @@
+# Compilation suffix for the reference workflow (docs/original-checklist.md: "Check
+# all albums with 'compilation' in album type and ensure they have (Anthology) or
+# (Compilation) appended if appropriate").
+#
+# Decided by the author (2026-11-13): albums whose beets `albumtypes` (MusicBrainz
+# secondary types) include compilation get " (Compilation)", always through review
+# (the workflow step uses `apply: review`). Whether it should be an Anthology instead
+# is a human call: reject the proposal and fix the name in the tag grid.
+scope: album
+idempotence: fail
+actions:
+  - name: compilation-suffix
+    when: 'albumtypes:compilation ^album::(?i)[(](compilation|anthology)[)]$'
+    set: { album: "$album (Compilation)" }

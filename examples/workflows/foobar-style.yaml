@@ -1,0 +1,33 @@
+# The author's reference import workflow (docs/original-checklist.md), as far as
+# Rifferr can express it so far. It grows milestone by milestone; docs/coverage.md
+# maps each checklist line to the step that does it, or the milestone that will.
+#
+# Copy it into a profile's workflows/ folder and the scripts it uses from
+# examples/scripts/ into the profile's scripts/ folder. Start it with the folder of
+# new albums:
+#   rifferr run foobar-style --profile main --var inbox=/path/to/new/albums
+name: foobar-style
+description: Import new albums with beets, then fix release-type suffixes.
+vars:
+  inbox:
+    description: Folder with new albums to import (the checklist's "Stage 1, unsorted")
+steps:
+  - id: import
+    uses: beets.import
+    with:
+      path: "{{ vars.inbox }}"
+      mode: quiet
+  # EP / Single from albumtype or the album name, plus the " (EP)" / " (Single)"
+  # suffix. Applied without review: the rules are mechanical and every change can be
+  # undone from the run page.
+  - id: release-types
+    uses: tags.script
+    apply: auto
+    with:
+      script: release-types.yaml
+  # " (Compilation)" waits for review: some are Anthologies.
+  - id: compilations
+    uses: tags.script
+    apply: review
+    with:
+      script: compilation.yaml

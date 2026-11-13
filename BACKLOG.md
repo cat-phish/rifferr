@@ -14,6 +14,9 @@ are **not** part of the current task. Append here instead of acting on them.
   `spec.py lint` checks IDs are unique and well-formed.
 
 ## Ideas
+- B-044 [idea] (2026-11-13, from S-TAGSCRIPT) The reference workflow's third EP check: an album with ≤ 6 tracks and under 30 minutes that isn't marked EP goes to review as a likely EP (author, 2026-11-13; the numbers become workflow variables). Tag-script conditions can't see an album's track count or total length today (beets album queries match album fields only), so this needs a general capability first, e.g. computed album fields in snapshots (item count, total length) that conditions and templates can use. Needs a spec.
+- B-045 [idea] (2026-11-13, from S-TAGSCRIPT) Vinyl releases: always proposed for review, and decided from files in the album folder that show a vinyl rip (rip logs), not from beets' `media`, which often says Vinyl when the files aren't (author, 2026-11-13). Needs a way for a step to inspect an album folder's non-audio files.
+- B-046 [idea] (2026-11-13, from S-TAGSCRIPT) 24-bit releases: mark them in folder names only, as "[24-bit FLAC]" instead of "[FLAC]", when renaming (checklist "file operations"); not in tags, since synced devices get converted copies (author, 2026-11-13). Belongs to the M5 rename step.
 - B-042 [idea] (2026-11-13, from F-REVIEW-QUEUE) A `rifferr review` CLI (`list`, `accept`, `reject`, `continue`) over the F-REVIEW-QUEUE routes, recording `decided_by: cli` (S-REVIEW already allows it). Deferred from M1 by the author (F-REVIEW-QUEUE open question 7).
 - B-039 [idea] (2026-11-12, from S-BEETS-COMMAND) Record a `beets.command` step's before/after diff as an *observed* journal entry (written after the fact, marked as not write-ahead), so later review gates show the changes and undo can revert tag fields (never file moves). Needs a C-JOURNAL amendment.
 - B-001 [idea] (2026-11-11, from architecture §12) Deeper *arr integration as an `integrations` plugin type.
