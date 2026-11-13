@@ -125,26 +125,33 @@ The C-CHANGESET, C-JOURNAL, S-SHELL update and S-TAGSCRIPT work (2026-11-12, com
 `0169123`..`aa9c0df`) was built on a NixOS VM that couldn't run everything. Before
 pushing, run these on a normal desktop and tick them off:
 
-- [ ] `cd backend && uv run pytest`: everything passes. On the VM, 8 tests in
+- [x] `cd backend && uv run pytest`: everything passes. On the VM, 8 tests in
   `tests/steps/test_shell.py` failed because `/usr/bin` has only `env` there (B-032):
   SHELL_1 shell string, SHELL_3 per album / per item / per run, SHELL_5 stdin ignored,
   SHELL_6 redaction, SHELL_10 cwd defaults / templated. They must pass here.
-- [ ] `cd frontend && pnpm e2e`: neither Playwright spec has run on the VM (no
+  2026-11-12, Fedora desktop: 952 passed, 52 skipped (capability-gated contract
+  tests and the ffmpeg fixture test, B-012); the shell tests pass.
+- [x] `cd frontend && pnpm e2e`: neither Playwright spec has run on the VM (no
   browser installed).
   - `e2e/two-step.spec.ts` (UI_SHELL_13): still passes. Global setup now pre-imports
     a copy of the fixture album as "Preview Sessions", so check the two-step import
     still reports "imported" and not a duplicate.
   - `e2e/tagscript.spec.ts` (TAGSCRIPT_22): new; never run. It covers live preview,
     idempotence highlight, validation line:column, save, and the script list.
-- [ ] `cd frontend && pnpm test`: still fails because vitest also collects
+  2026-11-12: both pass; the two-step log shows `[import] imported`. Run with
+  `env -u LD_LIBRARY_PATH` (B-012).
+- [x] `cd frontend && pnpm test`: still fails because vitest also collects
   `e2e/*.spec.ts` (B-029). The unit tests pass with `pnpm exec vitest run src` (21).
   Fix B-029, or confirm only the e2e files fail.
-- [ ] Re-run the timing-sensitive tests a few times under load:
+  2026-11-12: only the e2e files failed; B-029 fixed, 21 passed.
+- [x] Re-run the timing-sensitive tests a few times under load:
   `test_WORKER_5_cancel_a_queued_run` and `test_API_6_queued_run_shows_pending_steps`
   (B-031, cancel before the engine exists), and the read-only worker timing tests in
   `tests/worker/test_readonly.py` and `tests/api/test_scripts.py`
   (TAGSCRIPT_21 timeout / superseded, WORKER_11 crash).
-- [ ] `pre-commit run --all-files` (gitleaks + spec lint). It isn't installed on the VM.
+  2026-11-12: 5 runs alongside 2 full suites, 22/22 each time.
+- [x] `pre-commit run --all-files` (gitleaks + spec lint). It isn't installed on the VM.
+  2026-11-12: all hooks pass.
 - [ ] Manual check with `uv run rifferr serve --dev` against a test profile (never a
   real library): open `/scripts`, edit a script, and confirm the preview answers while
   a run is importing (read-only worker, WORKER-11).
