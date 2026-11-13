@@ -14,6 +14,7 @@ are **not** part of the current task. Append here instead of acting on them.
   `spec.py lint` checks IDs are unique and well-formed.
 
 ## Ideas
+- B-039 [idea] (2026-11-12, from S-BEETS-COMMAND) Record a `beets.command` step's before/after diff as an *observed* journal entry (written after the fact, marked as not write-ahead), so later review gates show the changes and undo can revert tag fields (never file moves). Needs a C-JOURNAL amendment.
 - B-001 [idea] (2026-11-11, from architecture §12) Deeper *arr integration as an `integrations` plugin type.
   Examples: tell Lidarr to rescan after import, read Lidarr's wanted list to flag incomplete albums, refresh Navidrome/Jellyfin after a run.
 - B-002 [idea] (2026-11-11, from session) Generated, read-only HTML dashboard of spec status and reference-workflow coverage (`spec.py html`).
@@ -46,6 +47,7 @@ are **not** part of the current task. Append here instead of acting on them.
 - B-037 [bug] (2026-11-12, from S-REVIEW) The server and the worker both append events to a run's stream with `seq = last_seq + 1`. If both write at once (e.g. a user cancels a run while its `review_reject` undo job is logging, or a ChangeSet decision races `supervisor.cancel`), one event is dropped as out of order ("dropping out-of-order event"). Rare; a fix would route all of a run's events through one writer or retry with the next seq.
 
 ## Tech debt
+- B-040 [debt] (2026-11-12, from S-BEETS-COMMAND) `shell` takes `timeout` in seconds while `review` and `beets.command` take a Duration (`30m`, `1h`). Accept Durations in `shell` too (keeping plain numbers as seconds).
 - B-007 [debt] (2026-11-11, from session) Decide a cadence for `pre-commit autoupdate` (or let Renovate/Dependabot do it).
 - B-015 [debt] (2026-11-11, from F-DEV-TOOLING) TypeScript pinned to 6.0 because typescript-eslint 8.x doesn't support TS 7; openapi-typescript 7 still declares a TS 5 peer (works with 6). Revisit when they catch up.
 - B-017 [debt] (2026-11-11, from C-WORKFLOW) WORKFLOW-5 checks `with:` values before interpolation, so a non-string parameter written as an expression (e.g. `timeout: "{{ vars.t }}"`) fails validation. Decide whether typed params may take `{{ }}` and validate them after interpolation.

@@ -1,5 +1,5 @@
 # S-BEETS-COMMAND: `beets.command` step
-Status: Draft
+Status: Approved
 Milestone: M1
 
 ## Context
@@ -93,16 +93,17 @@ options go in `args`).
 - Interactive commands, or answering prompts.
 
 ## Open questions
-1. Trust: should `beets.command` need a trusted workflow like `shell`? Recommendation: yes. `remove -d -f` or `modify -y` can destroy a library, and a workflow file from elsewhere shouldn't run them unreviewed.
-2. Non-negotiable 3 says every modification is a ChangeSet that goes through the journal first. A `beet` subcommand writes tags and moves files on its own, so it can't be journaled before it runs. Options:
-   a. Log the before/after diff only (BEETS-COMMAND-12 as written). Simple; review gates later in the run won't show these changes, and undo can't revert them.
-   b. Also store the diff as an *observed* journal entry (a C-JOURNAL amendment: written after the fact, marked as not write-ahead). Review gates then show the changes and undo can revert tag fields, but never file moves.
-   c. Allow only subcommands that don't change tags (e.g. `move`, `fetchart`), and do tag-changing work through ChangeSets.
-   Recommendation: (a) for M1, plus a backlog entry for (b), and an explicit exception for `beets.command` written into CLAUDE.md non-negotiable 3. This needs your decision because it changes a non-negotiable.
-3. Refused subcommands: is `import`, `config`, `edit` the right list? `remove` and `modify` prompt for confirmation unless given `-f` / `-y`. With empty stdin they fail rather than hang, which seems right.
-4. Timeout default and type: `shell` uses seconds (600). Here I propose a Duration (`1h`), because `replaygain` or `move` across file systems can take long on big albums. Should `shell` switch to Duration too, for consistency (backlog)?
-5. Album vs item queries: beets commands match items by default and albums with `-a`. The run marker is stored on both albums and items, so the same query works either way and `-a` stays the user's choice in `args`. OK?
-6. Which `beet`: `python -m beets` from the worker's own Python (same install and plugins as Rifferr's pinned beets) rather than a `beet` found on `PATH`. OK?
+Resolved 2026-11-12 (author: "go with your recommendations, approved"):
+1. ~~Trust?~~ Yes, like `shell` (BEETS-COMMAND-13).
+2. ~~ChangeSets vs non-negotiable 3?~~ (a) for M1: log the before/after diff only
+   (BEETS-COMMAND-12). CLAUDE.md non-negotiable 3 names `beets.command` as the one
+   exception. Recording the diff as an observed journal entry (option b) is B-039.
+3. ~~Refused subcommands?~~ `import`, `config`, `edit` (BEETS-COMMAND-3). Prompting
+   commands fail on empty stdin.
+4. ~~Timeout?~~ A Duration, default `1h` (BEETS-COMMAND-1). Moving `shell` to
+   Durations is B-040.
+5. ~~Album vs item queries?~~ The same query works for both; `-a` stays in `args`.
+6. ~~Which `beet`?~~ `python -m beets` from the worker's Python (BACKEND-14).
 
 ## Tasks
 - [ ] BACKEND-14: `cli` capability, `cli_command` on BeetsBackend and FakeBackend, contract test

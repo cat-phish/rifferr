@@ -22,7 +22,7 @@ It is a general, extensible tool. One person's workflow is an *example*, never t
    - beets is a pinned PyPI dependency: **never fork, vendor or patch it**.
    - Use beets in-process only where the CLI can't do the job (interactive import, fast reads/preview, batch apply with undo, query/template evaluation). Everything else (`beets.command` steps) runs the `beet` CLI as a subprocess.
    - Before writing a feature, check whether beets or a bundled plugin already does it.
-3. **All modifications are ChangeSets.** Tag scripts, shell steps, AI steps, chat and manual edits all produce ChangeSets. They apply through the engine, which writes the journal *before* changing anything. No other code path writes tags or moves files.
+3. **All modifications are ChangeSets.** Tag scripts, shell steps, AI steps, chat and manual edits all produce ChangeSets. They apply through the engine, which writes the journal *before* changing anything. No other code path writes tags or moves files. The one exception is the `beets.command` step: it runs a `beet` subcommand that changes the library itself, only in trusted workflows, and logs what changed afterwards (S-BEETS-COMMAND).
 4. **AI proposes, never applies.** AI output is schema-validated and checked against the step's field allowlist and vocabulary. It then follows the step's `apply` policy, which defaults to `review`.
 5. **Security.**
    - Host-header allowlist, Origin check and JSON-only mutating endpoints are **always on**, even with `--no-auth`.
