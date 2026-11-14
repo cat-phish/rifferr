@@ -382,7 +382,7 @@ class WorkerSupervisor:
             "by": by,
             "note": note,
         }
-        job = self.db.submit_job(decision.profile, "import_decision", payload, None)
+        job = self.db.submit_job(decision.profile, "import_decision", payload, decision.run_id)
         store.set_claim(decision_id, job.id)
         await self._wake(decision.profile)
         return job.id
@@ -406,7 +406,7 @@ class WorkerSupervisor:
             "artist": artist,
             "album": album,
         }
-        job = self.db.submit_job(decision.profile, "import_lookup", payload, None)
+        job = self.db.submit_job(decision.profile, "import_lookup", payload, decision.run_id)
         store.set_claim(decision_id, job.id)
         await self._wake(decision.profile)
         return job.id

@@ -302,3 +302,20 @@ async def test_IMPORT_UI_3_duplicate_choice_keeps_both(h: ImportHarness) -> None
     assert await h.job_done(job) == "succeeded"
     await h.until(lambda: h.state() == "succeeded")
     assert h.album_names() == ["D", "D"]
+
+
+async def test_IMPORT_UI_8_job_results_go_on_the_runs_stream(h: ImportHarness) -> None:
+    """``job.finished`` of decision and lookup jobs is on the run's stream, so it reaches
+    ``/api/events`` and the queue refreshes (REVIEW-QUEUE-10)."""
+    await h.waiting_import()
+    decision = h.decision()
+    lookup = await h.supervisor.lookup_import(decision.id)
+    await h.job_done(lookup)
+    job = await h.supervisor.decide_import(decision.id, "skip")
+    await h.job_done(job)
+    await h.until(lambda: len(h.events("job.finished")) == 2)
+    finished = [e.data for e in h.events("job.finished")]
+    assert [(d["job_id"], d["kind"]) for d in finished] == [
+        (lookup, "import_lookup"),
+        (job, "import_decision"),
+    ]
