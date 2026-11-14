@@ -1,5 +1,5 @@
 # S-NOTIFY: `notify` step and notification rules
-Status: Draft
+Status: Approved
 Milestone: M2
 
 ## Context
@@ -218,11 +218,8 @@ class NotifyParams(BaseModel):
 - Replies or actions from the notification (accepting a review from ntfy).
 
 ## Open questions
-1. Dependency: Apprise (BSD-2-Clause; pulls requests Apache-2.0, requests-oauthlib ISC, markdown
-   BSD-3-Clause, click BSD-3-Clause, PyYAML MIT, certifi MPL-2.0, to be checked at the pinned
-   version). Approve adding `apprise` to the dependency ledger?
-
 Resolved (author, 2026-11-14):
+1. Apprise approved (`>=2.2,<3`, licenses checked; dependency ledger).
 2. `run.summary` and `review.needed` from the same transition stay two notifications (NOTIFY-8).
 3. B-019 is covered by the opt-in `worker.problem` rule event (NOTIFY-8), left to the agent's
    judgment. Idle exits are excluded: they are normal.

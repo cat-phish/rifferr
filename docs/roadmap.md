@@ -70,7 +70,7 @@ Every runtime or dev dependency needs the author's OK before it is added
 | @tanstack/react-virtual | tag grid, run log (react-table not added: F-TAG-GRID, 2026-11-12) | MIT | M1 | |
 | watchfiles | folder triggers | MIT | M2 | 2026-11-13 (F-TRIGGERS) |
 | cronsim | schedule triggers (cron next-fire with DST) | BSD-3-Clause | M2 | 2026-11-13 (F-TRIGGERS) |
-| apprise | notifications | BSD-2-Clause | M2 | |
+| apprise (`>=2.2,<3`) | notifications (S-NOTIFY) | BSD-2-Clause; transitive deps requests Apache-2.0, requests-oauthlib ISC, oauthlib BSD-3-Clause, urllib3 MIT, charset-normalizer MIT, idna BSD-3-Clause, certifi MPL-2.0, click BSD-3-Clause, markdown BSD-3-Clause, PyYAML MIT (checked 2026-11-14) | M2 | 2026-11-14 |
 | mutagen | FilesBackend | GPL-2.0-or-later | later | |
 | UI component library | UI | TBD (F-UI-SHELL open question) | M0 | |
 
@@ -183,7 +183,7 @@ S-SUBWORKFLOW → queue dashboard (F-REVIEW-QUEUE update).
 - [x] C-LANES: Implemented 2026-11-13.
 - [x] F-IMPORT-UI: Implemented 2026-11-13.
 - [x] F-READ-ORDER (B-054, out of the main order): Implemented 2026-11-14.
-- [ ] S-NOTIFY: Draft 2026-11-14 (open question: Apprise dependency).
+- [ ] S-NOTIFY: Approved 2026-11-14.
 
 ## M3 — Cover search
 
