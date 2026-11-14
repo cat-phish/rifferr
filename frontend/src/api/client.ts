@@ -18,6 +18,20 @@ export class ApiError extends Error {
   }
 }
 
+/** Up to this many retries of a query answered ``409 superseded``. */
+export const SUPERSEDED_RETRIES = 3;
+
+/**
+ * A query `retry` for read-only worker requests that carry a `client` id. The server
+ * answers `409 superseded` when a newer request from the same client reaches it, but
+ * requests travel on separate connections, so an older one the browser already
+ * abandoned can arrive last and supersede the newest. Retrying is safe: a request the
+ * browser really replaced is cancelled by TanStack Query, which ignores its retries.
+ */
+export function retrySuperseded(count: number, err: Error): boolean {
+  return err instanceof ApiError && err.code === "superseded" && count < SUPERSEDED_RETRIES;
+}
+
 const signedOutOn401: Middleware = {
   onResponse({ response }) {
     if (response.status === 401) auth.markSignedOut();

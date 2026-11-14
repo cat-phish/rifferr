@@ -18,7 +18,7 @@ import { useDebouncedValue } from "@mantine/hooks";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
-import { ApiError, api, ok } from "../api/client";
+import { ApiError, api, ok, retrySuperseded } from "../api/client";
 import type { ProfileSummary } from "../api/types";
 import { BeetsTerm } from "../components/BeetsTerm";
 import { RecentEdits, type UndoResult } from "../components/RecentEdits";
@@ -122,7 +122,7 @@ function Library({ profile, summary }: { profile: string; summary: ProfileSummar
   const library = useQuery({
     queryKey: ["library", profile, debouncedQuery, scope],
     placeholderData: keepPreviousData,
-    retry: false,
+    retry: retrySuperseded,
     queryFn: async ({ signal }) =>
       ok(
         await api.GET("/api/profiles/{profile}/library", {

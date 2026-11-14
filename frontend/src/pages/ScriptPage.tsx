@@ -15,7 +15,7 @@ import { useDebouncedValue } from "@mantine/hooks";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useParams, useSearchParams } from "react-router";
-import { ApiError, api, ok } from "../api/client";
+import { ApiError, api, ok, retrySuperseded } from "../api/client";
 import type { PreviewField, PreviewResponse, ScriptDetail } from "../api/types";
 import { BeetsTerm } from "../components/BeetsTerm";
 import { ErrorList } from "../components/ErrorList";
@@ -91,7 +91,7 @@ function Editor({
   const preview = useQuery({
     queryKey: ["preview", profile, debouncedText, debouncedQuery],
     placeholderData: keepPreviousData,
-    retry: false,
+    retry: retrySuperseded,
     queryFn: async ({ signal }) =>
       ok(
         await api.POST("/api/profiles/{profile}/tagscript/preview", {
