@@ -18,6 +18,8 @@ export type PreviewResponse = S["PreviewResponse"];
 export type PreviewTarget = S["PreviewTarget"];
 export type PreviewField = S["PreviewField"];
 export type PreviewIssue = S["PreviewIssue"];
+export type TriggerState = S["TriggerStateOut"];
+export type WebhookSecret = S["WebhookSecret"];
 
 /** One event of a run's SSE stream (C-RUN RUN-6). Not in OpenAPI: SSE bodies aren't typed. */
 export interface RunEvent {

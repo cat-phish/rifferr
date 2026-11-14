@@ -1494,6 +1494,11 @@ export interface components {
              * @enum {string}
              */
             state: "armed" | "disabled" | "error";
+            /**
+             * Webhook Name
+             * @description Webhooks: on.webhook.name
+             */
+            webhook_name?: string | null;
             /** Workflow */
             workflow: string;
         };

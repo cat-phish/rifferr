@@ -4,7 +4,8 @@ import type { RunEvent } from "../api/types";
 import { useEventStream } from "./useEventStream";
 
 /** Events the app follows on ``/api/events``: run-level ones for the runs list
- * (UI-SHELL-9) and the ones that change the review queue (REVIEW-QUEUE-10). */
+ * (UI-SHELL-9), the ones that change the review queue (REVIEW-QUEUE-10) and the
+ * trigger events (F-TRIGGERS TRIGGERS-24). */
 export const APP_EVENTS = [
   "run.started",
   "run.waiting_review",
@@ -18,6 +19,9 @@ export const APP_EVENTS = [
   "changeset.conflicted",
   "changeset.undone",
   "job.finished",
+  "trigger.fired",
+  "trigger.skipped",
+  "trigger.error",
 ] as const;
 
 /** What waits for a decision in ``profile`` (REVIEW-QUEUE-1). */
@@ -37,8 +41,12 @@ export function useAppEvents(onEvent?: (event: RunEvent) => void): void {
   useEventStream<RunEvent>("/api/events", {
     types: APP_EVENTS,
     onEvent: (_type, event) => {
-      if (event.type.startsWith("run.")) {
+      if (event.type.startsWith("run.") || event.type === "trigger.fired") {
         void queryClient.invalidateQueries({ queryKey: ["runs"] });
+      }
+      if (event.type.startsWith("trigger.")) {
+        void queryClient.invalidateQueries({ queryKey: ["triggers"] });
+        return;
       }
       void queryClient.invalidateQueries({ queryKey: ["review"] });
       if (event.type.startsWith("changeset.")) {

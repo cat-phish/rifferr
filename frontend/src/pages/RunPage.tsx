@@ -64,6 +64,10 @@ function LiveRun({ run, onFinished }: { run: RunDetail; onFinished: () => void }
         <Group>
           <Title order={2}>{run.workflow ?? run.id}</Title>
           <StatusBadge status={view.status} />
+          <Text c="dimmed" size="sm" data-testid="run-trigger">
+            {run.trigger}
+            {run.input ? `: ${run.input}` : ""}
+          </Text>
           {isTerminal(view.status) && (
             <Text c="dimmed" size="sm">
               {duration(run.started_at, run.finished_at)}

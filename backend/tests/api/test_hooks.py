@@ -206,12 +206,8 @@ async def test_TRIGGERS_4_trigger_listing(hooked: tuple[Api, Path, str]) -> None
     r = await api.client.get("/api/profiles/main/triggers")
     assert r.status_code == 200
     (info,) = r.json()
-    assert (info["workflow"], info["kind"], info["state"], info["has_secret"]) == (
-        "h",
-        "webhook",
-        "armed",
-        True,
-    )
+    assert (info["workflow"], info["kind"], info["state"]) == ("h", "webhook", "armed")
+    assert (info["webhook_name"], info["has_secret"]) == ("dl", True)
 
 
 async def test_TRIGGERS_7_manual_run_with_input(hooked: tuple[Api, Path, str]) -> None:

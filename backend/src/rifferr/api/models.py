@@ -290,6 +290,7 @@ class TriggerStateOut(_Model):
     next_fire: datetime | None = Field(description="The next schedule time")
     last_fired: datetime | None
     last_run_id: str | None
+    webhook_name: str | None = Field(default=None, description="Webhooks: on.webhook.name")
     has_secret: bool | None = Field(
         default=None, description="Webhooks: whether a secret has been created"
     )

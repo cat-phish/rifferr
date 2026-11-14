@@ -17,6 +17,7 @@ import { ApiError, api, ok } from "../api/client";
 import type { WorkflowDetail } from "../api/types";
 import { ErrorList } from "../components/ErrorList";
 import { SafetyReport } from "../components/SafetyReport";
+import { Triggers } from "../components/Triggers";
 import { useProfile, withProfile } from "../hooks/useProfile";
 
 export function WorkflowPage() {
@@ -55,6 +56,7 @@ export function WorkflowPage() {
         </Alert>
       )}
       {!wf.trusted && <Review wf={wf} profile={profile} />}
+      <Triggers profile={profile} workflow={wf.name} />
       <Start wf={wf} profile={profile} />
     </Stack>
   );
@@ -140,6 +142,7 @@ function Start({ wf, profile }: { wf: WorkflowDetail; profile: string }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [values, setValues] = useState<Record<string, string>>({});
+  const [input, setInput] = useState("");
   const missing = new Set(wf.missing_vars ?? []);
   const vars = wf.vars ?? [];
   const reason = !wf.valid ? "Fix the errors first." : !wf.trusted ? "Review it first." : null;
@@ -149,7 +152,13 @@ function Start({ wf, profile }: { wf: WorkflowDetail; profile: string }) {
       const filled = Object.fromEntries(Object.entries(values).filter(([, v]) => v !== ""));
       return ok(
         await api.POST("/api/runs", {
-          body: { profile, workflow: wf.name, vars: filled, sha256: wf.sha256 },
+          body: {
+            profile,
+            workflow: wf.name,
+            vars: filled,
+            sha256: wf.sha256,
+            ...(input.trim() ? { input: input.trim() } : {}),
+          },
         }),
       );
     },
@@ -182,6 +191,15 @@ function Start({ wf, profile }: { wf: WorkflowDetail; profile: string }) {
             }}
           />
         ))}
+        <TextInput
+          label="Input folder"
+          description="Absolute path for {{ run.input }}; leave empty for the workflow's input"
+          placeholder="/path/to/Artist - Album"
+          value={input}
+          onChange={(e) => {
+            setInput(e.currentTarget.value);
+          }}
+        />
         {start.error && (
           <Alert color="red">
             {start.error instanceof ApiError && start.error.code === "hash_mismatch"

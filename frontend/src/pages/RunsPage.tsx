@@ -1,10 +1,14 @@
-import { Anchor, Stack, Table, Text, Title } from "@mantine/core";
+import { Anchor, Badge, Stack, Table, Text, Title } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { api, ok } from "../api/client";
 import { StatusBadge } from "../components/StatusBadge";
 import { useProfile, withProfile } from "../hooks/useProfile";
 import { duration, time } from "../lib/format";
+
+function basename(path: string): string {
+  return path.replace(/\/+$/, "").split("/").pop() ?? path;
+}
 
 /** Recent runs, refreshed live from /api/events by the app shell (UI-SHELL-9). */
 export function RunsPage() {
@@ -34,6 +38,7 @@ export function RunsPage() {
             <Table.Tr>
               <Table.Th>Workflow</Table.Th>
               <Table.Th>State</Table.Th>
+              <Table.Th>Trigger</Table.Th>
               <Table.Th>Started</Table.Th>
               <Table.Th>Duration</Table.Th>
             </Table.Tr>
@@ -48,6 +53,16 @@ export function RunsPage() {
                 </Table.Td>
                 <Table.Td>
                   <StatusBadge status={r.state} />
+                </Table.Td>
+                <Table.Td>
+                  <Badge variant="light" color="gray">
+                    {r.trigger}
+                  </Badge>
+                  {r.input && (
+                    <Text size="xs" c="dimmed" ff="monospace" title={r.input}>
+                      {basename(r.input)}
+                    </Text>
+                  )}
                 </Table.Td>
                 <Table.Td>{time(r.started_at ?? r.created_at)}</Table.Td>
                 <Table.Td>{duration(r.started_at, r.finished_at)}</Table.Td>

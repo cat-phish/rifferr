@@ -27,6 +27,7 @@ async def list_triggers(profile: str, state: State) -> list[TriggerStateOut]:
     for info in state.triggers.list(profile):
         last = store.last_fired(profile, info.workflow, info.kind)
         has_secret = None
+        webhook_name = None
         if info.kind == "webhook":
             armed = state.triggers.armed.get((profile, info.workflow))
             hook = (
@@ -34,6 +35,7 @@ async def list_triggers(profile: str, state: State) -> list[TriggerStateOut]:
                 if armed and armed.workflow and armed.workflow.on
                 else None
             )
+            webhook_name = hook.name if hook is not None else None
             has_secret = hook is not None and store.webhook_hash(profile, hook.name) is not None
         out.append(
             TriggerStateOut(
@@ -45,6 +47,7 @@ async def list_triggers(profile: str, state: State) -> list[TriggerStateOut]:
                 next_fire=info.next_fire,
                 last_fired=last.created_at if last else None,
                 last_run_id=last.run if last else None,
+                webhook_name=webhook_name,
                 has_secret=has_secret,
             )
         )
