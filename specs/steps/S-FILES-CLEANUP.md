@@ -1,5 +1,5 @@
 # S-FILES-CLEANUP: `files.cleanup` step
-Status: Draft
+Status: Approved
 Milestone: M2
 
 ## Context
