@@ -7,6 +7,7 @@ import json
 import signal
 import sys
 from datetime import datetime
+from pathlib import Path
 from types import FrameType
 from typing import Any
 
@@ -25,6 +26,12 @@ def add_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None
     )
     p.add_argument("--profile", required=True)
     p.add_argument("--var", action="append", default=[], metavar="KEY=VALUE", help="run variable")
+    p.add_argument(
+        "--input",
+        type=Path,
+        metavar="PATH",
+        help="folder for {{ run.input }} (default: the workflow's input)",
+    )
     follow = p.add_mutually_exclusive_group()
     follow.add_argument("--follow", dest="follow", action="store_true", default=None)
     follow.add_argument("--no-follow", dest="follow", action="store_false")
@@ -119,7 +126,9 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 
 def _run(client: Client, args: argparse.Namespace, run_vars: dict[str, str]) -> int:
-    body = {"profile": args.profile, "workflow": args.workflow, "vars": run_vars}
+    body: dict[str, Any] = {"profile": args.profile, "workflow": args.workflow, "vars": run_vars}
+    if args.input is not None:
+        body["input"] = str(args.input.resolve())
     r = client.post("/api/runs", body)
     if r.status_code == 422 and r.json()["error"]["code"] == "validation_failed":
         _err(_message(r))
