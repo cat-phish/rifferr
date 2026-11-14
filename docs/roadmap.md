@@ -175,8 +175,8 @@ pushing, run these on a normal desktop and tick them off:
 **Done when:** music dropped in the inbox imports unattended; an ambiguous
 album waits in review, sends a notification and doesn't block other albums.
 
-Order: F-TRIGGERS (watch, schedule, webhook, dedup, concurrency) → lanes in
-C-RUN → F-IMPORT-UI (interactive decisions) → S-NOTIFY → S-FILES-CLEANUP →
+Order: F-TRIGGERS (watch, schedule, webhook, dedup, concurrency) → lanes
+(C-LANES) → F-IMPORT-UI (interactive decisions) → S-NOTIFY → S-FILES-CLEANUP →
 S-SUBWORKFLOW → queue dashboard (F-REVIEW-QUEUE update).
 
 - [x] F-TRIGGERS: Implemented 2026-11-13.

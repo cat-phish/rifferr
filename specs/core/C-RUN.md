@@ -100,7 +100,7 @@ Third-party step types register under `rifferr.steps` and get the same `StepCont
 - Step types cannot reach the app DB or other profiles; they only get `StepContext`.
 
 ## Non-goals
-- Lanes, review pauses, resume after days (M1–M2).
+- Lanes, review pauses, resume after days (M1–M2). Lanes: [C-LANES](C-LANES.md) (M2).
 - Concurrency limits and trigger queues (F-TRIGGERS, M2).
 - ChangeSet application (C-CHANGESET, M1).
 
