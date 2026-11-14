@@ -1,5 +1,5 @@
 # F-TRIGGERS: Watch, schedule and webhook triggers; dedup; concurrency
-Status: Draft
+Status: Approved
 Milestone: M2
 
 ## Context
