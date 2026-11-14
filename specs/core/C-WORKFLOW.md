@@ -22,7 +22,7 @@ spec; this spec only defines the envelope.
 - WORKFLOW-10: A literal `{{` MUST be writable as `{{ '{{' }}`. Any other malformed `{{` expression MUST be a validation error.
 - WORKFLOW-11: Loading and re-saving a workflow through the API MUST preserve comments, key order and quoting (ruamel.yaml round-trip).
 - WORKFLOW-12: The JSON Schema for workflow files MUST be generated from the Pydantic models into `schemas/workflow.schema.json`, including each registered step type's `with:` schema under a `uses` discriminator.
-- WORKFLOW-13: The `on:` block MUST be parsed and validated (trigger names `watch`, `schedule`, `webhook`) but not acted on in M0.
+- WORKFLOW-13: The `on:` block MUST be parsed and validated (trigger names `watch`, `schedule`, `webhook`) but not acted on in M0. F-TRIGGERS (M2) acts on it and defines its fields.
 
 ## Interfaces
 ```python
@@ -58,13 +58,19 @@ As implemented (`rifferr.core.workflow`):
 - `validate(wf, registry, backend_caps=None, profile_vars=None, *, doc=None)`. Pass the
   `RoundTripDoc` from `load_workflow` to get line/column. `profile_vars=None` skips the
   profile-dependent var checks; `backend_caps=None` skips capability checks.
-- Fields allowed under the fixed roots: `run.id`, `run.workflow`, `profile.name`.
+- Fields allowed under the fixed roots: `run.id`, `run.workflow`, `run.input`, `run.trigger`
+  (the last two from F-TRIGGERS TRIGGERS-5), `profile.name`.
   `vars.<name>` and `steps.<id>.<key>` as described above.
 - `RoundTripDoc.dump()` returns the original text until `set()` edits it. After an edit,
   ruamel.yaml keeps comments, key order, quoting and block layout; the one normalization is
   whitespace inside flow mappings (`{ a: b }` becomes `{a: b}`).
 - `BackendCapabilities` (BACKEND-2) landed in `rifferr.backends.base` with this spec, because
   WORKFLOW-6 needs it.
+- Extended by F-TRIGGERS: a top-level `input` (default `{{ run.input }}`), the `on.watch`
+  `settle` / `poll` durations, `on.webhook.input` / `within`, cron validation of
+  `on.schedule` (`rifferr.core.cron`). `input`, `on.watch.path` and `on.webhook.within` are
+  resolved when triggers are armed, so they may use only `vars` and `profile` (TRIGGERS-3);
+  no other `on` field is a template.
 
 ## Examples
 ```yaml

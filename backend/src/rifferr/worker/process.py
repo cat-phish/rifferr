@@ -281,6 +281,8 @@ class Worker:
                 profile_vars=self.profile.vars,
                 backend=self.backend,
                 run_vars={str(k): str(v) for k, v in run_vars.items()},
+                run_input=str(payload.get("input") or ""),
+                trigger=str(payload.get("trigger") or "manual"),
                 doc=doc,
                 redactor=Redactor([]),
                 trusted=payload.get("trusted") is True,

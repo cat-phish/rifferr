@@ -103,11 +103,27 @@ def _strings(value: Any, path: Path) -> Iterator[tuple[Path, str]]:
             yield from _strings(v, (*path, i))
 
 
+#: Owner of strings interpolated when triggers are armed (F-TRIGGERS TRIGGERS-3).
+ARM_TIME = -1
+ARM_TIME_ROOTS = ("vars", "profile")
+
+
+def arm_time_sites(wf: Workflow) -> Iterator[tuple[Path, str]]:
+    """Strings resolved when the workflow's triggers are armed: ``input``,
+    ``on.watch.path`` and ``on.webhook.within``. Other ``on`` fields aren't templates."""
+    if wf.input is not None:
+        yield ("input",), wf.input
+    if wf.on is not None:
+        if wf.on.watch is not None:
+            yield ("on", "watch", "path"), wf.on.watch.path
+        if wf.on.webhook is not None and wf.on.webhook.within is not None:
+            yield ("on", "webhook", "within"), wf.on.webhook.within
+
+
 def _expression_sites(wf: Workflow) -> Iterator[tuple[int | None, Path, str]]:
     """(index of the step it belongs to, path, string) for every interpolated string."""
-    if wf.on is not None:
-        for path, s in _strings(wf.on.model_dump(exclude_none=True), ("on",)):
-            yield None, path, s
+    for path, s in arm_time_sites(wf):
+        yield ARM_TIME, path, s
     for i, step in enumerate(wf.steps):
         yield from ((i, p, s) for p, s in _strings(step.with_, ("steps", i, "with")))
         if step.when is not None:
@@ -143,11 +159,16 @@ def _expression_problem(
     text = expr.text
     if root not in ROOTS:
         return f"unknown root '{root}' in '{text}' (allowed: {', '.join(ROOTS)})"
+    if owner == ARM_TIME and root not in ARM_TIME_ROOTS:
+        return (
+            f"'{text}' can't be used here: this value is resolved before any run exists "
+            f"(allowed roots: {', '.join(ARM_TIME_ROOTS)})"
+        )
     if root == "steps":
         if len(rest) != 2:
             return f"'{text}': use steps.<id>.<key>"
         target = step_index.get(rest[0])
-        if target is None or owner is None or target >= owner:
+        if target is None or owner is None or owner < 0 or target >= owner:
             return f"'{text}' must refer to an earlier step"
         return None
     if len(rest) != 1:

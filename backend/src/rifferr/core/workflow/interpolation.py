@@ -14,7 +14,7 @@ from typing import Final
 
 ROOTS: Final = ("vars", "run", "profile", "steps")
 #: Fields of the ``run`` and ``profile`` roots. ``profile`` exposes no secrets.
-RUN_FIELDS: Final = ("id", "workflow")
+RUN_FIELDS: Final = ("id", "workflow", "input", "trigger")
 PROFILE_FIELDS: Final = ("name",)
 
 _OPEN = "{{"

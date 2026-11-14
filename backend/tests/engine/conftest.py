@@ -43,6 +43,8 @@ class Harness:
         profile_vars: dict[str, str] | None = None,
         run_vars: dict[str, str] | None = None,
         secrets: list[str] | None = None,
+        run_input: str | None = None,
+        trigger: str = "manual",
     ) -> Run:
         text = textwrap.dedent(src)
         wf, doc = load_workflow(text, "wf.yaml")
@@ -53,6 +55,8 @@ class Harness:
             profile_vars=profile_vars or {},
             backend=self.backend,
             run_vars=run_vars,
+            run_input=run_input,
+            trigger=trigger,
             doc=doc,
             redactor=Redactor([Secret(s) for s in secrets or []]),
         )

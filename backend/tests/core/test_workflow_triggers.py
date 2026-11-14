@@ -8,7 +8,7 @@ from rifferr.core.workflow import WorkflowLoadError, load_workflow
 def test_WORKFLOW_13_on_block_parses_all_triggers() -> None:
     wf, _ = load_workflow(
         "name: x\non:\n  watch: { path: '{{ vars.inbox }}', settle: 10m }\n"
-        "  schedule: '0 4 * * *'\n  webhook: { name: lidarr }\n"
+        "  schedule: '0 4 * * *'\n  webhook: { name: hook, input: a.path }\n"
         "steps: [{id: a, uses: shell}]\n",
         "wf.yaml",
     )
@@ -18,7 +18,8 @@ def test_WORKFLOW_13_on_block_parses_all_triggers() -> None:
     assert wf.on.watch.settle == "10m"
     assert wf.on.schedule == "0 4 * * *"
     assert wf.on.webhook is not None
-    assert wf.on.webhook.name == "lidarr"
+    assert wf.on.webhook.name == "hook"
+    assert wf.on.webhook.input == "a.path"
 
 
 def test_WORKFLOW_13_on_is_a_key_not_a_yaml_boolean() -> None:
@@ -37,5 +38,7 @@ def test_WORKFLOW_13_unknown_trigger_is_an_error() -> None:
 def test_WORKFLOW_13_webhook_name_pattern() -> None:
     with pytest.raises(WorkflowLoadError):
         load_workflow(
-            "name: x\non: { webhook: { name: 'a/b' } }\nsteps: [{id: a, uses: shell}]\n", "wf.yaml"
+            "name: x\non: { webhook: { name: 'a/b', input: p, within: /in } }\n"
+            "steps: [{id: a, uses: shell}]\n",
+            "wf.yaml",
         )

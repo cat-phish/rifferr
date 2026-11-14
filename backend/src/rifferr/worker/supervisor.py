@@ -122,8 +122,13 @@ class WorkerSupervisor:
         source_name: str,
         run_vars: dict[str, str] | None = None,
         workflow: str | None = None,
+        trigger: str = "manual",
+        run_input: str | None = None,
     ) -> str:
         """Queue a run and make sure the profile's worker is up. Returns the run id.
+
+        ``trigger`` / ``run_input`` become ``{{ run.trigger }}`` / ``{{ run.input }}``
+        (F-TRIGGERS TRIGGERS-5); without an input the workflow's ``input`` applies.
 
         The workflow *text* is stored with the job, so the worker runs exactly what
         the server checked. Trust is decided here, from the hash of that text
@@ -136,8 +141,17 @@ class WorkerSupervisor:
             "source_name": source_name,
             "vars": dict(run_vars or {}),
             "trusted": self.db.is_trusted(digest := workflow_hash(source)),
+            "trigger": trigger,
+            "input": run_input or "",
         }
-        job = self.db.submit(profile, payload, workflow=workflow, workflow_hash=digest)
+        job = self.db.submit(
+            profile,
+            payload,
+            workflow=workflow,
+            workflow_hash=digest,
+            trigger=trigger,
+            input=run_input or None,
+        )
         await self._wake(profile)
         return job.run
 

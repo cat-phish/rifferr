@@ -155,6 +155,8 @@ class Engine:
         profile_vars: Mapping[str, str],
         backend: LibraryBackend,
         run_vars: Mapping[str, str] | None = None,
+        run_input: str | None = None,
+        trigger: str = "manual",
         doc: RoundTripDoc | None = None,
         redactor: Redactor | None = None,
         trusted: bool = False,
@@ -169,11 +171,22 @@ class Engine:
         ``work_dir``: default working directory for steps without a target (the profile dir).
         ``last_seq``: events already stored for this run (a resumed run, RUN-14).
         ``profile_dir``: the profile's folder, for steps that read files from it.
+        ``run_input`` / ``trigger``: ``{{ run.input }}`` / ``{{ run.trigger }}``
+        (TRIGGERS-5, -6); without an input the workflow's ``input`` is used.
         """
         supplied = {**profile_vars, **(run_vars or {})}
         errors = validate(wf, self.registry, backend.capabilities, supplied, doc=doc)
         if errors:
             raise RunValidationError(errors)
+        resolved_vars = merged_vars(supplied, wf.vars)
+        if not run_input and wf.input is not None:
+            ctx = InterpolationContext(vars=resolved_vars, profile={"name": profile_name})
+            try:
+                run_input = interpolate(wf.input, ctx)
+            except InterpolationError as exc:
+                raise RunValidationError(
+                    [ValidationError("<workflow>", "input", str(exc))]
+                ) from exc
         run = Run(
             id=self._new_id(),
             workflow=wf.name,
@@ -181,8 +194,10 @@ class Engine:
             profile=profile_name,
             created_at=self.clock.now(),
             steps=[StepRecord(id=s.id, uses=s.uses) for s in wf.steps],
-            vars=merged_vars(supplied, wf.vars),
+            vars=resolved_vars,
             trusted=trusted,
+            input=run_input or "",
+            trigger=trigger,
             last_seq=last_seq,
         )
         self.runs[run.id] = run
@@ -364,7 +379,12 @@ class Engine:
     def _interpolation_context(run: Run) -> InterpolationContext:
         return InterpolationContext(
             vars=run.vars,
-            run={"id": run.id, "workflow": run.workflow},
+            run={
+                "id": run.id,
+                "workflow": run.workflow,
+                "input": run.input,
+                "trigger": run.trigger,
+            },
             profile={"name": run.profile},
             steps={r.id: r.outputs for r in run.steps if r.status in ("succeeded", "failed")},
         )

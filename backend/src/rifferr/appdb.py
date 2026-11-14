@@ -97,6 +97,10 @@ class Job(BaseModel):
     finished_at: datetime | None = None
     workflow: str | None = None
     workflow_hash: str | None = None
+    trigger: str | None = None
+    """What started a run job: manual, watch, schedule or webhook (F-TRIGGERS)."""
+    input: str | None = None
+    """The run's ``{{ run.input }}`` as given by its trigger (F-TRIGGERS)."""
     result: JsonValue = None
     """What a finished non-run job did (e.g. an undo's report)."""
 
@@ -138,12 +142,25 @@ class AppDB:
         *,
         workflow: str | None = None,
         workflow_hash: str | None = None,
+        trigger: str = "manual",
+        input: str | None = None,
     ) -> Job:
         job_id, run_id = new_ulid(), run_id or new_ulid()
         self._conn.execute(
             "INSERT INTO jobs (id, profile, kind, run_id, state, payload, created_at,"
-            " workflow, workflow_hash) VALUES (?, ?, 'run', ?, 'queued', ?, ?, ?, ?)",
-            (job_id, profile, run_id, json.dumps(payload), _now(), workflow, workflow_hash),
+            " workflow, workflow_hash, trigger, input)"
+            " VALUES (?, ?, 'run', ?, 'queued', ?, ?, ?, ?, ?, ?)",
+            (
+                job_id,
+                profile,
+                run_id,
+                json.dumps(payload),
+                _now(),
+                workflow,
+                workflow_hash,
+                trigger,
+                input,
+            ),
         )
         job = self.job_for_run(run_id)
         assert job is not None

@@ -352,7 +352,7 @@
     },
     "Triggers": {
       "additionalProperties": false,
-      "description": "The ``on:`` block. Parsed and validated; not acted on until F-TRIGGERS (WORKFLOW-13).",
+      "description": "The ``on:`` block (WORKFLOW-13, F-TRIGGERS).",
       "properties": {
         "schedule": {
           "anyOf": [
@@ -364,7 +364,7 @@
             }
           ],
           "default": null,
-          "description": "cron expression",
+          "description": "Five-field cron expression or @daily-style alias.",
           "title": "Schedule"
         },
         "watch": {
@@ -427,14 +427,18 @@
     },
     "WatchTrigger": {
       "additionalProperties": false,
+      "description": "``on.watch`` (F-TRIGGERS TRIGGERS-8 to -11).",
       "properties": {
         "path": {
+          "description": "Folder to watch; each top-level folder in it is one input.",
           "title": "Path",
           "type": "string"
         },
-        "settle": {
+        "poll": {
           "anyOf": [
             {
+              "description": "<n>s, <n>m or <n>h",
+              "pattern": "^[1-9][0-9]*[smh]$",
               "type": "string"
             },
             {
@@ -442,7 +446,15 @@
             }
           ],
           "default": null,
-          "title": "Settle"
+          "description": "Poll at this interval instead of using file events.",
+          "title": "Poll"
+        },
+        "settle": {
+          "default": "2m",
+          "description": "How long an input must stay unchanged before a run starts.",
+          "pattern": "^[1-9][0-9]*[smh]$",
+          "title": "Settle",
+          "type": "string"
         }
       },
       "required": [
@@ -453,15 +465,36 @@
     },
     "WebhookTrigger": {
       "additionalProperties": false,
+      "description": "``on.webhook`` (F-TRIGGERS TRIGGERS-15 to -18).",
       "properties": {
+        "input": {
+          "description": "Dotted path to the input path in the JSON body, e.g. trackFiles.0.path.",
+          "pattern": "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_-]+)*$",
+          "title": "Input",
+          "type": "string"
+        },
         "name": {
           "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$",
           "title": "Name",
           "type": "string"
+        },
+        "within": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Inputs must lie inside this folder (default: on.watch.path).",
+          "title": "Within"
         }
       },
       "required": [
-        "name"
+        "name",
+        "input"
       ],
       "title": "WebhookTrigger",
       "type": "object"
@@ -1770,6 +1803,19 @@
       ],
       "default": null,
       "title": "Description"
+    },
+    "input": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Default {{ run.input }} for runs whose trigger gives none (schedule, manual).",
+      "title": "Input"
     },
     "name": {
       "minLength": 1,

@@ -66,6 +66,10 @@ class Run:
     steps: list[StepRecord]
     vars: dict[str, str]
     trusted: bool = False
+    input: str = ""
+    """``{{ run.input }}``: the folder the trigger gave, or the workflow's ``input``."""
+    trigger: str = "manual"
+    """``{{ run.trigger }}``: manual, watch, schedule or webhook (F-TRIGGERS)."""
     state: RunState = RunState.queued
     started_at: datetime | None = None
     finished_at: datetime | None = None

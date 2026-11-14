@@ -46,7 +46,7 @@ Origin check; trust), F-WORKER (job queue), F-API (routes, events), F-CLI (`riff
 - TRIGGERS-11: On arming, the watcher MUST scan the watch path once and treat every existing top-level directory as a candidate with a fresh settle timer, so downloads that arrived while the server was down are picked up. Dedup (TRIGGERS-19) keeps this from starting folders that were already run.
 
 ### Schedule
-- TRIGGERS-12: `on.schedule` MUST be a five-field cron expression, validated at load time. It fires in the profile's effective time zone (`profile_store.effective_timezone`). Firing times that DST skips don't fire; times that DST repeats fire once.
+- TRIGGERS-12: `on.schedule` MUST be a five-field cron expression or one of the aliases `@yearly`, `@annually`, `@monthly`, `@weekly`, `@daily`, `@midnight`, `@hourly`, validated at load time. It fires in the profile's effective time zone (`profile_store.effective_timezone`). A firing time that a DST change skips fires right after the gap (as cron does); times that DST repeats fire once.
 - TRIGGERS-13: Firings missed while the server was down MUST NOT be caught up; the next firing after start is the next one in the future (open question 9).
 - TRIGGERS-14: A schedule firing while a run from the same workflow's schedule is still queued or running MUST be skipped with `trigger.skipped {reason: previous_still_active}`.
 
@@ -202,12 +202,17 @@ and filesystem so they're tested without real time or files.
     with synthetic payloads.
 
 ## Tasks
-- [ ] Add `watchfiles` and `cronsim` to `backend/pyproject.toml`.
-- [ ] C-WORKFLOW: `input`, `run.input`, `run.trigger`, new watch/webhook fields, arm-time
+Note (2026-11-13, implementation): TRIGGERS-12 first said DST-skipped times don't fire;
+cronsim, like cron, fires them right after the gap, which keeps a nightly sweep from
+losing a night. Changed to that; the author can ask for the original behavior. Aliases
+(`@daily`, ...) were added because cronsim doesn't parse them and WORKFLOW-13's tests
+already used `@daily`.
+- [x] Add `watchfiles` and `cronsim` to `backend/pyproject.toml`.
+- [x] C-WORKFLOW: `input`, `run.input`, `run.trigger`, new watch/webhook fields, arm-time
       interpolation rules; regenerate schemas.
 - [ ] Core: duration parsing, cron next-fire (injected clock, time zone), dotted-path lookup,
       fingerprint, dedup decision; tests TRIGGERS-9, -12..-14, -19..-21.
-- [ ] Migration: `trigger_inputs`, `webhook_secrets`, `jobs.trigger`, `jobs.input`.
+- [x] Migration: `trigger_inputs`, `webhook_secrets`, `jobs.trigger`, `jobs.input`.
 - [ ] `TriggerManager`: arm/re-arm on workflow file changes and trust; watcher with settle
       and start-up scan; scheduler; shutdown order (TRIGGERS-1..-3, -8..-11, -23, -25).
 - [ ] Webhook route and CLI `rifferr webhook new|rotate|list` (TRIGGERS-15..-18).
