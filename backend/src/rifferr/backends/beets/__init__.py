@@ -60,6 +60,7 @@ CAPABILITIES = BackendCapabilities(
     command_env=True,
     cli=True,
     import_decisions=True,
+    files=True,
 )
 
 
@@ -88,6 +89,7 @@ class _QueryOnlyLibrary(Library):
         return conn
 
 
+_PATH_CHUNK = 500
 _TEMPLATE_SPECIALS = re.compile(r"([$%},])")
 
 
@@ -192,6 +194,44 @@ class BeetsBackend:
 
     def command_env(self) -> Mapping[str, str]:
         return {"BEETSDIR": str(self.beetsdir)}
+
+    def library_files(self, paths: Sequence[Path]) -> set[Path]:
+        """Items are matched by their stored path (beets keeps it as normalized bytes)."""
+        wanted = {os.fsencode(os.path.normpath(os.path.abspath(p))): Path(p) for p in paths}
+        found: set[Path] = set()
+        keys = list(wanted)
+        with self.library() as lib:
+            for start in range(0, len(keys), _PATH_CHUNK):
+                chunk = keys[start : start + _PATH_CHUNK]
+                marks = ",".join("?" for _ in chunk)
+                with lib.transaction() as tx:
+                    rows = tx.query(f"SELECT path FROM items WHERE path IN ({marks})", chunk)
+                for row in rows:
+                    value = row[0]
+                    raw = value if isinstance(value, bytes) else os.fsencode(str(value))
+                    if raw in wanted:
+                        found.add(wanted[raw])
+        return found
+
+    def library_dirs(self) -> list[Path]:
+        _, directory = config.library_paths()
+        return [directory.expanduser().resolve()]
+
+    def importable(self, paths: Sequence[Path]) -> set[Path]:
+        """As beets' importer decides (``read_item``): files ``mediafile`` recognizes as
+        music, including ones that fail to read for another reason."""
+        import mediafile
+
+        out: set[Path] = set()
+        for path in paths:
+            try:
+                mediafile.MediaFile(str(path))
+            except mediafile.FileTypeError:
+                continue
+            except Exception:  # unreadable or damaged, but a music type: protect it
+                pass
+            out.add(Path(path))
+        return out
 
     def cli_command(self, subcommand: str, args: list[str], selection: Selection) -> list[str]:
         """``python -m beets`` from this Python: the same beets and plugins (BACKEND-14).

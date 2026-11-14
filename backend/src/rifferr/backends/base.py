@@ -84,6 +84,9 @@ class BackendCapabilities(BaseModel):
     import_decisions: bool = False
     """``import_folder`` can ask about albums (modes ``auto``/``interactive``), and
     ``import_decided``/``lookup`` answer them (F-IMPORT-UI)."""
+    files: bool = False
+    """``library_files``, ``library_dirs`` and ``importable`` answer which files and
+    folders the library owns or could import (S-FILES-CLEANUP FILES-CLEANUP-12, -17)."""
 
     @staticmethod
     def display_name(field: str) -> str:
@@ -233,6 +236,19 @@ class LibraryBackend(Protocol):
 
     def command_env(self) -> Mapping[str, str]:
         """Environment for CLI subprocess steps (e.g. ``BEETSDIR``)."""
+        ...
+
+    def library_files(self, paths: Sequence[Path]) -> set[Path]:
+        """Which of ``paths`` (absolute files) are items in the library (``files``)."""
+        ...
+
+    def library_dirs(self) -> list[Path]:
+        """Folders the library keeps its music in (beets: ``directory``) (``files``)."""
+        ...
+
+    def importable(self, paths: Sequence[Path]) -> set[Path]:
+        """Which of ``paths`` the backend could import as music (``files``): for beets,
+        files its tag library recognizes, even when they fail to read."""
         ...
 
     def cli_command(self, subcommand: str, args: list[str], selection: Selection) -> list[str]:

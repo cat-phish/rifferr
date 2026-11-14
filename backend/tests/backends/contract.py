@@ -11,8 +11,10 @@ then raise ``CapabilityError`` instead (checked by ``test_BACKEND_2_...``).
 
 from __future__ import annotations
 
+import shutil
 from collections.abc import Mapping
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, ClassVar
 
 import pytest
@@ -96,6 +98,9 @@ def album_names(albums: list[AlbumSnapshot]) -> set[str]:
     return {str(a.fields["album"]) for a in albums}
 
 
+FIXTURE_FLAC = Path(__file__).parents[1] / "fixtures" / "audio" / "album-flac" / "01 First.flac"
+
+
 class BackendContract:
     """Subclass, set ``capabilities_under_test`` if needed, implement ``make_backend``."""
 
@@ -135,6 +140,7 @@ class BackendContract:
         calls: dict[str, Any] = {
             "query": lambda: backend.query(Selection()),
             "command_env": backend.command_env,
+            "files": lambda: backend.library_dirs(),
             "import_": lambda: backend.import_folder(tmp_path, "quiet", None),
             "apply": lambda: backend.apply(
                 changeset((TargetRef(scope="item", id="x"), [FieldChange(field="t", new="x")]))
@@ -284,6 +290,38 @@ class BackendContract:
         assert backend.evaluate("$path", album.items[0]) == album.items[0].path
 
     # -- environment ---------------------------------------------------------
+
+    # -- files (S-FILES-CLEANUP FILES-CLEANUP-12, -17) ---------------------------
+
+    def test_FILES_CLEANUP_12_library_files_finds_item_paths(
+        self, backend: LibraryBackend, tmp_path: Path
+    ) -> None:
+        self.need(backend, "files")
+        self.need(backend, "query")
+        album = backend.query(Selection())[0]
+        item_path = Path(album.items[0].path)
+        other = tmp_path / "stray.flac"
+        assert backend.library_files([item_path, other]) == {item_path}
+        assert backend.library_files([]) == set()
+
+    def test_FILES_CLEANUP_12_library_dirs_are_absolute(self, backend: LibraryBackend) -> None:
+        self.need(backend, "files")
+        assert all(d.is_absolute() for d in backend.library_dirs())
+
+    def test_FILES_CLEANUP_17_importable_recognizes_music(
+        self, backend: LibraryBackend, tmp_path: Path
+    ) -> None:
+        self.need(backend, "files")
+        flac = tmp_path / "01 First.flac"
+        shutil.copy(FIXTURE_FLAC, flac)
+        broken = tmp_path / "broken.flac"
+        broken.write_bytes(b"not really flac")
+        nfo = tmp_path / "album.nfo"
+        nfo.write_text("release info")
+        found = backend.importable([flac, broken, nfo])
+        assert flac in found
+        assert broken in found  # a damaged music file is still protected
+        assert nfo not in found
 
     def test_BACKEND_1_command_env_is_string_mapping(self, backend: LibraryBackend) -> None:
         self.need(backend, "command_env")

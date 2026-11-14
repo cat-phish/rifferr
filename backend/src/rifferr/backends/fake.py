@@ -88,7 +88,10 @@ DEFAULT_CAPABILITIES = BackendCapabilities(
     command_env=True,
     cli=True,
     import_decisions=True,
+    files=True,
 )
+#: Suffixes a FakeBackend treats as importable music (tests only; not engine policy).
+FAKE_IMPORTABLE = frozenset({".flac", ".mp3", ".ogg", ".opus", ".m4a", ".wav"})
 #: Default command-line tool of a FakeBackend: prints its arguments as JSON (BACKEND-14).
 ECHO_CLI = (sys.executable, "-c", "import json, sys; print(json.dumps(sys.argv[1:]))")
 #: Fields a ChangeSet can't touch (as in beets: ids, paths and bookkeeping).
@@ -186,6 +189,9 @@ class FakeBackend:
         self._lookup_candidates: list[dict[str, Any]] = []
         self.lookup_calls: list[tuple[str, tuple[str, ...], str | None, str | None]] = []
         self.fail_lookup: str | None = None
+        self.music_dirs: list[Path] = []
+        """What ``library_dirs`` returns."""
+        self.importable_suffixes: frozenset[str] = FAKE_IMPORTABLE
         """Message ``lookup`` and ``import_decided`` fail with (network errors)."""
 
     # -- building ------------------------------------------------------------
@@ -547,6 +553,19 @@ class FakeBackend:
     def command_env(self) -> Mapping[str, str]:
         self._need("command_env")
         return dict(self._env)
+
+    def library_files(self, paths: Sequence[Path]) -> set[Path]:
+        self._need("files")
+        known = {item.path for album in self._albums for item in album.items}
+        return {p for p in paths if str(p) in known}
+
+    def library_dirs(self) -> list[Path]:
+        self._need("files")
+        return list(self.music_dirs)
+
+    def importable(self, paths: Sequence[Path]) -> set[Path]:
+        self._need("files")
+        return {p for p in paths if p.suffix.lower() in self.importable_suffixes}
 
     # -- helpers -------------------------------------------------------------
 

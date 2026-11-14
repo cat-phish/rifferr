@@ -46,6 +46,7 @@ def test_BACKEND_2_capabilities_default() -> None:
         command_env=True,
         cli=True,
         import_decisions=True,
+        files=True,
     )
 
 

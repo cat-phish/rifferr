@@ -40,5 +40,6 @@ def test_BEETS_IMPORT_11_contract_runs_for_declared_capabilities(beets_env: Beet
         command_env=True,
         cli=True,
         import_decisions=True,
+        files=True,
     )
     assert issubclass(TestBeetsBackendContract, BackendContract)
