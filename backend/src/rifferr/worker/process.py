@@ -77,6 +77,7 @@ from rifferr.steps.registry import load_step_types
 from rifferr.worker.cleanup import busy_folders
 from rifferr.worker.gates import gate_albums, reject_gate_lanes, settle
 from rifferr.worker.protocol import HEARTBEAT_INTERVAL, WorkerCommand, WorkerMessage, encode
+from rifferr.workflow_calls import stored_calls
 
 log = logging.getLogger("rifferr.worker")
 
@@ -323,6 +324,7 @@ class Worker:
                 notify=self.notify,
                 profile_settings=self.profile,
                 busy=lambda: busy_folders(self.db, self.profile.name, job.run),
+                calls=stored_calls(wf, doc, payload),
                 last_seq=self._next_seq(job.run) - 1 if resume_after else 0,
             )
             if resume_after is not None:

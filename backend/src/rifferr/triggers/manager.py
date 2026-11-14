@@ -30,6 +30,7 @@ from rifferr.appdb import AppDB, AppTriggers
 from rifferr.core.profile import Profile, ProfileError, ProfileLoadError, merged_vars
 from rifferr.core.triggers import SettleTracker, SkipReason, dedup_skip, parse_duration, top_level
 from rifferr.core.workflow import (
+    CALL_TYPE,
     WORKFLOW_SUFFIXES,
     InterpolationContext,
     InterpolationError,
@@ -50,6 +51,7 @@ from rifferr.profile_store import (
 )
 from rifferr.triggers import fs
 from rifferr.trust import WorkflowFileError, read_workflow_file
+from rifferr.workflow_calls import read_calls
 
 log = logging.getLogger(__name__)
 
@@ -72,6 +74,7 @@ class Submit(Protocol):
         workflow: str | None = None,
         trigger: str = "manual",
         run_input: str | None = None,
+        called: Mapping[str, str] | None = None,
     ) -> str: ...
 
 
@@ -483,6 +486,14 @@ class TriggerManager:
 
     # -- firing ------------------------------------------------------------------------
 
+    def _called(self, armed: Armed) -> dict[str, str] | None:
+        """The files the workflow calls, read now: the run keeps these texts
+        (SUBWORKFLOW-12)."""
+        if armed.workflow is None or not any(s.uses == CALL_TYPE for s in armed.workflow.steps):
+            return None
+        folder = profile_dir(self.config_root, armed.profile) / WORKFLOWS_DIR
+        return read_calls(folder, armed.workflow, None, armed.path).texts()
+
     async def fire(
         self, armed: Armed, kind: FireKind, input_path: str, *, force: bool = False
     ) -> FireResult:
@@ -504,6 +515,7 @@ class TriggerManager:
                 workflow=armed.name,
                 trigger=kind,
                 run_input=input_path or None,
+                called=self._called(armed),
             )
             if fp is not None:
                 self.store.remember(armed.profile, armed.name, input_path, fp, run_id)

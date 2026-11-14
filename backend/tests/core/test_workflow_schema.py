@@ -33,7 +33,15 @@ def test_WORKFLOW_12_schema_core_shape() -> None:
     schema = workflow_json_schema(StaticStepRegistry([]))
     assert schema["required"] == ["name", "steps"]
     assert schema["additionalProperties"] is False
-    assert set(schema["properties"]) == {"name", "description", "vars", "input", "on", "steps"}
+    assert set(schema["properties"]) == {
+        "name",
+        "description",
+        "vars",
+        "input",
+        "on",
+        "outputs",
+        "steps",
+    }  # outputs: SUBWORKFLOW-11
     step = schema["$defs"]["Step"]
     assert step["additionalProperties"] is False
     assert step["properties"]["apply"]["default"] == "review"

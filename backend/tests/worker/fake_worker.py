@@ -20,6 +20,7 @@ from rifferr.backends.base import BackendCapabilities
 from rifferr.backends.fake import FakeBackend
 from rifferr.engine import StepContext, StepResult, StepTypeRegistry
 from rifferr.steps.shell import ShellStep
+from rifferr.steps.workflow_call import WorkflowCallStep
 from rifferr.worker.process import main
 from tests.engine.steps import ALL
 
@@ -99,7 +100,9 @@ def preview_library_writable() -> FakeBackend:
 
 
 def registry() -> StepTypeRegistry:
-    return StepTypeRegistry([*ALL, BlockStep(), PrintStep(), PidStep(), ShellStep()])
+    return StepTypeRegistry(
+        [*ALL, BlockStep(), PrintStep(), PidStep(), ShellStep(), WorkflowCallStep()]
+    )
 
 
 if __name__ == "__main__":

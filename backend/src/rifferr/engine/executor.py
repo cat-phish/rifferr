@@ -36,12 +36,15 @@ from rifferr.core.review import GateAlbum, GateRequest, ReviewGate
 from rifferr.core.selection import Selection
 from rifferr.core.snapshot import label
 from rifferr.core.workflow import (
+    CalledStep,
+    Calls,
     InterpolationContext,
     InterpolationError,
     RoundTripDoc,
     StepSpec,
     ValidationError,
     Workflow,
+    expand,
     interpolate,
     validate,
 )
@@ -213,6 +216,7 @@ class Engine:
         notify: NotifyTargets | None = None,
         profile_settings: ProfileFile | None = None,
         busy: Callable[[], list[BusyFolder]] | None = None,
+        calls: Calls | None = None,
     ) -> Run:
         """Validate and create a queued run (RUN-10, RUN-11).
 
@@ -223,6 +227,8 @@ class Engine:
         ``notify``: the profile's notification targets (S-NOTIFY), for ``ctx.notify``.
         ``profile_settings``: ``profile.yaml`` as loaded, for ``ctx.profile_settings``.
         ``busy``: folders other work still needs (FILES-CLEANUP-7), for ``ctx.busy_folders``.
+        ``calls``: the workflow files ``wf`` calls, as stored with the job; the run's
+        steps are ``wf`` with every call expanded (S-SUBWORKFLOW).
         ``run_input`` / ``trigger``: ``{{ run.input }}`` / ``{{ run.trigger }}``
         (TRIGGERS-5, -6); without an input the workflow's ``input`` is used.
         """
@@ -234,9 +240,12 @@ class Engine:
             supplied,
             doc=doc,
             notify_targets=notify.names() if notify is not None else [],
+            calls=calls,
         )
         if errors:
             raise RunValidationError(errors)
+        if calls is not None:
+            wf = expand(wf, calls)
         resolved_vars = merged_vars(supplied, wf.vars)
         if not run_input and wf.input is not None:
             ctx = InterpolationContext(vars=resolved_vars, profile={"name": profile_name})
@@ -258,6 +267,10 @@ class Engine:
             input=run_input or "",
             trigger=trigger,
             last_seq=last_seq,
+            called_hashes={
+                p: hashlib.sha256(t.encode()).hexdigest()
+                for p, t in (calls.texts() if calls is not None else {}).items()
+            },
         )
         self.runs[run.id] = run
         self._state[run.id] = _RunState(
@@ -572,21 +585,19 @@ class Engine:
         record.status = "running"
         record.error = None
         record.started_at = self.clock.now()
-        self._emit(
-            run,
-            "run.step.started",
-            spec.id,
-            {"uses": spec.uses, "pass": number, "lanes": len(pass_lanes)},
-        )
-        album_ids = tuple(lane.key for lane in pass_lanes if not lane.pending)
-        selection = Selection(
-            query=spec.when or "",
-            run_id=run.id,
-            album_ids=album_ids if state.lanes else None,
-        )
+        started: dict[str, JsonValue] = {
+            "uses": spec.uses,
+            "pass": number,
+            "lanes": len(pass_lanes),
+        }
+        if isinstance(spec, CalledStep):  # SUBWORKFLOW-6
+            started["call_path"] = list(spec.call_path)
+            started["workflow"] = spec.workflow
+        self._emit(run, "run.step.started", spec.id, started)
         ctx: StepContext | None = None
         refused = False
         try:
+            selection = self._selection(state, spec, pass_lanes)
             params = self._prepare_params(state, spec)
             step_type = self.registry.step_type(spec.uses)
             assert step_type is not None, "validated before the run was created"
@@ -686,6 +697,22 @@ class Engine:
         no_target = record.status == "failed" and record.error is not None
         stop_run = refused or (no_target and spec.on_error == "stop")
         return _PassResult(stop_run=stop_run, failed_albums=failed_albums)
+
+    def _selection(self, state: _RunState, spec: StepSpec, pass_lanes: list[Lane]) -> Selection:
+        """The step's albums: this pass's lanes, narrowed by the ``when`` of every call
+        around a called step (SUBWORKFLOW-7)."""
+        run = state.run
+        album_ids: tuple[str, ...] | None = None
+        if state.lanes:
+            album_ids = tuple(lane.key for lane in pass_lanes if not lane.pending)
+        narrow = spec.narrow if isinstance(spec, CalledStep) else ()
+        for when in narrow:
+            query = self._interpolate_text(state, when)
+            matching = state.backend.query(
+                Selection(query=query, run_id=run.id, album_ids=album_ids)
+            )
+            album_ids = tuple(a.id for a in matching)
+        return Selection(query=spec.when or "", run_id=run.id, album_ids=album_ids)
 
     async def _run_cancellable(self, state: _RunState, coro: Any) -> Any:
         task: asyncio.Task[Any] = asyncio.ensure_future(coro)

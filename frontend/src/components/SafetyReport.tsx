@@ -13,6 +13,11 @@ export function SafetyReport({ findings }: { findings: SafetyFinding[] }) {
           <Text span fw={600}>
             [{f.step_id}] {f.kind}
           </Text>
+          {f.workflow && (
+            <Text span size="xs" c="dimmed" ml={4}>
+              (in {f.workflow})
+            </Text>
+          )}
           :{" "}
           <Text span ff="monospace">
             {f.detail}

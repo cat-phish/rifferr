@@ -12,6 +12,7 @@ from typing import Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict
 
+from rifferr.core.workflow.calls import CalledStep, Calls, expand
 from rifferr.core.workflow.models import Workflow
 
 NETWORK_TOOLS: frozenset[str] = frozenset(
@@ -63,6 +64,8 @@ class Finding(BaseModel):
     step_id: str
     kind: FindingKind
     detail: str
+    workflow: str | None = None
+    """The called file the step comes from (SUBWORKFLOW-14); None for the workflow's own."""
 
 
 class SafetyReport(BaseModel):
@@ -74,7 +77,22 @@ class SafetyReport(BaseModel):
         return [f for f in self.findings if f.kind == kind]
 
 
-def safety_report(wf: Workflow) -> SafetyReport:
+def safety_report(wf: Workflow, calls: Calls | None = None) -> SafetyReport:
+    """``calls``: the files ``wf`` calls; their steps are reported too, by expanded step id
+    and file (SUBWORKFLOW-14)."""
+    if calls is not None:
+        wf = expand(wf, calls)
+    report = _report(wf)
+    files = {s.id: s.workflow for s in wf.steps if isinstance(s, CalledStep)}
+    return SafetyReport(
+        findings=[
+            f.model_copy(update={"workflow": files[f.step_id]}) if f.step_id in files else f
+            for f in report.findings
+        ]
+    )
+
+
+def _report(wf: Workflow) -> SafetyReport:
     findings: list[Finding] = []
     for step in wf.steps:
         if step.uses in PROPOSING_STEPS and step.apply == "auto":

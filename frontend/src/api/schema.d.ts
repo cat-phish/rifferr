@@ -662,7 +662,8 @@ export interface paths {
         put?: never;
         /**
          * Trust Workflow
-         * @description Trust exactly the content the user reviewed (API-14, SECURITY-12).
+         * @description Trust exactly the content the user reviewed (API-14, SECURITY-12), with the
+         *     called files it lists, each by its own hash (SUBWORKFLOW-13).
          */
         post: operations["trust_workflow_api_workflows__name__trust_post"];
         delete?: never;
@@ -755,6 +756,23 @@ export interface components {
             items?: components["schemas"]["ItemSnapshot"][];
             /** Path */
             path: string | null;
+        };
+        /**
+         * CalledWorkflow
+         * @description A workflow file a workflow calls (S-SUBWORKFLOW), trusted on its own (SUBWORKFLOW-13).
+         */
+        CalledWorkflow: {
+            /**
+             * Path
+             * @description Relative to the profile's workflows/ folder
+             */
+            path: string;
+            /** Sha256 */
+            sha256: string;
+            /** Trusted */
+            trusted: boolean;
+            /** Yaml */
+            yaml: string;
         };
         /**
          * ChangeProblem
@@ -1769,6 +1787,13 @@ export interface components {
         /** RunDetail */
         RunDetail: {
             /**
+             * Called Hashes
+             * @description Called workflow file -> hash of the text the run uses (SUBWORKFLOW-15)
+             */
+            called_hashes?: {
+                [key: string]: string;
+            };
+            /**
              * Created At
              * Format: date-time
              */
@@ -1830,6 +1855,13 @@ export interface components {
         /** RunSummary */
         RunSummary: {
             /**
+             * Called Hashes
+             * @description Called workflow file -> hash of the text the run uses (SUBWORKFLOW-15)
+             */
+            called_hashes?: {
+                [key: string]: string;
+            };
+            /**
              * Created At
              * Format: date-time
              */
@@ -1883,6 +1915,11 @@ export interface components {
             kind: string;
             /** Step Id */
             step_id: string;
+            /**
+             * Workflow
+             * @description The called file the step comes from (SUBWORKFLOW-14)
+             */
+            workflow?: string | null;
         };
         /** ScriptDetail */
         ScriptDetail: {
@@ -1941,6 +1978,11 @@ export interface components {
         };
         /** StepState */
         StepState: {
+            /**
+             * Call Path
+             * @description Ids of the workflow calls this step runs inside (SUBWORKFLOW-6)
+             */
+            call_path?: string[];
             /** Error */
             error?: string | null;
             /** Id */
@@ -1962,6 +2004,16 @@ export interface components {
             status: "pending" | "running" | "succeeded" | "failed" | "skipped" | "cancelled";
             /** Uses */
             uses: string;
+            /**
+             * Workflow
+             * @description The called file the step comes from (SUBWORKFLOW-10)
+             */
+            workflow?: string | null;
+            /**
+             * Workflow Name
+             * @description That file's name
+             */
+            workflow_name?: string | null;
         };
         /** TargetChange */
         TargetChange: {
@@ -2057,6 +2109,13 @@ export interface components {
         /** TrustRequest */
         TrustRequest: {
             /**
+             * Called
+             * @description Called file -> hash reviewed; every untrusted called file must be listed (SUBWORKFLOW-13)
+             */
+            called?: {
+                [key: string]: string;
+            };
+            /**
              * Sha256
              * @description Hash of the content the user reviewed
              */
@@ -2064,6 +2123,10 @@ export interface components {
         };
         /** TrustResult */
         TrustResult: {
+            /** Called */
+            called?: {
+                [key: string]: string;
+            };
             /** Name */
             name: string;
             /** Sha256 */
@@ -2077,6 +2140,8 @@ export interface components {
         };
         /** ValidateResult */
         ValidateResult: {
+            /** Called */
+            called?: components["schemas"]["CalledWorkflow"][];
             /** Errors */
             errors: components["schemas"]["WorkflowError"][];
             /** Safety */
@@ -2131,6 +2196,11 @@ export interface components {
         };
         /** WorkflowDetail */
         WorkflowDetail: {
+            /**
+             * Called
+             * @description Files it calls; 'trusted' is true only when they all are (SUBWORKFLOW-13)
+             */
+            called?: components["schemas"]["CalledWorkflow"][];
             /** Errors */
             errors: components["schemas"]["WorkflowError"][];
             /**

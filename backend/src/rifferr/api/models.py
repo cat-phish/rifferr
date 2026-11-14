@@ -84,15 +84,31 @@ class WorkflowSummary(_Model):
     )
 
 
+class CalledWorkflow(_Model):
+    """A workflow file a workflow calls (S-SUBWORKFLOW), trusted on its own (SUBWORKFLOW-13)."""
+
+    path: str = Field(description="Relative to the profile's workflows/ folder")
+    sha256: str
+    trusted: bool
+    yaml: str
+
+
 class WorkflowDetail(WorkflowSummary):
     yaml: str
     errors: list[WorkflowError]
+    called: list[CalledWorkflow] = Field(
+        default_factory=list[CalledWorkflow],
+        description="Files it calls; 'trusted' is true only when they all are (SUBWORKFLOW-13)",
+    )
 
 
 class SafetyFinding(_Model):
     step_id: str
     kind: str
     detail: str
+    workflow: str | None = Field(
+        default=None, description="The called file the step comes from (SUBWORKFLOW-14)"
+    )
 
 
 class ValidateResult(_Model):
@@ -101,16 +117,23 @@ class ValidateResult(_Model):
     safety: list[SafetyFinding]
     sha256: str
     trusted: bool
+    called: list[CalledWorkflow] = Field(default_factory=list[CalledWorkflow])
 
 
 class TrustRequest(_Model):
     sha256: str = Field(description="Hash of the content the user reviewed")
+    called: dict[str, str] = Field(
+        default_factory=dict[str, str],
+        description="Called file -> hash reviewed; every untrusted called file must be "
+        "listed (SUBWORKFLOW-13)",
+    )
 
 
 class TrustResult(_Model):
     name: str
     sha256: str
     trusted: Literal[True] = True
+    called: dict[str, str] = Field(default_factory=dict[str, str])
 
 
 class RunCreate(_Model):
@@ -145,6 +168,10 @@ class RunSummary(_Model):
         default="manual", description="What started the run (TRIGGERS-24)"
     )
     input: str | None = Field(default=None, description="The input its trigger gave")
+    called_hashes: dict[str, str] = Field(
+        default_factory=dict[str, str],
+        description="Called workflow file -> hash of the text the run uses (SUBWORKFLOW-15)",
+    )
     lane_counts: dict[str, int] = Field(
         default_factory=dict[str, int],
         description="The run's lanes (one per album) counted by state (LANES-9)",
@@ -184,6 +211,14 @@ class StepState(_Model):
     error: str | None = None
     outputs: dict[str, JsonValue] = Field(default_factory=dict[str, JsonValue])
     passes: int = Field(default=0, description="How many passes of this step ran (LANES-4)")
+    call_path: list[str] = Field(
+        default_factory=list[str],
+        description="Ids of the workflow calls this step runs inside (SUBWORKFLOW-6)",
+    )
+    workflow: str | None = Field(
+        default=None, description="The called file the step comes from (SUBWORKFLOW-10)"
+    )
+    workflow_name: str | None = Field(default=None, description="That file's name")
 
 
 class RunDetail(RunSummary):

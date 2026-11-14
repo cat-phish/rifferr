@@ -13,7 +13,7 @@ import logging
 import os
 import signal
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Literal, cast
@@ -138,8 +138,14 @@ class WorkerSupervisor:
         workflow: str | None = None,
         trigger: str = "manual",
         run_input: str | None = None,
+        called: Mapping[str, str] | None = None,
     ) -> str:
         """Queue a run and make sure the profile's worker is up. Returns the run id.
+
+        ``called``: text of every workflow file the workflow calls, by path relative to
+        the profile's workflows/ folder (S-SUBWORKFLOW). They are stored with the job,
+        and the run is trusted only when the caller and every one of them is
+        (SUBWORKFLOW-12, -13).
 
         ``trigger`` / ``run_input`` become ``{{ run.trigger }}`` / ``{{ run.input }}``
         (F-TRIGGERS TRIGGERS-5); without an input the workflow's ``input`` applies.
@@ -150,14 +156,23 @@ class WorkerSupervisor:
         """
         if self._shutting_down:
             raise RuntimeError("server is shutting down")
+        digest = workflow_hash(source)
+        called_hashes = {path: workflow_hash(text) for path, text in (called or {}).items()}
+        stored: list[JsonValue] = [
+            {"path": path, "source": text, "sha256": called_hashes[path]}
+            for path, text in sorted((called or {}).items())
+        ]
+        hashes = [digest, *called_hashes.values()]
         payload: dict[str, JsonValue] = {
             "source": source,
             "source_name": source_name,
             "vars": dict(run_vars or {}),
-            "trusted": self.db.is_trusted(digest := workflow_hash(source)),
+            "trusted": all(self.db.is_trusted(h) for h in hashes),
             "trigger": trigger,
             "input": run_input or "",
         }
+        if stored:
+            payload["called"] = stored
         job = self.db.submit(
             profile,
             payload,

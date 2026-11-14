@@ -1,5 +1,14 @@
 """Workflow files: models, loading, validation, interpolation, schema (C-WORKFLOW)."""
 
+from rifferr.core.workflow.calls import (
+    CALL_TYPE,
+    CalledStep,
+    Calls,
+    WorkflowCallParams,
+    expand,
+    resolve_calls,
+    stored_reader,
+)
 from rifferr.core.workflow.errors import ValidationError, WorkflowLoadError, format_path
 from rifferr.core.workflow.interpolation import (
     PROFILE_FIELDS,
@@ -31,10 +40,13 @@ from rifferr.core.workflow.yamldoc import RoundTripDoc
 WORKFLOW_SUFFIXES = (".yaml", ".yml")
 
 __all__ = [
+    "CALL_TYPE",
     "PROFILE_FIELDS",
     "ROOTS",
     "RUN_FIELDS",
     "WORKFLOW_SUFFIXES",
+    "CalledStep",
+    "Calls",
     "Expression",
     "Finding",
     "InterpolationContext",
@@ -51,12 +63,16 @@ __all__ = [
     "WatchTrigger",
     "WebhookTrigger",
     "Workflow",
+    "WorkflowCallParams",
     "WorkflowLoadError",
+    "expand",
     "find_expressions",
     "format_path",
     "interpolate",
     "load_workflow",
+    "resolve_calls",
     "safety_report",
+    "stored_reader",
     "substitute",
     "validate",
     "workflow_json_schema",

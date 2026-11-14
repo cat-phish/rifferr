@@ -144,6 +144,10 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     join(here, "lanes-flow.yaml"),
     join(dirs.config, "profiles", "main", "workflows", "lanes-flow.yaml"),
   );
+  // A workflow that calls another one (S-SUBWORKFLOW).
+  for (const name of ["call-flow.yaml", "call-shared.yaml"]) {
+    cpSync(join(here, name), join(dirs.config, "profiles", "main", "workflows", name));
+  }
   // Leftovers for the folder cleanup test (S-FILES-CLEANUP).
   cpSync(
     join(here, "cleanup-flow.yaml"),

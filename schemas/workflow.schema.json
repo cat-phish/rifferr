@@ -484,6 +484,75 @@
           ],
           "title": "Step: tags.script",
           "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One entry of ``steps:`` (WORKFLOW-2, WORKFLOW-3).",
+          "properties": {
+            "apply": {
+              "default": "review",
+              "description": "Whether this step's ChangeSets apply automatically or wait for review. Ignored by steps that don't produce ChangeSets.",
+              "enum": [
+                "auto",
+                "review"
+              ],
+              "title": "Apply",
+              "type": "string"
+            },
+            "id": {
+              "pattern": "^[a-z][a-z0-9_-]*$",
+              "title": "Id",
+              "type": "string"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Name"
+            },
+            "on_error": {
+              "default": "stop",
+              "enum": [
+                "stop",
+                "skip",
+                "continue"
+              ],
+              "title": "On Error",
+              "type": "string"
+            },
+            "uses": {
+              "const": "workflow",
+              "title": "Uses"
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Backend condition (a beets query).",
+              "title": "When"
+            },
+            "with": {
+              "$ref": "#/$defs/With_workflow"
+            }
+          },
+          "required": [
+            "id",
+            "uses"
+          ],
+          "title": "Step: workflow",
+          "type": "object"
         }
       ],
       "title": "Step"
@@ -2148,6 +2217,43 @@
       ],
       "title": "SplitSpec",
       "type": "object"
+    },
+    "With_workflow": {
+      "additionalProperties": false,
+      "description": "``with:`` of a ``uses: workflow`` step (SUBWORKFLOW-1, -2).",
+      "properties": {
+        "vars": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          },
+          "description": "Values for the called workflow's declared vars",
+          "title": "Vars",
+          "type": "object"
+        },
+        "workflow": {
+          "description": "Workflow file, relative to the profile's workflows/ folder",
+          "title": "Workflow",
+          "type": "string"
+        }
+      },
+      "required": [
+        "workflow"
+      ],
+      "title": "WorkflowCallParams",
+      "type": "object"
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -2194,6 +2300,14 @@
         }
       ],
       "default": null
+    },
+    "outputs": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "When this workflow is called (uses: workflow): the call step's outputs, each a '{{ steps.<id>.<key> }}' expression over this workflow's steps.",
+      "title": "Outputs",
+      "type": "object"
     },
     "steps": {
       "items": {

@@ -1,0 +1,10 @@
+# Called by call-flow.yaml (S-SUBWORKFLOW).
+name: Shared greeting
+vars:
+  who: { description: Who to greet }
+steps:
+  - id: say
+    uses: shell
+    with:
+      per: run
+      run: [echo, "hello {{ vars.who }}"]

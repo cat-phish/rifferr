@@ -456,7 +456,7 @@ async def test_API_14_trust_exact_hash_or_409(api: Api) -> None:
     sha = (await api.client.get("/api/workflows/echo", params=q)).json()["sha256"]
     r = await api.client.post("/api/workflows/echo/trust", params=q, json={"sha256": sha})
     assert r.status_code == 200
-    assert r.json() == {"name": "echo", "sha256": sha, "trusted": True}
+    assert r.json() == {"name": "echo", "sha256": sha, "trusted": True, "called": {}}
     listed = (await api.client.get("/api/workflows", params=q)).json()
     assert listed[0]["trusted"] is True
     path.write_text(ECHO + "# edited\n")

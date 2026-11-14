@@ -23,9 +23,10 @@ from rifferr.api.models import (
 from rifferr.api.routes.workflows import check, error_out, find_workflow, get_profile
 from rifferr.api.state import ServerState, State
 from rifferr.appdb import AppJournal, AppLanes, Job
-from rifferr.core.workflow import WorkflowLoadError, load_workflow
+from rifferr.core.workflow import CalledStep, WorkflowLoadError, expand, load_workflow
 from rifferr.engine.lanes import counts
 from rifferr.engine.undo import run_entries
+from rifferr.workflow_calls import called_hashes, stored_calls
 
 router = APIRouter(prefix="/api", tags=["runs"])
 
@@ -56,6 +57,7 @@ async def create_run(body: RunCreate, state: State) -> RunCreated:
         workflow=body.workflow,
         trigger="manual",
         run_input=body.input,
+        called=c.calls.texts() if c.calls is not None else None,
     )
     if state.triggers is not None and body.input:  # TRIGGERS-21
         state.triggers.remember_manual(body.profile, body.workflow, body.input, run_id)
@@ -160,6 +162,7 @@ def summary(job: Job, lane_counts: dict[str, int] | None = None) -> RunSummary:
         finished_at=job.finished_at,
         trigger=cast(Any, job.trigger or "manual"),
         input=job.input,
+        called_hashes=called_hashes(job.payload),
         lane_counts=lane_counts or {},
     )
 
@@ -167,10 +170,21 @@ def summary(job: Job, lane_counts: dict[str, int] | None = None) -> RunSummary:
 def steps(state: ServerState, job: Job) -> list[StepState]:
     """Step list from the stored workflow text, statuses folded from events (API-6)."""
     try:
-        wf, _ = load_workflow(str(job.payload.get("source", "")), "<run>")
+        wf, doc = load_workflow(str(job.payload.get("source", "")), "<run>")
     except WorkflowLoadError:
         return []
-    out = {s.id: StepState(id=s.id, uses=s.uses, status="pending") for s in wf.steps}
+    wf = expand(wf, stored_calls(wf, doc, job.payload))
+    out = {
+        s.id: StepState(
+            id=s.id,
+            uses=s.uses,
+            status="pending",
+            call_path=list(s.call_path) if isinstance(s, CalledStep) else [],
+            workflow=s.workflow if isinstance(s, CalledStep) else None,
+            workflow_name=s.workflow_name if isinstance(s, CalledStep) else None,
+        )
+        for s in wf.steps
+    }
     for event in state.db.events_since(job.run, 0):
         step = out.get(event.step_id or "")
         if step is None:

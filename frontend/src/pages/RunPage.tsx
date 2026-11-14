@@ -19,6 +19,7 @@ import { LogView } from "../components/LogView";
 import { StatusBadge } from "../components/StatusBadge";
 import { useEventStream } from "../hooks/useEventStream";
 import { useProfile } from "../hooks/useProfile";
+import { stepRows } from "../lib/callGroups";
 import { duration } from "../lib/format";
 import { count, formatValue, reviewLink, type Value } from "../lib/review";
 import { applyEvent, initialView, isTerminal, type RunView } from "../lib/runState";
@@ -115,15 +116,30 @@ function LiveRun({ run, onFinished }: { run: RunDetail; onFinished: () => void }
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
-          {view.steps.map((s) => (
-            <Table.Tr key={s.id} data-testid={`step-${s.id}`}>
-              <Table.Td>{s.id}</Table.Td>
-              <Table.Td ff="monospace">{s.uses}</Table.Td>
-              <Table.Td>
-                <StatusBadge status={s.status} />
-              </Table.Td>
-            </Table.Tr>
-          ))}
+          {stepRows(view.steps).map((row) =>
+            row.kind === "call" ? (
+              <Table.Tr key={`call:${row.id}`} data-testid={`call-${row.id}`}>
+                <Table.Td colSpan={3} pl={row.depth * 16 + 8}>
+                  <Text size="sm" fw={600}>
+                    {row.label}
+                    {row.workflow !== null && (
+                      <Text span size="xs" c="dimmed" ff="monospace" ml="xs">
+                        {row.workflow}
+                      </Text>
+                    )}
+                  </Text>
+                </Table.Td>
+              </Table.Tr>
+            ) : (
+              <Table.Tr key={row.step.id} data-testid={`step-${row.step.id}`}>
+                <Table.Td pl={row.depth * 16 + 8}>{row.step.id}</Table.Td>
+                <Table.Td ff="monospace">{row.step.uses}</Table.Td>
+                <Table.Td>
+                  <StatusBadge status={row.step.status} />
+                </Table.Td>
+              </Table.Tr>
+            ),
+          )}
         </Table.Tbody>
       </Table>
       {view.lanes.length > 0 && <Lanes lanes={view.lanes} />}
