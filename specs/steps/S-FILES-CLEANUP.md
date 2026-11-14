@@ -25,7 +25,8 @@ decision still waits on (unattended first: a pending album must survive the nigh
   default none), `empty_dirs` (remove folders that are empty afterwards, default `true`),
   `remove_root` (also remove `path` itself when it ends up empty, default `false`), `trash`
   (optional folder: move instead of delete), and `review` (`false` | `true`, default `false`)
-  with optional `timeout` (a Duration) and `on_timeout` (`keep` | `delete`, default `keep`).
+  with optional `timeout` (a Duration) and `on_timeout` (`keep` | `delete`, default `keep`),
+  and `allow_audio` (default `false`, FILES-CLEANUP-17).
   `mode: delete` with neither `delete` patterns nor `empty_dirs` MUST be a validation error
   (nothing to do); so MUST `review` in `report` mode and `on_timeout` without `timeout`.
 - FILES-CLEANUP-2: The step MUST be `run_level` (LANES-6): it runs once per pass, about a
@@ -50,6 +51,12 @@ decision still waits on (unattended first: a pending album must survive the nigh
   waiting run (F-TRIGGERS dedup), MUST be skipped as a whole and listed as `busy`, with the
   reason. The rest of `path` is cleaned normally.
 
+- FILES-CLEANUP-17: A file the backend could import (beets: a format it reads) MUST NOT be
+  deleted or moved unless the step sets `allow_audio: true`, even when a `delete` pattern
+  matches it. It is listed as `left` with reason `importable`, so unmatched albums beets
+  skipped without asking survive. With `allow_audio: true` the safety report's `destructive`
+  finding says so.
+
 ### Report and delete
 - FILES-CLEANUP-8: The step MUST classify every file under `path` as `delete` (matched a
   `delete` pattern and no `keep` pattern), `keep` (matched `keep`), `in_library`, `busy`, or
@@ -72,7 +79,8 @@ decision still waits on (unattended first: a pending album must survive the nigh
 - FILES-CLEANUP-12 (C-BACKEND amendment): `LibraryBackend` MUST gain a read
   `library_files(paths: list[Path]) -> set[Path]` (which of these files are items) and
   `library_dirs() -> list[Path]` (folders the library keeps music in; beets: `directory`),
-  behind a new capability `files`. The step requires `files`.
+  and `importable(paths: list[Path]) -> set[Path]` (which files it could import), behind a new
+  capability `files`. The step requires `files`.
 - FILES-CLEANUP-13: `mode: delete` MUST run only in trusted workflows (F-SECURITY); in an
   untrusted one the step is refused (`StepRefused`), and `report` still runs. The static safety
   report MUST list every `files.cleanup` step in `delete` mode as `destructive`, with its
@@ -122,6 +130,7 @@ class CleanupParams(BaseModel):
     remove_root: bool = False
     trash: str | None = None
     review: bool = False
+    allow_audio: bool = False
     timeout: Duration | None = None
     on_timeout: Literal["keep", "delete"] | None = None   # default keep when timeout set
 
@@ -141,6 +150,7 @@ class CleanupEntry(BaseModel, frozen=True):
 # LibraryBackend (C-BACKEND)
 def library_files(self, paths: list[Path]) -> set[Path]: ...
 def library_dirs(self) -> list[Path]: ...
+def importable(self, paths: list[Path]) -> set[Path]: ...
 ```
 - Event: `run.step.cleanup.report {entries, truncated, totals}`; `cleanup.requested
   {decision_id, path, totals}`, `cleanup.resolved {decision_id, decision, decided_by}`.
@@ -169,7 +179,8 @@ def library_dirs(self) -> list[Path]: ...
   `Scans/` and the folder removed; outputs `deleted: 1, dirs_removed: 2, left: 0`.
 - Same folder, but the import left it as an import decision: the whole folder is `busy`,
   nothing changes, and the log names the decision.
-- An unmatched album's FLAC files: `left` (no pattern matches audio here); never deleted.
+- An unmatched album's FLAC files with `delete: ["**/*"]`: `left`, reason `importable`; never
+  deleted unless `allow_audio: true`.
 
 ## Extensibility
 - Patterns, `keep`, `trash` and the folder are workflow choices; there is no built-in list of
@@ -193,21 +204,18 @@ def library_dirs(self) -> list[Path]: ...
 - Built-in junk-file lists.
 
 ## Open questions
-3. Should `delete` patterns match audio files at all, or must the step refuse patterns that
-   would match files the backend can import (a second guard against deleting unmatched
-   albums)? Drafted: allowed, because FILES-CLEANUP-6 and -7 already protect library files and
-   pending decisions.
-5. Is "the input of another queued, running or waiting run" (FILES-CLEANUP-7) the right scope,
-   or only pending import decisions?
-
 Resolved (author, 2026-11-14):
 1. Review before deleting: yes (FILES-CLEANUP-14, with a C-LANES and an F-REVIEW-QUEUE
    amendment).
 2. The backend reads and the `files` capability are fine (FILES-CLEANUP-12).
+3. Importable audio is never deleted unless `allow_audio: true` (FILES-CLEANUP-17).
 4. Emptying the trash is a profile setting, `files.trash_keep` (FILES-CLEANUP-16).
+5. Busy covers both pending import decisions and other active runs' inputs
+   (FILES-CLEANUP-7): a nightly sweep must not clean a folder another run is importing.
 
 ## Tasks
-- [ ] C-BACKEND amendment: `files` capability, `library_files`, `library_dirs`; FakeBackend and
+- [ ] C-BACKEND amendment: `files` capability, `library_files`, `library_dirs`, `importable`;
+      FakeBackend and
       BeetsBackend; contract tests (FILES-CLEANUP-12)
 - [ ] Walk and classify with symlink and outside-path guards (FILES-CLEANUP-3 to -8)
 - [ ] Busy folders from import decisions and run inputs (FILES-CLEANUP-7)
