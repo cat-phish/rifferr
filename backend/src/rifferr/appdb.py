@@ -20,6 +20,7 @@ from pydantic import BaseModel, JsonValue
 from rifferr.core.changeset import ApplyResult, ChangeSet, ChangeSetState, JournalEntry
 from rifferr.core.ids import new_ulid
 from rifferr.core.review import GateState, ReviewGate
+from rifferr.core.triggers import DedupRecord
 from rifferr.engine.changesets import StoredChangeSet
 from rifferr.engine.events import Event
 from rifferr.engine.journal import JournalError, completed, failed, recovered, undone
@@ -774,6 +775,91 @@ class AppJournal:
             ),
         )
         return entry
+
+
+class AppTriggers:
+    """Dedup records and webhook secret hashes (F-TRIGGERS TRIGGERS-17, -19 to -22)."""
+
+    def __init__(self, db: AppDB) -> None:
+        self.db = db
+
+    @property
+    def _conn(self) -> sqlite3.Connection:
+        return self.db._conn  # pyright: ignore[reportPrivateUsage]
+
+    # -- dedup -----------------------------------------------------------------------
+
+    def record(self, profile: str, workflow: str, input_path: str) -> DedupRecord | None:
+        """The last run for this input of ``workflow``, with that run's current state."""
+        row = self._conn.execute(
+            "SELECT t.fingerprint, t.run_id, j.state FROM trigger_inputs t"
+            " LEFT JOIN jobs j ON j.run_id = t.run_id AND j.kind = 'run'"
+            " WHERE t.profile = ? AND t.workflow = ? AND t.input_path = ?",
+            (profile, workflow, input_path),
+        ).fetchone()
+        if row is None:
+            return None
+        return DedupRecord(row["fingerprint"], row["run_id"], row["state"])
+
+    def remember(
+        self, profile: str, workflow: str, input_path: str, fingerprint: str, run_id: str
+    ) -> None:
+        self._conn.execute(
+            "INSERT INTO trigger_inputs (profile, workflow, input_path, fingerprint, run_id,"
+            " updated_at) VALUES (?, ?, ?, ?, ?, ?)"
+            " ON CONFLICT (profile, workflow, input_path) DO UPDATE SET"
+            " fingerprint = excluded.fingerprint, run_id = excluded.run_id,"
+            " updated_at = excluded.updated_at",
+            (profile, workflow, input_path, fingerprint, run_id, _now()),
+        )
+
+    def active_run(self, profile: str, workflow: str, trigger: str) -> str | None:
+        """A queued or running run of ``workflow`` started by ``trigger`` (TRIGGERS-14)."""
+        row = self._conn.execute(
+            "SELECT run_id FROM jobs WHERE kind = 'run' AND profile = ? AND workflow = ?"
+            " AND trigger = ? AND state IN ('queued', 'running') ORDER BY created_at LIMIT 1",
+            (profile, workflow, trigger),
+        ).fetchone()
+        return row["run_id"] if row else None
+
+    def last_fired(self, profile: str, workflow: str, trigger: str) -> Job | None:
+        row = self._conn.execute(
+            "SELECT * FROM jobs WHERE kind = 'run' AND profile = ? AND workflow = ?"
+            " AND trigger = ? ORDER BY created_at DESC, id DESC LIMIT 1",
+            (profile, workflow, trigger),
+        ).fetchone()
+        return _job(row) if row else None
+
+    # -- webhook secrets (hashes only) -----------------------------------------------
+
+    def set_webhook_hash(self, profile: str, name: str, sha256: str) -> None:
+        self._conn.execute(
+            "INSERT INTO webhook_secrets (profile, name, sha256, created_at) VALUES (?, ?, ?, ?)"
+            " ON CONFLICT (profile, name) DO UPDATE SET sha256 = excluded.sha256,"
+            " created_at = excluded.created_at",
+            (profile, name, sha256, _now()),
+        )
+
+    def webhook_hash(self, profile: str, name: str) -> str | None:
+        row = self._conn.execute(
+            "SELECT sha256 FROM webhook_secrets WHERE profile = ? AND name = ?", (profile, name)
+        ).fetchone()
+        return row["sha256"] if row else None
+
+    def webhooks(self, profile: str | None = None) -> list[tuple[str, str, datetime]]:
+        """``(profile, name, created_at)`` of every webhook that has a secret."""
+        rows = self._conn.execute(
+            "SELECT profile, name, created_at FROM webhook_secrets"
+            " WHERE ? IS NULL OR profile = ? ORDER BY profile, name",
+            (profile, profile),
+        ).fetchall()
+        return [(r["profile"], r["name"], datetime.fromisoformat(r["created_at"])) for r in rows]
+
+    def delete_webhook(self, profile: str, name: str) -> bool:
+        cur = self._conn.execute(
+            "DELETE FROM webhook_secrets WHERE profile = ? AND name = ?", (profile, name)
+        )
+        return cur.rowcount > 0
 
 
 class SqliteEventSink:
