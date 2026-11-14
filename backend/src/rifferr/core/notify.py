@@ -202,7 +202,7 @@ class QueueRef(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    kind: Literal["changeset", "gate", "import"]
+    kind: Literal["changeset", "gate", "import", "cleanup"]
     ref: str
     labels: tuple[str, ...] = ()
 
@@ -315,7 +315,7 @@ def run_summary(
 
 def review_timeout(
     *,
-    what: Literal["gate", "import"],
+    what: Literal["gate", "import", "cleanup"],
     ref: str,
     decision: str,
     profile: str,
@@ -324,7 +324,7 @@ def review_timeout(
     base_url: str | None,
 ) -> Notification:
     url = run_link(base_url, run_id)
-    noun = "A review gate" if what == "gate" else "An import decision"
+    noun = {"gate": "A review gate", "import": "An import decision", "cleanup": "A cleanup"}[what]
     body = (
         f"{noun} in {_where(workflow, profile)} waited too long and was decided "
         f"automatically: {decision}."

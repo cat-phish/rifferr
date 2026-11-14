@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, StringConstraints
 
 from rifferr.appdb import JobState
 from rifferr.core.changeset import ChangeSet, ChangeSetState
+from rifferr.core.files import CleanupChoice, CleanupDecision
 from rifferr.core.imports import MAX_LOOKUP_IDS, MAX_LOOKUP_TEXT, ImportAction, ImportDecision
 from rifferr.core.profile import GridColumns
 from rifferr.core.review import ReviewGate
@@ -156,8 +157,10 @@ LaneStateOut = Literal[
 
 
 class LaneHold(_Model):
-    kind: Literal["changeset", "gate", "import"]
-    ref: str = Field(description="ChangeSet id, review gate id or import decision id")
+    kind: Literal["changeset", "gate", "import", "cleanup"]
+    ref: str = Field(
+        description="ChangeSet id, review gate id, import decision id or cleanup decision id"
+    )
 
 
 class LaneOut(_Model):
@@ -264,9 +267,10 @@ class JobQueued(_Model):
 
 class QueueItem(_Model):
     """One thing that waits for a decision (REVIEW-QUEUE-1). ``kind`` says which of
-    ``changeset`` / ``gate`` / ``import_decision`` is set (IMPORT-UI-7)."""
+    ``changeset`` / ``gate`` / ``import_decision`` / ``cleanup_decision`` is set
+    (IMPORT-UI-7, FILES-CLEANUP-14)."""
 
-    kind: Literal["changeset", "gate", "import"]
+    kind: Literal["changeset", "gate", "import", "cleanup"]
     id: str
     profile: str
     run_id: str
@@ -277,6 +281,7 @@ class QueueItem(_Model):
     state: ChangeSetState | None = None
     gate: ReviewGate | None = None
     import_decision: ImportDecision | None = None
+    cleanup_decision: CleanupDecision | None = None
 
 
 class ChangeSetDetail(_Model):
@@ -313,6 +318,21 @@ class ImportDecisionBody(_Model):
     action: ImportAction
     candidate_id: str | None = Field(default=None, max_length=MAX_LOOKUP_TEXT * 2)
     note: str | None = Field(default=None, max_length=2000)
+
+
+class CleanupDecisionBody(_Model):
+    """Answer a cleanup decision (FILES-CLEANUP-14): ``delete`` what was listed for
+    deletion, or ``keep`` everything."""
+
+    decision: CleanupChoice
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class CleanupDecided(_Model):
+    """``job_id`` is the worker job that cleans the folder (``delete``); ``None`` for
+    ``keep``, which needs no job."""
+
+    job_id: str | None = None
 
 
 class ImportLookupBody(_Model):

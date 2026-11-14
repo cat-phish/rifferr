@@ -217,6 +217,19 @@ class HoldStep:
         return StepResult()
 
 
+class HoldPassStep:
+    """Holds its whole pass with ``ctx.hold_pass`` (LANES-16); ref ``pass-hold``."""
+
+    name = "test.hold_pass"
+    run_level = True
+    params_model = _P
+    requires = BackendCapabilities(query=True)
+
+    async def run(self, ctx: StepContext) -> StepResult:
+        ctx.hold_pass("cleanup", "pass-hold", "the folder")
+        return StepResult()
+
+
 class RemoveParams(_P):
     albums: list[str] = []
 
@@ -256,6 +269,7 @@ class SeenStep:
 
 ALL = [
     HoldStep(),
+    HoldPassStep(),
     RemoveStep(),
     SeenStep(),
     EchoStep(),

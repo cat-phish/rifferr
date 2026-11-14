@@ -27,6 +27,8 @@ REVIEW_EVENTS = frozenset(
         "review.resolved",
         "import.requested",
         "import.resolved",
+        "cleanup.requested",
+        "cleanup.resolved",
         "job.finished",
     }
 )

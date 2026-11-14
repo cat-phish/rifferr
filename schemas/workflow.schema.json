@@ -182,6 +182,75 @@
               "type": "string"
             },
             "uses": {
+              "const": "files.cleanup",
+              "title": "Uses"
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Backend condition (a beets query).",
+              "title": "When"
+            },
+            "with": {
+              "$ref": "#/$defs/With_files_cleanup"
+            }
+          },
+          "required": [
+            "id",
+            "uses"
+          ],
+          "title": "Step: files.cleanup",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One entry of ``steps:`` (WORKFLOW-2, WORKFLOW-3).",
+          "properties": {
+            "apply": {
+              "default": "review",
+              "description": "Whether this step's ChangeSets apply automatically or wait for review. Ignored by steps that don't produce ChangeSets.",
+              "enum": [
+                "auto",
+                "review"
+              ],
+              "title": "Apply",
+              "type": "string"
+            },
+            "id": {
+              "pattern": "^[a-z][a-z0-9_-]*$",
+              "title": "Id",
+              "type": "string"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Name"
+            },
+            "on_error": {
+              "default": "stop",
+              "enum": [
+                "stop",
+                "skip",
+                "continue"
+              ],
+              "title": "On Error",
+              "type": "string"
+            },
+            "uses": {
               "const": "notify",
               "title": "Uses"
             },
@@ -803,6 +872,116 @@
         }
       },
       "title": "ImporterOptions",
+      "type": "object"
+    },
+    "With_files_cleanup": {
+      "additionalProperties": false,
+      "properties": {
+        "allow_audio": {
+          "default": false,
+          "description": "Let delete patterns match music the backend could import",
+          "title": "Allow Audio",
+          "type": "boolean"
+        },
+        "delete": {
+          "description": "Files to delete. Glob patterns on paths relative to path; without '/' they match a file name at any depth (*.nfo), with '/' the relative path (Scans/*.jpg); ** spans folders; no case",
+          "items": {
+            "type": "string"
+          },
+          "title": "Delete",
+          "type": "array"
+        },
+        "empty_dirs": {
+          "default": true,
+          "description": "Remove folders left empty",
+          "title": "Empty Dirs",
+          "type": "boolean"
+        },
+        "keep": {
+          "description": "Files never deleted, checked first (globs)",
+          "items": {
+            "type": "string"
+          },
+          "title": "Keep",
+          "type": "array"
+        },
+        "mode": {
+          "default": "report",
+          "description": "report: list only; delete: delete what delete names",
+          "enum": [
+            "report",
+            "delete"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "on_timeout": {
+          "anyOf": [
+            {
+              "enum": [
+                "keep",
+                "delete"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The decision once timeout passes (default keep)",
+          "title": "On Timeout"
+        },
+        "path": {
+          "description": "The folder to clean, e.g. {{ run.input }}",
+          "title": "Path",
+          "type": "string"
+        },
+        "remove_root": {
+          "default": false,
+          "description": "Also remove path when it ends empty",
+          "title": "Remove Root",
+          "type": "boolean"
+        },
+        "review": {
+          "default": false,
+          "description": "Ask in the review queue before deleting (delete mode)",
+          "title": "Review",
+          "type": "boolean"
+        },
+        "timeout": {
+          "anyOf": [
+            {
+              "description": "A duration: whole numbers with d, h, m or s, e.g. 30m, 12h, 3d, 1d12h",
+              "pattern": "^(\\d+[dhms])+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "With review: decide automatically after this long",
+          "title": "Timeout"
+        },
+        "trash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Move files to this folder instead of deleting them",
+          "title": "Trash"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "CleanupParams",
       "type": "object"
     },
     "With_notify": {

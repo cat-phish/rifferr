@@ -22,20 +22,23 @@ from pydantic import JsonValue, ValidationError
 
 from rifferr.appdb import (
     AppChangeSets,
+    AppCleanupDecisions,
     AppDB,
     AppImportDecisions,
     AppJournal,
+    AppLanes,
     AppReviewGates,
     GateResolvedError,
     Job,
 )
 from rifferr.core.changeset import ChangeSet
+from rifferr.core.files import CleanupChoice
 from rifferr.core.imports import ImportAction
 from rifferr.core.review import GateDecision
 from rifferr.engine.events import Event, EventSink, profile_stream
 from rifferr.engine.undo import run_entries, undoable
 from rifferr.trust import workflow_hash
-from rifferr.worker.gates import cancel_lanes, reject_gate_lanes
+from rifferr.worker.gates import cancel_lanes, reject_gate_lanes, settle
 from rifferr.worker.protocol import (
     HUNG_AFTER,
     MAX_MESSAGE,
@@ -434,6 +437,71 @@ class WorkerSupervisor:
             decided.append(decision.id)
         return decided
 
+    # -- cleanup decisions (S-FILES-CLEANUP) -----------------------------------------
+
+    async def decide_cleanup(
+        self,
+        decision_id: str,
+        decision: CleanupChoice,
+        *,
+        by: str | None = None,
+        note: str | None = None,
+    ) -> str | None:
+        """Answer a cleanup decision (FILES-CLEANUP-14). ``delete`` queues the worker job
+        that cleans the folder and returns its id; ``keep`` deletes nothing and lets the
+        held lanes go on at once (returns ``None``). Raises ``KeyError`` (unknown),
+        ``CleanupResolvedError`` (decided already), ``CleanupBusyError`` (a job holds
+        it) or ``ValueError`` while its run isn't waiting yet."""
+        if self._shutting_down:
+            raise RuntimeError("server is shutting down")
+        store = AppCleanupDecisions(self.db)
+        found = store.get(decision_id)
+        if found is None:
+            raise KeyError(decision_id)
+        job = self.db.job_for_run(found.run_id)
+        if found.state == "pending" and (job is None or job.state != "waiting_review"):
+            state = job.state if job is not None else "missing"
+            raise ValueError(f"run {found.run_id} is {state}; the cleanup can't be decided yet")
+        claimed = store.claim(decision_id, "pending-job")
+        if decision == "delete":
+            payload: dict[str, JsonValue] = {"decision_id": decision_id, "by": by, "note": note}
+            queued = self.db.submit_job(claimed.profile, "cleanup_apply", payload, claimed.run_id)
+            store.set_claim(decision_id, queued.id)
+            await self._wake(claimed.profile)
+            return queued.id
+        claimed.state = "kept"
+        claimed.decided_by = by
+        claimed.decided_at = self._clock()
+        claimed.note = note
+        store.release(claimed)
+        run_id = claimed.run_id
+        data: dict[str, JsonValue] = {
+            "decision_id": decision_id,
+            "decision": "keep",
+            "decided_by": by,
+        }
+        if note is not None:
+            data["note"] = note
+        self._emit_run(run_id, "cleanup.resolved", claimed.step_id, data)
+        AppLanes(self.db).resolve_hold(run_id, decision_id)
+        if settle(self.db, run_id, lambda t, step, d: self._emit_run(run_id, t, step, d)) == (
+            "requeued"
+        ):
+            await self._wake(claimed.profile)
+        return None
+
+    async def decide_overdue_cleanups(self) -> list[str]:
+        """Answer every overdue cleanup decision with its ``on_timeout``."""
+        decided: list[str] = []
+        for decision in AppCleanupDecisions(self.db).overdue(self._clock()):
+            try:
+                await self.decide_cleanup(decision.id, decision.on_timeout, by="timeout")
+            except (ValueError, KeyError) as exc:
+                log.info("cleanup decision %s: timeout skipped: %s", decision.id, exc)
+                continue
+            decided.append(decision.id)
+        return decided
+
     def start(self) -> None:
         """Start background work: the review-gate deadline timer (REVIEW-9)."""
         if self._gate_timer is None:
@@ -449,10 +517,15 @@ class WorkerSupervisor:
                 await self.decide_overdue_imports()
             except Exception:
                 log.exception("checking import decision deadlines failed")
+            try:
+                await self.decide_overdue_cleanups()
+            except Exception:
+                log.exception("checking cleanup decision deadlines failed")
             wait = self.gate_check_interval
             for upcoming in (
                 AppReviewGates(self.db).next_deadline(),
                 AppImportDecisions(self.db).next_deadline(),
+                AppCleanupDecisions(self.db).next_deadline(),
             ):
                 if upcoming is not None:
                     wait = max(0.0, min(wait, (upcoming - self._clock()).total_seconds()))
@@ -481,6 +554,7 @@ class WorkerSupervisor:
             cancel_lanes(self.db, run_id, lambda t, step, d: self._emit_run(run_id, t, step, d))
             AppReviewGates(self.db).cancel_for_run(run_id)  # REVIEW-10
             AppImportDecisions(self.db).cancel_for_run(run_id)  # IMPORT-UI-14
+            AppCleanupDecisions(self.db).cancel_for_run(run_id)  # FILES-CLEANUP-14
             seq = self.db.last_seq(run_id) + 1
             self._persist(self._event(run_id, seq, "run.finished", {"status": "cancelled"}))
             return
@@ -680,7 +754,7 @@ class WorkerSupervisor:
             return
         if event.type == "run.started":
             self.db.mark_started(event.run_id)
-        elif event.type in ("review.requested", "import.requested"):
+        elif event.type in ("review.requested", "import.requested", "cleanup.requested"):
             self._gates_changed.set()  # a new deadline may be the next one
         for listener in self._listeners:
             listener(event)

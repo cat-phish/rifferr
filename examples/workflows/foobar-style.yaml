@@ -44,3 +44,17 @@ steps:
     apply: review
     with:
       script: compilation.yaml
+  # Checklist line 4: delete leftover junk and empty folders from the imported folder.
+  # Music beets could import is never deleted (an unmatched album stays for line 5), nor
+  # is a folder that still waits as an import decision: it is cleaned by the pass that
+  # runs once the decision is made. Everything else that is left is logged as a warning.
+  - id: cleanup
+    uses: files.cleanup
+    with:
+      path: "{{ run.input }}"
+      mode: delete
+      delete: ["*.nfo", "*.m3u", "*.m3u8", "*.sfv", "*.url", "Thumbs.db", ".DS_Store"]
+      keep: ["*.log", "*.cue"]
+      # A manual run's input is the whole inbox, which must stay; the album folder of a
+      # watch run is left empty instead (BACKLOG B-055).
+      remove_root: false

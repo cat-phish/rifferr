@@ -18,6 +18,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, JsonValue
 
 from rifferr.core.changeset import ApplyResult, ChangeSet, ChangeSetState, JournalEntry
+from rifferr.core.files import CleanupDecision
 from rifferr.core.ids import new_ulid
 from rifferr.core.imports import ImportDecision, ImportDecisionState
 from rifferr.core.notify import Notification, QueueRef
@@ -43,6 +44,7 @@ JobKind = Literal[
     "repropose",
     "import_decision",
     "import_lookup",
+    "cleanup_apply",
 ]
 
 #: ChangeSet states that still hold a suspended run (CHANGESET-7).
@@ -916,6 +918,124 @@ class AppImportDecisions:
 
     def cancel_for_run(self, run_id: str) -> list[str]:
         """Cancel the run's pending decisions (IMPORT-UI-14). Returns their ids."""
+        cancelled: list[str] = []
+        for decision in self.pending(run_id=run_id):
+            decision.state = "cancelled"
+            self.release(decision)
+            cancelled.append(decision.id)
+        return cancelled
+
+
+class CleanupResolvedError(ValueError):
+    """The cleanup decision isn't pending any more (FILES-CLEANUP-14: decided once)."""
+
+    def __init__(self, decision_id: str, state: str) -> None:
+        super().__init__(f"cleanup decision {decision_id} is already {state}")
+        self.decision_id = decision_id
+        self.state = state
+
+
+class CleanupBusyError(ValueError):
+    """A job is cleaning the folder of this decision right now."""
+
+    def __init__(self, decision_id: str) -> None:
+        super().__init__(f"cleanup decision {decision_id} is being applied; try again shortly")
+        self.decision_id = decision_id
+
+
+class AppCleanupDecisions:
+    """``CleanupDecisionStore`` backed by the ``cleanup_decisions`` table
+    (S-FILES-CLEANUP FILES-CLEANUP-14)."""
+
+    def __init__(self, db: AppDB) -> None:
+        self.db = db
+
+    @property
+    def _conn(self) -> sqlite3.Connection:
+        return self.db._conn  # pyright: ignore[reportPrivateUsage]
+
+    def add(self, decision: CleanupDecision) -> None:
+        self._conn.execute(
+            "INSERT INTO cleanup_decisions (id, profile, run_id, step_id, state, body,"
+            " created_at, deadline) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                decision.id,
+                decision.profile,
+                decision.run_id,
+                decision.step_id,
+                decision.state,
+                decision.model_dump_json(),
+                decision.created_at.isoformat(),
+                _utc(decision.deadline) if decision.deadline is not None else None,
+            ),
+        )
+
+    def get(self, decision_id: str) -> CleanupDecision | None:
+        row = self._conn.execute(
+            "SELECT body FROM cleanup_decisions WHERE id = ?", (decision_id,)
+        ).fetchone()
+        return CleanupDecision.model_validate_json(row["body"]) if row else None
+
+    def pending(
+        self, profile: str | None = None, run_id: str | None = None
+    ) -> list[CleanupDecision]:
+        """Pending decisions, oldest first."""
+        sql, args = "SELECT body FROM cleanup_decisions WHERE state = 'pending'", list[Any]()
+        if profile is not None:
+            sql, args = sql + " AND profile = ?", [*args, profile]
+        if run_id is not None:
+            sql, args = sql + " AND run_id = ?", [*args, run_id]
+        rows = self._conn.execute(sql + " ORDER BY created_at, id", args).fetchall()
+        return [CleanupDecision.model_validate_json(r["body"]) for r in rows]
+
+    def overdue(self, now: datetime) -> list[CleanupDecision]:
+        """Pending, unclaimed decisions whose deadline passed."""
+        rows = self._conn.execute(
+            "SELECT body FROM cleanup_decisions WHERE state = 'pending' AND claim IS NULL"
+            " AND deadline IS NOT NULL AND deadline <= ? ORDER BY deadline, id",
+            (_utc(now),),
+        ).fetchall()
+        return [CleanupDecision.model_validate_json(r["body"]) for r in rows]
+
+    def next_deadline(self) -> datetime | None:
+        row = self._conn.execute(
+            "SELECT MIN(deadline) FROM cleanup_decisions WHERE state = 'pending'"
+            " AND deadline IS NOT NULL"
+        ).fetchone()
+        return datetime.fromisoformat(row[0]) if row and row[0] else None
+
+    def claim(self, decision_id: str, job: str) -> CleanupDecision:
+        """Reserve a pending decision for one job. Raises ``KeyError`` (unknown),
+        ``CleanupResolvedError`` (not pending) or ``CleanupBusyError`` (claimed)."""
+        cur = self._conn.execute(
+            "UPDATE cleanup_decisions SET claim = ? WHERE id = ? AND state = 'pending'"
+            " AND claim IS NULL",
+            (job, decision_id),
+        )
+        decision = self.get(decision_id)
+        if decision is None:
+            raise KeyError(decision_id)
+        if cur.rowcount != 1:
+            if decision.state != "pending":
+                raise CleanupResolvedError(decision_id, decision.state)
+            raise CleanupBusyError(decision_id)
+        return decision
+
+    def set_claim(self, decision_id: str, job: str) -> None:
+        self._conn.execute(
+            "UPDATE cleanup_decisions SET claim = ? WHERE id = ? AND claim IS NOT NULL",
+            (job, decision_id),
+        )
+
+    def release(self, decision: CleanupDecision) -> None:
+        """Save ``decision`` and drop the claim."""
+        self._conn.execute(
+            "UPDATE cleanup_decisions SET state = ?, body = ?, claim = NULL WHERE id = ?",
+            (decision.state, decision.model_dump_json(), decision.id),
+        )
+
+    def cancel_for_run(self, run_id: str) -> list[str]:
+        """Cancel the run's pending decisions (a cancelled or finished run). Returns ids."""
         cancelled: list[str] = []
         for decision in self.pending(run_id=run_id):
             decision.state = "cancelled"

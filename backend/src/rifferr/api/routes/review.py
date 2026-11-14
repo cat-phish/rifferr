@@ -14,6 +14,8 @@ from fastapi import APIRouter, Query
 from rifferr.api.errors import ERROR_RESPONSES, ApiError, not_found
 from rifferr.api.models import (
     ChangeSetDetail,
+    CleanupDecided,
+    CleanupDecisionBody,
     CurrentValues,
     Decision,
     GateDecisionBody,
@@ -29,13 +31,17 @@ from rifferr.api.state import State
 from rifferr.appdb import (
     HOLDING_CHANGESETS,
     AppChangeSets,
+    AppCleanupDecisions,
     AppImportDecisions,
     AppJournal,
     AppReviewGates,
+    CleanupBusyError,
+    CleanupResolvedError,
     GateResolvedError,
     ImportBusyError,
     ImportResolvedError,
 )
+from rifferr.core.files import CleanupDecision
 from rifferr.core.imports import ImportDecision
 from rifferr.core.review import ReviewGate
 from rifferr.engine.changesets import StoredChangeSet
@@ -56,8 +62,8 @@ async def review_queue(
     run: Annotated[str | None, Query()] = None,
 ) -> list[QueueItem]:
     """What waits for a decision, oldest first: run ChangeSets that are proposed or
-    conflicted, pending review gates (REVIEW-QUEUE-1) and pending import decisions
-    (IMPORT-UI-7)."""
+    conflicted, pending review gates (REVIEW-QUEUE-1), pending import decisions
+    (IMPORT-UI-7) and pending cleanup decisions (FILES-CLEANUP-14)."""
     workflows: dict[str, str | None] = {}
 
     def workflow(run_id: str) -> str | None:
@@ -107,6 +113,19 @@ async def review_queue(
                 step_id=decision.step_id,
                 created_at=decision.created_at,
                 import_decision=decision,
+            )
+        )
+    for cleanup in AppCleanupDecisions(state.db).pending(profile=profile, run_id=run):
+        items.append(
+            QueueItem(
+                kind="cleanup",
+                id=cleanup.id,
+                profile=cleanup.profile,
+                run_id=cleanup.run_id,
+                workflow=workflow(cleanup.run_id),
+                step_id=cleanup.step_id,
+                created_at=cleanup.created_at,
+                cleanup_decision=cleanup,
             )
         )
     items.sort(key=lambda i: (i.created_at, i.id))
@@ -328,3 +347,42 @@ async def lookup_import(decision_id: str, body: ImportLookupBody, state: State) 
     except ImportBusyError as exc:
         raise ApiError(409, "busy", str(exc)) from None
     return JobQueued(job_id=job_id)
+
+
+# -- cleanup decisions (S-FILES-CLEANUP) ----------------------------------------------
+
+
+@router.get("/cleanups/{decision_id}", response_model=CleanupDecision, responses=ERROR_RESPONSES)
+async def get_cleanup(decision_id: str, state: State) -> CleanupDecision:
+    """The full cleanup decision: the listing, folder and options (FILES-CLEANUP-14)."""
+    decision = AppCleanupDecisions(state.db).get(decision_id)
+    if decision is None:
+        raise not_found(f"cleanup decision {decision_id}")
+    return decision
+
+
+@router.post(
+    "/cleanups/{decision_id}/decision",
+    status_code=202,
+    response_model=CleanupDecided,
+    responses=ERROR_RESPONSES,
+)
+async def decide_cleanup(
+    decision_id: str, body: CleanupDecisionBody, state: State
+) -> CleanupDecided:
+    """Answer a cleanup decision, once (FILES-CLEANUP-14). ``delete`` queues a worker job
+    that cleans the folder (its result arrives as ``job.finished`` and
+    ``cleanup.resolved``); ``keep`` deletes nothing and lets the run go on."""
+    try:
+        job_id = await state.supervisor.decide_cleanup(
+            decision_id, body.decision, by=DECIDER, note=body.note
+        )
+    except KeyError:
+        raise not_found(f"cleanup decision {decision_id}") from None
+    except CleanupResolvedError as exc:
+        raise ApiError(409, "already_resolved", str(exc)) from None
+    except CleanupBusyError as exc:
+        raise ApiError(409, "busy", str(exc)) from None
+    except ValueError as exc:
+        raise ApiError(409, "not_waiting", str(exc)) from None
+    return CleanupDecided(job_id=job_id)

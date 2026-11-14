@@ -13,7 +13,14 @@ from typing import Literal
 
 from pydantic import JsonValue
 
-from rifferr.appdb import AppChangeSets, AppDB, AppImportDecisions, AppLanes, AppReviewGates
+from rifferr.appdb import (
+    AppChangeSets,
+    AppCleanupDecisions,
+    AppDB,
+    AppImportDecisions,
+    AppLanes,
+    AppReviewGates,
+)
 from rifferr.core.review import REJECTED_AT_REVIEW, ReviewGate
 from rifferr.engine.lanes import FINAL_LANE_STATES, lane_json
 
@@ -108,6 +115,7 @@ def _close_leftovers(db: AppDB, run_id: str, emit: EmitRun) -> None:
         emit("changeset.rejected", stored.changeset.step_id, {"changeset_id": stored.changeset.id})
     AppReviewGates(db).cancel_for_run(run_id)
     AppImportDecisions(db).cancel_for_run(run_id)
+    AppCleanupDecisions(db).cancel_for_run(run_id)
 
 
 def _finish_whole(db: AppDB, run_id: str, emit: EmitRun) -> bool:

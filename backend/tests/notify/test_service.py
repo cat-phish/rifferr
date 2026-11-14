@@ -410,3 +410,41 @@ async def test_NOTIFY_15_no_reminders_without_remind_after(env: Env) -> None:
 
 def test_hold_json_shape_matches_what_the_service_reads() -> None:
     assert Hold("gate", "g1").as_json() == {"kind": "gate", "ref": "g1"}
+
+
+# -- FILES-CLEANUP-14: cleanup decisions are queue items ----------------------------
+
+
+async def test_FILES_CLEANUP_14_cleanup_hold_needs_review_and_reminds(db: AppDB) -> None:
+    from rifferr.appdb import AppCleanupDecisions
+    from rifferr.core.files import CleanupDecision, CleanupOptions
+
+    e = Env(
+        db, {"targets": {"phone": "ntfy"}, "rules": [{"on": "review.needed", "remind_after": "1h"}]}
+    )
+    run = e.run()
+    store = AppCleanupDecisions(db)
+    store.add(
+        CleanupDecision(
+            id="c1",
+            profile="main",
+            run_id=run,
+            step_id="clean",
+            path="/inbox",
+            entries=[],
+            options=CleanupOptions(),
+            created_at=T0,
+        )
+    )
+    e.waiting(run, "pending:cleanup:c1", "cleanup of inbox", ("cleanup", "c1"))
+    e.service.flush_all()
+    await e.settle()
+    assert e.titles() == [("phone", "1 album needs review")]
+    e.now = T0 + timedelta(hours=2)
+    assert e.service.check_reminders() == 1
+    done = store.get("c1")
+    assert done is not None
+    done.state = "kept"
+    store.release(done)
+    e.now = T0 + timedelta(hours=4)
+    assert e.service.check_reminders() == 0

@@ -146,6 +146,7 @@ const LANE_COLORS: Record<LaneOut["state"], string> = {
 const HOLD_SAYS: Record<string, string> = {
   gate: "review gate",
   import: "import decision",
+  cleanup: "cleanup decision",
 };
 
 /** One row per album: where it is in the run and what it waits for (C-LANES LANES-15). */

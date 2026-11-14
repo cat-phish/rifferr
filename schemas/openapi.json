@@ -330,6 +330,316 @@
         "title": "CheckResult",
         "type": "object"
       },
+      "CleanupDecided": {
+        "additionalProperties": false,
+        "description": "``job_id`` is the worker job that cleans the folder (``delete``); ``None`` for\n``keep``, which needs no job.",
+        "properties": {
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          }
+        },
+        "title": "CleanupDecided",
+        "type": "object"
+      },
+      "CleanupDecision": {
+        "description": "A listing waiting for Delete or Keep in the review queue (FILES-CLEANUP-14).",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "deadline": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "decided_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided By"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/CleanupEntry"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "on_timeout": {
+            "default": "keep",
+            "enum": [
+              "delete",
+              "keep"
+            ],
+            "title": "On Timeout",
+            "type": "string"
+          },
+          "options": {
+            "$ref": "#/components/schemas/CleanupOptions"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "profile": {
+            "title": "Profile",
+            "type": "string"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "state": {
+            "default": "pending",
+            "enum": [
+              "pending",
+              "deleted",
+              "kept",
+              "cancelled"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "step_id": {
+            "title": "Step Id",
+            "type": "string"
+          },
+          "totals": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Totals",
+            "type": "object"
+          },
+          "truncated": {
+            "default": 0,
+            "title": "Truncated",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "profile",
+          "run_id",
+          "step_id",
+          "path",
+          "entries",
+          "options",
+          "created_at"
+        ],
+        "title": "CleanupDecision",
+        "type": "object"
+      },
+      "CleanupDecisionBody": {
+        "additionalProperties": false,
+        "description": "Answer a cleanup decision (FILES-CLEANUP-14): ``delete`` what was listed for\ndeletion, or ``keep`` everything.",
+        "properties": {
+          "decision": {
+            "enum": [
+              "delete",
+              "keep"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "title": "CleanupDecisionBody",
+        "type": "object"
+      },
+      "CleanupEntry": {
+        "properties": {
+          "cls": {
+            "enum": [
+              "delete",
+              "keep",
+              "in_library",
+              "busy",
+              "left",
+              "empty"
+            ],
+            "title": "Cls",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "file",
+              "dir",
+              "link"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "mtime_ns": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mtime Ns"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size"
+          }
+        },
+        "required": [
+          "path",
+          "kind",
+          "cls"
+        ],
+        "title": "CleanupEntry",
+        "type": "object"
+      },
+      "CleanupOptions": {
+        "description": "What the worker needs to clean again after the decision (FILES-CLEANUP-14).",
+        "properties": {
+          "allow_audio": {
+            "default": false,
+            "title": "Allow Audio",
+            "type": "boolean"
+          },
+          "delete": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Delete",
+            "type": "array"
+          },
+          "empty_dirs": {
+            "default": true,
+            "title": "Empty Dirs",
+            "type": "boolean"
+          },
+          "keep": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Keep",
+            "type": "array"
+          },
+          "remove_root": {
+            "default": false,
+            "title": "Remove Root",
+            "type": "boolean"
+          },
+          "trash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trash"
+          }
+        },
+        "title": "CleanupOptions",
+        "type": "object"
+      },
       "CurrentTarget": {
         "additionalProperties": false,
         "description": "What one target of a ChangeSet holds now (REVIEW-QUEUE-3).",
@@ -1469,13 +1779,14 @@
             "enum": [
               "changeset",
               "gate",
-              "import"
+              "import",
+              "cleanup"
             ],
             "title": "Kind",
             "type": "string"
           },
           "ref": {
-            "description": "ChangeSet id, review gate id or import decision id",
+            "description": "ChangeSet id, review gate id, import decision id or cleanup decision id",
             "title": "Ref",
             "type": "string"
           }
@@ -2228,12 +2539,22 @@
       },
       "QueueItem": {
         "additionalProperties": false,
-        "description": "One thing that waits for a decision (REVIEW-QUEUE-1). ``kind`` says which of\n``changeset`` / ``gate`` / ``import_decision`` is set (IMPORT-UI-7).",
+        "description": "One thing that waits for a decision (REVIEW-QUEUE-1). ``kind`` says which of\n``changeset`` / ``gate`` / ``import_decision`` / ``cleanup_decision`` is set\n(IMPORT-UI-7, FILES-CLEANUP-14).",
         "properties": {
           "changeset": {
             "anyOf": [
               {
                 "$ref": "#/components/schemas/ChangeSet"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cleanup_decision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CleanupDecision"
               },
               {
                 "type": "null"
@@ -2273,7 +2594,8 @@
             "enum": [
               "changeset",
               "gate",
-              "import"
+              "import",
+              "cleanup"
             ],
             "title": "Kind",
             "type": "string"
@@ -3982,6 +4304,162 @@
         ]
       }
     },
+    "/api/cleanups/{decision_id}": {
+      "get": {
+        "description": "The full cleanup decision: the listing, folder and options (FILES-CLEANUP-14).",
+        "operationId": "get_cleanup_api_cleanups__decision_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "decision_id",
+            "required": true,
+            "schema": {
+              "title": "Decision Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CleanupDecision"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Get Cleanup",
+        "tags": [
+          "review"
+        ]
+      }
+    },
+    "/api/cleanups/{decision_id}/decision": {
+      "post": {
+        "description": "Answer a cleanup decision, once (FILES-CLEANUP-14). ``delete`` queues a worker job\nthat cleans the folder (its result arrives as ``job.finished`` and\n``cleanup.resolved``); ``keep`` deletes nothing and lets the run go on.",
+        "operationId": "decide_cleanup_api_cleanups__decision_id__decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "decision_id",
+            "required": true,
+            "schema": {
+              "title": "Decision Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CleanupDecisionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CleanupDecided"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Decide Cleanup",
+        "tags": [
+          "review"
+        ]
+      }
+    },
     "/api/events": {
       "get": {
         "description": "run.started / run.finished across all runs (API-9), plus the review-level and\n``changeset.*`` events of runs (REVIEW-QUEUE-10).",
@@ -5476,7 +5954,7 @@
     },
     "/api/review": {
       "get": {
-        "description": "What waits for a decision, oldest first: run ChangeSets that are proposed or\nconflicted, pending review gates (REVIEW-QUEUE-1) and pending import decisions\n(IMPORT-UI-7).",
+        "description": "What waits for a decision, oldest first: run ChangeSets that are proposed or\nconflicted, pending review gates (REVIEW-QUEUE-1), pending import decisions\n(IMPORT-UI-7) and pending cleanup decisions (FILES-CLEANUP-14).",
         "operationId": "review_queue_api_review_get",
         "parameters": [
           {

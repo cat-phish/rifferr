@@ -15,6 +15,7 @@ from typing import Annotated, Any, Final, Literal
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, PositiveInt
 from pydantic_core import PydanticCustomError
 
+from rifferr.core.duration import Duration
 from rifferr.core.notify import NotifySettings
 from rifferr.core.workflow import VarDecl, substitute
 from rifferr.core.workflow.errors import ValidationError
@@ -185,6 +186,17 @@ class GridColumns(BaseModel):
     item: list[str] | None = Field(default=None, description="Field names, in order")
 
 
+class FilesSettings(BaseModel):
+    """``files.cleanup`` trash handling (S-FILES-CLEANUP FILES-CLEANUP-16)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    trash_keep: Duration | None = Field(
+        default=None,
+        description="Delete trashed run folders older than this, e.g. 30d; unset: keep",
+    )
+
+
 class UiSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -206,6 +218,7 @@ class ProfileFile(BaseModel):
     changes: ChangeSettings = Field(default_factory=ChangeSettings)
     ui: UiSettings = Field(default_factory=UiSettings)
     notify: NotifySettings = Field(default_factory=NotifySettings)
+    files: FilesSettings = Field(default_factory=FilesSettings)
     vars: dict[VarName, Annotated[str, Field(strict=True)]] = Field(default_factory=dict[str, str])
     secrets: dict[str, SecretRefField] = Field(default_factory=dict[str, SecretRef])
     timezone: str | None = Field(default=None, description="IANA time zone; default: system")
@@ -259,6 +272,7 @@ def parse_profile(
         changes=file.changes,
         ui=file.ui,
         notify=file.notify,
+        files=file.files,
         vars=resolve_vars(file.vars, env),
         secrets=file.secrets,
         timezone=file.timezone,

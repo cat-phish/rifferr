@@ -1,5 +1,5 @@
 # S-FILES-CLEANUP: `files.cleanup` step
-Status: Approved
+Status: Implemented
 Milestone: M2
 
 ## Context
@@ -197,6 +197,12 @@ def importable(self, paths: list[Path]) -> set[Path]: ...
 - `review: true` deletes only what a person saw in the listing, unchanged since.
 - In Docker the step sees only mounted folders.
 
+Implementation notes (2026-11-14, added while implementing; not new behavior):
+- Globs: a pattern without `/` matches a file name at any depth, one with `/` the path relative to `path`; `**` spans folders; matching ignores case.
+- After a reviewed `delete`, the held lanes go on even if some files couldn't be removed; failures are in the run log and the decision's `result`. The step's own outputs are from the listing (`to_delete`, `left`, …) plus `decision`.
+- A cleanup decision can be answered only while its run is `waiting_review` (`409 not_waiting`, as gates).
+- Busy run inputs are taken from every profile's queued, running and waiting runs; import decisions from the step's own profile.
+
 ## Non-goals
 - Undo of deletions through the journal, or deletions as ChangeSets.
 - Moving leftovers elsewhere for manual tagging (checklist line 5): a `shell` or a later
@@ -214,16 +220,16 @@ Resolved (author, 2026-11-14):
    (FILES-CLEANUP-7): a nightly sweep must not clean a folder another run is importing.
 
 ## Tasks
-- [ ] C-BACKEND amendment: `files` capability, `library_files`, `library_dirs`, `importable`;
+- [x] C-BACKEND amendment: `files` capability, `library_files`, `library_dirs`, `importable`;
       FakeBackend and
       BeetsBackend; contract tests (FILES-CLEANUP-12)
-- [ ] Walk and classify with symlink and outside-path guards (FILES-CLEANUP-3 to -8)
-- [ ] Busy folders from import decisions and run inputs (FILES-CLEANUP-7)
-- [ ] Report event, delete/trash, empty folders, outputs (FILES-CLEANUP-8 to -11)
-- [ ] Trust refusal and safety-report finding (FILES-CLEANUP-13)
-- [ ] `ctx.hold_pass` and run-level holds (C-LANES LANES-16)
-- [ ] Cleanup decisions: store, worker job, timeout, cancel, events, S-NOTIFY hold kind
+- [x] Walk and classify with symlink and outside-path guards (FILES-CLEANUP-3 to -8)
+- [x] Busy folders from import decisions and run inputs (FILES-CLEANUP-7)
+- [x] Report event, delete/trash, empty folders, outputs (FILES-CLEANUP-8 to -11)
+- [x] Trust refusal and safety-report finding (FILES-CLEANUP-13)
+- [x] `ctx.hold_pass` and run-level holds (C-LANES LANES-16)
+- [x] Cleanup decisions: store, worker job, timeout, cancel, events, S-NOTIFY hold kind
       (FILES-CLEANUP-14)
-- [ ] Review queue: `cleanup` items, routes and UI, with a Playwright test (FILES-CLEANUP-14)
-- [ ] Trash layout, marker and `files.trash_keep` purge (FILES-CLEANUP-15, -16)
-- [ ] Use it in `examples/workflows/foobar-style.yaml`; update `docs/coverage.md` row 4
+- [x] Review queue: `cleanup` items, routes and UI, with a Playwright test (FILES-CLEANUP-14)
+- [x] Trash layout, marker and `files.trash_keep` purge (FILES-CLEANUP-15, -16)
+- [x] Use it in `examples/workflows/foobar-style.yaml`; update `docs/coverage.md` row 4

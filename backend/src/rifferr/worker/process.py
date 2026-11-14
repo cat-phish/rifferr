@@ -25,6 +25,7 @@ from pydantic import JsonValue, ValidationError
 from rifferr.appdb import (
     HOLDING_CHANGESETS,
     AppChangeSets,
+    AppCleanupDecisions,
     AppDB,
     AppImportDecisions,
     AppJournal,
@@ -70,7 +71,10 @@ from rifferr.engine.steps import NotifyTargets
 from rifferr.engine.undo import UndoContext, UndoError, undo_entry, undo_run
 from rifferr.notify import ProfileTargets, default_notifier
 from rifferr.profile_store import app_db_path, config_root, load_profile
+from rifferr.steps.cleanup_plan import CleanupError
+from rifferr.steps.files_cleanup import apply_reviewed, outcome_counts
 from rifferr.steps.registry import load_step_types
+from rifferr.worker.cleanup import busy_folders
 from rifferr.worker.gates import gate_albums, reject_gate_lanes, settle
 from rifferr.worker.protocol import HEARTBEAT_INTERVAL, WorkerCommand, WorkerMessage, encode
 
@@ -160,6 +164,7 @@ class Worker:
         self.gates = AppReviewGates(db)
         self.lanes = AppLanes(db)
         self.imports = AppImportDecisions(db)
+        self.cleanups = AppCleanupDecisions(db)
 
     async def serve(self, commands: Commands) -> None:
         """Run jobs until stopped, the server goes away, or idle too long (WORKER-7)."""
@@ -276,6 +281,9 @@ class Worker:
         if job.kind == "import_lookup":
             self._lookup_import(job)
             return
+        if job.kind == "cleanup_apply":
+            self._apply_cleanup(job)
+            return
         payload = job.payload
         source = str(payload.get("source", ""))
         source_name = str(payload.get("source_name", "<workflow>"))
@@ -293,6 +301,7 @@ class Worker:
             gates=self.gates,
             lanes=self.lanes,
             imports=self.imports,
+            cleanups=self.cleanups,
         )
         try:
             wf, doc = load_workflow(source, source_name)
@@ -312,6 +321,8 @@ class Worker:
                 profile_dir=self.profile.root,
                 secrets=self.secrets,
                 notify=self.notify,
+                profile_settings=self.profile,
+                busy=lambda: busy_folders(self.db, self.profile.name, job.run),
                 last_seq=self._next_seq(job.run) - 1 if resume_after else 0,
             )
             if resume_after is not None:
@@ -333,6 +344,7 @@ class Worker:
             else:
                 self.db.finish(job.run, run.state.value)  # type: ignore[arg-type]
                 self.imports.cancel_for_run(job.run)  # nothing waits on a finished run
+                self.cleanups.cancel_for_run(job.run)
         except Exception as exc:  # an engine bug: still end the run cleanly
             log.exception("run %s crashed", run.id)
             self.db.finish(job.run, "failed", f"{type(exc).__name__}: {exc}")
@@ -488,6 +500,59 @@ class Worker:
             self.lanes.rename(decision.run_id, key, album.id, label(album))  # LANES-14
             self.lanes.resolve_hold(decision.run_id, decision.id)
         self._finish_job(job, "succeeded", result={"album_id": decision.album_id})
+        settle(
+            self.db,
+            decision.run_id,
+            lambda type, step, d: self._changeset_emitter(decision.run_id, step)(type, d),
+        )
+
+    def _apply_cleanup(self, job: Job) -> None:
+        """Clean a folder a person (or the timeout) chose Delete for (FILES-CLEANUP-14)."""
+        payload = job.payload
+        decision_id = str(payload.get("decision_id"))
+        decision = self.cleanups.get(decision_id)
+        if decision is None:
+            self._finish_job(job, "failed", f"no cleanup decision {decision_id}")
+            return
+        emit = self._changeset_emitter(decision.run_id, decision.step_id)
+        by, note = payload.get("by"), payload.get("note")
+        try:
+            outcome = apply_reviewed(
+                decision,
+                self.backend,
+                busy_folders(self.db, self.profile.name, decision.run_id),
+                decision.run_id,
+            )
+        except Exception as exc:  # the folder isn't safe any more: nothing was removed
+            message = str(exc) if isinstance(exc, CleanupError) else f"{type(exc).__name__}: {exc}"
+            emit(
+                "run.step.log",
+                {"stream": "error", "line": f"cleanup of {decision.path}: {message}"},
+            )
+            result: dict[str, int] = {"failed": 1}
+        else:
+            for stream, line in outcome.lines:
+                emit("run.step.log", {"stream": stream, "line": line})
+            result = {k: int(v) for k, v in outcome_counts(outcome).items()}
+        decision.state = "deleted"
+        decision.decided_by = by if isinstance(by, str) else None
+        decision.decided_at = datetime.now(UTC)
+        decision.note = note if isinstance(note, str) else None
+        decision.result = result
+        self.cleanups.release(decision)
+        emit(
+            "cleanup.resolved",
+            {
+                "decision_id": decision.id,
+                "decision": "delete",
+                "decided_by": decision.decided_by,
+                "result": cast(dict[str, JsonValue], dict(result)),
+            },
+        )
+        # FILES-CLEANUP-14: the held lanes go on as after keep; failures are in the log
+        # and the decision's result.
+        self.lanes.resolve_hold(decision.run_id, decision.id)
+        self._finish_job(job, "succeeded", result=cast(dict[str, JsonValue], dict(result)))
         settle(
             self.db,
             decision.run_id,

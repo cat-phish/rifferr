@@ -12,9 +12,10 @@ from pydantic import BaseModel, JsonValue
 
 from rifferr.backends.base import BackendCapabilities, LibraryBackend
 from rifferr.core.changeset import ChangeSet, ChangeSetProposal, TargetRef
+from rifferr.core.files import BusyFolder, CleanupChoice, CleanupEntry, CleanupOptions
 from rifferr.core.imports import ImportQuestion, TimeoutAction
 from rifferr.core.notify import Notification, SendResult
-from rifferr.core.profile import Secret
+from rifferr.core.profile import ProfileFile, Secret
 from rifferr.core.review import GateDecision, GateRequest, OnReject
 from rifferr.core.selection import Scope, Selection
 from rifferr.core.snapshot import AlbumSnapshot
@@ -70,6 +71,9 @@ class StepType(Protocol):
 
     Optional attribute ``force_review: bool`` (default False): the step's ChangeSets
     always wait for review, and ``apply: auto`` is a validation error (CHANGESET-6).
+
+    Optional attribute ``accepts_when: bool`` (default True): False for steps that
+    aren't about albums; ``when:`` is then a validation error.
 
     Optional attribute ``run_level``: ``True``, or a function of the step's raw ``with:``
     mapping returning a bool (default False). A run-level step runs once per pass even
@@ -129,6 +133,25 @@ class NotifyTargets(Protocol):
 SendNotification = Callable[[list[str] | None, Notification], Awaitable[list[SendResult]]]
 
 
+@dataclass(frozen=True)
+class CleanupRequest:
+    """A listing to leave in the review queue before deleting (FILES-CLEANUP-14)."""
+
+    path: str
+    entries: list[CleanupEntry]
+    totals: Mapping[str, int]
+    options: CleanupOptions
+    truncated: int = 0
+    timeout: timedelta | None = None
+    on_timeout: CleanupChoice = "keep"
+
+
+#: The engine's side of ``ctx.request_cleanup``: request -> decision id.
+RequestCleanup = Callable[[CleanupRequest], str]
+#: The engine's side of ``ctx.hold_pass``: kind, ref, label for a pass without lanes.
+HoldPass = Callable[[str, str, str], None]
+
+
 #: The engine's side of ``ctx.request_import``: question, options -> decision id.
 RequestImport = Callable[[ImportQuestion, ImportOptions], str]
 #: The engine's side of ``ctx.hold``: key, kind, ref, label.
@@ -151,6 +174,14 @@ def _no_import(question: ImportQuestion, options: ImportOptions) -> str:
 
 async def _no_notify(targets: list[str] | None, n: Notification) -> list[SendResult]:
     raise StepFailure("this profile has no notification targets (notify.targets)")
+
+
+def _no_cleanup(request: CleanupRequest) -> str:
+    raise StepFailure("this run can't leave cleanup decisions")
+
+
+def _no_hold_pass(kind: str, ref: str, label: str) -> None:
+    raise RuntimeError("this context can't hold passes")
 
 
 def _unchanged(value: str) -> str:
@@ -185,6 +216,10 @@ class StepContext:
         notify: SendNotification | None = None,
         notify_targets: Iterable[str] = (),
         base_url: str | None = None,
+        profile_settings: ProfileFile | None = None,
+        busy_folders: Callable[[], list[BusyFolder]] | None = None,
+        request_cleanup: RequestCleanup | None = None,
+        hold_pass: HoldPass | None = None,
     ) -> None:
         self.run_id = run_id
         self.profile = profile
@@ -212,6 +247,11 @@ class StepContext:
         self.notify_targets: list[str] = list(notify_targets)
         """The profile's notification target names (S-NOTIFY NOTIFY-1)."""
         self.base_url = base_url
+        self.profile_settings = profile_settings
+        """The run's profile settings (``profile.yaml``), when the worker knows them."""
+        self._busy_folders: Callable[[], list[BusyFolder]] = busy_folders or list[BusyFolder]
+        self._request_cleanup = request_cleanup or _no_cleanup
+        self._hold_pass = hold_pass or _no_hold_pass
         """The profile's ``notify.base_url``, for links in notifications (NOTIFY-6)."""
         self._snapshots = SnapshotIndex()
         self.proposed: list[ChangeSet] = []
@@ -309,6 +349,21 @@ class StepContext:
         """
         return self._request_import(question, options or ImportOptions())
 
+    def busy_folders(self) -> list[BusyFolder]:
+        """Folders other work still needs: pending import decisions of this profile and
+        the inputs of its other queued, running or waiting runs (FILES-CLEANUP-7)."""
+        return self._busy_folders()
+
+    def hold_pass(self, kind: str, ref: str, label: str) -> None:
+        """Hold every lane of this pass on ``ref`` (C-LANES LANES-16, run-level steps). A
+        pass without lanes waits in a new lane named by ``label``."""
+        self._hold_pass(kind, ref, label)
+
+    def request_cleanup(self, request: CleanupRequest) -> str:
+        """Leave a cleanup listing in the review queue and hold the pass until it is
+        decided (FILES-CLEANUP-14). Returns the decision id."""
+        return self._request_cleanup(request)
+
     async def notify(
         self, notification: Notification, targets: list[str] | None = None
     ) -> list[SendResult]:
@@ -360,6 +415,7 @@ class StepTypeRegistry:
             params_model=t.params_model,
             requires=t.requires,
             force_review=bool(getattr(t, "force_review", False)),
+            accepts_when=bool(getattr(t, "accepts_when", True)),
         )
 
     def names(self) -> list[str]:

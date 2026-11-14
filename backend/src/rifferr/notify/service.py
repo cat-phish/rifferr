@@ -23,6 +23,7 @@ from pydantic import JsonValue
 
 from rifferr.appdb import (
     AppChangeSets,
+    AppCleanupDecisions,
     AppDB,
     AppImportDecisions,
     AppLanes,
@@ -151,6 +152,8 @@ class NotificationService:
             decision = AppImportDecisions(self.db).get(str(event.data.get("decision_id")))
             if decision is not None and decision.decided_by == "timeout":
                 self._timeout(run_id, "import", decision.id, event)
+        elif event.type == "cleanup.resolved" and event.data.get("decided_by") == "timeout":
+            self._timeout(run_id, "cleanup", str(event.data.get("decision_id")), event)
 
     def on_worker_problem(self, profile: str, reason: str, error: str | None) -> None:
         """Supervisor hook: a worker crashed, hung or could not start (NOTIFY-8)."""
@@ -179,7 +182,7 @@ class NotificationService:
             if not isinstance(hold, dict):
                 continue
             kind, ref = hold.get("kind"), hold.get("ref")
-            if kind not in ("changeset", "gate", "import") or not isinstance(ref, str):
+            if kind not in ("changeset", "gate", "import", "cleanup") or not isinstance(ref, str):
                 continue
             old = held.items.get(ref)
             labels = (*old.labels, label) if old is not None else (label,)
@@ -291,7 +294,7 @@ class NotificationService:
             "review.timeout",
             f"{run_id}:review.timeout:{ref}",
             lambda base: messages.review_timeout(
-                what="gate" if what == "gate" else "import",
+                what="gate" if what == "gate" else "cleanup" if what == "cleanup" else "import",
                 ref=ref,
                 decision=decision,
                 profile=job.profile,
@@ -462,6 +465,9 @@ class NotificationService:
         if item.kind == "import":
             decision = AppImportDecisions(self.db).get(item.ref)
             return decision is not None and decision.state == "pending"
+        if item.kind == "cleanup":
+            cleanup = AppCleanupDecisions(self.db).get(item.ref)
+            return cleanup is not None and cleanup.state == "pending"
         stored = AppChangeSets(self.db).get(item.ref)
         return stored is not None and stored.state in HOLDING_STATES
 

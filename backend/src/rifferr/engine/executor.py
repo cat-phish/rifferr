@@ -27,10 +27,11 @@ from rifferr.core.changeset import (
     JournalEntry,
     TargetRef,
 )
+from rifferr.core.files import BusyFolder, CleanupDecision
 from rifferr.core.ids import new_ulid
 from rifferr.core.imports import ImportDecision, ImportQuestion
 from rifferr.core.notify import Notification, SendResult
-from rifferr.core.profile import Redactor, merged_vars
+from rifferr.core.profile import ProfileFile, Redactor, merged_vars
 from rifferr.core.review import GateAlbum, GateRequest, ReviewGate
 from rifferr.core.selection import Selection
 from rifferr.core.snapshot import label
@@ -54,6 +55,7 @@ from rifferr.engine.changesets import (
     new_changeset,
     proposed_event,
 )
+from rifferr.engine.cleanup import CleanupDecisionStore, InMemoryCleanupStore
 from rifferr.engine.events import Event, EventSink
 from rifferr.engine.imports import ImportDecisionStore, InMemoryImportStore
 from rifferr.engine.journal import InMemoryJournal, Journal
@@ -68,6 +70,7 @@ from rifferr.engine.lanes import (
 from rifferr.engine.review import GateStore, InMemoryGateStore, conflicted_for, fold_changes
 from rifferr.engine.run import PassRecord, Run, RunState, Scalar, StepRecord
 from rifferr.engine.steps import (
+    CleanupRequest,
     GateOptions,
     ImportOptions,
     NoSecrets,
@@ -116,9 +119,13 @@ class _RunState:
         secrets: SecretAccess,
         profile_dir: Path | None = None,
         notify: NotifyTargets | None = None,
+        profile_settings: ProfileFile | None = None,
+        busy: Callable[[], list[BusyFolder]] | None = None,
     ) -> None:
         self.run = run
         self.notify = notify
+        self.profile_settings = profile_settings
+        self.busy = busy
         self.profile_dir = profile_dir
         self.workflow = wf
         self.backend = backend
@@ -158,8 +165,10 @@ class Engine:
         gates: GateStore | None = None,
         lanes: LaneStore | None = None,
         imports: ImportDecisionStore | None = None,
+        cleanups: CleanupDecisionStore | None = None,
     ) -> None:
         self.registry = registry
+        self.cleanups: CleanupDecisionStore = cleanups or InMemoryCleanupStore()
         self.imports: ImportDecisionStore = imports or InMemoryImportStore()
         self.lanes: LaneStore = lanes or InMemoryLaneStore()
         self.sink = sink
@@ -202,6 +211,8 @@ class Engine:
         last_seq: int = 0,
         profile_dir: Path | None = None,
         notify: NotifyTargets | None = None,
+        profile_settings: ProfileFile | None = None,
+        busy: Callable[[], list[BusyFolder]] | None = None,
     ) -> Run:
         """Validate and create a queued run (RUN-10, RUN-11).
 
@@ -210,6 +221,8 @@ class Engine:
         ``last_seq``: events already stored for this run (a resumed run, RUN-14).
         ``profile_dir``: the profile's folder, for steps that read files from it.
         ``notify``: the profile's notification targets (S-NOTIFY), for ``ctx.notify``.
+        ``profile_settings``: ``profile.yaml`` as loaded, for ``ctx.profile_settings``.
+        ``busy``: folders other work still needs (FILES-CLEANUP-7), for ``ctx.busy_folders``.
         ``run_input`` / ``trigger``: ``{{ run.input }}`` / ``{{ run.trigger }}``
         (TRIGGERS-5, -6); without an input the workflow's ``input`` is used.
         """
@@ -256,6 +269,8 @@ class Engine:
             secrets or NoSecrets(),
             profile_dir,
             notify,
+            profile_settings,
+            busy,
         )
         return run
 
@@ -473,11 +488,50 @@ class Engine:
     def _hold(
         self, state: _RunState, key: str, kind: str, ref: str, label: str | None = None
     ) -> None:
-        if kind not in ("changeset", "gate", "import"):
+        if kind not in ("changeset", "gate", "import", "cleanup"):
             raise ValueError(f"unknown hold kind {kind!r}")
         state.lane_holds.setdefault(key, []).append(Hold(cast(Any, kind), ref))
         if label is not None:
             state.lane_labels[key] = label
+
+    def _hold_pass(self, state: _RunState, kind: str, ref: str, label: str) -> None:
+        """LANES-16: every lane of the pass waits on ``ref``; without lanes, a new one."""
+        lanes = [lane for lane in state.pass_lanes if not lane.final]
+        if not lanes:
+            self._hold(state, f"pending:{kind}:{ref}", kind, ref, label)
+            return
+        for lane in lanes:
+            self._hold(state, lane.key, kind, ref)
+
+    def _request_cleanup(self, state: _RunState, spec: StepSpec, request: CleanupRequest) -> str:
+        run = state.run
+        now = self.clock.now()
+        decision = CleanupDecision(
+            id=new_ulid(),
+            profile=run.profile,
+            run_id=run.id,
+            step_id=spec.id,
+            path=request.path,
+            entries=list(request.entries),
+            truncated=request.truncated,
+            totals=dict(request.totals),
+            options=request.options,
+            created_at=now,
+            deadline=now + request.timeout if request.timeout is not None else None,
+            on_timeout=request.on_timeout,
+        )
+        self.cleanups.add(decision)
+        label = f"cleanup of {PurePath(request.path).name or request.path}"
+        self._hold_pass(state, "cleanup", decision.id, label)
+        data: dict[str, JsonValue] = {
+            "decision_id": decision.id,
+            "path": decision.path,
+            "totals": cast(dict[str, JsonValue], dict(decision.totals)),
+        }
+        if decision.deadline is not None:
+            data["deadline"] = decision.deadline.isoformat()
+        self._emit(run, "cleanup.requested", spec.id, _redact(data, state.redactor))
+        return decision.id
 
     def rename_lane(self, run_id: str, old: str, new: str) -> None:
         """LANES-14: a ``pending:`` lane becomes its album's lane once it is imported."""
@@ -569,6 +623,10 @@ class Engine:
                 ),
                 notify_targets=state.notify.names() if state.notify is not None else (),
                 base_url=state.notify.base_url if state.notify is not None else None,
+                profile_settings=state.profile_settings,
+                busy_folders=state.busy,
+                request_cleanup=lambda request: self._request_cleanup(state, spec, request),
+                hold_pass=lambda kind, ref, label: self._hold_pass(state, kind, ref, label),
             )
             result = await self._run_cancellable(state, step_type.run(ctx))
             if state.cancel.is_set():

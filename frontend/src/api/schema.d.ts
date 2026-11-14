@@ -85,6 +85,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/cleanups/{decision_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Cleanup
+         * @description The full cleanup decision: the listing, folder and options (FILES-CLEANUP-14).
+         */
+        get: operations["get_cleanup_api_cleanups__decision_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cleanups/{decision_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decide Cleanup
+         * @description Answer a cleanup decision, once (FILES-CLEANUP-14). ``delete`` queues a worker job
+         *     that cleans the folder (its result arrives as ``job.finished`` and
+         *     ``cleanup.resolved``); ``keep`` deletes nothing and lets the run go on.
+         */
+        post: operations["decide_cleanup_api_cleanups__decision_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/events": {
         parameters: {
             query?: never;
@@ -426,8 +468,8 @@ export interface paths {
         /**
          * Review Queue
          * @description What waits for a decision, oldest first: run ChangeSets that are proposed or
-         *     conflicted, pending review gates (REVIEW-QUEUE-1) and pending import decisions
-         *     (IMPORT-UI-7).
+         *     conflicted, pending review gates (REVIEW-QUEUE-1), pending import decisions
+         *     (IMPORT-UI-7) and pending cleanup decisions (FILES-CLEANUP-14).
          */
         get: operations["review_queue_api_review_get"];
         put?: never;
@@ -814,6 +856,134 @@ export interface components {
             targets: components["schemas"]["ManualChange"][];
         };
         /**
+         * CleanupDecided
+         * @description ``job_id`` is the worker job that cleans the folder (``delete``); ``None`` for
+         *     ``keep``, which needs no job.
+         */
+        CleanupDecided: {
+            /** Job Id */
+            job_id?: string | null;
+        };
+        /**
+         * CleanupDecision
+         * @description A listing waiting for Delete or Keep in the review queue (FILES-CLEANUP-14).
+         */
+        CleanupDecision: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Deadline */
+            deadline?: string | null;
+            /** Decided At */
+            decided_at?: string | null;
+            /** Decided By */
+            decided_by?: string | null;
+            /** Entries */
+            entries: components["schemas"]["CleanupEntry"][];
+            /** Id */
+            id: string;
+            /** Note */
+            note?: string | null;
+            /**
+             * On Timeout
+             * @default keep
+             * @enum {string}
+             */
+            on_timeout: "delete" | "keep";
+            options: components["schemas"]["CleanupOptions"];
+            /** Path */
+            path: string;
+            /** Profile */
+            profile: string;
+            /** Result */
+            result?: {
+                [key: string]: number;
+            } | null;
+            /** Run Id */
+            run_id: string;
+            /**
+             * State
+             * @default pending
+             * @enum {string}
+             */
+            state: "pending" | "deleted" | "kept" | "cancelled";
+            /** Step Id */
+            step_id: string;
+            /** Totals */
+            totals?: {
+                [key: string]: number;
+            };
+            /**
+             * Truncated
+             * @default 0
+             */
+            truncated: number;
+        };
+        /**
+         * CleanupDecisionBody
+         * @description Answer a cleanup decision (FILES-CLEANUP-14): ``delete`` what was listed for
+         *     deletion, or ``keep`` everything.
+         */
+        CleanupDecisionBody: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "delete" | "keep";
+            /** Note */
+            note?: string | null;
+        };
+        /** CleanupEntry */
+        CleanupEntry: {
+            /**
+             * Cls
+             * @enum {string}
+             */
+            cls: "delete" | "keep" | "in_library" | "busy" | "left" | "empty";
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "file" | "dir" | "link";
+            /** Mtime Ns */
+            mtime_ns?: number | null;
+            /** Path */
+            path: string;
+            /** Reason */
+            reason?: string | null;
+            /** Size */
+            size?: number | null;
+        };
+        /**
+         * CleanupOptions
+         * @description What the worker needs to clean again after the decision (FILES-CLEANUP-14).
+         */
+        CleanupOptions: {
+            /**
+             * Allow Audio
+             * @default false
+             */
+            allow_audio: boolean;
+            /** Delete */
+            delete?: string[];
+            /**
+             * Empty Dirs
+             * @default true
+             */
+            empty_dirs: boolean;
+            /** Keep */
+            keep?: string[];
+            /**
+             * Remove Root
+             * @default false
+             */
+            remove_root: boolean;
+            /** Trash */
+            trash?: string | null;
+        };
+        /**
          * CurrentTarget
          * @description What one target of a ChangeSet holds now (REVIEW-QUEUE-3).
          */
@@ -1197,10 +1367,10 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "changeset" | "gate" | "import";
+            kind: "changeset" | "gate" | "import" | "cleanup";
             /**
              * Ref
-             * @description ChangeSet id, review gate id or import decision id
+             * @description ChangeSet id, review gate id, import decision id or cleanup decision id
              */
             ref: string;
         };
@@ -1488,10 +1658,12 @@ export interface components {
         /**
          * QueueItem
          * @description One thing that waits for a decision (REVIEW-QUEUE-1). ``kind`` says which of
-         *     ``changeset`` / ``gate`` / ``import_decision`` is set (IMPORT-UI-7).
+         *     ``changeset`` / ``gate`` / ``import_decision`` / ``cleanup_decision`` is set
+         *     (IMPORT-UI-7, FILES-CLEANUP-14).
          */
         QueueItem: {
             changeset?: components["schemas"]["ChangeSet"] | null;
+            cleanup_decision?: components["schemas"]["CleanupDecision"] | null;
             /**
              * Created At
              * Format: date-time
@@ -1505,7 +1677,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "changeset" | "gate" | "import";
+            kind: "changeset" | "gate" | "import" | "cleanup";
             /** Profile */
             profile: string;
             /** Run Id */
@@ -2235,6 +2407,126 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobQueued"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_cleanup_api_cleanups__decision_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                decision_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CleanupDecision"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    decide_cleanup_api_cleanups__decision_id__decision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                decision_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CleanupDecisionBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CleanupDecided"];
                 };
             };
             /** @description Bad Request */

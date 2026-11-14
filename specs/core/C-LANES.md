@@ -60,6 +60,7 @@ hold. This spec gives them the hook they need (LANES-14) but not the decisions.
 
 ### Hooks for other specs
 - LANES-14: `StepContext.hold(key, kind, ref)` MUST put the lane `key` on hold until `ref` is resolved through `Engine.resolve_hold(run_id, ref)`. `key` is a backend album id, or `pending:<id>` for an album the step hasn't imported yet (F-IMPORT-UI). A `pending:` lane MUST be renamed to its album id once the album exists, keeping its position and history.
+- LANES-16: A `run_level` step MAY hold its whole pass with `ctx.hold_pass(kind, ref, label)`: every lane of that pass becomes `waiting` on the hold. If the pass had no lanes, the run itself holds it in a new lane `pending:<kind>:<ref>` named `label`: the run is `waiting_review` until the hold is resolved, then resumes at the next step (RUN-14) (added by S-FILES-CLEANUP, 2026-11-14).
 - LANES-15: `GET /api/runs/{id}` MUST include the run's lanes: album id, label, state, position (step id), holds, and the steps it ran with their status. The run page MUST show a lane table: album, state, current or last step, and a link to its holds in the review queue.
 
 Implementation notes (2026-11-13, added while implementing; not new behavior):
@@ -74,6 +75,7 @@ Implementation notes (2026-11-13, added while implementing; not new behavior):
 - Re-proposing a conflicted ChangeSet (REVIEW-QUEUE-5) also swaps it in the waiting lane's holds.
 - A gate can still be decided only while its run is `waiting_review` (REVIEW-6 note), not while other lanes of the run are still running. Its lanes wait until then.
 - F-IMPORT-UI (2026-11-13) adds the final lane state `skipped` (IMPORT-UI-17, amends LANES-2): it counts like `done`, and a run whose lanes are all `skipped` ends `succeeded`.
+- S-FILES-CLEANUP (2026-11-14) adds hold kind `cleanup` and LANES-16. The lane a pass without lanes waits in is a `pending:` lane, so it is never renamed or reported `gone`; once released it goes on through the rest of the run with no album, so per-album steps after it see an empty selection, and it counts in the run's lane counts.
 - API names: `RunDetail.lanes` is the lane list; the counts are `RunSummary.lane_counts`, because `RunDetail` extends `RunSummary` and one field can't be both. `StepState.passes` counts the passes that ran.
 
 ## Interfaces

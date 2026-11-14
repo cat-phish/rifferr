@@ -34,6 +34,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     inbox: join(root, "inbox"),
     lanes: join(root, "lanes-inbox"),
     imports: join(root, "imports-inbox"),
+    cleanup: join(root, "cleanup-inbox"),
     watched: join(root, "watched"),
     home: join(root, "home"),
   };
@@ -143,6 +144,14 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     join(here, "lanes-flow.yaml"),
     join(dirs.config, "profiles", "main", "workflows", "lanes-flow.yaml"),
   );
+  // Leftovers for the folder cleanup test (S-FILES-CLEANUP).
+  cpSync(
+    join(here, "cleanup-flow.yaml"),
+    join(dirs.config, "profiles", "main", "workflows", "cleanup-flow.yaml"),
+  );
+  mkdirSync(join(dirs.cleanup, "Album"), { recursive: true });
+  writeFileSync(join(dirs.cleanup, "Album", "info.nfo"), "nfo");
+  writeFileSync(join(dirs.cleanup, "Album", "notes.txt"), "notes");
 
   // A watched folder for the triggers test (TRIGGERS-9); its path is only known here.
   writeFileSync(
@@ -167,6 +176,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   process.env.RIFFERR_E2E_INBOX = dirs.inbox;
   process.env.RIFFERR_E2E_LANES_INBOX = dirs.lanes;
   process.env.RIFFERR_E2E_IMPORTS_INBOX = dirs.imports;
+  process.env.RIFFERR_E2E_CLEANUP_INBOX = dirs.cleanup;
   process.env.RIFFERR_E2E_WATCHED = dirs.watched;
   process.env.RIFFERR_E2E_FIXTURE = join(backend, "tests", "fixtures", "audio", "album-flac");
 

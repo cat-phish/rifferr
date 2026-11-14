@@ -139,6 +139,8 @@ Between proposal and decision someone sets the album to `Live!` → accepting gi
 
 Note (2026-11-13, F-IMPORT-UI): the queue has a third item kind, `import`, with an `import_decision` field (IMPORT-UI-7); `import.requested` and `import.resolved` go on `/api/events`.
 
+Note (2026-11-14, S-FILES-CLEANUP): a fourth item kind, `cleanup`, with a `cleanup_decision` field (FILES-CLEANUP-14). `GET /api/cleanups/{id}` returns the decision; `POST /api/cleanups/{id}/decision {decision: delete|keep, note?}` answers `202 {job_id}` (`null` for `keep`, which needs no job); `404` unknown, `409 already_resolved`, `409 busy` while its job runs, `409 not_waiting` before the run is suspended. `cleanup.requested` and `cleanup.resolved` go on `/api/events`.
+
 ## Tasks
 - [x] read-only worker: `changes.current`
 - [x] routes: queue, ChangeSet detail and current values, decisions, re-propose, gate decision, run decisions, run undo

@@ -320,6 +320,41 @@ async def test_LANES_14_ctx_hold_resolves_through_the_engine(h: Harness) -> None
     assert resumed.state is RunState.succeeded
 
 
+HOLD_PASS = "{id: wait, uses: test.hold_pass}"
+
+
+async def test_LANES_16_hold_pass_holds_every_lane_of_the_pass(h: Harness) -> None:
+    src = wf(SEEN, HOLD_PASS, ECHO_SEEN)
+    run = await three(h, src)
+    assert run.state is RunState.waiting_review
+    stored = h.engine.lanes.load(run.id).values()
+    assert {(lane.state, lane.position) for lane in stored} == {("waiting", "after")}
+    assert all(
+        [(x.kind, x.ref) for x in lane.holds] == [("cleanup", "pass-hold")] for lane in stored
+    )
+    h.engine.resolve_hold(run.id, "pass-hold")
+    resumed = await resume(h, run, src)
+    assert resumed.state is RunState.succeeded
+    assert h.logs(resumed)[-1] == "seen 3"
+
+
+async def test_LANES_16_a_pass_without_lanes_waits_in_a_new_lane(h: Harness) -> None:
+    src = wf(HOLD_PASS, "{id: after, uses: test.echo, with: {message: done}}")
+    run = h.run(src)
+    await h.engine.execute(run)
+    assert run.state is RunState.waiting_review
+    (lane,) = h.engine.lanes.load(run.id).values()
+    assert (lane.key, lane.label, lane.state) == (
+        "pending:cleanup:pass-hold",
+        "the folder",
+        "waiting",
+    )
+    h.engine.resolve_hold(run.id, "pass-hold")
+    resumed = await resume(h, run, src)
+    assert resumed.state is RunState.succeeded
+    assert h.logs(resumed)[-1] == "done"
+
+
 def test_LANES_14_pending_lane_is_renamed_keeping_its_history() -> None:
     from rifferr.engine import InMemoryLaneStore, Lane
 

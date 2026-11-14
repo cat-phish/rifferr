@@ -1,0 +1,15 @@
+# Workflow for the folder cleanup e2e test (S-FILES-CLEANUP): leftovers in a folder wait
+# in the review queue; the user chooses Delete and the run goes on.
+name: cleanup-flow
+description: Delete .nfo files from a folder after review.
+vars:
+  inbox:
+    description: Folder to clean
+steps:
+  - id: clean
+    uses: files.cleanup
+    with:
+      path: "{{ vars.inbox }}"
+      mode: delete
+      delete: ["*.nfo"]
+      review: true

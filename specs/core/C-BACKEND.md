@@ -27,6 +27,7 @@ BACKEND-14 (`cli` capability, `cli_command`) is specified in [S-BEETS-COMMAND](.
 - BACKEND-11: `coerce(field, value) -> FieldValue` MUST convert a value to the field's type (beets: the field's type; flexible attributes stay strings) and raise `ValueError` with a message when it can't (added for S-TAGSCRIPT).
 - BACKEND-12: `album_item_fields()` MUST return the album fields the backend copies to items on store (beets: `Album.item_keys` and every flexible attribute), as a `SharedFields` set. `FakeBackend` returns its configured set (added for S-TAGSCRIPT).
 - BACKEND-13: A backend MUST be openable read-only (`from_profile(…, read_only=True)`). Read-only, it reports `apply` and `import_` as unsupported, and `BeetsBackend` sets `PRAGMA query_only` on its connection, so no write can happen. A contract test pins that writes fail (added for S-TAGSCRIPT).
+- S-FILES-CLEANUP (2026-11-14) adds the capability `files` and the reads `library_files(paths)`, `library_dirs()` and `importable(paths)` (FILES-CLEANUP-12, -17), with contract tests in `tests/backends/contract.py`.
 
 ## Interfaces
 ```python

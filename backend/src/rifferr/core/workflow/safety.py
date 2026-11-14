@@ -88,6 +88,9 @@ def safety_report(wf: Workflow) -> SafetyReport:
         if step.uses == "beets.command":
             findings += _library_command_findings(step.id, step.with_)
             continue
+        if step.uses == "files.cleanup":
+            findings += _cleanup_findings(step.id, step.with_)
+            continue
         if step.uses != "shell":
             continue
         params = step.with_
@@ -113,6 +116,23 @@ def safety_report(wf: Workflow) -> SafetyReport:
                     Finding(step_id=step.id, kind="secret", detail=f"exposes secret '{name}'")
                 )
     return SafetyReport(findings=findings)
+
+
+def _cleanup_findings(step_id: str, params: dict[str, Any]) -> list[Finding]:
+    """A ``files.cleanup`` step in delete mode removes files (FILES-CLEANUP-13, -17)."""
+    if params.get("mode") != "delete":
+        return []
+    patterns = params.get("delete")
+    names = [str(p) for p in cast(list[Any], patterns)] if isinstance(patterns, list) else []
+    parts = [f"deletes in {params.get('path', '?')}: {', '.join(names) or 'empty folders only'}"]
+    trash = params.get("trash")
+    if isinstance(trash, str):
+        parts.append(f"moved to trash {trash}")
+    if params.get("review") is True:
+        parts.append("asks in the review queue first")
+    if params.get("allow_audio") is True:
+        parts.append("allow_audio: may delete music the library could import")
+    return [Finding(step_id=step_id, kind="destructive", detail="; ".join(parts))]
 
 
 def _library_command_findings(step_id: str, params: dict[str, Any]) -> list[Finding]:

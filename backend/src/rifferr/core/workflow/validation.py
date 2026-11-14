@@ -76,6 +76,15 @@ def _check_steps(
             continue
         _, param_errors = validate_model(info.params_model, step.with_, d, ("steps", i, "with"))
         errors += param_errors
+        if not info.accepts_when and step.when is not None:
+            errors.append(
+                d.error(
+                    ("steps", i, "when"),
+                    f"step type '{step.uses}' works on a folder, not on albums; "
+                    "'when' is not allowed for it",
+                    "key",
+                )
+            )
         if info.force_review and step.apply == "auto":
             errors.append(
                 d.error(

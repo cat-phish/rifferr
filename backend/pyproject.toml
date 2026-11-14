@@ -44,6 +44,7 @@ shell = "rifferr.steps.shell:ShellStep"
 review = "rifferr.steps.review:ReviewStep"
 "beets.command" = "rifferr.steps.beets_command:BeetsCommandStep"
 notify = "rifferr.steps.notify:NotifyStep"
+"files.cleanup" = "rifferr.steps.files_cleanup:FilesCleanupStep"
 
 [project.entry-points."rifferr.backends"]
 beets = "rifferr.backends.beets:from_profile"

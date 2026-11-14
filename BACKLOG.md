@@ -40,6 +40,8 @@ are **not** part of the current task. Append here instead of acting on them.
 - B-050 [idea] (2026-11-13, from C-LANES) Run lanes in parallel within a pass, as architecture §2a describes ("lanes run in parallel up to a limit"). Likely shape: a `concurrency:` option on `per: album` steps such as `shell`. Needs care because beets' library is one SQLite file written from one worker.
 - B-051 [idea] (2026-11-13, from F-IMPORT-UI) Import decisions for loose tracks (beets singleton tasks, `choose_item`). In M2 they keep quiet behavior. Needs a lane shape for albumless items (see B-036).
 - B-052 [idea] (2026-11-13, from F-IMPORT-UI) Offer the extra choices beets plugins add to the import prompt (`before_choose_candidate`, e.g. `mbsubmit`) as actions on an import decision.
+- B-055 [idea] (2026-11-14, from S-FILES-CLEANUP) The reference workflow cleans `{{ run.input }}` with `remove_root: false`, because a manual run's input is the whole inbox, which must stay. A watch run's album folder is then left empty. A general fix: let a step parameter depend on the trigger (e.g. `remove_root: "{{ run.trigger == 'watch' }}"` with boolean interpolation), or a `files.cleanup` option that never removes a trigger's watched folder.
+- B-056 [idea] (2026-11-14, from S-FILES-CLEANUP) `review.needed` notifications count every queue item as an album ("1 album needs review"), which reads oddly for a cleanup decision held by a pass without lanes ("cleanup of Inbox"). Word items by kind.
 
 ## Issues
 - B-004 [bug] (2026-11-11, from session) Nix `pre-commit` package fails to build Python hook environments (`ModuleNotFoundError: No module named 'packaging'` in its virtualenv). Use the distro package or pipx; mention in contributor docs.
