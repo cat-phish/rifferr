@@ -24,6 +24,7 @@ from rifferr.core.triggers import DedupRecord
 from rifferr.engine.changesets import StoredChangeSet
 from rifferr.engine.events import Event
 from rifferr.engine.journal import JournalError, completed, failed, recovered, undone
+from rifferr.engine.lanes import Hold, Lane
 
 JobState = Literal["queued", "running", "waiting_review", "succeeded", "failed", "cancelled"]
 #: ``run``: the run record itself (API-6). ``review_decision``: apply or reject a
@@ -234,11 +235,13 @@ class AppDB:
         return cur.rowcount == 1
 
     def requeue_if_released(self, run_id: str) -> bool:
-        """Queue a waiting run once nothing holds it (RUN-14): none of its ChangeSet holds
-        is still proposed or conflicted, and every gate it waits for was continued.
+        """Queue a waiting run once a lane of it is released (LANES-8): all of that lane's
+        holds are resolved. A run without lanes (suspended before C-LANES) is released
+        when none of its payload holds is pending (RUN-14).
 
         One transaction, so two decisions finishing at once can't both see the other
-        still pending and leave the run waiting. True if the run was queued.
+        still pending and leave the run waiting. True if the run was queued. A run that
+        is already queued or running needs nothing: its job picks the lane up (LANES-8).
         """
         with self._conn:
             self._conn.execute("BEGIN IMMEDIATE")
@@ -249,27 +252,30 @@ class AppDB:
             ).fetchone()
             if row is None:
                 return False
-            payload = json.loads(row["payload"])
-            holds = [str(h) for h in payload.get("holds") or []]
-            gates = [str(g) for g in payload.get("gates") or []]
-            if holds:
-                marks = ",".join("?" for _ in holds)
-                held = self._conn.execute(
-                    f"SELECT 1 FROM changesets WHERE id IN ({marks})"
-                    f" AND state IN {HOLDING_CHANGESETS} LIMIT 1",
-                    holds,
+            waiting = self._conn.execute(
+                "SELECT holds FROM run_lanes WHERE run_id = ? AND state = 'waiting'",
+                (run_id,),
+            ).fetchall()
+            has_lanes = (
+                self._conn.execute(
+                    "SELECT 1 FROM run_lanes WHERE run_id = ? LIMIT 1", (run_id,)
                 ).fetchone()
-                if held is not None:
-                    return False
-            if gates:
-                marks = ",".join("?" for _ in gates)
-                open_gate = self._conn.execute(
-                    f"SELECT 1 FROM review_gates WHERE id IN ({marks})"
-                    " AND state != 'continued' LIMIT 1",
-                    gates,
-                ).fetchone()
-                if open_gate is not None:
-                    return False
+                is not None
+            )
+            if has_lanes:
+                released = any(
+                    self._released(run_id, [_hold(h) for h in json.loads(w["holds"])])
+                    for w in waiting
+                )
+            else:
+                payload = json.loads(row["payload"])
+                released = self._released(
+                    run_id,
+                    [Hold("changeset", str(h)) for h in payload.get("holds") or []]
+                    + [Hold("gate", str(g)) for g in payload.get("gates") or []],
+                )
+            if not released:
+                return False
             cur = self._conn.execute(
                 "UPDATE jobs SET state = 'queued', claimed_at = NULL"
                 " WHERE run_id = ? AND kind = 'run' AND state = 'waiting_review'",
@@ -277,12 +283,51 @@ class AppDB:
             )
             return cur.rowcount == 1
 
+    def _released(self, run_id: str, holds: list[Hold]) -> bool:
+        changesets = [h.ref for h in holds if h.kind == "changeset"]
+        gates = [h.ref for h in holds if h.kind == "gate"]
+        others = [h.ref for h in holds if h.kind not in ("changeset", "gate")]
+        if changesets:
+            marks = ",".join("?" for _ in changesets)
+            held = self._conn.execute(
+                f"SELECT 1 FROM changesets WHERE id IN ({marks})"
+                f" AND state IN {HOLDING_CHANGESETS} LIMIT 1",
+                changesets,
+            ).fetchone()
+            if held is not None:
+                return False
+        if gates:
+            marks = ",".join("?" for _ in gates)
+            open_gate = self._conn.execute(
+                f"SELECT 1 FROM review_gates WHERE id IN ({marks})"
+                " AND state != 'continued' LIMIT 1",
+                gates,
+            ).fetchone()
+            if open_gate is not None:
+                return False
+        for ref in others:
+            done = self._conn.execute(
+                "SELECT 1 FROM resolved_holds WHERE run_id = ? AND ref = ?", (run_id, ref)
+            ).fetchone()
+            if done is None:
+                return False
+        return True
+
     def requeue(self, run_id: str) -> bool:
         """waiting_review -> queued, so a worker resumes the run (RUN-14)."""
         cur = self._conn.execute(
             "UPDATE jobs SET state = 'queued', claimed_at = NULL"
             " WHERE run_id = ? AND kind = 'run' AND state = 'waiting_review'",
             (run_id,),
+        )
+        return cur.rowcount == 1
+
+    def finish_waiting(self, run_id: str, state: JobState, error: str | None = None) -> bool:
+        """waiting_review -> a final state, once no lane waits any more (LANES-7, -9)."""
+        cur = self._conn.execute(
+            "UPDATE jobs SET state = ?, finished_at = ?, error = ?"
+            " WHERE run_id = ? AND kind = 'run' AND state = 'waiting_review'",
+            (state, _now(), error, run_id),
         )
         return cur.rowcount == 1
 
@@ -528,6 +573,22 @@ class AppChangeSets:
                 self._conn.execute(
                     "UPDATE jobs SET payload = ? WHERE id = ?", (json.dumps(payload), job["id"])
                 )
+            if new is not None:  # the lane that waited for the old one waits for the new
+                lanes = self._conn.execute(
+                    "SELECT key, holds FROM run_lanes WHERE run_id = ? AND state = 'waiting'",
+                    (run_id,),
+                ).fetchall()
+                for lane in lanes:
+                    holds = json.loads(lane["holds"])
+                    if any(h.get("ref") == old_id for h in holds):
+                        swapped = [
+                            {**h, "ref": new.id} if h.get("ref") == old_id else h for h in holds
+                        ]
+                        self._conn.execute(
+                            "UPDATE run_lanes SET holds = ?, updated_at = ?"
+                            " WHERE run_id = ? AND key = ?",
+                            (json.dumps(swapped), _now(), run_id, lane["key"]),
+                        )
             return True
 
     def set_note(self, changeset_id: str, note: str | None) -> None:
@@ -676,6 +737,15 @@ class AppReviewGates:
         if cur.rowcount != 1:
             raise GateResolvedError(gate_id, gate.state)
         return gate
+
+    def cancel(self, gate_id: str) -> bool:
+        """Cancel one pending gate (its albums' lanes ended another way)."""
+        cur = self._conn.execute(
+            "UPDATE review_gates SET state = 'cancelled', decided_at = ?"
+            " WHERE id = ? AND state = 'pending'",
+            (_now(), gate_id),
+        )
+        return cur.rowcount == 1
 
     def cancel_for_run(self, run_id: str) -> list[str]:
         """Cancel the run's pending gates (REVIEW-10). Returns their ids."""
@@ -882,6 +952,122 @@ class AppTriggers:
             "DELETE FROM webhook_secrets WHERE profile = ? AND name = ?", (profile, name)
         )
         return cur.rowcount > 0
+
+
+class AppLanes:
+    """A run's lanes (C-LANES ``run_lanes``) and resolved ``ctx.hold`` holds (LANES-14).
+
+    Implements the engine's ``LaneStore``.
+    """
+
+    def __init__(self, db: AppDB) -> None:
+        self.db = db
+
+    @property
+    def _conn(self) -> sqlite3.Connection:
+        return self.db._conn  # pyright: ignore[reportPrivateUsage]
+
+    def load(self, run_id: str) -> dict[str, Lane]:
+        rows = self._conn.execute(
+            "SELECT * FROM run_lanes WHERE run_id = ? ORDER BY seq", (run_id,)
+        ).fetchall()
+        return {row["key"]: _lane(row) for row in rows}
+
+    def save(self, run_id: str, lanes: Iterable[Lane]) -> None:
+        now = _now()
+        with self._conn:
+            self._conn.execute("BEGIN IMMEDIATE")
+            for lane in lanes:
+                self._conn.execute(
+                    "INSERT INTO run_lanes (run_id, key, label, state, position, holds, steps,"
+                    " passes, seq, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?,"
+                    " (SELECT COALESCE(MAX(seq), 0) + 1 FROM run_lanes WHERE run_id = ?), ?)"
+                    " ON CONFLICT (run_id, key) DO UPDATE SET label = excluded.label,"
+                    " state = excluded.state, position = excluded.position,"
+                    " holds = excluded.holds, steps = excluded.steps,"
+                    " passes = excluded.passes, updated_at = excluded.updated_at",
+                    (
+                        run_id,
+                        lane.key,
+                        lane.label,
+                        lane.state,
+                        lane.position,
+                        json.dumps([h.as_json() for h in lane.holds]),
+                        json.dumps(lane.steps),
+                        json.dumps(lane.passes),
+                        run_id,
+                        now,
+                    ),
+                )
+
+    def rename(self, run_id: str, old: str, new: str) -> None:
+        self._conn.execute(
+            "UPDATE run_lanes SET key = ?, updated_at = ? WHERE run_id = ? AND key = ?",
+            (new, _now(), run_id, old),
+        )
+
+    def set_state(
+        self, run_id: str, keys: Iterable[str], state: str, *, only_from: Iterable[str]
+    ) -> list[str]:
+        """Move lanes ``keys`` that are in one of ``only_from`` to ``state`` (a final state
+        clears position and holds). Returns the keys that moved."""
+        moved: list[str] = []
+        sources = list(only_from)
+        marks = ",".join("?" for _ in sources)
+        final = state in ("done", "failed", "rejected", "gone", "cancelled")
+        for key in keys:
+            cur = self._conn.execute(
+                "UPDATE run_lanes SET state = ?, updated_at = ?"
+                + (", position = NULL, holds = '[]'" if final else "")
+                + f" WHERE run_id = ? AND key = ? AND state IN ({marks})",
+                (state, _now(), run_id, key, *sources),
+            )
+            if cur.rowcount == 1:
+                moved.append(key)
+        return moved
+
+    def counts(self, run_ids: Iterable[str]) -> dict[str, dict[str, int]]:
+        """Run id -> lane state -> count (LANES-9), in one query."""
+        ids = list(run_ids)
+        if not ids:
+            return {}
+        marks = ",".join("?" for _ in ids)
+        rows = self._conn.execute(
+            f"SELECT run_id, state, COUNT(*) AS n FROM run_lanes WHERE run_id IN ({marks})"
+            " GROUP BY run_id, state",
+            ids,
+        ).fetchall()
+        out: dict[str, dict[str, int]] = {}
+        for row in rows:
+            out.setdefault(row["run_id"], {})[row["state"]] = int(row["n"])
+        return out
+
+    def resolve_hold(self, run_id: str, ref: str) -> None:
+        self._conn.execute(
+            "INSERT OR IGNORE INTO resolved_holds (run_id, ref) VALUES (?, ?)", (run_id, ref)
+        )
+
+    def resolved_holds(self, run_id: str) -> list[str]:
+        rows = self._conn.execute(
+            "SELECT ref FROM resolved_holds WHERE run_id = ?", (run_id,)
+        ).fetchall()
+        return [row["ref"] for row in rows]
+
+
+def _hold(value: Any) -> Hold:
+    return Hold(value["kind"], str(value["ref"]))
+
+
+def _lane(row: sqlite3.Row) -> Lane:
+    return Lane(
+        key=row["key"],
+        label=row["label"],
+        state=row["state"],
+        position=row["position"],
+        holds=[_hold(h) for h in json.loads(row["holds"])],
+        steps={str(k): str(v) for k, v in json.loads(row["steps"]).items()},
+        passes={str(k): int(v) for k, v in json.loads(row["passes"]).items()},
+    )
 
 
 class SqliteEventSink:

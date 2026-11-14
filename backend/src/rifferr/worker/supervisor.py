@@ -33,7 +33,7 @@ from rifferr.core.review import GateDecision
 from rifferr.engine.events import Event, EventSink, profile_stream
 from rifferr.engine.undo import run_entries, undoable
 from rifferr.trust import workflow_hash
-from rifferr.worker.gates import finish_rejected
+from rifferr.worker.gates import cancel_lanes, reject_gate_lanes
 from rifferr.worker.protocol import (
     HUNG_AFTER,
     MAX_MESSAGE,
@@ -324,7 +324,11 @@ class WorkerSupervisor:
             await self._wake(gate.profile)
         else:
             run_id = gate.run_id
-            finish_rejected(self.db, run_id, lambda t, step, d: self._emit_run(run_id, t, step, d))
+            outcome = reject_gate_lanes(
+                self.db, decided, lambda t, step, d: self._emit_run(run_id, t, step, d)
+            )
+            if outcome.settled == "requeued":  # another lane was released meanwhile
+                await self._wake(gate.profile)
 
     async def decide_overdue_gates(self) -> list[str]:
         """Decide every pending gate whose deadline passed with its ``on_timeout``
@@ -376,6 +380,7 @@ class WorkerSupervisor:
             return
         if self.db.cancel_waiting(run_id):
             self._reject_holds(run_id, job.payload.get("holds"))
+            cancel_lanes(self.db, run_id, lambda t, step, d: self._emit_run(run_id, t, step, d))
             AppReviewGates(self.db).cancel_for_run(run_id)  # REVIEW-10
             seq = self.db.last_seq(run_id) + 1
             self._persist(self._event(run_id, seq, "run.finished", {"status": "cancelled"}))

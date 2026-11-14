@@ -27,6 +27,7 @@ from rifferr.appdb import (
     AppChangeSets,
     AppDB,
     AppJournal,
+    AppLanes,
     AppReviewGates,
     Job,
     JobState,
@@ -36,6 +37,7 @@ from rifferr.backends.loader import load_backend
 from rifferr.core.changeset import ChangeSet
 from rifferr.core.ids import new_ulid
 from rifferr.core.profile import Profile, Redactor
+from rifferr.core.review import ReviewGate
 from rifferr.core.selection import Selection
 from rifferr.core.workflow import WorkflowLoadError, load_workflow
 from rifferr.credentials import ProfileSecrets, SecretResolver
@@ -43,6 +45,7 @@ from rifferr.engine import (
     Engine,
     Event,
     FailedTarget,
+    PassRecord,
     Run,
     RunState,
     RunValidationError,
@@ -62,7 +65,7 @@ from rifferr.engine.recovery import recover_pending
 from rifferr.engine.undo import UndoContext, UndoError, undo_entry, undo_run
 from rifferr.profile_store import app_db_path, config_root, load_profile
 from rifferr.steps.registry import load_step_types
-from rifferr.worker.gates import finish_rejected
+from rifferr.worker.gates import gate_albums, reject_gate_lanes
 from rifferr.worker.protocol import HEARTBEAT_INTERVAL, WorkerCommand, WorkerMessage, encode
 
 log = logging.getLogger("rifferr.worker")
@@ -146,6 +149,7 @@ class Worker:
         self.journal = AppJournal(db)
         self.changesets = AppChangeSets(db)
         self.gates = AppReviewGates(db)
+        self.lanes = AppLanes(db)
 
     async def serve(self, commands: Commands) -> None:
         """Run jobs until stopped, the server goes away, or idle too long (WORKER-7)."""
@@ -271,6 +275,7 @@ class Worker:
             journal=self.journal,
             changesets=self.changesets,
             gates=self.gates,
+            lanes=self.lanes,
         )
         try:
             wf, doc = load_workflow(source, source_name)
@@ -546,8 +551,9 @@ class Worker:
     # -- rejected at a review gate (REVIEW-8) -----------------------------------------
 
     def _reject_at_review(self, job: Job) -> None:
-        """``on_reject: undo``: undo the run's applied ChangeSets newest first, log what
-        happened, then end the run ``cancelled`` (``rejected_at_review``)."""
+        """``on_reject: undo``: undo the gate's albums' applied ChangeSets of this run
+        newest first, log what happened, then end those albums' lanes ``rejected`` and
+        settle the run (LANES-11). A run without lanes is undone and ended as a whole."""
         run_id = job.run
         gate_id = job.payload.get("gate_id")
         gate = self.gates.get(str(gate_id)) if isinstance(gate_id, str) else None
@@ -574,8 +580,9 @@ class Worker:
             by=by if isinstance(by, str) else None,
         )
         result: dict[str, JsonValue] = {}
+        targets = self._gate_targets(run_id, gate)
         try:
-            outcome = undo_run(run_id, ctx)
+            outcome = undo_run(run_id, ctx, targets=targets)
             result = outcome.as_json()
             if not outcome.undone and outcome.stopped is None:
                 log_line("rejected: the run has no applied tag changes to undo")
@@ -592,7 +599,7 @@ class Worker:
                     + "; ".join(details),
                     "error",
                 )
-            imported = self._imported_count(run_id)
+            imported = self._imported_count(run_id, targets)
             if imported:
                 log_line(
                     f"{imported} album(s) this run imported stay in the library: "
@@ -606,16 +613,31 @@ class Worker:
         def emit(type: str, step: str | None, data: dict[str, JsonValue]) -> None:
             self._changeset_emitter(run_id, step)(type, data)
 
-        finish_rejected(self.db, run_id, emit)
+        if gate is not None:
+            reject_gate_lanes(self.db, gate, emit)
         stopped_at = result.get("stopped_at") if isinstance(result, dict) else None
         error = f"undo stopped at journal entry {stopped_at}" if stopped_at else None
         self.db.finish_job(job.id, "failed" if error else "succeeded", error, result)
 
-    def _imported_count(self, run_id: str) -> int:
+    def _gate_targets(self, run_id: str, gate: ReviewGate | None) -> set[str] | None:
+        """The gate's albums and their items, when the run has lanes (LANES-11)."""
+        if gate is None or not self.lanes.load(run_id):
+            return None
+        albums = gate_albums(gate)
+        targets = set(albums)
         try:
-            return len(self.backend.query(Selection.for_run(run_id)))
+            for album in self.backend.query(Selection(run_id=run_id, album_ids=tuple(albums))):
+                targets.update(item.id for item in album.items)
+        except CapabilityError:
+            pass
+        return targets
+
+    def _imported_count(self, run_id: str, targets: set[str] | None = None) -> int:
+        try:
+            albums = self.backend.query(Selection.for_run(run_id))
         except CapabilityError:
             return 0
+        return len([a for a in albums if targets is None or a.id in targets])
 
     def _changeset_emitter(
         self, run_id: str | None, step_id: str | None
@@ -662,6 +684,8 @@ def step_records(events: Iterable[Event]) -> dict[str, StepRecord]:
                 value = e.data.get(key)
                 if isinstance(value, str):
                     record.outputs[key] = value
+                    if record.passes:  # the latest pass is the gate's (LANES-4)
+                        record.passes[-1].outputs[key] = value
         elif e.type == "run.step.finished":
             data = e.data
             outputs = data.get("outputs") or {}
@@ -669,7 +693,8 @@ def step_records(events: Iterable[Event]) -> dict[str, StepRecord]:
             assert isinstance(outputs, dict)
             assert isinstance(failed, list)
             error = data.get("error")
-            records[e.step_id] = StepRecord(
+            previous = records.get(e.step_id)
+            record = StepRecord(
                 id=e.step_id,
                 uses=uses.get(e.step_id, ""),
                 status=data.get("status"),  # type: ignore[arg-type]
@@ -684,7 +709,22 @@ def step_records(events: Iterable[Event]) -> dict[str, StepRecord]:
                 error=error if isinstance(error, str) else None,
                 started_at=started.get(e.step_id),
                 finished_at=e.ts,
+                passes=list(previous.passes) if previous is not None else [],
             )
+            number = data.get("pass")
+            lanes = data.get("lanes")
+            record.passes.append(  # LANES-4: one entry per pass
+                PassRecord(
+                    number=number if isinstance(number, int) else len(record.passes) + 1,
+                    lanes=lanes if isinstance(lanes, int) else 0,
+                    status=record.status,
+                    outputs=dict(record.outputs),
+                    error=record.error,
+                    started_at=record.started_at,
+                    finished_at=record.finished_at,
+                )
+            )
+            records[e.step_id] = record
     return records
 
 

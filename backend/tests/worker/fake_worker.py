@@ -33,6 +33,7 @@ class BlockStep:
     """Blocks the worker's event loop, like a long synchronous beets call."""
 
     name = "test.block"
+    run_level = True  # LANES-6: runs without albums
     params_model = BlockParams
     requires = BackendCapabilities()
 
@@ -53,6 +54,7 @@ class PrintStep:
     """Writes to stdout directly, as careless plugins do."""
 
     name = "test.print"
+    run_level = True  # LANES-6: runs without albums
     params_model = NoParams
     requires = BackendCapabilities()
 
@@ -65,6 +67,7 @@ class PrintStep:
 
 class PidStep:
     name = "test.pid"
+    run_level = True  # LANES-6: runs without albums
     params_model = NoParams
     requires = BackendCapabilities()
 
