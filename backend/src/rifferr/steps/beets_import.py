@@ -58,6 +58,7 @@ class BeetsImportParams(BaseModel):
 
 class BeetsImportStep:
     name = "beets.import"
+    run_level = True  # LANES-6: brings the albums in, so runs before any lane exists
     params_model = BeetsImportParams
     requires = BackendCapabilities(import_=True)
 

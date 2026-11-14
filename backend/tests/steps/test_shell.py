@@ -88,7 +88,7 @@ async def test_SHELL_2_template_error_fails_the_target(sh: ShellHarness) -> None
     sh.album("A")
     run = await sh.run(step({"run": ["echo", "%upper{$album}"]}))
     assert run.state is RunState.failed
-    assert "template error" in (run.steps[0].error or "")
+    assert "template error" in run.steps[0].failed_targets[0].message
 
 
 # -- SHELL-3: per run / album / item -----------------------------------------
@@ -381,13 +381,14 @@ async def test_SHELL_9_hard_cancel_after_grace_still_kills(
 # -- SHELL-8: exit codes and on_error ------------------------------------------
 
 
-async def test_SHELL_8_nonzero_exit_fails_and_stops(sh: ShellHarness) -> None:
+async def test_SHELL_8_LANES_10_nonzero_exit_fails_each_lane(sh: ShellHarness) -> None:
     sh.album("A")
     sh.album("B")
     run = await sh.run(step({"run": ["sh", "-c", "echo $0; exit 4", "$album"]}))
     assert run.state is RunState.failed
-    assert sh.lines(run) == ["A"]
-    assert run.steps[0].error == "exited with status 4"
+    # LANES-10: under stop each album's lane fails on its own; the other album still runs.
+    assert sh.lines(run) == ["A", "B"]
+    assert [f.message for f in run.steps[0].failed_targets] == ["exited with status 4"] * 2
 
 
 async def test_SHELL_8_on_error_continue_runs_remaining_targets(sh: ShellHarness) -> None:
@@ -408,7 +409,7 @@ async def test_SHELL_8_missing_program_fails_target(sh: ShellHarness) -> None:
     sh.album("A")
     run = await sh.run(step({"run": ["/nonexistent/prog"]}))
     assert run.state is RunState.failed
-    assert (run.steps[0].error or "").startswith("could not start /nonexistent/prog")
+    assert run.steps[0].failed_targets[0].message.startswith("could not start /nonexistent/prog")
 
 
 async def test_SHELL_8_killed_by_signal(sh: ShellHarness) -> None:
@@ -437,7 +438,9 @@ async def test_SHELL_10_cwd_is_templated(sh: ShellHarness) -> None:
 async def test_SHELL_10_missing_cwd_fails_target(sh: ShellHarness) -> None:
     sh.album("A")
     run = await sh.run(step({"run": ["pwd"], "cwd": "/nonexistent/dir"}))
-    assert run.steps[0].error == "working directory /nonexistent/dir does not exist"
+    assert [f.message for f in run.steps[0].failed_targets] == [
+        "working directory /nonexistent/dir does not exist"
+    ]
 
 
 # SHELL-11 (emits: none | changes) and SHELL-14 .. -19 are in test_shell_changes.py.

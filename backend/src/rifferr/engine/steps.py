@@ -68,6 +68,10 @@ class StepType(Protocol):
 
     Optional attribute ``force_review: bool`` (default False): the step's ChangeSets
     always wait for review, and ``apply: auto`` is a validation error (CHANGESET-6).
+
+    Optional attribute ``run_level``: ``True``, or a function of the step's raw ``with:``
+    mapping returning a bool (default False). A run-level step runs once per pass even
+    before any lane exists, e.g. an import or a ``per: run`` command (C-LANES LANES-6).
     """
 
     name: str
@@ -132,6 +136,7 @@ class StepContext:
         profile_dir: Path | None = None,
         interpolate: Callable[[str], str] | None = None,
         open_gate: OpenGate | None = None,
+        on_hold: Callable[[str, str, str], None] | None = None,
     ) -> None:
         self.run_id = run_id
         self.profile = profile
@@ -153,6 +158,7 @@ class StepContext:
         self.failed_targets: list[FailedTarget] = []
         self._propose = propose or _no_propose
         self._open_gate = open_gate or _no_gate
+        self._on_hold = on_hold or _no_hold
         self._snapshots = SnapshotIndex()
         self.proposed: list[ChangeSet] = []
         """Every ChangeSet this step proposed so far, in order (after no-op dropping)."""
@@ -229,12 +235,28 @@ class StepContext:
         return self._open_gate(list(requests), options or GateOptions(), self._snapshots)
 
     def fail_target(self, target: str, message: str) -> None:
-        """Record a failed target. Returns under ``on_error: continue``; otherwise ends
-        the step (RUN-5)."""
+        """Record a failed target (an album or item id) and return, so the step goes on
+        with its other targets. After the pass the engine applies the step's ``on_error``
+        to that album's lane (C-LANES LANES-10)."""
         self.failed_targets.append(FailedTarget(target, message))
         self.log(f"{target}: {message}", stream="error")
-        if self.step.on_error != "continue":
-            raise StepFailure(message)
+
+    def hold(self, key: str, kind: str, ref: str) -> None:
+        """Put lane ``key`` (an album id, or ``pending:<id>`` for an album not imported
+        yet) on hold until ``ref`` is resolved (C-LANES LANES-14)."""
+        self._on_hold(key, kind, ref)
+
+
+def _no_hold(key: str, kind: str, ref: str) -> None:
+    raise RuntimeError("this context can't hold lanes")
+
+
+def is_run_level(step_type: object, with_: Mapping[str, Any]) -> bool:
+    """Whether a step runs before any lane exists (``run_level``, LANES-6)."""
+    flag = getattr(step_type, "run_level", False)
+    if callable(flag):
+        return bool(flag(with_))
+    return bool(flag)
 
 
 _REQUIRED = ("name", "params_model", "requires", "run")

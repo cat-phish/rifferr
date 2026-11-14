@@ -7,7 +7,7 @@ changed again since the apply, nothing is undone and the conflict is reported.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import cast
@@ -199,10 +199,18 @@ def run_entries(journal: Journal, run_id: str) -> list[JournalEntry]:
     return list(reversed(entries))
 
 
-def undo_run(run_id: str, ctx: UndoContext) -> RunUndoOutcome:
-    """Undo a run's entries newest first, stopping at the first conflict (JOURNAL-6)."""
+def undo_run(
+    run_id: str, ctx: UndoContext, *, targets: Collection[str] | None = None
+) -> RunUndoOutcome:
+    """Undo a run's entries newest first, stopping at the first conflict (JOURNAL-6).
+
+    With ``targets`` (album and item ids), only entries touching one of them are undone:
+    a gate rejection undoes just its albums (C-LANES LANES-11).
+    """
     done: list[UndoOutcome] = []
     for entry in run_entries(ctx.journal, run_id):
+        if targets is not None and not any(t.target.id in targets for t in entry.intended):
+            continue
         outcome = undo_entry(entry.id, ctx)
         if not outcome.undone:
             return RunUndoOutcome(run_id, done, outcome)

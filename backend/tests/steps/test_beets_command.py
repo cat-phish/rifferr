@@ -131,9 +131,9 @@ async def test_BEETS_COMMAND_5_nothing_selected_runs_nothing(h: Harness) -> None
     h.backend.cli = [PY, "-c", f"open({str(marker)!r}, 'w').close()"]
     run = await h.run(step({"command": "move"}))
     assert run.state is RunState.succeeded
-    assert h.lines(run, "info") == ["nothing to do"]
     assert not marker.exists()
-    assert run.steps[0].outputs == {"albums": 0, "changed": 0}
+    # LANES-3: a run without albums has no lanes, so the step has no pass at all.
+    assert run.steps[0].status == "skipped"
 
 
 async def test_BEETS_COMMAND_6_query_comes_last_and_is_never_split(h: Harness) -> None:

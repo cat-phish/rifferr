@@ -85,6 +85,7 @@ async def test_CHANGESET_3_targets_outside_the_step_are_refused(h: Harness) -> N
         ]
     }
     run = h.run(wf("{id: p, uses: test.propose, with: {raw: " + _flow(raw) + "}}"))
+    album(h, run, "A")
     await h.engine.execute(run)
     assert run.state is RunState.failed
     assert "not one of this step's targets" in str(run.steps[0].error)
@@ -298,8 +299,16 @@ async def test_CHANGESET_7_review_suspends_the_run_after_the_step(h: Harness) ->
     assert run.suspended_after == "p"
     ids = [s.changeset.id for s in h.engine.changesets.for_run(run.id)]
     assert run.holds == ids
-    assert types(h, run)[-2:] == ["run.step.finished", "run.waiting_review"]
-    assert data(h, run, "run.waiting_review") == [{"after": "p", "changesets": ids, "gates": []}]
+    assert types(h, run)[-4:] == [
+        "run.step.finished",
+        "lane.waiting",
+        "lane.waiting",
+        "run.waiting_review",
+    ]
+    lanes = [a.id for a in h.backend.query(Selection.for_run(run.id))]
+    assert data(h, run, "run.waiting_review") == [
+        {"after": "p", "changesets": ids, "gates": [], "lanes": lanes}
+    ]
     assert run.steps[1].status == "pending"
     assert "run.finished" not in types(h, run)
 

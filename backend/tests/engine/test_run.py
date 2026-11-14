@@ -223,16 +223,18 @@ async def test_RUN_5_continue_processes_remaining_targets(h: Harness) -> None:
     assert run.state == RunState.succeeded
 
 
-async def test_RUN_5_target_failure_under_stop_ends_step_and_run(h: Harness) -> None:
+async def test_RUN_5_LANES_10_target_failure_under_stop_ends_that_lane(h: Harness) -> None:
     run = await _per_album_run(h, "stop")
-    assert h.logs(run) == ["processed A"]
-    assert run.state == RunState.failed
-    assert [s.status for s in run.steps] == ["succeeded", "failed", "skipped"]
+    assert h.logs(run) == ["processed A", "processed C", "end"]
+    assert run.state == RunState.failed  # LANES-9: a lane failed
+    assert [s.status for s in run.steps] == ["succeeded", "failed", "succeeded"]
+    states = {lane.label: lane.state for lane in h.engine.lanes.load(run.id).values()}
+    assert sorted(states.values()) == ["done", "done", "failed"]
 
 
 async def test_RUN_5_target_failure_under_skip_ends_step_only(h: Harness) -> None:
     run = await _per_album_run(h, "skip")
-    assert h.logs(run) == ["processed A", "end"]
+    assert h.logs(run) == ["processed A", "processed C", "end"]
     assert run.state == RunState.succeeded
 
 
@@ -278,7 +280,13 @@ async def test_RUN_6_event_envelope(h: Harness) -> None:
         {"stream": "info", "line": "hello"},
     )
     finished = events[3]
-    assert finished.data == {"status": "succeeded", "outputs": {}, "failed_targets": []}
+    assert finished.data == {
+        "status": "succeeded",
+        "outputs": {},
+        "failed_targets": [],
+        "pass": 1,
+        "lanes": 0,
+    }
 
 
 async def test_RUN_7_events_are_persisted_before_publication(h: Harness) -> None:

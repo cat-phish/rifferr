@@ -11,6 +11,7 @@ import asyncio
 import contextlib
 import hashlib
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol, cast
@@ -53,8 +54,16 @@ from rifferr.engine.changesets import (
 )
 from rifferr.engine.events import Event, EventSink
 from rifferr.engine.journal import InMemoryJournal, Journal
+from rifferr.engine.lanes import (
+    Hold,
+    InMemoryLaneStore,
+    Lane,
+    LaneState,
+    LaneStore,
+    lane_json,
+)
 from rifferr.engine.review import GateStore, InMemoryGateStore, conflicted_for, fold_changes
-from rifferr.engine.run import Run, RunState, Scalar, StepRecord
+from rifferr.engine.run import PassRecord, Run, RunState, Scalar, StepRecord
 from rifferr.engine.steps import (
     GateOptions,
     NoSecrets,
@@ -63,6 +72,7 @@ from rifferr.engine.steps import (
     StepFailure,
     StepRefused,
     StepTypeRegistry,
+    is_run_level,
 )
 
 DEFAULT_CANCEL_GRACE = 5.0
@@ -113,6 +123,16 @@ class _RunState:
         """step id -> ChangeSet ids it proposed that wait for review (CHANGESET-7)."""
         self.gates: dict[str, list[str]] = {}
         """step id -> review gates it opened (S-REVIEW)."""
+        self.lanes: dict[str, Lane] = {}
+        self.pass_lanes: list[Lane] = []
+        self.lane_holds: dict[str, list[Hold]] = {}
+        """Album id -> holds raised during the current pass (LANES-5)."""
+
+
+@dataclass(frozen=True)
+class _PassResult:
+    stop_run: bool
+    failed_albums: set[str]
 
 
 class Engine:
@@ -127,8 +147,10 @@ class Engine:
         journal: Journal | None = None,
         changesets: ChangeSetStore | None = None,
         gates: GateStore | None = None,
+        lanes: LaneStore | None = None,
     ) -> None:
         self.registry = registry
+        self.lanes: LaneStore = lanes or InMemoryLaneStore()
         self.sink = sink
         self.journal: Journal = journal or InMemoryJournal()
         self.changesets: ChangeSetStore = changesets or InMemoryChangeSetStore()
@@ -141,6 +163,10 @@ class Engine:
         self._listeners: list[Listener] = []
 
     # -- public API ----------------------------------------------------------
+
+    def resolve_hold(self, run_id: str, ref: str) -> None:
+        """Mark a ``ctx.hold`` hold of ``run_id`` resolved (LANES-14)."""
+        self.lanes.resolve_hold(run_id, ref)
 
     def subscribe(self, listener: Listener) -> None:
         """Called with each event after it has been persisted (RUN-7)."""
@@ -219,85 +245,270 @@ class Engine:
             state.cancel.set()
 
     def restore_steps(self, run: Run, records: Mapping[str, StepRecord]) -> None:
-        """Put back the records of steps a resumed run already finished (RUN-14)."""
+        """Put back the records of steps a resumed run already ran (RUN-14, LANES-4)."""
         for i, record in enumerate(run.steps):
             if record.id in records:
                 run.steps[i] = records[record.id]
 
     async def execute(self, run: Run, *, resume_after: str | None = None) -> None:
-        """Run the steps; with ``resume_after``, continue after that step (RUN-14).
+        """Run the steps as passes over the run's lanes (C-LANES LANES-3).
 
-        Returns with the run finished, or ``waiting_review`` when a step's ChangeSets
-        wait for review (CHANGESET-7).
+        A fresh run starts at the first step. A resumed run (RUN-14, LANES-8) continues
+        the lanes whose holds were all resolved, from their positions. Returns with the
+        run finished, or ``waiting_review`` when only waiting lanes are left (LANES-7).
         """
         state = self._state[run.id]
-        start = 0
+        specs = state.workflow.steps
+        ids = [s.id for s in specs]
+        if resume_after is not None and resume_after not in ids:
+            raise ValueError(f"run {run.id} has no step {resume_after!r} to resume after")
+        resuming = resume_after is not None
+        lanes = self.lanes.load(run.id) if resuming else {}
+        state.lanes = lanes
         if resume_after is not None:
-            ids = [r.id for r in run.steps]
-            if resume_after not in ids:
-                raise ValueError(f"run {run.id} has no step {resume_after!r} to resume after")
-            start = ids.index(resume_after) + 1
+            if not lanes:  # suspended before C-LANES: every album resumes together
+                self._legacy_lanes(state, ids, resume_after)
+            else:
+                self._release_lanes(state)
         if state.cancel.is_set():
             run.transition(RunState.cancelled)
-            for record in run.steps[start:]:
-                record.status = "skipped"
+            self._cancel_lanes(state)
+            for record in run.steps:
+                if record.status == "pending":
+                    record.status = "skipped"
             self._finish(run)
             return
         run.transition(RunState.running)
         run.started_at = self.clock.now()
-        if resume_after is None:
+        if not resuming:
             self._emit(run, "run.started", None, {"workflow": run.workflow, "profile": run.profile})
         else:
-            self._emit(run, "run.resumed", None, {"after": resume_after})
+            resumed = [lane.key for lane in lanes.values() if lane.state == "active"]
+            self._emit(
+                run,
+                "run.resumed",
+                None,
+                {"after": resume_after, "lanes": cast(list[JsonValue], list(resumed))},
+            )
+        start = 0
+        if resuming:
+            positions = [
+                ids.index(lane.position)
+                for lane in lanes.values()
+                if lane.state == "active" and lane.position is not None
+            ]
+            start = min(positions, default=len(ids))
         outcome = RunState.succeeded
-        steps = list(zip(state.workflow.steps, run.steps, strict=True))
-        for index in range(start, len(steps)):
-            spec, record = steps[index]
-            stop = await self._execute_step(state, spec, record)
+        for index in range(start, len(specs)):
+            spec, record = specs[index], run.steps[index]
+            nxt = ids[index + 1] if index + 1 < len(ids) else None
+            self._discover(state, spec.id)
+            pass_lanes = [
+                lane
+                for lane in lanes.values()
+                if lane.state == "active" and lane.position == spec.id
+            ]
+            step_type = self.registry.step_type(spec.uses)
+            run_level = is_run_level(step_type, spec.with_)
+            if not pass_lanes and not (run_level and not lanes):
+                # LANES-3: no lane here; run-level steps run lane-less only before any lane
+                continue
+            result = await self._execute_step(state, spec, record, pass_lanes)
             if record.status == "cancelled":
                 outcome = RunState.cancelled
-            elif stop:
-                outcome = RunState.failed
-            if outcome is not RunState.succeeded:
-                for later in run.steps[index + 1 :]:
-                    later.status = "skipped"
                 break
-            holds = state.holds.pop(spec.id, [])
-            gates = state.gates.pop(spec.id, [])
-            if holds or gates:
-                self._suspend(run, spec.id, holds, gates)
-                return
+            if result.stop_run:  # LANES-10: a failure with no target under on_error: stop
+                outcome = RunState.failed
+                for lane in lanes.values():
+                    if lane.state == "active":
+                        lane.steps[spec.id] = record.status
+                        self._end_lane(state, lane, "failed")
+                break
+            self._advance(state, spec, record, pass_lanes, result.failed_albums, nxt)
+        if outcome is RunState.cancelled:
+            self._cancel_lanes(state)
+        self.lanes.save(run.id, lanes.values())
+        if outcome is RunState.succeeded and any(
+            lane.state == "waiting" for lane in lanes.values()
+        ):
+            self._suspend(run, state)
+            return
+        if outcome is RunState.succeeded and any(lane.state == "failed" for lane in lanes.values()):
+            outcome = RunState.failed  # LANES-9
+        for record in run.steps:
+            if record.status == "pending":
+                record.status = "skipped"
         run.transition(outcome)
         self._finish(run)
 
-    def _suspend(self, run: Run, step_id: str, holds: list[str], gates: list[str]) -> None:
+    # -- lanes (C-LANES) -------------------------------------------------------
+
+    def _legacy_lanes(self, state: _RunState, ids: list[str], resume_after: str) -> None:
+        """A run suspended before lanes existed: all its albums resume together."""
+        i = ids.index(resume_after)
+        position = ids[i + 1] if i + 1 < len(ids) else None
+        for album in state.backend.query(Selection.for_run(state.run.id)):
+            lane = Lane(album.id, label(album), "active", position)
+            if position is None:
+                lane.state = "done"
+            state.lanes[album.id] = lane
+        self.lanes.save(state.run.id, state.lanes.values())
+
+    def _released(self, lane: Lane, resolved: set[str]) -> bool:
+        for hold in lane.holds:
+            if hold.kind == "changeset":
+                stored = self.changesets.get(hold.ref)
+                if stored is not None and stored.state in ("proposed", "conflicted"):
+                    return False
+            elif hold.kind == "gate":
+                gate = self.gates.get(hold.ref)
+                if gate is not None and gate.state != "continued":
+                    return False
+            elif hold.ref not in resolved:
+                return False
+        return True
+
+    def _release_lanes(self, state: _RunState) -> None:
+        """LANES-8: waiting lanes whose holds are all resolved become active again."""
+        resolved = set(self.lanes.resolved_holds(state.run.id))
+        for lane in state.lanes.values():
+            if lane.state != "waiting" or not self._released(lane, resolved):
+                continue
+            lane.holds = []
+            lane.state = "active" if lane.position is not None else "done"
+            self._emit_lane(state, "lane.resumed", lane)
+            if lane.state == "done":
+                self._emit_lane(state, "lane.finished", lane)
+
+    def _discover(self, state: _RunState, step_id: str) -> None:
+        """LANES-1 new lanes for run albums without one; LANES-12 lanes whose album is gone."""
+        run = state.run
+        try:
+            present = {a.id: a for a in state.backend.query(Selection.for_run(run.id))}
+        except CapabilityError:
+            return
+        for album_id, album in present.items():
+            if album_id not in state.lanes:
+                lane = Lane(album_id, label(album), "active", step_id)
+                state.lanes[album_id] = lane
+                self._emit_lane(state, "lane.started", lane)
+        for lane in state.lanes.values():
+            if lane.state == "active" and not lane.pending and lane.key not in present:
+                self._end_lane(state, lane, "gone")
+
+    def _advance(
+        self,
+        state: _RunState,
+        spec: StepSpec,
+        record: StepRecord,
+        pass_lanes: list[Lane],
+        failed: set[str],
+        nxt: str | None,
+    ) -> None:
+        """After a pass: failed lanes end or go on (LANES-10), held lanes wait (LANES-5),
+        the others move to the next step."""
+        number = len(record.passes)
+        held = state.lane_holds
+        state.lane_holds = {}
+        for key in held:  # holds on albums that had no lane in this pass (e.g. run-level steps)
+            if key not in state.lanes:
+                state.lanes[key] = Lane(key, key, "active", spec.id)
+                self._emit_lane(state, "lane.started", state.lanes[key])
+                pass_lanes.append(state.lanes[key])
+        for lane in pass_lanes:
+            lane.passes[spec.id] = number
+            if lane.key in failed:
+                lane.steps[spec.id] = "failed"
+                if spec.on_error == "stop":
+                    self._end_lane(state, lane, "failed")
+                    continue
+            else:
+                lane.steps[spec.id] = record.status
+            lane.position = nxt
+            holds = held.get(lane.key, [])
+            if holds:
+                lane.state = "waiting"
+                lane.holds = holds
+                self._emit_lane(state, "lane.waiting", lane)
+            elif nxt is None:
+                self._end_lane(state, lane, "done")
+        self.lanes.save(state.run.id, state.lanes.values())
+
+    def _end_lane(self, state: _RunState, lane: Lane, final: LaneState) -> None:
+        lane.state = final
+        lane.position = None
+        lane.holds = []
+        self._emit_lane(state, "lane.finished", lane)
+
+    def _cancel_lanes(self, state: _RunState) -> None:
+        for lane in state.lanes.values():
+            if not lane.final:
+                self._end_lane(state, lane, "cancelled")
+        self.lanes.save(state.run.id, state.lanes.values())
+
+    def _emit_lane(self, state: _RunState, type: str, lane: Lane) -> None:
+        self._emit(state.run, type, None, lane_json(lane))
+
+    def _hold(self, state: _RunState, key: str, kind: str, ref: str) -> None:
+        if kind not in ("changeset", "gate", "import"):
+            raise ValueError(f"unknown hold kind {kind!r}")
+        state.lane_holds.setdefault(key, []).append(Hold(cast(Any, kind), ref))
+
+    def rename_lane(self, run_id: str, old: str, new: str) -> None:
+        """LANES-14: a ``pending:`` lane becomes its album's lane once it is imported."""
+        self.lanes.rename(run_id, old, new)
+
+    def _suspend(self, run: Run, state: _RunState) -> None:
+        waiting = [lane for lane in state.lanes.values() if lane.state == "waiting"]
+        holds = [h.ref for lane in waiting for h in lane.holds if h.kind == "changeset"]
+        gates = list(
+            dict.fromkeys(h.ref for lane in waiting for h in lane.holds if h.kind == "gate")
+        )
+        last = [r.id for r in run.steps if r.passes]
         run.transition(RunState.waiting_review)
-        run.suspended_after = step_id
-        run.holds = list(holds)
-        run.gates = list(gates)
+        run.suspended_after = last[-1] if last else run.steps[-1].id
+        run.holds = holds
+        run.gates = gates
         self._emit(
             run,
             "run.waiting_review",
             None,
             {
-                "after": step_id,
+                "after": run.suspended_after,
                 "changesets": cast(list[JsonValue], list(holds)),
                 "gates": cast(list[JsonValue], list(gates)),
+                "lanes": cast(list[JsonValue], [lane.key for lane in waiting]),
             },
         )
 
     # -- steps ---------------------------------------------------------------
 
-    async def _execute_step(self, state: _RunState, spec: StepSpec, record: StepRecord) -> bool:
-        """Run one step; return True when the run must stop because of a failure."""
+    async def _execute_step(
+        self, state: _RunState, spec: StepSpec, record: StepRecord, pass_lanes: list[Lane]
+    ) -> _PassResult:
+        """Run one pass of a step over ``pass_lanes`` (LANES-3)."""
         run = state.run
+        number = len(record.passes) + 1
+        state.pass_lanes = pass_lanes
         record.status = "running"
+        record.error = None
         record.started_at = self.clock.now()
-        self._emit(run, "run.step.started", spec.id, {"uses": spec.uses})
+        self._emit(
+            run,
+            "run.step.started",
+            spec.id,
+            {"uses": spec.uses, "pass": number, "lanes": len(pass_lanes)},
+        )
+        album_ids = tuple(lane.key for lane in pass_lanes if not lane.pending)
+        selection = Selection(
+            query=spec.when or "",
+            run_id=run.id,
+            album_ids=album_ids if state.lanes else None,
+        )
         ctx: StepContext | None = None
         refused = False
         try:
-            params = self._prepare_params(run, spec)
+            params = self._prepare_params(state, spec)
             step_type = self.registry.step_type(spec.uses)
             assert step_type is not None, "validated before the run was created"
             ctx = StepContext(
@@ -305,7 +516,7 @@ class Engine:
                 step=spec,
                 params=params,
                 backend=state.backend,
-                selection=Selection(query=spec.when or "", run_id=run.id),
+                selection=selection,
                 emit=lambda type, data: self._emit_from_step(state, spec.id, type, data),
                 is_cancelled=state.cancel.is_set,
                 profile=run.profile,
@@ -318,10 +529,11 @@ class Engine:
                     state, spec, proposal, current, snapshots
                 ),
                 profile_dir=state.profile_dir,
-                interpolate=lambda value: self._interpolate_text(run, value),
+                interpolate=lambda value: self._interpolate_text(state, value),
                 open_gate=lambda requests, options, snapshots: self._open_gate(
                     state, spec, requests, options, snapshots
                 ),
+                on_hold=lambda key, kind, ref: self._hold(state, key, kind, ref),
             )
             result = await self._run_cancellable(state, step_type.run(ctx))
             if state.cancel.is_set():
@@ -341,22 +553,46 @@ class Engine:
         except Exception as exc:  # a bug in a step: still a step failure, never a crash
             record.status = "cancelled" if state.cancel.is_set() else "failed"
             record.error = f"{type(exc).__name__}: {exc}"
+        failed_albums: set[str] = set()
         if ctx is not None:
             record.failed_targets = list(ctx.failed_targets)
+            for failure in ctx.failed_targets:
+                album = ctx._snapshots.album_for(failure.target)  # pyright: ignore[reportPrivateUsage]
+                failed_albums.add(album or failure.target)
+        else:
+            record.failed_targets = []
+        if record.error is not None and record.status == "failed":
+            record.outputs = {}
         record.finished_at = self.clock.now()
+        record.passes.append(
+            PassRecord(
+                number=number,
+                lanes=len(pass_lanes),
+                status=record.status,
+                outputs=dict(record.outputs),
+                error=record.error,
+                started_at=record.started_at,
+                finished_at=record.finished_at,
+            )
+        )
         data: dict[str, JsonValue] = {
             "status": record.status,
             "outputs": cast(dict[str, JsonValue], dict(record.outputs)),
             "failed_targets": [
                 {"target": f.target, "message": f.message} for f in record.failed_targets
             ],
+            "pass": number,
+            "lanes": len(pass_lanes),
         }
         if record.error is not None:
             data["error"] = state.redactor.redact(record.error)
         if refused:
             data["refused"] = True  # e.g. needs trust; lets clients give a hint (CLI-10)
         self._emit(run, "run.step.finished", spec.id, data)
-        return refused or (record.status == "failed" and spec.on_error == "stop")
+        # A failure with no target ends the pass; under stop it ends the run (LANES-10).
+        no_target = record.status == "failed" and record.error is not None
+        stop_run = refused or (no_target and spec.on_error == "stop")
+        return _PassResult(stop_run=stop_run, failed_albums=failed_albums)
 
     async def _run_cancellable(self, state: _RunState, coro: Any) -> Any:
         task: asyncio.Task[Any] = asyncio.ensure_future(coro)
@@ -376,7 +612,16 @@ class Engine:
             cancel_wait.cancel()
 
     @staticmethod
-    def _interpolation_context(run: Run) -> InterpolationContext:
+    def _interpolation_context(state: _RunState) -> InterpolationContext:
+        """``{{ steps.<id>.<key> }}`` comes from the latest pass of that step that
+        included this pass's lanes (LANES-4)."""
+        run = state.run
+        outputs: dict[str, Mapping[str, Scalar]] = {}
+        for r in run.steps:
+            if r.status not in ("succeeded", "failed") and not r.passes:
+                continue
+            numbers = [lane.passes[r.id] for lane in state.pass_lanes if r.id in lane.passes]
+            outputs[r.id] = r.outputs_of(max(numbers) if numbers else None)
         return InterpolationContext(
             vars=run.vars,
             run={
@@ -386,17 +631,17 @@ class Engine:
                 "trigger": run.trigger,
             },
             profile={"name": run.profile},
-            steps={r.id: r.outputs for r in run.steps if r.status in ("succeeded", "failed")},
+            steps=outputs,
         )
 
-    def _interpolate_text(self, run: Run, value: str) -> str:
+    def _interpolate_text(self, state: _RunState, value: str) -> str:
         try:
-            return interpolate(value, self._interpolation_context(run))
+            return interpolate(value, self._interpolation_context(state))
         except InterpolationError as exc:
             raise StepFailure(str(exc)) from exc
 
-    def _prepare_params(self, run: Run, spec: StepSpec) -> BaseModel:
-        ctx = self._interpolation_context(run)
+    def _prepare_params(self, state: _RunState, spec: StepSpec) -> BaseModel:
+        ctx = self._interpolation_context(state)
         try:
             values = _interpolate_values(spec.with_, ctx)
         except InterpolationError as exc:
@@ -468,6 +713,8 @@ class Engine:
                 self._log_outcome(state, spec.id, outcome.entry)
             else:
                 state.holds.setdefault(spec.id, []).append(cs.id)
+                album = snapshots.album_of(cs.targets[0].target)
+                state.lane_holds.setdefault(album, []).append(Hold("changeset", cs.id))  # LANES-5
         return changesets
 
     # -- review gates (S-REVIEW) ---------------------------------------------------
@@ -513,6 +760,8 @@ class Engine:
         )
         self.gates.add(gate)
         state.gates.setdefault(spec.id, []).append(gate.id)
+        for album in albums:  # LANES-5: each album in the gate waits
+            state.lane_holds.setdefault(album.target.id, []).append(Hold("gate", gate.id))
         data: dict[str, JsonValue] = {"gate_id": gate.id, "albums": len(albums)}
         if gate.deadline is not None:
             data["deadline"] = gate.deadline.isoformat()

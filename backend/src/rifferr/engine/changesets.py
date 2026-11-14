@@ -141,6 +141,12 @@ class SnapshotIndex:
     def album_of(self, ref: TargetRef) -> str:
         return ref.id if ref.scope == "album" else self._album_of[ref.id]
 
+    def album_for(self, target_id: str) -> str | None:
+        """The album an album or item id belongs to, if the step was given it."""
+        if target_id in self._albums:
+            return target_id
+        return self._album_of.get(target_id)
+
 
 def build_changesets(
     proposal: ChangeSetProposal,

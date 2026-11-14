@@ -45,7 +45,22 @@ class FailedTarget:
 
 
 @dataclass
+class PassRecord:
+    """One pass of a step over the lanes that had reached it (C-LANES LANES-4)."""
+
+    number: int
+    lanes: int
+    status: StepStatus
+    outputs: dict[str, Scalar] = field(default_factory=dict[str, Scalar])
+    error: str | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+
+
+@dataclass
 class StepRecord:
+    """A step's latest pass, plus every pass (``passes``)."""
+
     id: str
     uses: str
     status: StepStatus = "pending"
@@ -54,6 +69,14 @@ class StepRecord:
     error: str | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None
+    passes: list[PassRecord] = field(default_factory=list[PassRecord])
+
+    def outputs_of(self, number: int | None) -> dict[str, Scalar]:
+        """The outputs of pass ``number`` (the latest when ``None`` or unknown)."""
+        for p in self.passes:
+            if p.number == number:
+                return p.outputs
+        return self.outputs
 
 
 @dataclass

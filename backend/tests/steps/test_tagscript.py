@@ -152,10 +152,14 @@ async def test_TAGSCRIPT_1_symlink_leaving_scripts_folder_fails(h: Harness, tmp_
     assert "leaves the profile's scripts/ folder" in (run.steps[0].error or "")
 
 
-async def test_TAGSCRIPT_1_missing_and_invalid_scripts_fail(h: Harness) -> None:
+async def test_TAGSCRIPT_1_missing_script_fails(h: Harness) -> None:
     h.album("A", "x")
     run = await h.run(workflow("script: nope.yaml"))
     assert "not found" in (run.steps[0].error or "")
+
+
+async def test_TAGSCRIPT_1_invalid_script_fails(h: Harness) -> None:
+    h.album("A", "x")
     h.script("bad.yaml", "actions:\n  - sett: {a: 1}\n")
     run = await h.run(workflow("script: bad.yaml"))
     assert run.state is RunState.failed

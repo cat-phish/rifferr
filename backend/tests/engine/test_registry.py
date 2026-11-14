@@ -7,7 +7,7 @@ import pytest
 
 from rifferr.engine import StepTypeRegistry
 from rifferr.steps.registry import load_step_types
-from tests.engine.steps import ALL, EchoStep
+from tests.engine.steps import CrashStep, EchoStep
 
 
 @dataclass
@@ -23,7 +23,7 @@ class FakeEntryPoint:
 
 
 def test_RUN_3_step_types_load_from_entry_points() -> None:
-    eps = [FakeEntryPoint("test.echo", EchoStep), FakeEntryPoint("test.crash", ALL[3])]
+    eps = [FakeEntryPoint("test.echo", EchoStep), FakeEntryPoint("test.crash", CrashStep())]
     registry = load_step_types(entry_points=lambda group: eps if group == "rifferr.steps" else [])
     assert registry.names() == ["test.crash", "test.echo"]
     assert registry.errors == []

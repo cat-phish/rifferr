@@ -9,6 +9,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict
 
 from rifferr.backends.base import BackendCapabilities
+from rifferr.backends.fake import FakeBackend
 from rifferr.core.changeset import ChangeSetProposal, TargetRef
 from rifferr.engine import StepContext, StepFailure, StepResult
 
@@ -25,6 +26,7 @@ class EchoParams(_P):
 
 class EchoStep:
     name = "test.echo"
+    run_level = True  # LANES-6: runs without albums
     params_model = EchoParams
     requires = BackendCapabilities()
 
@@ -67,6 +69,7 @@ class SlowParams(_P):
 
 class SlowStep:
     name = "test.slow"
+    run_level = True  # LANES-6: runs without albums
     params_model = SlowParams
     requires = BackendCapabilities()
     started: asyncio.Event | None = None
@@ -87,6 +90,7 @@ class SlowStep:
 
 class CrashStep:
     name = "test.crash"
+    run_level = True  # LANES-6: runs without albums
     params_model = _P
     requires = BackendCapabilities()
 
@@ -100,6 +104,7 @@ class ImportParams(_P):
 
 class ImportStep:
     name = "test.import"
+    run_level = True  # LANES-6: runs without albums
     params_model = ImportParams
     requires = BackendCapabilities(import_=True)
 
@@ -190,7 +195,69 @@ class ReviewOnlyProposeStep(ProposeStep):
     force_review = True
 
 
+class HoldParams(_P):
+    albums: list[str] = []
+    kind: str = "import"
+
+
+class HoldStep:
+    """Holds the named albums' lanes with ``ctx.hold`` (LANES-14); ref ``hold-<name>``."""
+
+    name = "test.hold"
+    params_model = HoldParams
+    requires = BackendCapabilities(query=True)
+
+    async def run(self, ctx: StepContext) -> StepResult:
+        params = ctx.params
+        assert isinstance(params, HoldParams)
+        for album in ctx.albums():
+            name = str(album.fields.get("album"))
+            if name in params.albums:
+                ctx.hold(album.id, params.kind, f"hold-{name}")
+        return StepResult()
+
+
+class RemoveParams(_P):
+    albums: list[str] = []
+
+
+class RemoveStep:
+    """Removes the named albums from the fake library (LANES-12)."""
+
+    name = "test.remove"
+    run_level = True
+    params_model = RemoveParams
+    requires = BackendCapabilities(query=True)
+
+    async def run(self, ctx: StepContext) -> StepResult:
+        params = ctx.params
+        assert isinstance(params, RemoveParams)
+        backend = ctx.backend
+        assert isinstance(backend, FakeBackend)
+        for album in ctx.albums():
+            if album.fields.get("album") in params.albums:
+                backend.remove_album(album.id)
+        return StepResult()
+
+
+class SeenStep:
+    """A run-level step that logs the albums of its pass (LANES-6)."""
+
+    name = "test.seen"
+    run_level = True
+    params_model = _P
+    requires = BackendCapabilities(query=True)
+
+    async def run(self, ctx: StepContext) -> StepResult:
+        names = sorted(str(a.fields.get("album")) for a in ctx.albums())
+        ctx.log("seen: " + ",".join(names))
+        return StepResult(outputs={"seen": len(names)})
+
+
 ALL = [
+    HoldStep(),
+    RemoveStep(),
+    SeenStep(),
     EchoStep(),
     PerAlbumStep(),
     SlowStep(),

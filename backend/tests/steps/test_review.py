@@ -190,7 +190,12 @@ async def test_REVIEW_3_gate_holds_each_album_and_suspends_the_run(h: Harness) -
     assert run.holds == []
     assert data(h, run, "review.requested") == [{"gate_id": gate.id, "albums": 2}]
     assert data(h, run, "run.waiting_review") == [
-        {"after": "check", "changesets": [], "gates": [gate.id]}
+        {
+            "after": "check",
+            "changesets": [],
+            "gates": [gate.id],
+            "lanes": [a.target.id for a in gate.albums],
+        }
     ]
     order = types(h, run)
     assert order.index("review.requested") < order.index("run.step.finished")

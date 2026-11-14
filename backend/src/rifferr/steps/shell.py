@@ -16,7 +16,7 @@ import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import (
     BaseModel,
@@ -138,6 +138,11 @@ class ShellStep:
 
     def __init__(self, environ: Mapping[str, str] | None = None) -> None:
         self._environ = environ
+
+    @staticmethod
+    def run_level(with_: Mapping[str, Any]) -> bool:
+        """``per: run`` runs once per pass, with or without albums (LANES-6)."""
+        return with_.get("per") == "run"
 
     async def run(self, ctx: StepContext) -> StepResult:
         params = ctx.params

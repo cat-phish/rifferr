@@ -26,6 +26,11 @@ ENGINE_EVENTS = frozenset(
         # S-REVIEW
         "review.requested",
         "review.resolved",
+        # C-LANES (LANES-2)
+        "lane.started",
+        "lane.waiting",
+        "lane.resumed",
+        "lane.finished",
         # F-TAG-GRID: a job without a run finished (profile stream)
         "job.finished",
     }
