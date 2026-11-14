@@ -39,3 +39,5 @@ export type CurrentTarget = S["CurrentTarget"];
 export type ReviewGate = S["ReviewGate"];
 export type GateAlbum = S["GateAlbum"];
 export type TargetRef = S["TargetRef"];
+export type ImportDecision = S["ImportDecision"];
+export type ImportCandidate = S["ImportCandidate"];

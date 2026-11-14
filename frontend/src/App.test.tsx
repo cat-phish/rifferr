@@ -356,6 +356,41 @@ test("LANES_15 run page shows a lane table updated live by lane events", async (
   );
 });
 
+test("IMPORT_UI_16 a pending lane links its import decision; skipped lanes show", async () => {
+  const lanes: RunDetail["lanes"] = [
+    {
+      key: "pending:D1",
+      label: "b-folder",
+      state: "waiting",
+      position: "list",
+      holds: [{ kind: "import", ref: "D1" }],
+      steps: {},
+    },
+    {
+      key: "pending:D2",
+      label: "c-folder",
+      state: "skipped",
+      position: null,
+      holds: [],
+      steps: {},
+    },
+  ];
+  mockApi({
+    "GET /api/profiles": () => PROFILES,
+    "GET /api/runs/R1": () => runDetail({ lanes }),
+  });
+  renderApp("/runs/R1?profile=main");
+  const table = await screen.findByTestId("lanes");
+  const b = within(table).getByTestId("lane-b-folder");
+  expect(within(b).getByRole("link", { name: "import decision" })).toHaveAttribute(
+    "href",
+    "/review?profile=main&item=D1",
+  );
+  expect(
+    within(within(table).getByTestId("lane-c-folder")).getByText("skipped"),
+  ).toBeInTheDocument();
+});
+
 test("UI_SHELL_8 cancel posts to the run's cancel route", async () => {
   const { calls } = mockApi({
     "GET /api/profiles": () => PROFILES,

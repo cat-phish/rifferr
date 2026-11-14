@@ -13,6 +13,8 @@ export const APP_EVENTS = [
   "run.finished",
   "review.requested",
   "review.resolved",
+  "import.requested",
+  "import.resolved",
   "changeset.proposed",
   "changeset.applied",
   "changeset.rejected",

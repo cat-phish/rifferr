@@ -17,6 +17,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { api, ok } from "../api/client";
+import { ImportDecisionView } from "../components/ImportDecisionView";
 import type { GateAlbum, QueueItem, ReviewGate } from "../api/types";
 import { useProfile, withProfile } from "../hooks/useProfile";
 import { useReviewQueue } from "../hooks/useReviewQueue";
@@ -34,7 +35,7 @@ import {
   type RunGroup,
 } from "../lib/review";
 
-/** The review queue: ChangeSets and review gates that wait for a decision, grouped by
+/** The review queue: ChangeSets, review gates and import decisions that wait for a decision, grouped by
  * run (F-REVIEW-QUEUE). Updates come from ``/api/events`` via the app shell. */
 export function ReviewPage() {
   const { profile } = useProfile();
@@ -143,6 +144,26 @@ function RunCard({ group, focus }: { group: RunGroup; focus: string | null }) {
         {group.items.map((item) =>
           item.kind === "gate" && item.gate ? (
             <GateCard key={item.id} item={item} gate={item.gate} focused={focus === item.id} />
+          ) : item.kind === "import" && item.import_decision ? (
+            <ItemCard
+              key={item.id}
+              item={item}
+              focused={focus === item.id}
+              title={
+                <Group gap="xs">
+                  <Text fw={500}>
+                    {item.import_decision.kind === "duplicate"
+                      ? "Duplicate album"
+                      : "Import decision"}
+                  </Text>
+                  <Text size="sm" c="dimmed">
+                    step {item.step_id}
+                  </Text>
+                </Group>
+              }
+            >
+              <ImportDecisionView decision={item.import_decision} />
+            </ItemCard>
           ) : (
             <ChangeSetCard key={item.id} item={item} focused={focus === item.id} />
           ),

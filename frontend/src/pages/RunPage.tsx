@@ -140,6 +140,12 @@ const LANE_COLORS: Record<LaneOut["state"], string> = {
   rejected: "orange",
   gone: "gray",
   cancelled: "orange",
+  skipped: "gray",
+};
+
+const HOLD_SAYS: Record<string, string> = {
+  gate: "review gate",
+  import: "import decision",
 };
 
 /** One row per album: where it is in the run and what it waits for (C-LANES LANES-15). */
@@ -174,13 +180,9 @@ function Lanes({ lanes }: { lanes: LaneOut[] }) {
                   {lane.holds.map((hold, n) => (
                     <span key={hold.ref}>
                       {n > 0 && ", "}
-                      {hold.kind === "import" ? (
-                        "import decision"
-                      ) : (
-                        <Anchor component={Link} to={reviewLink(profile, "item", hold.ref)}>
-                          {hold.kind === "gate" ? "review gate" : "tag changes"}
-                        </Anchor>
-                      )}
+                      <Anchor component={Link} to={reviewLink(profile, "item", hold.ref)}>
+                        {HOLD_SAYS[hold.kind] ?? "tag changes"}
+                      </Anchor>
                     </span>
                   ))}
                 </Table.Td>

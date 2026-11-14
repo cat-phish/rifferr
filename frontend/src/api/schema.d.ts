@@ -106,6 +106,67 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/imports/{decision_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Import
+         * @description The full import decision (IMPORT-UI-7).
+         */
+        get: operations["get_import_api_imports__decision_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/imports/{decision_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decide Import
+         * @description Answer an import decision, once; a worker job imports the folder (IMPORT-UI-8,
+         *     -11). The result arrives as ``job.finished`` and ``import.resolved``.
+         */
+        post: operations["decide_import_api_imports__decision_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/imports/{decision_id}/lookup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Lookup Import
+         * @description Look the folder up again by release ids or by artist and album (IMPORT-UI-9).
+         */
+        post: operations["lookup_import_api_imports__decision_id__lookup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/profiles": {
         parameters: {
             query?: never;
@@ -345,7 +406,8 @@ export interface paths {
         /**
          * Review Queue
          * @description What waits for a decision, oldest first: run ChangeSets that are proposed or
-         *     conflicted, and pending review gates (REVIEW-QUEUE-1).
+         *     conflicted, pending review gates (REVIEW-QUEUE-1) and pending import decisions
+         *     (IMPORT-UI-7).
          */
         get: operations["review_queue_api_review_get"];
         put?: never;
@@ -829,6 +891,25 @@ export interface components {
             target: components["schemas"]["TargetRef"];
         };
         /**
+         * FolderItem
+         * @description One file of the folder as it is now: its tags before any match.
+         */
+        FolderItem: {
+            /** Format */
+            format?: string | null;
+            /**
+             * Length
+             * @description Seconds
+             */
+            length?: number | null;
+            /** Path */
+            path: string;
+            /** Tags */
+            tags?: {
+                [key: string]: boolean | number | string | string[] | null;
+            };
+        };
+        /**
          * GateAlbum
          * @description One album as the reviewer sees it at the gate (REVIEW-3).
          */
@@ -908,6 +989,164 @@ export interface components {
             skipped?: string | null;
         };
         /**
+         * ImportCandidate
+         * @description One match the backend's lookup found, in the backend's order (IMPORT-UI-2, -4).
+         */
+        ImportCandidate: {
+            /**
+             * Album
+             * @default
+             */
+            album: string;
+            /**
+             * Artist
+             * @default
+             */
+            artist: string;
+            /** Catalognum */
+            catalognum?: string | null;
+            /** Country */
+            country?: string | null;
+            /**
+             * Distance
+             * @description 0 is a perfect match
+             */
+            distance: number;
+            /**
+             * Id
+             * @description '<data_source>:<album id>', stable across lookups
+             */
+            id: string;
+            /** Label */
+            label?: string | null;
+            /** Mapping */
+            mapping?: components["schemas"]["TrackMatch"][];
+            /** Media */
+            media?: string | null;
+            /**
+             * Missing
+             * @description Candidate tracks without a file
+             */
+            missing?: string[];
+            /** Penalties */
+            penalties?: string[];
+            /** Source */
+            source: string;
+            /**
+             * Tracks
+             * @default 0
+             */
+            tracks: number;
+            /**
+             * Unmatched
+             * @description Files without a candidate track
+             */
+            unmatched?: string[];
+            /** Url */
+            url?: string | null;
+            /** Year */
+            year?: number | null;
+        };
+        /**
+         * ImportDecision
+         * @description A stored import question and, once answered, its answer (IMPORT-UI-4, -12).
+         */
+        ImportDecision: {
+            /** Action */
+            action?: ("candidate" | "asis" | "skip" | "keep" | "remove" | "merge") | null;
+            /** Album Id */
+            album_id?: string | null;
+            /** Candidate Id */
+            candidate_id?: string | null;
+            /** Candidates */
+            candidates?: components["schemas"]["ImportCandidate"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Deadline */
+            deadline?: string | null;
+            /** Decided At */
+            decided_at?: string | null;
+            /** Decided By */
+            decided_by?: string | null;
+            /** Duplicates */
+            duplicates?: components["schemas"]["AlbumSnapshot"][];
+            /** Error */
+            error?: string | null;
+            /** Fingerprint */
+            fingerprint: string;
+            /** Id */
+            id: string;
+            /** Items */
+            items?: components["schemas"]["FolderItem"][];
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "match" | "duplicate";
+            /** Note */
+            note?: string | null;
+            /**
+             * On Timeout
+             * @default skip
+             * @enum {string}
+             */
+            on_timeout: "skip" | "asis";
+            /** Options */
+            options?: {
+                [key: string]: string | boolean;
+            };
+            /** Path */
+            path: string;
+            /** Profile */
+            profile: string;
+            /** Run Id */
+            run_id: string;
+            /** Set Fields */
+            set_fields?: {
+                [key: string]: string;
+            };
+            /**
+             * State
+             * @default pending
+             * @enum {string}
+             */
+            state: "pending" | "applied" | "skipped" | "cancelled";
+            /** Step Id */
+            step_id: string;
+        };
+        /**
+         * ImportDecisionBody
+         * @description How to answer an import decision (IMPORT-UI-8). For kind ``duplicate`` the
+         *     action is one of ``skip`` / ``keep`` / ``remove`` / ``merge``.
+         */
+        ImportDecisionBody: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "candidate" | "asis" | "skip" | "keep" | "remove" | "merge";
+            /** Candidate Id */
+            candidate_id?: string | null;
+            /** Note */
+            note?: string | null;
+        };
+        /**
+         * ImportLookupBody
+         * @description Look the folder up again (IMPORT-UI-9): by release ids, or by artist and album.
+         *     Empty repeats the plain lookup.
+         */
+        ImportLookupBody: {
+            /** Album */
+            album?: string | null;
+            /** Artist */
+            artist?: string | null;
+            /** Ids */
+            ids?: string[];
+        };
+        /**
          * ItemSnapshot
          * @description One track. ``id`` is opaque and assigned by the backend.
          */
@@ -968,7 +1207,7 @@ export interface components {
              * State
              * @enum {string}
              */
-            state: "active" | "waiting" | "done" | "failed" | "rejected" | "gone" | "cancelled";
+            state: "active" | "waiting" | "done" | "skipped" | "failed" | "rejected" | "gone" | "cancelled";
             /**
              * Steps
              * @description Step id -> this lane's status in that step
@@ -1204,7 +1443,7 @@ export interface components {
         /**
          * QueueItem
          * @description One thing that waits for a decision (REVIEW-QUEUE-1). ``kind`` says which of
-         *     ``changeset`` / ``gate`` is set; later milestones add kinds.
+         *     ``changeset`` / ``gate`` / ``import_decision`` is set (IMPORT-UI-7).
          */
         QueueItem: {
             changeset?: components["schemas"]["ChangeSet"] | null;
@@ -1216,11 +1455,12 @@ export interface components {
             gate?: components["schemas"]["ReviewGate"] | null;
             /** Id */
             id: string;
+            import_decision?: components["schemas"]["ImportDecision"] | null;
             /**
              * Kind
              * @enum {string}
              */
-            kind: "changeset" | "gate";
+            kind: "changeset" | "gate" | "import";
             /** Profile */
             profile: string;
             /** Run Id */
@@ -1524,6 +1764,31 @@ export interface components {
              * @enum {string}
              */
             scope: "album" | "item";
+        };
+        /**
+         * TrackMatch
+         * @description How one file maps to a candidate's track.
+         */
+        TrackMatch: {
+            /**
+             * Item
+             * @description The file's path
+             */
+            item: string;
+            /**
+             * Length
+             * @description The candidate track's seconds
+             */
+            length?: number | null;
+            /** Title After */
+            title_after?: string | null;
+            /** Title Before */
+            title_before?: string | null;
+            /**
+             * Track
+             * @description The candidate's track number
+             */
+            track?: number | null;
         };
         /**
          * TriggerStateOut
@@ -1981,6 +2246,188 @@ export interface operations {
                 };
                 content: {
                     "text/event-stream": string;
+                };
+            };
+        };
+    };
+    get_import_api_imports__decision_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                decision_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportDecision"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    decide_import_api_imports__decision_id__decision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                decision_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportDecisionBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobQueued"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    lookup_import_api_imports__decision_id__lookup_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                decision_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportLookupBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobQueued"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
         };
