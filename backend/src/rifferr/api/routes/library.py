@@ -52,6 +52,10 @@ async def library(
     client: Annotated[
         str | None, Query(max_length=100, description="A newer query from it cancels this one")
     ] = None,
+    seq: Annotated[
+        int | None,
+        Query(ge=0, description="Increases with each query from this client; says which is newer"),
+    ] = None,
 ) -> LibraryPage:
     """Albums or items matching a beets query; writes nothing (TAG-GRID-2)."""
     get_profile(state, profile)
@@ -64,6 +68,7 @@ async def library(
         timeout=QUERY_TIMEOUT,
         timeout_code="query_timeout",
         client=client,
+        seq=seq,
     )
     return LibraryPage.model_validate(result)
 

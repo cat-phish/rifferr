@@ -40,6 +40,11 @@ class PreviewRequest(BaseModel):
         max_length=100,
         description="Caller id; a newer preview from the same client cancels an older one",
     )
+    seq: int | None = Field(
+        default=None,
+        ge=0,
+        description="Increases with each request from this client; says which is newer",
+    )
 
 
 class PreviewField(BaseModel):

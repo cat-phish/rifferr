@@ -271,3 +271,24 @@ async def test_TAG_GRID_13_apply_is_accepted_while_a_run_is_active(api: Api) -> 
     assert r.status_code == 202, r.text
     assert r.json()["queued_behind"] == [run_id]
     await api.client.post(f"/api/runs/{run_id}/cancel")
+
+
+async def test_READ_ORDER_1_3_library_query_superseded_by_seq(
+    api: Api, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A slow preview keeps the read-only worker busy, so the queries wait their turn.
+    monkeypatch.setenv("RIFFERR_TEST_EVAL_DELAY", "0.3")
+    script = "actions:\n  - set: {genre: '$albumartist'}\n"
+    busy = asyncio.create_task(
+        api.client.post("/api/profiles/main/tagscript/preview", json={"script_text": script})
+    )
+    await asyncio.sleep(0.3)
+    url = "/api/profiles/main/library"
+    newest = asyncio.create_task(api.client.get(url, params={"client": "grid", "seq": 5}))
+    await asyncio.sleep(0.2)
+    late = await api.client.get(url, params={"client": "grid", "seq": 4})
+    assert (late.status_code, late.json()["error"]["code"]) == (409, "superseded")
+    assert (await newest).status_code == 200
+    assert (await busy).status_code == 200
+    r = await api.client.get(url, params={"seq": -1})
+    assert r.status_code == 400

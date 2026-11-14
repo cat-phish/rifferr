@@ -295,3 +295,116 @@ async def test_WORKER_11_failed_start_is_unavailable(
 
 def test_WORKER_11_default_command_starts_a_read_only_worker() -> None:
     assert PreviewSupervisor.default_command("p")[-3:] == ["--profile", "p", "--read-only"]
+
+
+# -- F-READ-ORDER: superseding by seq ---------------------------------------------------------
+
+FAST = "actions:\n  - delete: [x]\n"
+
+
+@pytest.fixture
+def slow(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``request()`` (EP has templates) takes ~2 s; ``request(FAST)`` has no delay."""
+    monkeypatch.setenv("RIFFERR_TEST_EVAL_DELAY", "0.2")
+    monkeypatch.setenv("RIFFERR_TEST_ALBUMS", "10")
+
+
+async def started(previews: PreviewSupervisor) -> None:
+    """Let a request reach the worker and start running."""
+    while previews.worker_pid("main") is None:
+        await asyncio.sleep(0.05)
+    await asyncio.sleep(0.5)
+
+
+async def test_READ_ORDER_1_2_higher_seq_supersedes_lower(
+    previews: PreviewSupervisor, slow: None
+) -> None:
+    first = asyncio.create_task(previews.request("main", request(), timeout=30, client="t", seq=1))
+    await started(previews)
+    second = await previews.request("main", request(FAST), timeout=30, client="t", seq=2)
+    assert PreviewResponse.model_validate(second).albums == 10
+    with pytest.raises(PreviewSuperseded):
+        await first
+
+
+async def test_READ_ORDER_3_late_lower_seq_is_superseded_at_once(
+    previews: PreviewSupervisor, slow: None
+) -> None:
+    newest = asyncio.create_task(previews.request("main", request(), timeout=30, client="t", seq=5))
+    await started(previews)
+    # an older request that reaches the server after the newest one
+    with pytest.raises(PreviewSuperseded):
+        await asyncio.wait_for(
+            previews.request("main", request(FAST), timeout=30, client="t", seq=4), 1.0
+        )
+    # an equal seq while that one is pending: also superseded at once
+    with pytest.raises(PreviewSuperseded):
+        await asyncio.wait_for(
+            previews.request("main", request(FAST), timeout=30, client="t", seq=5), 1.0
+        )
+    assert not newest.done()
+    assert PreviewResponse.model_validate(await newest).albums == 10
+
+
+async def test_READ_ORDER_3_lower_seq_after_a_higher_one_finished(
+    previews: PreviewSupervisor,
+) -> None:
+    await previews.request("main", request(FAST), timeout=30, client="t", seq=9)
+    with pytest.raises(PreviewSuperseded):
+        await previews.request("main", request(FAST), timeout=30, client="t", seq=3)
+    # other clients are untouched
+    await previews.request("main", request(FAST), timeout=30, client="other", seq=3)
+
+
+async def test_READ_ORDER_4_highest_seq_memory_is_bounded(
+    previews: PreviewSupervisor, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import rifferr.worker.previews as module
+
+    monkeypatch.setattr(module, "SEQ_CLIENTS", 2)
+    await previews.request("main", request(FAST), timeout=30, client="a", seq=9)
+    await previews.request("main", request(FAST), timeout=30, client="b", seq=1)
+    with pytest.raises(PreviewSuperseded):  # "a" is still remembered
+        await previews.request("main", request(FAST), timeout=30, client="a", seq=1)
+    await previews.request("main", request(FAST), timeout=30, client="c", seq=1)
+    await previews.request("main", request(FAST), timeout=30, client="d", seq=1)
+    # "a" was the least recently seen and is forgotten: treated as new
+    result = await previews.request("main", request(FAST), timeout=30, client="a", seq=1)
+    assert PreviewResponse.model_validate(result).albums == 3
+
+
+async def test_READ_ORDER_5_without_seq_arrival_order_still_supersedes(
+    previews: PreviewSupervisor, slow: None
+) -> None:
+    first = asyncio.create_task(previews.request("main", request(), timeout=30, client="t"))
+    await started(previews)
+    second = await previews.request("main", request(FAST), timeout=30, client="t")
+    assert PreviewResponse.model_validate(second).albums == 10
+    with pytest.raises(PreviewSuperseded):
+        await first
+
+
+async def test_READ_ORDER_5_without_client_never_superseded(
+    previews: PreviewSupervisor, slow: None
+) -> None:
+    first = asyncio.create_task(previews.request("main", request(), timeout=30, seq=7))
+    await started(previews)
+    await previews.request("main", request(FAST), timeout=30, seq=8)
+    assert PreviewResponse.model_validate(await first).albums == 10
+
+
+async def test_READ_ORDER_6_mixed_seq_and_no_seq(previews: PreviewSupervisor, slow: None) -> None:
+    # a request with seq supersedes a pending one without seq
+    plain = asyncio.create_task(previews.request("main", request(), timeout=30, client="t"))
+    await started(previews)
+    numbered = asyncio.create_task(
+        previews.request("main", request(), timeout=30, client="t", seq=3)
+    )
+    with pytest.raises(PreviewSuperseded):
+        await plain
+    await asyncio.sleep(0.5)
+    # one without seq supersedes every pending one, whatever its seq
+    last = await previews.request("main", request(FAST), timeout=30, client="t")
+    assert PreviewResponse.model_validate(last).albums == 10
+    with pytest.raises(PreviewSuperseded):
+        await numbered

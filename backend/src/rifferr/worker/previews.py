@@ -11,6 +11,7 @@ import asyncio
 import contextlib
 import logging
 import sys
+from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -23,6 +24,10 @@ from rifferr.worker.supervisor import STOP_GRACE, WATCHDOG_INTERVAL, _kill_group
 log = logging.getLogger("rifferr.worker")
 
 Command = Callable[[str], list[str]]
+
+SEQ_CLIENTS = 256
+"""Clients whose highest ``seq`` the supervisor remembers, least recently seen dropped
+first (READ-ORDER-4)."""
 
 
 class PreviewUnavailable(Exception):
@@ -47,6 +52,7 @@ class PreviewFailed(Exception):
 class _Request:
     id: str
     client: str | None
+    seq: int | None
     future: asyncio.Future[dict[str, JsonValue]]
 
 
@@ -81,6 +87,8 @@ class PreviewSupervisor:
         self._workers: dict[str, _Handle] = {}
         self._lock = asyncio.Lock()
         self._shutting_down = False
+        self._highest: OrderedDict[str, int] = OrderedDict()
+        """The highest ``seq`` received per client, in memory only (READ-ORDER-4)."""
 
     @staticmethod
     def default_command(profile: str) -> list[str]:
@@ -97,18 +105,26 @@ class PreviewSupervisor:
         *,
         timeout: float,
         client: str | None = None,
+        seq: int | None = None,
     ) -> dict[str, JsonValue]:
-        """Send ``request`` to the profile's read-only worker and wait for the answer."""
+        """Send ``request`` to the profile's read-only worker and wait for the answer.
+
+        A newer request from the same ``client`` supersedes an older one (TAGSCRIPT-21).
+        With ``seq``, newer means a higher ``seq``, whatever the arrival order
+        (F-READ-ORDER); without it, a later arrival.
+        """
         if self._shutting_down:
             raise PreviewUnavailable("server is shutting down")
         handle = await self._worker(profile)
         if client is not None:
+            if seq is not None:
+                self._check_order(handle, client, seq)
             for older in list(handle.pending.values()):
-                if older.client == client:
-                    self._settle(handle, older, PreviewSuperseded("a newer preview replaced it"))
+                if older.client == client and (seq is None or older.seq is None or older.seq < seq):
+                    self._settle(handle, older, PreviewSuperseded("a newer request replaced it"))
                     await self._send(handle, "cancel_request", older.id)
         loop = asyncio.get_running_loop()
-        req = _Request(new_ulid(), client, loop.create_future())
+        req = _Request(new_ulid(), client, seq, loop.create_future())
         handle.pending[req.id] = req
         await self._send(handle, "request", req.id, request)
         try:
@@ -119,6 +135,20 @@ class PreviewSupervisor:
             raise PreviewTimeout(f"no answer within {timeout:g} s") from None
         finally:
             handle.pending.pop(req.id, None)
+
+    def _check_order(self, handle: _Handle, client: str, seq: int) -> None:
+        """Refuse a request that is older than one already received (READ-ORDER-3), and
+        remember the highest ``seq`` (READ-ORDER-4)."""
+        highest = self._highest.get(client)
+        pending_same = any(r.client == client and r.seq == seq for r in handle.pending.values())
+        if highest is not None:
+            self._highest.move_to_end(client)
+        if highest is not None and (seq < highest or pending_same):
+            raise PreviewSuperseded(f"a newer request (seq {highest}) replaced it")
+        self._highest[client] = seq
+        self._highest.move_to_end(client)
+        while len(self._highest) > SEQ_CLIENTS:
+            self._highest.popitem(last=False)
 
     async def shutdown(self) -> None:
         self._shutting_down = True

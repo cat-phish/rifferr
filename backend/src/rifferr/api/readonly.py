@@ -41,12 +41,16 @@ async def ask(
     timeout: float,
     timeout_code: str,
     client: str | None = None,
+    seq: int | None = None,
 ) -> dict[str, JsonValue]:
     """The worker's answer, or an ``ApiError``: ``504 <timeout_code>``, ``409 superseded``
-    (a newer request from ``client``), ``503 preview_unavailable``."""
+    (a newer request from ``client``, ordered by ``seq`` when given),
+    ``503 preview_unavailable``."""
     request: dict[str, Any] = {"kind": kind, "payload": payload}
     try:
-        return await state.previews.request(profile, request, timeout=timeout, client=client)
+        return await state.previews.request(
+            profile, request, timeout=timeout, client=client, seq=seq
+        )
     except PreviewTimeout as exc:
         raise ApiError(504, timeout_code, str(exc)) from None
     except PreviewSuperseded as exc:

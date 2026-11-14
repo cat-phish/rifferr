@@ -115,5 +115,6 @@ async def preview_script(profile: str, body: PreviewRequest, state: State) -> Pr
         timeout=TIMEOUT,
         timeout_code="preview_timeout",
         client=body.client,
+        seq=body.seq,
     )
     return PreviewResponse.model_validate(result)

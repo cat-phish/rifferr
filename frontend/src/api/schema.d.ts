@@ -1368,6 +1368,11 @@ export interface components {
              * @description YAML text of a script
              */
             script_text?: string | null;
+            /**
+             * Seq
+             * @description Increases with each request from this client; says which is newer
+             */
+            seq?: number | null;
         };
         /** PreviewResponse */
         PreviewResponse: {
@@ -2782,6 +2787,8 @@ export interface operations {
                 limit?: number;
                 /** @description A newer query from it cancels this one */
                 client?: string | null;
+                /** @description Increases with each query from this client; says which is newer */
+                seq?: number | null;
             };
             header?: never;
             path: {

@@ -145,3 +145,22 @@ async def test_TAGSCRIPT_21_timeout_and_superseded(
     assert second.status_code == 200
     old = await first
     assert (old.status_code, old.json()["error"]["code"]) == (409, "superseded")
+
+
+async def test_READ_ORDER_1_3_preview_superseded_by_seq_not_arrival(
+    api: Api, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("RIFFERR_TEST_EVAL_DELAY", "0.3")
+    url = "/api/profiles/main/tagscript/preview"
+    newest = asyncio.create_task(
+        api.client.post(url, json={"script_text": EP, "client": "t", "seq": 2})
+    )
+    await asyncio.sleep(0.3)
+    late = await api.client.post(
+        url, json={"script_text": "actions:\n  - delete: [x]\n", "client": "t", "seq": 1}
+    )
+    assert (late.status_code, late.json()["error"]["code"]) == (409, "superseded")
+    assert not newest.done()
+    assert (await newest).status_code == 200
+    r = await api.client.post(url, json={"script_text": EP, "seq": -1})
+    assert r.status_code == 400

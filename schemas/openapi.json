@@ -2008,6 +2008,19 @@
             ],
             "description": "YAML text of a script",
             "title": "Script Text"
+          },
+          "seq": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Increases with each request from this client; says which is newer",
+            "title": "Seq"
           }
         },
         "title": "PreviewRequest",
@@ -4723,6 +4736,25 @@
               ],
               "description": "A newer query from it cancels this one",
               "title": "Client"
+            }
+          },
+          {
+            "description": "Increases with each query from this client; says which is newer",
+            "in": "query",
+            "name": "seq",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Increases with each query from this client; says which is newer",
+              "title": "Seq"
             }
           }
         ],
