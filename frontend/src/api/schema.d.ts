@@ -932,6 +932,51 @@ export interface components {
             job_ids: string[];
         };
         JsonValue: unknown;
+        /** LaneHold */
+        LaneHold: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "changeset" | "gate" | "import";
+            /**
+             * Ref
+             * @description ChangeSet id, review gate id or import decision id
+             */
+            ref: string;
+        };
+        /**
+         * LaneOut
+         * @description One album's path through the run (C-LANES LANES-15).
+         */
+        LaneOut: {
+            /** Holds */
+            holds: components["schemas"]["LaneHold"][];
+            /**
+             * Key
+             * @description Backend album id, or pending:<id> before import
+             */
+            key: string;
+            /** Label */
+            label: string;
+            /**
+             * Position
+             * @description Id of the next step; null once final
+             */
+            position: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "active" | "waiting" | "done" | "failed" | "rejected" | "gone" | "cancelled";
+            /**
+             * Steps
+             * @description Step id -> this lane's status in that step
+             */
+            steps: {
+                [key: string]: string;
+            };
+        };
         /**
          * LibraryPage
          * @description Matching albums (TAG-GRID-2). In item scope each album has only its matching items.
@@ -1282,6 +1327,18 @@ export interface components {
              * @description The input its trigger gave
              */
             input?: string | null;
+            /**
+             * Lane Counts
+             * @description The run's lanes (one per album) counted by state (LANES-9)
+             */
+            lane_counts?: {
+                [key: string]: number;
+            };
+            /**
+             * Lanes
+             * @description The run's lanes in creation order (LANES-15)
+             */
+            lanes?: components["schemas"]["LaneOut"][];
             /** Profile */
             profile: string;
             /** Started At */
@@ -1331,6 +1388,13 @@ export interface components {
              * @description The input its trigger gave
              */
             input?: string | null;
+            /**
+             * Lane Counts
+             * @description The run's lanes (one per album) counted by state (LANES-9)
+             */
+            lane_counts?: {
+                [key: string]: number;
+            };
             /** Profile */
             profile: string;
             /** Started At */
@@ -1428,6 +1492,12 @@ export interface components {
             outputs?: {
                 [key: string]: components["schemas"]["JsonValue"];
             };
+            /**
+             * Passes
+             * @description How many passes of this step ran (LANES-4)
+             * @default 0
+             */
+            passes: number;
             /**
              * Status
              * @enum {string}

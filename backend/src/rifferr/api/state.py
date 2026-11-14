@@ -21,12 +21,14 @@ RUN_LEVEL_EVENTS = frozenset({"run.started", "run.finished"})
 REVIEW_EVENTS = frozenset(
     {"run.waiting_review", "run.resumed", "review.requested", "review.resolved", "job.finished"}
 )
+#: Lane state changes (C-LANES LANES-2) go on ``/api/events`` too.
+LANE_EVENTS = frozenset({"lane.started", "lane.waiting", "lane.resumed", "lane.finished"})
 
 
 def on_all_stream(event: Event) -> bool:
     """Whether ``GET /api/events`` carries ``event`` (API-9, REVIEW-QUEUE-10): run-level
     and review-level events and the ``changeset.*`` events of runs, plus the
-    ``trigger.*`` events of profile streams (TRIGGERS-24)."""
+    ``trigger.*`` events of profile streams (TRIGGERS-24) and ``lane.*`` (LANES-2)."""
     if event.type.startswith("trigger."):
         return True
     if event.run_id.startswith(PROFILE_STREAM_PREFIX):
@@ -34,6 +36,7 @@ def on_all_stream(event: Event) -> bool:
     return (
         event.type in RUN_LEVEL_EVENTS
         or event.type in REVIEW_EVENTS
+        or event.type in LANE_EVENTS
         or event.type.startswith("changeset.")
     )
 

@@ -438,7 +438,7 @@ function runDetail(over: Partial<S["RunDetail"]> = {}): S["RunDetail"] {
     created_at: T0,
     started_at: T0,
     finished_at: null,
-    steps: [{ id: "suffix", uses: "tags.script", status: "succeeded", outputs: {} }],
+    steps: [{ id: "suffix", uses: "tags.script", status: "succeeded", outputs: {}, passes: 1 }],
     undoable: 0,
     ...over,
   };

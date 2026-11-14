@@ -32,6 +32,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     beets: join(root, "beets"),
     library: join(root, "library"),
     inbox: join(root, "inbox"),
+    lanes: join(root, "lanes-inbox"),
     watched: join(root, "watched"),
     home: join(root, "home"),
   };
@@ -58,6 +59,12 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
       recursive: true,
     },
   );
+  // Two albums in one folder for the lanes test (LANES-15).
+  for (const fixture of ["album-flac", "single-mp3"]) {
+    cpSync(join(backend, "tests", "fixtures", "audio", fixture), join(dirs.lanes, fixture), {
+      recursive: true,
+    });
+  }
   const env = {
     ...process.env,
     HOME: dirs.home,
@@ -100,6 +107,10 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     join(here, "review-flow.yaml"),
     join(dirs.config, "profiles", "main", "workflows", "review-flow.yaml"),
   );
+  cpSync(
+    join(here, "lanes-flow.yaml"),
+    join(dirs.config, "profiles", "main", "workflows", "lanes-flow.yaml"),
+  );
 
   // A watched folder for the triggers test (TRIGGERS-9); its path is only known here.
   writeFileSync(
@@ -122,6 +133,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   }
   process.env.RIFFERR_E2E_TOKEN = readFileSync(tokenFile, "utf8").trim();
   process.env.RIFFERR_E2E_INBOX = dirs.inbox;
+  process.env.RIFFERR_E2E_LANES_INBOX = dirs.lanes;
   process.env.RIFFERR_E2E_WATCHED = dirs.watched;
   process.env.RIFFERR_E2E_FIXTURE = join(backend, "tests", "fixtures", "audio", "album-flac");
 

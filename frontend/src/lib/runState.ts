@@ -1,4 +1,4 @@
-import type { RunDetail, RunEvent, StepState } from "../api/types";
+import type { LaneHold, LaneOut, RunDetail, RunEvent, StepState } from "../api/types";
 
 export type StepStatus = StepState["status"];
 export type Stream = "stdout" | "stderr" | "info";
@@ -17,6 +17,8 @@ export interface RunView {
   status: string;
   error: string | null;
   steps: StepState[];
+  /** One album's path through the run, live from ``lane.*`` events (LANES-15). */
+  lanes: LaneOut[];
   log: LogLine[];
 }
 
@@ -26,6 +28,7 @@ export function initialView(run: RunDetail): RunView {
     status: run.state,
     error: run.error,
     steps: run.steps.map((s) => ({ ...s, status: "pending" })),
+    lanes: run.lanes ?? [],
     log: [],
   };
 }
@@ -72,6 +75,12 @@ export function applyEvent(view: RunView, e: RunEvent): RunView {
       next.log = [...view.log, line(e, kind, str(e.data.line) ?? "", str(e.data.target))];
       break;
     }
+    case "lane.started":
+    case "lane.waiting":
+    case "lane.resumed":
+    case "lane.finished":
+      next.lanes = upsertLane(view.lanes, e.data);
+      break;
     case "run.finished": {
       next.status = str(e.data.status) ?? "failed";
       next.error = str(e.data.error) ?? null;
@@ -87,6 +96,30 @@ export function applyEvent(view: RunView, e: RunEvent): RunView {
     }
   }
   return next;
+}
+
+const LANE_STATES = new Set<string>([
+  "active",
+  "waiting",
+  "done",
+  "failed",
+  "rejected",
+  "gone",
+  "cancelled",
+]);
+
+function upsertLane(lanes: LaneOut[], data: Record<string, unknown>): LaneOut[] {
+  const key = str(data.key);
+  const state = str(data.state);
+  if (key === undefined || state === undefined || !LANE_STATES.has(state)) return lanes;
+  const holds = Array.isArray(data.holds) ? (data.holds as LaneHold[]) : [];
+  const position = str(data.position) ?? null;
+  const known = lanes.find((l) => l.key === key);
+  const patch = { state: state as LaneOut["state"], position, holds };
+  if (known === undefined) {
+    return [...lanes, { key, label: str(data.label) ?? key, steps: {}, ...patch }];
+  }
+  return lanes.map((l) => (l.key === key ? { ...l, ...patch } : l));
 }
 
 function line(e: RunEvent, stream: Stream, text: string, target?: string): LogLine {

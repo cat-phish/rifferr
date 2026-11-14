@@ -1,0 +1,29 @@
+# Workflow for the lanes e2e test (C-LANES LANES-15): import two albums; a review gate
+# holds one of them while the other finishes.
+name: lanes-flow
+description: Import two albums; a review gate holds only one of them.
+vars:
+  inbox:
+    description: Folder with album folders to import
+steps:
+  - id: import
+    uses: beets.import
+    with:
+      path: "{{ vars.inbox }}"
+      # Other tests import the same files: a different album artist keeps these albums
+      # from being duplicates of theirs, whatever the order.
+      set: { albumartist: Lanes Artist }
+      options: { duplicate_action: keep }
+  - id: check
+    uses: review
+    when: "album:Single"
+    with:
+      message: Check $album
+      show: [album]
+  - id: mark
+    uses: tags.script
+    apply: auto
+    with:
+      actions:
+        - name: mark
+          set: { lanes_e2e: done }

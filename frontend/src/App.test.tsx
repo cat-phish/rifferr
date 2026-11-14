@@ -48,10 +48,12 @@ function runDetail(over: Partial<RunDetail> = {}): RunDetail {
     started_at: "2026-11-11T12:00:01Z",
     finished_at: null,
     steps: [
-      { id: "import", uses: "beets.import", status: "pending", outputs: {} },
-      { id: "list", uses: "shell", status: "pending", outputs: {} },
+      { id: "import", uses: "beets.import", status: "pending", outputs: {}, passes: 0 },
+      { id: "list", uses: "shell", status: "pending", outputs: {}, passes: 0 },
     ],
     undoable: 0,
+    lanes: [],
+    lane_counts: {},
     ...over,
   };
 }
@@ -299,6 +301,59 @@ test("UI_SHELL_7 run page streams steps and log, dedupes by seq, closes on run.f
   expect(within(screen.getByTestId("step-list")).getByText("skipped")).toBeInTheDocument();
   expect(screen.getByText("boom")).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
+});
+
+test("LANES_15 run page shows a lane table updated live by lane events", async () => {
+  const lanes: RunDetail["lanes"] = [
+    {
+      key: "album-1",
+      label: "Artist - A",
+      state: "done",
+      position: null,
+      holds: [],
+      steps: { import: "succeeded", list: "succeeded" },
+    },
+  ];
+  mockApi({
+    "GET /api/profiles": () => PROFILES,
+    "GET /api/runs/R1": () => runDetail({ lanes }),
+  });
+  renderApp("/runs/R1?profile=main");
+  const table = await screen.findByTestId("lanes");
+  const a = within(table).getByTestId("lane-Artist - A");
+  expect(within(a).getByText("done")).toBeInTheDocument();
+  expect(within(a).getByText("list")).toBeInTheDocument(); // last step it ran
+  const source = FakeEventSource.last("/api/runs/R1/events");
+  act(() => {
+    source.emit(
+      "lane.started",
+      ev(1, "lane.started", null, {
+        key: "album-2",
+        label: "Artist - B",
+        state: "active",
+        position: "list",
+        holds: [],
+      }),
+      1,
+    );
+    source.emit(
+      "lane.waiting",
+      ev(2, "lane.waiting", null, {
+        key: "album-2",
+        label: "Artist - B",
+        state: "waiting",
+        position: "list",
+        holds: [{ kind: "gate", ref: "G1" }],
+      }),
+      2,
+    );
+  });
+  const b = within(screen.getByTestId("lanes")).getByTestId("lane-Artist - B");
+  expect(within(b).getByText("waiting")).toBeInTheDocument();
+  expect(within(b).getByRole("link", { name: "review gate" })).toHaveAttribute(
+    "href",
+    "/review?profile=main&item=G1",
+  );
 });
 
 test("UI_SHELL_8 cancel posts to the run's cancel route", async () => {

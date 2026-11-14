@@ -951,6 +951,96 @@
         "type": "object"
       },
       "JsonValue": {},
+      "LaneHold": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "changeset",
+              "gate",
+              "import"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "ref": {
+            "description": "ChangeSet id, review gate id or import decision id",
+            "title": "Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "ref"
+        ],
+        "title": "LaneHold",
+        "type": "object"
+      },
+      "LaneOut": {
+        "additionalProperties": false,
+        "description": "One album's path through the run (C-LANES LANES-15).",
+        "properties": {
+          "holds": {
+            "items": {
+              "$ref": "#/components/schemas/LaneHold"
+            },
+            "title": "Holds",
+            "type": "array"
+          },
+          "key": {
+            "description": "Backend album id, or pending:<id> before import",
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Id of the next step; null once final",
+            "title": "Position"
+          },
+          "state": {
+            "enum": [
+              "active",
+              "waiting",
+              "done",
+              "failed",
+              "rejected",
+              "gone",
+              "cancelled"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "steps": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Step id -> this lane's status in that step",
+            "title": "Steps",
+            "type": "object"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "state",
+          "position",
+          "holds",
+          "steps"
+        ],
+        "title": "LaneOut",
+        "type": "object"
+      },
       "LibraryPage": {
         "additionalProperties": false,
         "description": "Matching albums (TAG-GRID-2). In item scope each album has only its matching items.",
@@ -1920,6 +2010,22 @@
             "description": "The input its trigger gave",
             "title": "Input"
           },
+          "lane_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "The run's lanes (one per album) counted by state (LANES-9)",
+            "title": "Lane Counts",
+            "type": "object"
+          },
+          "lanes": {
+            "description": "The run's lanes in creation order (LANES-15)",
+            "items": {
+              "$ref": "#/components/schemas/LaneOut"
+            },
+            "title": "Lanes",
+            "type": "array"
+          },
           "profile": {
             "title": "Profile",
             "type": "string"
@@ -2062,6 +2168,14 @@
             ],
             "description": "The input its trigger gave",
             "title": "Input"
+          },
+          "lane_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "The run's lanes (one per album) counted by state (LANES-9)",
+            "title": "Lane Counts",
+            "type": "object"
           },
           "profile": {
             "title": "Profile",
@@ -2341,6 +2455,12 @@
             },
             "title": "Outputs",
             "type": "object"
+          },
+          "passes": {
+            "default": 0,
+            "description": "How many passes of this step ran (LANES-4)",
+            "title": "Passes",
+            "type": "integer"
           },
           "status": {
             "enum": [

@@ -1,9 +1,20 @@
-import { Alert, Anchor, Button, Group, Modal, Stack, Table, Text, Title } from "@mantine/core";
+import {
+  Alert,
+  Anchor,
+  Badge,
+  Button,
+  Group,
+  Modal,
+  Stack,
+  Table,
+  Text,
+  Title,
+} from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { Link, useParams } from "react-router";
 import { api, ok } from "../api/client";
-import type { RunDetail, RunEvent } from "../api/types";
+import type { LaneOut, RunDetail, RunEvent } from "../api/types";
 import { LogView } from "../components/LogView";
 import { StatusBadge } from "../components/StatusBadge";
 import { useEventStream } from "../hooks/useEventStream";
@@ -20,6 +31,10 @@ const RUN_EVENTS = [
   "run.waiting_review",
   "run.resumed",
   "run.finished",
+  "lane.started",
+  "lane.waiting",
+  "lane.resumed",
+  "lane.finished",
 ] as const;
 
 export function RunPage() {
@@ -111,7 +126,69 @@ function LiveRun({ run, onFinished }: { run: RunDetail; onFinished: () => void }
           ))}
         </Table.Tbody>
       </Table>
+      {view.lanes.length > 0 && <Lanes lanes={view.lanes} />}
       <LogView lines={view.log} />
+    </Stack>
+  );
+}
+
+const LANE_COLORS: Record<LaneOut["state"], string> = {
+  active: "blue",
+  waiting: "yellow",
+  done: "green",
+  failed: "red",
+  rejected: "orange",
+  gone: "gray",
+  cancelled: "orange",
+};
+
+/** One row per album: where it is in the run and what it waits for (C-LANES LANES-15). */
+function Lanes({ lanes }: { lanes: LaneOut[] }) {
+  const { profile } = useProfile();
+  return (
+    <Stack gap="xs">
+      <Title order={4}>Albums</Title>
+      <Table data-testid="lanes">
+        <Table.Thead>
+          <Table.Tr>
+            <Table.Th>Album</Table.Th>
+            <Table.Th>State</Table.Th>
+            <Table.Th>Step</Table.Th>
+            <Table.Th>Waiting for</Table.Th>
+          </Table.Tr>
+        </Table.Thead>
+        <Table.Tbody>
+          {lanes.map((lane) => {
+            const ran = Object.keys(lane.steps);
+            const step = lane.position ?? ran[ran.length - 1] ?? "";
+            return (
+              <Table.Tr key={lane.key} data-testid={`lane-${lane.label}`}>
+                <Table.Td>{lane.label}</Table.Td>
+                <Table.Td>
+                  <Badge color={LANE_COLORS[lane.state]} variant="light">
+                    {lane.state}
+                  </Badge>
+                </Table.Td>
+                <Table.Td ff="monospace">{step}</Table.Td>
+                <Table.Td>
+                  {lane.holds.map((hold, n) => (
+                    <span key={hold.ref}>
+                      {n > 0 && ", "}
+                      {hold.kind === "import" ? (
+                        "import decision"
+                      ) : (
+                        <Anchor component={Link} to={reviewLink(profile, "item", hold.ref)}>
+                          {hold.kind === "gate" ? "review gate" : "tag changes"}
+                        </Anchor>
+                      )}
+                    </span>
+                  ))}
+                </Table.Td>
+              </Table.Tr>
+            );
+          })}
+        </Table.Tbody>
+      </Table>
     </Stack>
   );
 }

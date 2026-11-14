@@ -131,6 +131,29 @@ class RunSummary(_Model):
         default="manual", description="What started the run (TRIGGERS-24)"
     )
     input: str | None = Field(default=None, description="The input its trigger gave")
+    lane_counts: dict[str, int] = Field(
+        default_factory=dict[str, int],
+        description="The run's lanes (one per album) counted by state (LANES-9)",
+    )
+
+
+LaneStateOut = Literal["active", "waiting", "done", "failed", "rejected", "gone", "cancelled"]
+
+
+class LaneHold(_Model):
+    kind: Literal["changeset", "gate", "import"]
+    ref: str = Field(description="ChangeSet id, review gate id or import decision id")
+
+
+class LaneOut(_Model):
+    """One album's path through the run (C-LANES LANES-15)."""
+
+    key: str = Field(description="Backend album id, or pending:<id> before import")
+    label: str
+    state: LaneStateOut
+    position: str | None = Field(description="Id of the next step; null once final")
+    holds: list[LaneHold]
+    steps: dict[str, str] = Field(description="Step id -> this lane's status in that step")
 
 
 StepStatusOut = Literal["pending", "running", "succeeded", "failed", "skipped", "cancelled"]
@@ -142,10 +165,14 @@ class StepState(_Model):
     status: StepStatusOut
     error: str | None = None
     outputs: dict[str, JsonValue] = Field(default_factory=dict[str, JsonValue])
+    passes: int = Field(default=0, description="How many passes of this step ran (LANES-4)")
 
 
 class RunDetail(RunSummary):
     steps: list[StepState]
+    lanes: list[LaneOut] = Field(
+        default_factory=list[LaneOut], description="The run's lanes in creation order (LANES-15)"
+    )
     undoable: int = Field(
         default=0,
         description="The run's applied journal entries not undone yet; undo the run to "

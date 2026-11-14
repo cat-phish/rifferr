@@ -11,6 +11,8 @@ from rifferr.api import sse
 from rifferr.api.errors import ERROR_RESPONSES, ApiError, not_found
 from rifferr.api.models import (
     Accepted,
+    LaneHold,
+    LaneOut,
     RunCreate,
     RunCreated,
     RunDetail,
@@ -20,8 +22,9 @@ from rifferr.api.models import (
 )
 from rifferr.api.routes.workflows import check, error_out, find_workflow, get_profile
 from rifferr.api.state import ServerState, State
-from rifferr.appdb import AppJournal, Job
+from rifferr.appdb import AppJournal, AppLanes, Job
 from rifferr.core.workflow import WorkflowLoadError, load_workflow
+from rifferr.engine.lanes import counts
 from rifferr.engine.undo import run_entries
 
 router = APIRouter(prefix="/api", tags=["runs"])
@@ -65,7 +68,9 @@ async def list_runs(
     profile: Annotated[str | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 50,
 ) -> list[RunSummary]:
-    return [summary(job) for job in state.db.list_runs(profile, limit)]
+    jobs = state.db.list_runs(profile, limit)
+    counts = AppLanes(state.db).counts(job.run for job in jobs)
+    return [summary(job, counts.get(job.run)) for job in jobs]
 
 
 @router.get("/runs/{run_id}", response_model=RunDetail, responses=ERROR_RESPONSES)
@@ -74,7 +79,24 @@ async def get_run(run_id: str, state: State) -> RunDetail:
     if job is None:
         raise not_found(f"run {run_id}")
     undoable = len(run_entries(AppJournal(state.db), run_id))
-    return RunDetail(**summary(job).model_dump(), steps=steps(state, job), undoable=undoable)
+    stored = AppLanes(state.db).load(run_id).values()
+    lanes = [
+        LaneOut(
+            key=lane.key,
+            label=lane.label,
+            state=lane.state,
+            position=lane.position,
+            holds=[LaneHold(kind=h.kind, ref=h.ref) for h in lane.holds],
+            steps=dict(lane.steps),
+        )
+        for lane in stored
+    ]
+    return RunDetail(
+        **summary(job, counts(stored)).model_dump(),
+        steps=steps(state, job),
+        undoable=undoable,
+        lanes=lanes,
+    )
 
 
 @router.post(
@@ -124,7 +146,7 @@ async def all_events(state: State) -> StreamingResponse:
 # -- helpers --------------------------------------------------------------------
 
 
-def summary(job: Job) -> RunSummary:
+def summary(job: Job, lane_counts: dict[str, int] | None = None) -> RunSummary:
     return RunSummary(
         id=job.run,
         profile=job.profile,
@@ -138,6 +160,7 @@ def summary(job: Job) -> RunSummary:
         finished_at=job.finished_at,
         trigger=cast(Any, job.trigger or "manual"),
         input=job.input,
+        lane_counts=lane_counts or {},
     )
 
 
@@ -154,6 +177,7 @@ def steps(state: ServerState, job: Job) -> list[StepState]:
             continue
         if event.type == "run.step.started":
             step.status = "running"
+            step.passes += 1
         elif event.type == "review.resolved":
             # The decision shows on the gate step (REVIEW-7).
             for key in ("decision", "decided_by", "decided_at", "note"):
