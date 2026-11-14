@@ -184,7 +184,7 @@ S-SUBWORKFLOW → queue dashboard (F-REVIEW-QUEUE update).
 - [x] F-IMPORT-UI: Implemented 2026-11-13.
 - [x] F-READ-ORDER (B-054, out of the main order): Implemented 2026-11-14.
 - [x] S-NOTIFY: Implemented 2026-11-14.
-- [ ] S-FILES-CLEANUP: Approved 2026-11-14.
+- [x] S-FILES-CLEANUP: Implemented 2026-11-14.
 
 ## M3 — Cover search
 
