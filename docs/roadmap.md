@@ -68,7 +68,8 @@ Every runtime or dev dependency needs the author's OK before it is added
 | @vitejs/plugin-react, @types/react, @types/react-dom, @types/node, @eslint/js, typescript-eslint, eslint-plugin-react-hooks, globals, @testing-library/jest-dom, jsdom | companions of the approved frontend tools | MIT | M0 | 2026-11-11 (with F-DEV-TOOLING) |
 | uv_build | backend build backend | MIT / Apache-2.0 | M0 | 2026-11-11 (with F-DEV-TOOLING) |
 | @tanstack/react-virtual | tag grid, run log (react-table not added: F-TAG-GRID, 2026-11-12) | MIT | M1 | |
-| watchfiles | folder triggers | MIT | M2 | |
+| watchfiles | folder triggers | MIT | M2 | 2026-11-13 (F-TRIGGERS) |
+| cronsim | schedule triggers (cron next-fire with DST) | BSD-3-Clause | M2 | 2026-11-13 (F-TRIGGERS) |
 | apprise | notifications | BSD-2-Clause | M2 | |
 | mutagen | FilesBackend | GPL-2.0-or-later | later | |
 | UI component library | UI | TBD (F-UI-SHELL open question) | M0 | |
@@ -177,6 +178,8 @@ album waits in review, sends a notification and doesn't block other albums.
 Order: F-TRIGGERS (watch, schedule, webhook, dedup, concurrency) → lanes in
 C-RUN → F-IMPORT-UI (interactive decisions) → S-NOTIFY → S-FILES-CLEANUP →
 S-SUBWORKFLOW → queue dashboard (F-REVIEW-QUEUE update).
+
+- [x] F-TRIGGERS: Implemented 2026-11-13.
 
 ## M3 — Cover search
 

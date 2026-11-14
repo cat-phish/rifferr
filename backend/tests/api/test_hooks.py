@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import logging
 from pathlib import Path
@@ -234,3 +235,49 @@ async def test_TRIGGERS_7_manual_input_must_be_absolute(api: Api) -> None:
         "/api/runs", json={"profile": "main", "workflow": "e", "input": "rel/path"}
     )
     assert r.status_code == 400
+
+
+SLOW_HOOK = (
+    "name: s\n"
+    "on: {webhook: {name: slow, input: path, within: '{{ vars.inbox }}'}}\n"
+    "steps:\n  - {id: a, uses: test.slow, with: {cooperative: true}}\n"
+)
+
+
+async def test_TRIGGERS_23_one_running_run_per_profile_others_queue(
+    hooked: tuple[Api, Path, str],
+) -> None:
+    api, inbox, _ = hooked
+    path = api.add_workflow("s", SLOW_HOOK)
+    trust_file(api.state.db, path, "test")
+    assert api.state.triggers is not None
+    await api.state.triggers.reconcile()
+    first, second = album(inbox, "A"), album(inbox, "B")
+    a = await api.state.triggers.handle_webhook("main", "slow", {"path": str(first)})
+    b = await api.state.triggers.handle_webhook("main", "slow", {"path": str(second)})
+    again = await api.state.triggers.handle_webhook("main", "slow", {"path": str(second)})
+    assert a is not None
+    assert b is not None
+    assert again is not None
+    assert again.skipped == "in_progress"  # not queued twice
+    assert again.run_id == b.run_id
+
+    async def states() -> tuple[str, str]:
+        ra = (await api.client.get(f"/api/runs/{a.run_id}")).json()["state"]
+        rb = (await api.client.get(f"/api/runs/{b.run_id}")).json()["state"]
+        return ra, rb
+
+    for _ in range(100):
+        if (await states())[0] == "running":
+            break
+        await asyncio.sleep(0.05)
+    assert await states() == ("running", "queued")
+    await api.client.post(f"/api/runs/{a.run_id}/cancel", json={})
+    await api.wait_finished(str(a.run_id))
+    for _ in range(100):
+        if (await states())[1] != "queued":
+            break
+        await asyncio.sleep(0.05)
+    assert (await states())[1] in ("running", "succeeded")
+    await api.client.post(f"/api/runs/{b.run_id}/cancel", json={})
+    await api.wait_finished(str(b.run_id))

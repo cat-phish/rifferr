@@ -73,6 +73,7 @@ As implemented:
   start request reports them (422). API-17: the hash check runs before validation.
 - API-13 SPA fallback (`SpaStaticFiles`) serves `index.html` only for `GET`/`HEAD` page
   navigations (`Accept: text/html`); missing assets and server paths keep their 404.
+- Extended by F-TRIGGERS: `POST /hooks/{profile}/{name}`, `GET /api/profiles/{profile}/triggers`, `POST /api/profiles/{profile}/webhooks/{name}/secret`; `RunCreate.input`, `RunSummary.trigger` / `.input`; `/api/events` also carries `trigger.*` events.
 
 ## Examples
 SSE message:

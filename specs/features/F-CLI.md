@@ -53,6 +53,7 @@ As implemented:
 - CLI-10 relies on `refused: true` in `run.step.finished` data, added to the engine for this
   (C-RUN interfaces).
 - `trust` refuses a file that doesn't load as a workflow, with or without `--profile`.
+- Extended by F-TRIGGERS: `rifferr run --input PATH` (made absolute) and `rifferr webhook new|rotate|list` (no server needed).
 
 ## Examples
 ```bash

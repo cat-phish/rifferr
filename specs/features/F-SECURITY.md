@@ -57,6 +57,7 @@ As implemented:
 - Wiring into `rifferr validate`, `rifferr trust` and the API arrives with F-CLI / F-API.
 - The signed-out page (SECURITY-7) is `SIGNED_OUT_PAGE` in `rifferr.api.security`, sent for
   unauthenticated `GET`s whose `Accept` includes `text/html`.
+- Extended by F-TRIGGERS: `/hooks/` routes are exempt from the Origin and JSON checks (SECURITY-3) and from the local token (`SecurityConfig.own_auth_prefixes`); they check their own per-webhook secrets (TRIGGERS-17) and stay behind the Host allowlist. Triggers arm only for trusted workflows (TRIGGERS-2).
 
 ## Examples
 - `curl -H 'Host: evil.example' http://127.0.0.1:8765/api/runs` → 400.

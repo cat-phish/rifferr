@@ -3,19 +3,30 @@
 # maps each checklist line to the step that does it, or the milestone that will.
 #
 # Copy it into a profile's workflows/ folder and the scripts it uses from
-# examples/scripts/ into the profile's scripts/ folder. Start it with the folder of
-# new albums:
-#   rifferr run foobar-style --profile main --var inbox=/path/to/new/albums
+# examples/scripts/ into the profile's scripts/ folder, set `inbox` in the profile's
+# vars, and trust it (`rifferr trust`). From then on every album folder that lands in
+# the inbox is imported once it has stopped changing. To import the whole inbox by hand:
+#   rifferr run foobar-style --profile main
+# or one album:
+#   rifferr run foobar-style --profile main --input "/path/to/inbox/Artist - Album"
 name: foobar-style
 description: Import new albums with beets, then fix release-type suffixes.
 vars:
   inbox:
     description: Folder with new albums to import (the checklist's "Stage 1, unsorted")
+# Manual runs without --input import the whole inbox.
+input: "{{ vars.inbox }}"
+on:
+  # Each top-level folder of the inbox is one run. Downloads can take a while to
+  # finish writing, so wait until a folder has been quiet for five minutes.
+  watch:
+    path: "{{ vars.inbox }}"
+    settle: 5m
 steps:
   - id: import
     uses: beets.import
     with:
-      path: "{{ vars.inbox }}"
+      path: "{{ run.input }}"
       mode: quiet
   # EP / Single from albumtype or the album name, plus the " (EP)" / " (Single)"
   # suffix. Applied without review: the rules are mechanical and every change can be

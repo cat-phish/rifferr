@@ -1,5 +1,5 @@
 # F-TRIGGERS: Watch, schedule and webhook triggers; dedup; concurrency
-Status: Approved
+Status: Implemented
 Milestone: M2
 
 ## Context
@@ -212,19 +212,42 @@ Note (2026-11-13, implementation): under TRIGGERS-9, deletion events only reset 
 of a candidate that is already pending; deletions alone never create one. Otherwise beets
 moving an album's files out of the inbox would start a second run on whatever it leaves
 behind (cover images, logs).
+
+Note (2026-11-13, implementation): there is no `rifferr run --force` and no separate
+"Run again" button. Manual runs are never deduplicated (TRIGGERS-21), so a forced re-run
+is a manual run with that input: `rifferr run <wf> --input PATH`, or the Input folder
+field of the workflow page's Start form. `TriggerManager.fire(force=True)` is the
+internal bypass TRIGGERS-20 tests.
+
+As implemented:
+- `rifferr.core.cron` (`parse_cron`, `next_fire`) and `rifferr.core.triggers` (durations,
+  `lookup`, `fingerprint`, `dedup_skip`, `SettleTracker`): pure.
+- `rifferr.triggers`: `TriggerManager` (server process; a reconcile loop every 2 s re-arms
+  on file or trust changes, which also catches `rifferr trust` from the CLI), `fs`
+  (listings, `confine`), `secrets` (hash-only webhook secrets, Bearer/Basic parsing).
+- `AppTriggers` in `rifferr.appdb`; migration `008_triggers.sql`; `AppDB.append_next`
+  assigns event seqs inside the write transaction, since the server and the worker both
+  write a profile's stream.
+- Routes: `POST /hooks/{profile}/{name}`, `GET /api/profiles/{profile}/triggers`,
+  `POST /api/profiles/{profile}/webhooks/{name}/secret` (shows the secret once).
+  `RunCreate.input`; `RunSummary.trigger` / `.input`.
+- `SecurityConfig.own_auth_prefixes`: `/hooks/` skips the local token; `/hooks/` is also
+  in `exempt_prefixes` (Origin and JSON middleware). The Host allowlist still applies.
+- UI: triggers panel and Input folder on the workflow page, trigger column on the runs
+  list, trigger and input on the run page. Playwright: `e2e/triggers.spec.ts`.
 - [x] Add `watchfiles` and `cronsim` to `backend/pyproject.toml`.
 - [x] C-WORKFLOW: `input`, `run.input`, `run.trigger`, new watch/webhook fields, arm-time
       interpolation rules; regenerate schemas.
 - [x] Core: duration parsing, cron next-fire (injected clock, time zone), dotted-path lookup,
       fingerprint, dedup decision; tests TRIGGERS-9, -12..-14, -19..-21.
 - [x] Migration: `trigger_inputs`, `webhook_secrets`, `jobs.trigger`, `jobs.input`.
-- [ ] `TriggerManager`: arm/re-arm on workflow file changes and trust; watcher with settle
+- [x] `TriggerManager`: arm/re-arm on workflow file changes and trust; watcher with settle
       and start-up scan; scheduler; shutdown order (TRIGGERS-1..-3, -8..-11, -23, -25).
-- [ ] Webhook route and CLI `rifferr webhook new|rotate|list` (TRIGGERS-15..-18).
-- [ ] `GET /api/profiles/{profile}/triggers`, trigger events, run `trigger`/`input` in
+- [x] Webhook route and CLI `rifferr webhook new|rotate|list` (TRIGGERS-15..-18).
+- [x] `GET /api/profiles/{profile}/triggers`, trigger events, run `trigger`/`input` in
       `RunDetail` (TRIGGERS-4, -24).
-- [ ] `rifferr run --input/--force`; UI run dialog input; "Run again" (TRIGGERS-7, -20).
-- [ ] UI: triggers on the workflow page; trigger column in runs list; Playwright flow.
-- [ ] `examples/workflows/foobar-style.yaml`: `on.watch` on the inbox, steps use
+- [x] `rifferr run --input/--force`; UI run dialog input; "Run again" (TRIGGERS-7, -20).
+- [x] UI: triggers on the workflow page; trigger column in runs list; Playwright flow.
+- [x] `examples/workflows/foobar-style.yaml`: `on.watch` on the inbox, steps use
       `{{ run.input }}`.
-- [ ] `docs/coverage.md`; mark Implemented.
+- [x] `docs/coverage.md`; mark Implemented.

@@ -32,6 +32,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     beets: join(root, "beets"),
     library: join(root, "library"),
     inbox: join(root, "inbox"),
+    watched: join(root, "watched"),
     home: join(root, "home"),
   };
   for (const d of Object.values(dirs)) mkdirSync(d, { recursive: true, mode: 0o700 });
@@ -100,6 +101,12 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     join(dirs.config, "profiles", "main", "workflows", "review-flow.yaml"),
   );
 
+  // A watched folder for the triggers test (TRIGGERS-9); its path is only known here.
+  writeFileSync(
+    join(dirs.config, "profiles", "main", "workflows", "watch-flow.yaml"),
+    readFileSync(join(here, "watch-flow.yaml"), "utf8").replace("WATCHED", dirs.watched),
+  );
+
   const server: ChildProcess = spawn(
     uv,
     ["run", "--project", backend, "rifferr", "serve", "--no-browser", "--port", String(E2E_PORT)],
@@ -115,6 +122,8 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   }
   process.env.RIFFERR_E2E_TOKEN = readFileSync(tokenFile, "utf8").trim();
   process.env.RIFFERR_E2E_INBOX = dirs.inbox;
+  process.env.RIFFERR_E2E_WATCHED = dirs.watched;
+  process.env.RIFFERR_E2E_FIXTURE = join(backend, "tests", "fixtures", "audio", "album-flac");
 
   return async () => {
     server.kill("SIGTERM");

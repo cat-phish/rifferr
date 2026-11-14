@@ -6,7 +6,7 @@ workflow gains a capability (agent loop step 6).
 
 | # | Checklist line | Workflow step (`id` / `uses:`) | Spec ID | Status |
 |---|---|---|---|---|
-| 1 | `beet import -q` the unsorted folder | `import` / `beets.import` (`mode: quiet`, folder from `vars.inbox`) | S-BEETS-IMPORT | Done (M1) |
+| 1 | `beet import -q` the unsorted folder | `import` / `beets.import` (`mode: quiet`, path `{{ run.input }}`). `on.watch` on `vars.inbox` starts one run per new album folder after 5 minutes without changes; manual runs import the whole inbox (`input:`) | S-BEETS-IMPORT, F-TRIGGERS | Done (M1); unattended (M2) |
 | 2 | Interactive `beet import`: match albums or skip | — (ambiguous albums wait in review as import decisions) | F-IMPORT-UI | Planned (M2) |
 | 3 | Open the importer in foobar2000 | — (not needed: Rifferr's queue and tag grid replace it) | — | Not applicable |
 | 4 | Delete leftover files and empty folders in the unsorted folder | — | S-FILES-CLEANUP | Planned (M2) |

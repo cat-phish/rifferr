@@ -93,6 +93,8 @@ function Review({ wf, profile }: { wf: WorkflowDetail; profile: string }) {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["workflow", profile, wf.name] });
       await queryClient.invalidateQueries({ queryKey: ["workflows", profile] });
+      // Trusting arms the workflow's triggers (TRIGGERS-2); arming sends no event.
+      await queryClient.invalidateQueries({ queryKey: ["triggers", profile] });
     },
     onError: async (err) => {
       if (err instanceof ApiError && err.code === "hash_mismatch") await reload();

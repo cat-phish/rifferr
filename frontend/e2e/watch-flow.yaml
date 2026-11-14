@@ -1,0 +1,14 @@
+# Workflow for the triggers e2e test (F-TRIGGERS): a folder dropped into the watched
+# folder starts a run once it settles. global-setup.ts fills in the folder's path.
+name: watch-flow
+description: List each new folder in the watched folder.
+on:
+  watch:
+    path: WATCHED
+    settle: 1s
+steps:
+  - id: list
+    uses: shell
+    with:
+      per: run
+      run: [ls, "{{ run.input }}"]
