@@ -183,7 +183,7 @@ S-SUBWORKFLOW → queue dashboard (F-REVIEW-QUEUE update).
 - [x] C-LANES: Implemented 2026-11-13.
 - [x] F-IMPORT-UI: Implemented 2026-11-13.
 - [x] F-READ-ORDER (B-054, out of the main order): Implemented 2026-11-14.
-- [ ] S-NOTIFY: Approved 2026-11-14.
+- [x] S-NOTIFY: Implemented 2026-11-14.
 
 ## M3 — Cover search
 

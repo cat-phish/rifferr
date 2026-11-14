@@ -1,5 +1,5 @@
 # S-NOTIFY: `notify` step and notification rules
-Status: Approved
+Status: Implemented
 Milestone: M2
 
 ## Context
@@ -35,9 +35,12 @@ because Apprise URLs carry tokens and passwords.
   error messages. Rifferr refers to a target only by its name. Apprise's own log output MUST be
   routed through the profile's `Redactor` (C-PROFILE) before it reaches any Rifferr log.
 - NOTIFY-4: A failed send MUST be retried after each delay in `notify.retry` (a list of
-  Durations, default `[5s, 30s, 2m]`; `[]` means no retries). Each final outcome MUST emit `notify.sent` or `notify.failed` (`target`, `source`: `rule` or
-  `step`, `reason`; `failed` also carries a redacted error message). Events go on the run's
-  stream when there is a run, and on `/api/events`.
+  Durations, default `[5s, 30s, 2m]`; `[]` means no retries). Each final outcome MUST emit
+  `notify.sent` or `notify.failed` (`target`, `source`: `rule` or `step`; `failed` also
+  carries a redacted `error`). A step's events go on its run's stream. A rule's events go on
+  the profile's stream, with `event` (the rule event) and `run_id` when there is a run,
+  because a running run's stream has one writer, its worker (B-037). Both reach
+  `/api/events`.
 - NOTIFY-5: A notification failure MUST NOT fail, block or delay a run, lane, gate or import,
   except as NOTIFY-12 allows for the step.
 - NOTIFY-6: When the profile sets `notify.base_url` (an absolute `http`/`https` URL, validated
@@ -78,7 +81,8 @@ because Apprise URLs carry tokens and passwords.
   DB (`notifications`) before they are sent, and a pending record found at start-up is retried.
 - NOTIFY-16 (F-REVIEW-QUEUE amendment): `GET /api/review` MUST accept `run=<run_id>` to list only
   that run's items, and `/review?run=<run_id>` MUST open the queue filtered to that run, with a
-  visible filter chip that clears it. An unknown run id shows an empty queue, not an error.
+  visible control that clears the filter. An unknown run id shows an empty queue, not an error.
+  (Already true since F-REVIEW-QUEUE: REVIEW-QUEUE-16 and its "Show every run" link.)
 - NOTIFY-15: A rule with `review.needed` MAY set `remind_after` (a Duration). While any item of
   an earlier `review.needed` notification is still pending, the server MUST send a reminder
   for it every `remind_after`, at most `remind_limit` times (default 3). The reminder lists only
@@ -169,12 +173,37 @@ class NotifyParams(BaseModel):
     required: bool = False
     skip_empty: bool = False
 ```
-- App DB: `notifications` (id, profile, run_id, rule_event, dedup_key, target, state
-  `pending|sent|failed`, attempts, created_at, sent_at, error, reminders, items JSON).
-- Events: `notify.sent {target, source}`, `notify.failed {target, source, reason, error}`.
+- App DB: `notifications` (id, profile, run_id, event, dedup_key, target, state
+  `pending|sent|failed`, attempts, message JSON, items JSON, remind_after, remind_limit,
+  reminders, reminding, parent, created_at, sent_at, last_reminded_at, error).
+- Events: `notify.sent {target, source, event?, run_id?, notification_id?}`,
+  `notify.failed {..., error}` (NOTIFY-4).
 - Routes: `POST /api/profiles/{profile}/notify/test`; `GET /api/review?run=` (NOTIFY-16). CLI: `rifferr notify test`.
 - Module: `rifferr.notify` (models, rule matching, message building: pure) and
   `rifferr.notify.apprise` (the only module that imports Apprise).
+
+Implementation notes (2026-11-14, added while implementing; not new behavior):
+- Pure parts live in `rifferr.core.notify` (models, `NotifySettings` in `ProfileFile.notify`,
+  links, rule message text), so `core.profile` can use them. `rifferr.notify` has `Notifier`,
+  `deliver` (retries, redaction) and `ProfileTargets`; `rifferr.notify.service` the server's
+  `NotificationService`; `rifferr.notify.apprise` the `AppriseNotifier`.
+- Step API: `ctx.notify(notification, targets=None) -> list[SendResult]`, plus
+  `ctx.notify_targets` and `ctx.base_url`. The worker passes `ProfileTargets` to
+  `Engine.create_run(notify=...)`; the engine emits the step's `notify.*` events.
+- NOTIFY-13 validation is general: a step parameter marked
+  `json_schema_extra={"x-rifferr-ref": "notify-target"}` is checked against the profile's
+  targets by `validate(..., notify_targets=...)`, which `create_run` passes. A workflow is
+  therefore checked when a run is created (like profile vars), not by `rifferr validate`.
+- Step outputs are scalars (C-RUN), so `sent` and `failed` are comma-separated target names;
+  `messages` counts the notifications sent.
+- `review.needed` groups the `lane.waiting` events of a pass: they are flushed by the run's
+  next non-lane event, or after 1 s. Its dedup key is the run plus the sorted hold refs.
+  Summaries and failures use the triggering event's seq.
+- `worker.problem` comes from `WorkerSupervisor.subscribe_problems`: a worker that wasn't
+  ready, was killed as hung, or exited non-zero, outside server shutdown.
+- Apprise's `apprise` logger doesn't propagate; its lines are captured per send and redacted
+  (the URLs and their parts) before they reach Rifferr's log at debug level.
+- `rifferr notify test` sends from the CLI process and needs no server.
 
 ## Examples
 ```yaml
@@ -228,14 +257,16 @@ Resolved (author, 2026-11-14):
 6. Reminders for pending reviews: `remind_after` / `remind_limit` on rules (NOTIFY-15).
 
 ## Tasks
-- [ ] `rifferr.notify`: models, `NotifySettings` in `profile.yaml`, validation (NOTIFY-1, -6, -7)
-- [ ] `Notifier` protocol, Apprise implementation, redaction, retries (NOTIFY-2 to -5)
-- [ ] Rule engine in the server: event matching, grouping, dedup and the `notifications` table,
+- [x] `rifferr.notify`: models, `NotifySettings` in `profile.yaml`, validation (NOTIFY-1, -6, -7)
+- [x] `Notifier` protocol, Apprise implementation, redaction, retries (NOTIFY-2 to -5)
+- [x] Rule engine in the server: event matching, grouping, dedup and the `notifications` table,
       restart recovery (NOTIFY-8 to -10)
-- [ ] `notify` step (NOTIFY-11 to -13)
-- [ ] Reminders (NOTIFY-15) and `worker.problem` from the supervisor (NOTIFY-8)
-- [ ] `GET /api/review?run=` and the `/review?run=` filter chip, with a Playwright test (NOTIFY-16)
-- [ ] Test route and `rifferr notify test` (NOTIFY-14)
-- [ ] Contract test for the Apprise implementation using a custom Apprise schema (no network)
-- [ ] Regenerate schemas and the TS client; update `docs/coverage.md` if the reference workflow
-      gains a notification step
+- [x] `notify` step (NOTIFY-11 to -13)
+- [x] Reminders (NOTIFY-15) and `worker.problem` from the supervisor (NOTIFY-8)
+- [x] `GET /api/review?run=` and the `/review?run=` filter (NOTIFY-16): already built by
+      F-REVIEW-QUEUE and tested there (vitest `REVIEW_QUEUE_16`); an API test added here. No
+      new Playwright test, since the UI didn't change.
+- [x] Test route and `rifferr notify test` (NOTIFY-14)
+- [x] Contract test for the Apprise implementation using a custom Apprise schema (no network)
+- [x] Regenerate schemas and the TS client. `docs/coverage.md` unchanged: the reference
+      checklist has no notification step.

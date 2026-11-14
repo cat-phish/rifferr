@@ -37,7 +37,7 @@ A row gets a link once its spec file exists. Build order: [docs/roadmap.md](../d
 | [S-BEETS-COMMAND](steps/S-BEETS-COMMAND.md) | `beets.command` step | 3 | M1 | Implemented |
 | [S-TAGSCRIPT](steps/S-TAGSCRIPT.md) | `tags.script` step and action set | 4 | M1 | Approved |
 | [S-REVIEW](steps/S-REVIEW.md) | `review` gate step | 3 | M1 | Approved |
-| [S-NOTIFY](steps/S-NOTIFY.md) | `notify` step and notification rules | 2a, 3 | M2 | Approved |
+| [S-NOTIFY](steps/S-NOTIFY.md) | `notify` step and notification rules | 2a, 3 | M2 | Implemented |
 | S-FILES-CLEANUP | `files.cleanup` step | 3 | M2 | Planned |
 | S-SUBWORKFLOW | `workflow` (call another workflow) step | 3 | M2 | Planned |
 | S-COVERS-SEARCH | `covers.search` step and provider protocol | 6 | M3 | Planned |
