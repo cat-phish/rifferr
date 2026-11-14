@@ -12,6 +12,7 @@ from pydantic import BaseModel, JsonValue
 
 from rifferr.backends.base import BackendCapabilities, LibraryBackend
 from rifferr.core.changeset import ChangeSet, ChangeSetProposal, TargetRef
+from rifferr.core.imports import ImportQuestion, TimeoutAction
 from rifferr.core.profile import Secret
 from rifferr.core.review import GateDecision, GateRequest, OnReject
 from rifferr.core.selection import Scope, Selection
@@ -99,6 +100,23 @@ class GateOptions:
 OpenGate = Callable[[list[GateRequest], GateOptions, SnapshotIndex], str]
 
 
+@dataclass(frozen=True)
+class ImportOptions:
+    """How an import decision is applied and decided besides by a person (F-IMPORT-UI)."""
+
+    options: Mapping[str, str | bool] = field(default_factory=dict[str, str | bool])
+    """The step's importer options, used again when the decision is applied."""
+    set_fields: Mapping[str, str] = field(default_factory=dict[str, str])
+    timeout: timedelta | None = None
+    on_timeout: TimeoutAction = "skip"
+
+
+#: The engine's side of ``ctx.request_import``: question, options -> decision id.
+RequestImport = Callable[[ImportQuestion, ImportOptions], str]
+#: The engine's side of ``ctx.hold``: key, kind, ref, label.
+OnHold = Callable[[str, str, str, str | None], None]
+
+
 def _no_propose(
     proposal: ChangeSetProposal, current: TargetRef | None, s: SnapshotIndex
 ) -> list[ChangeSet]:
@@ -107,6 +125,10 @@ def _no_propose(
 
 def _no_gate(requests: list[GateRequest], options: GateOptions, s: SnapshotIndex) -> str:
     raise StepFailure("this run can't open review gates")
+
+
+def _no_import(question: ImportQuestion, options: ImportOptions) -> str:
+    raise StepFailure("this run can't ask for import decisions")
 
 
 def _unchanged(value: str) -> str:
@@ -136,7 +158,8 @@ class StepContext:
         profile_dir: Path | None = None,
         interpolate: Callable[[str], str] | None = None,
         open_gate: OpenGate | None = None,
-        on_hold: Callable[[str, str, str], None] | None = None,
+        on_hold: OnHold | None = None,
+        request_import: RequestImport | None = None,
     ) -> None:
         self.run_id = run_id
         self.profile = profile
@@ -159,6 +182,7 @@ class StepContext:
         self._propose = propose or _no_propose
         self._open_gate = open_gate or _no_gate
         self._on_hold = on_hold or _no_hold
+        self._request_import = request_import or _no_import
         self._snapshots = SnapshotIndex()
         self.proposed: list[ChangeSet] = []
         """Every ChangeSet this step proposed so far, in order (after no-op dropping)."""
@@ -241,13 +265,22 @@ class StepContext:
         self.failed_targets.append(FailedTarget(target, message))
         self.log(f"{target}: {message}", stream="error")
 
-    def hold(self, key: str, kind: str, ref: str) -> None:
+    def hold(self, key: str, kind: str, ref: str, label: str | None = None) -> None:
         """Put lane ``key`` (an album id, or ``pending:<id>`` for an album not imported
-        yet) on hold until ``ref`` is resolved (C-LANES LANES-14)."""
-        self._on_hold(key, kind, ref)
+        yet) on hold until ``ref`` is resolved (C-LANES LANES-14). ``label`` names a lane
+        this creates (default: ``key``)."""
+        self._on_hold(key, kind, ref, label)
+
+    def request_import(self, question: ImportQuestion, options: ImportOptions | None = None) -> str:
+        """Leave an album folder for an import decision (F-IMPORT-UI IMPORT-UI-4, -5).
+
+        The engine stores the decision, emits ``import.requested`` and holds a new lane
+        ``pending:<id>`` until the decision is applied. Returns the decision id.
+        """
+        return self._request_import(question, options or ImportOptions())
 
 
-def _no_hold(key: str, kind: str, ref: str) -> None:
+def _no_hold(key: str, kind: str, ref: str, label: str | None) -> None:
     raise RuntimeError("this context can't hold lanes")
 
 

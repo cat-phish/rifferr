@@ -7,7 +7,7 @@ under the ``rifferr.backends`` entry-point group.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, Literal, Protocol, runtime_checkable
@@ -15,6 +15,7 @@ from typing import Final, Literal, Protocol, runtime_checkable
 from pydantic import BaseModel, ConfigDict, Field
 
 from rifferr.core.changeset import ApplyResult, ChangeProblem, ChangeSet
+from rifferr.core.imports import ImportAction, ImportQuestion
 from rifferr.core.selection import Selection
 from rifferr.core.snapshot import AlbumSnapshot, FieldValue, ItemSnapshot
 
@@ -23,8 +24,8 @@ RUN_MARKER: Final = "rifferr_run"
 
 ImportMode = Literal["quiet", "auto", "interactive"]
 
-#: Called with an import decision request; shape defined by F-IMPORT-UI (M2).
-#: Unused in M0, where only ``quiet`` imports exist.
+#: Reserved. Import questions come back in ``ImportResult.questions`` instead of through
+#: a callback, because the answer may take days (F-IMPORT-UI); pass ``None``.
 DecisionCallback = Callable[[object], object]
 
 
@@ -80,6 +81,9 @@ class BackendCapabilities(BaseModel):
     command_env: bool = False
     cli: bool = False
     """The backend has a command-line tool steps can run (BACKEND-14)."""
+    import_decisions: bool = False
+    """``import_folder`` can ask about albums (modes ``auto``/``interactive``), and
+    ``import_decided``/``lookup`` answer them (F-IMPORT-UI)."""
 
     @staticmethod
     def display_name(field: str) -> str:
@@ -101,7 +105,7 @@ class SkippedFolder(BaseModel):
     reason: str
 
 
-class ImportDecision(BaseModel):
+class ImportOutcome(BaseModel):
     """One album decision, reported while an import runs."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -120,6 +124,10 @@ class ImportResult(BaseModel):
         default_factory=list[SkippedFolder],
         description="Albums that matched one already in the library; reason = what was done. "
         "A duplicate that was kept is also in imported, one that was skipped also in skipped.",
+    )
+    questions: list[ImportQuestion] = Field(
+        default_factory=list[ImportQuestion],
+        description="Albums left in place for an import decision (F-IMPORT-UI IMPORT-UI-4)",
     )
 
 
@@ -178,7 +186,7 @@ class LibraryBackend(Protocol):
         options: Mapping[str, str | bool] | None = None,
         set_fields: Mapping[str, str] | None = None,
         should_stop: Callable[[], bool] | None = None,
-        on_decision: Callable[[ImportDecision], None] | None = None,
+        on_decision: Callable[[ImportOutcome], None] | None = None,
     ) -> ImportResult:
         """Import ``path``; imported albums get ``RUN_MARKER = run_id`` when given.
 
@@ -188,6 +196,39 @@ class LibraryBackend(Protocol):
         early and returns what was done so far. ``on_decision`` may be called from
         another thread.
         """
+        ...
+
+    def import_decided(
+        self,
+        path: Path,
+        action: ImportAction,
+        *,
+        fingerprint: str,
+        candidate_id: str | None = None,
+        run_id: str | None = None,
+        options: Mapping[str, str | bool] | None = None,
+        set_fields: Mapping[str, str] | None = None,
+    ) -> ImportResult:
+        """Import the one album folder ``path`` as decided (IMPORT-UI-11).
+
+        ``candidate`` applies the candidate with ``candidate_id`` (looked up again by its
+        id), ``asis`` keeps the current tags, ``skip`` imports nothing, and ``keep`` /
+        ``remove`` / ``merge`` answer a duplicate. Raises ``ImportApplyError`` when the
+        folder no longer has ``fingerprint``, or the candidate isn't found again.
+        """
+        ...
+
+    def lookup(
+        self,
+        path: Path,
+        *,
+        ids: Sequence[str] = (),
+        artist: str | None = None,
+        album: str | None = None,
+    ) -> ImportQuestion:
+        """Look album folder ``path`` up again (IMPORT-UI-9): its current fingerprint and
+        items, and candidates by ``ids``, by ``artist``/``album``, or from a plain lookup
+        when neither is given. Raises ``ImportApplyError`` when it can't."""
         ...
 
     def command_env(self) -> Mapping[str, str]:

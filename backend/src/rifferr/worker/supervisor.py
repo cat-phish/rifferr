@@ -23,12 +23,14 @@ from pydantic import JsonValue, ValidationError
 from rifferr.appdb import (
     AppChangeSets,
     AppDB,
+    AppImportDecisions,
     AppJournal,
     AppReviewGates,
     GateResolvedError,
     Job,
 )
 from rifferr.core.changeset import ChangeSet
+from rifferr.core.imports import ImportAction
 from rifferr.core.review import GateDecision
 from rifferr.engine.events import Event, EventSink, profile_stream
 from rifferr.engine.undo import run_entries, undoable
@@ -343,6 +345,86 @@ class WorkerSupervisor:
             decided.append(gate.id)
         return decided
 
+    # -- import decisions (F-IMPORT-UI) ----------------------------------------------
+
+    async def decide_import(
+        self,
+        decision_id: str,
+        action: ImportAction,
+        *,
+        candidate_id: str | None = None,
+        by: str | None = None,
+        note: str | None = None,
+    ) -> str:
+        """Queue the job that imports a decided folder (IMPORT-UI-8, -11). Returns the
+        job id. Raises ``KeyError`` (unknown decision), ``ImportResolvedError`` (decided
+        already), ``ImportBusyError`` (a job holds it) or ``ValueError`` (bad action)."""
+        if self._shutting_down:
+            raise RuntimeError("server is shutting down")
+        store = AppImportDecisions(self.db)
+        decision = store.get(decision_id)
+        if decision is None:
+            raise KeyError(decision_id)
+        if not decision.allows(action):
+            raise ValueError(f"action {action!r} doesn't answer a {decision.kind} decision")
+        if action == "candidate":
+            if candidate_id is None:
+                raise ValueError("choose a candidate_id")
+            if all(c.id != candidate_id for c in decision.candidates):
+                raise ValueError(f"candidate {candidate_id} isn't one of this decision's")
+        elif candidate_id is not None:
+            raise ValueError("candidate_id only goes with action 'candidate'")
+        decision = store.claim(decision_id, "pending-job")
+        payload: dict[str, JsonValue] = {
+            "decision_id": decision_id,
+            "action": action,
+            "candidate_id": candidate_id,
+            "by": by,
+            "note": note,
+        }
+        job = self.db.submit_job(decision.profile, "import_decision", payload, None)
+        store.set_claim(decision_id, job.id)
+        await self._wake(decision.profile)
+        return job.id
+
+    async def lookup_import(
+        self,
+        decision_id: str,
+        *,
+        ids: list[str] | None = None,
+        artist: str | None = None,
+        album: str | None = None,
+    ) -> str:
+        """Queue a job that looks the folder up again (IMPORT-UI-9). Returns the job id."""
+        if self._shutting_down:
+            raise RuntimeError("server is shutting down")
+        store = AppImportDecisions(self.db)
+        decision = store.claim(decision_id, "pending-job")
+        payload: dict[str, JsonValue] = {
+            "decision_id": decision_id,
+            "ids": list(ids or []),
+            "artist": artist,
+            "album": album,
+        }
+        job = self.db.submit_job(decision.profile, "import_lookup", payload, None)
+        store.set_claim(decision_id, job.id)
+        await self._wake(decision.profile)
+        return job.id
+
+    async def decide_overdue_imports(self) -> list[str]:
+        """Answer every overdue decision with its ``on_timeout`` (IMPORT-UI-10)."""
+        decided: list[str] = []
+        for decision in AppImportDecisions(self.db).overdue(self._clock()):
+            # A duplicate has no as-is answer; it times out to skip, which changes nothing.
+            action: ImportAction = decision.on_timeout if decision.kind == "match" else "skip"
+            try:
+                await self.decide_import(decision.id, action, by="timeout")
+            except (ValueError, KeyError) as exc:
+                log.info("import decision %s: timeout skipped: %s", decision.id, exc)
+                continue
+            decided.append(decision.id)
+        return decided
+
     def start(self) -> None:
         """Start background work: the review-gate deadline timer (REVIEW-9)."""
         if self._gate_timer is None:
@@ -354,10 +436,17 @@ class WorkerSupervisor:
                 await self.decide_overdue_gates()
             except Exception:  # never let the timer die
                 log.exception("checking review gate deadlines failed")
+            try:
+                await self.decide_overdue_imports()
+            except Exception:
+                log.exception("checking import decision deadlines failed")
             wait = self.gate_check_interval
-            upcoming = AppReviewGates(self.db).next_deadline()
-            if upcoming is not None:
-                wait = max(0.0, min(wait, (upcoming - self._clock()).total_seconds()))
+            for upcoming in (
+                AppReviewGates(self.db).next_deadline(),
+                AppImportDecisions(self.db).next_deadline(),
+            ):
+                if upcoming is not None:
+                    wait = max(0.0, min(wait, (upcoming - self._clock()).total_seconds()))
             self._gates_changed.clear()
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(self._gates_changed.wait(), wait)
@@ -382,6 +471,7 @@ class WorkerSupervisor:
             self._reject_holds(run_id, job.payload.get("holds"))
             cancel_lanes(self.db, run_id, lambda t, step, d: self._emit_run(run_id, t, step, d))
             AppReviewGates(self.db).cancel_for_run(run_id)  # REVIEW-10
+            AppImportDecisions(self.db).cancel_for_run(run_id)  # IMPORT-UI-14
             seq = self.db.last_seq(run_id) + 1
             self._persist(self._event(run_id, seq, "run.finished", {"status": "cancelled"}))
             return
@@ -574,7 +664,7 @@ class WorkerSupervisor:
             return
         if event.type == "run.started":
             self.db.mark_started(event.run_id)
-        elif event.type == "review.requested":
+        elif event.type in ("review.requested", "import.requested"):
             self._gates_changed.set()  # a new deadline may be the next one
         for listener in self._listeners:
             listener(event)

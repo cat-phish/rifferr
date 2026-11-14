@@ -18,7 +18,7 @@ import threading
 from collections.abc import Callable, Iterable, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import BinaryIO
+from typing import BinaryIO, cast
 
 from pydantic import JsonValue, ValidationError
 
@@ -26,6 +26,7 @@ from rifferr.appdb import (
     HOLDING_CHANGESETS,
     AppChangeSets,
     AppDB,
+    AppImportDecisions,
     AppJournal,
     AppLanes,
     AppReviewGates,
@@ -36,9 +37,11 @@ from rifferr.backends.base import CapabilityError, LibraryBackend
 from rifferr.backends.loader import load_backend
 from rifferr.core.changeset import ChangeSet
 from rifferr.core.ids import new_ulid
+from rifferr.core.imports import ImportAction, ImportApplyError, merge_candidates
 from rifferr.core.profile import Profile, Redactor
 from rifferr.core.review import ReviewGate
 from rifferr.core.selection import Selection
+from rifferr.core.snapshot import label
 from rifferr.core.workflow import WorkflowLoadError, load_workflow
 from rifferr.credentials import ProfileSecrets, SecretResolver
 from rifferr.engine import (
@@ -61,11 +64,12 @@ from rifferr.engine.changesets import (
     repropose_targets,
 )
 from rifferr.engine.events import profile_stream
+from rifferr.engine.lanes import lane_json
 from rifferr.engine.recovery import recover_pending
 from rifferr.engine.undo import UndoContext, UndoError, undo_entry, undo_run
 from rifferr.profile_store import app_db_path, config_root, load_profile
 from rifferr.steps.registry import load_step_types
-from rifferr.worker.gates import gate_albums, reject_gate_lanes
+from rifferr.worker.gates import gate_albums, reject_gate_lanes, settle
 from rifferr.worker.protocol import HEARTBEAT_INTERVAL, WorkerCommand, WorkerMessage, encode
 
 log = logging.getLogger("rifferr.worker")
@@ -150,6 +154,7 @@ class Worker:
         self.changesets = AppChangeSets(db)
         self.gates = AppReviewGates(db)
         self.lanes = AppLanes(db)
+        self.imports = AppImportDecisions(db)
 
     async def serve(self, commands: Commands) -> None:
         """Run jobs until stopped, the server goes away, or idle too long (WORKER-7)."""
@@ -260,6 +265,12 @@ class Worker:
         if job.kind == "repropose":
             self._repropose(job)
             return
+        if job.kind == "import_decision":
+            self._apply_import(job)
+            return
+        if job.kind == "import_lookup":
+            self._lookup_import(job)
+            return
         payload = job.payload
         source = str(payload.get("source", ""))
         source_name = str(payload.get("source_name", "<workflow>"))
@@ -276,6 +287,7 @@ class Worker:
             changesets=self.changesets,
             gates=self.gates,
             lanes=self.lanes,
+            imports=self.imports,
         )
         try:
             wf, doc = load_workflow(source, source_name)
@@ -314,6 +326,7 @@ class Worker:
                 self.db.suspend(job.run, run.suspended_after, run.holds, run.gates)
             else:
                 self.db.finish(job.run, run.state.value)  # type: ignore[arg-type]
+                self.imports.cancel_for_run(job.run)  # nothing waits on a finished run
         except Exception as exc:  # an engine bug: still end the run cleanly
             log.exception("run %s crashed", run.id)
             self.db.finish(job.run, "failed", f"{type(exc).__name__}: {exc}")
@@ -403,6 +416,119 @@ class Worker:
         self._finish_job(job, "succeeded")
         if cs.run_id is not None:
             self._resume_if_released(cs.run_id)
+
+    # -- import decisions (F-IMPORT-UI) -----------------------------------------------
+
+    def _apply_import(self, job: Job) -> None:
+        """Import a decided folder, then let its lane go on (IMPORT-UI-11 .. -13)."""
+        payload = job.payload
+        decision_id = str(payload.get("decision_id"))
+        decision = self.imports.get(decision_id)
+        if decision is None:
+            self._finish_job(job, "failed", f"no import decision {decision_id}")
+            return
+        emit = self._changeset_emitter(decision.run_id, decision.step_id)
+        action = str(payload.get("action"))
+        candidate_id = payload.get("candidate_id")
+        if decision.kind == "duplicate" and decision.candidates:
+            candidate_id = decision.candidates[0].id  # the match the duplicate was found for
+        by, note = payload.get("by"), payload.get("note")
+        try:
+            result = self.backend.import_decided(
+                Path(decision.path),
+                cast(ImportAction, action),
+                fingerprint=decision.fingerprint,
+                candidate_id=candidate_id if isinstance(candidate_id, str) else None,
+                run_id=decision.run_id,
+                options=decision.options,
+                set_fields=decision.set_fields,
+            )
+        except Exception as exc:  # IMPORT-UI-13: stays pending, with the error
+            message = (
+                str(exc) if isinstance(exc, ImportApplyError) else f"{type(exc).__name__}: {exc}"
+            )
+            decision.error = message
+            self.imports.release(decision)
+            emit(
+                "run.step.log",
+                {"stream": "error", "line": f"import decision for {decision.path}: {message}"},
+            )
+            self._finish_job(job, "failed", message)
+            return
+        album = result.imported[0] if result.imported else None
+        decision.state = "skipped" if action == "skip" else "applied"
+        decision.action = cast(ImportAction, action)
+        decision.candidate_id = candidate_id if isinstance(candidate_id, str) else None
+        decision.error = None
+        decision.decided_by = by if isinstance(by, str) else None
+        decision.decided_at = datetime.now(UTC)
+        decision.note = note if isinstance(note, str) else None
+        decision.album_id = album.id if album is not None else None
+        self.imports.release(decision)
+        data: dict[str, JsonValue] = {"decision_id": decision.id, "action": action}
+        if album is not None:
+            data["album_id"] = album.id
+        emit("import.resolved", data)
+        key = decision.lane_key
+        if album is None:  # IMPORT-UI-17: a skipped album ends its lane skipped
+            lanes = self.lanes.load(decision.run_id)
+            for moved in self.lanes.set_state(
+                decision.run_id, [key], "skipped", only_from=("waiting", "active")
+            ):
+                lane = lanes[moved]
+                lane.state, lane.position, lane.holds = "skipped", None, []
+                emit("lane.finished", lane_json(lane))
+        else:
+            self.lanes.rename(decision.run_id, key, album.id, label(album))  # LANES-14
+            self.lanes.resolve_hold(decision.run_id, decision.id)
+        self._finish_job(job, "succeeded", result={"album_id": decision.album_id})
+        settle(
+            self.db,
+            decision.run_id,
+            lambda type, step, d: self._changeset_emitter(decision.run_id, step)(type, d),
+        )
+
+    def _lookup_import(self, job: Job) -> None:
+        """Look a decision's folder up again and add what it finds (IMPORT-UI-9)."""
+        payload = job.payload
+        decision_id = str(payload.get("decision_id"))
+        decision = self.imports.get(decision_id)
+        if decision is None:
+            self._finish_job(job, "failed", f"no import decision {decision_id}")
+            return
+        raw_ids = payload.get("ids")
+        ids = [i for i in raw_ids if isinstance(i, str)] if isinstance(raw_ids, list) else []
+        artist, album = payload.get("artist"), payload.get("album")
+        search = bool(ids or artist or album)
+        try:
+            found = self.backend.lookup(
+                Path(decision.path),
+                ids=ids,
+                artist=artist if isinstance(artist, str) else None,
+                album=album if isinstance(album, str) else None,
+            )
+        except Exception as exc:
+            message = (
+                str(exc) if isinstance(exc, ImportApplyError) else f"{type(exc).__name__}: {exc}"
+            )
+            decision.error = message
+            self.imports.release(decision)
+            self._finish_job(job, "failed", message)
+            return
+        decision.fingerprint = found.fingerprint
+        decision.items = list(found.items)
+        decision.candidates = (
+            merge_candidates(decision.candidates, found.candidates)
+            if search
+            else list(found.candidates)
+        )
+        decision.error = None
+        self.imports.release(decision)
+        self._finish_job(
+            job,
+            "succeeded",
+            result={"candidates": len(decision.candidates), "found": len(found.candidates)},
+        )
 
     def _repropose(self, job: Job) -> None:
         """Propose a conflicted ChangeSet again with each ``old`` from the current values;

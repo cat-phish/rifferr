@@ -12,7 +12,7 @@ import re
 import shlex
 import sqlite3
 import sys
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import Any, cast
 
@@ -26,8 +26,8 @@ from rifferr.backends.base import (
     CapabilityError,
     ChangeSetRejected,
     DecisionCallback,
-    ImportDecision,
     ImportMode,
+    ImportOutcome,
     ImportResult,
     QueryError,
     SharedFields,
@@ -36,22 +36,35 @@ from rifferr.backends.base import (
 )
 from rifferr.backends.beets import apply as changes_apply
 from rifferr.backends.beets import config
-from rifferr.backends.beets.importer import QuietImportSession
+from rifferr.backends.beets.importer import (
+    AppliedImportSession,
+    DecidingImportSession,
+    LookupSession,
+    QuietImportSession,
+)
 from rifferr.backends.beets.snapshots import album_snapshot, field_value, parse_id
 from rifferr.backends.coerce import coerce_value
 from rifferr.core.changeset import ApplyResult, ChangeProblem, ChangeSet, same_value
 from rifferr.core.ids import new_ulid
+from rifferr.core.imports import ImportAction, ImportApplyError, ImportQuestion
 from rifferr.core.profile import Profile
 from rifferr.core.selection import Selection
 from rifferr.core.snapshot import AlbumSnapshot, FieldValue, ItemSnapshot
+from rifferr.core.triggers import fingerprint
 
 CAPABILITIES = BackendCapabilities(
-    import_=True, query=True, templates=True, apply=True, command_env=True, cli=True
+    import_=True,
+    query=True,
+    templates=True,
+    apply=True,
+    command_env=True,
+    cli=True,
+    import_decisions=True,
 )
 
 
 READ_ONLY_CAPABILITIES = CAPABILITIES.model_copy(
-    update={"import_": False, "apply": False, "cli": False}
+    update={"import_": False, "apply": False, "cli": False, "import_decisions": False}
 )
 
 
@@ -229,41 +242,161 @@ class BeetsBackend:
         options: Mapping[str, str | bool] | None = None,
         set_fields: Mapping[str, str] | None = None,
         should_stop: Callable[[], bool] | None = None,
-        on_decision: Callable[[ImportDecision], None] | None = None,
+        on_decision: Callable[[ImportOutcome], None] | None = None,
     ) -> ImportResult:
-        """Quiet import. Without ``run_id`` a fresh id still marks the albums, so the
-        result can list them."""
+        """Import ``path``. Quiet mode follows beets' quiet behavior; ``auto`` and
+        ``interactive`` leave albums that need a person in ``questions`` (F-IMPORT-UI).
+        Without ``run_id`` a fresh id still marks the albums, so the result can list them."""
         self._writable("import")
-        if mode != "quiet":
-            raise NotImplementedError(f"import mode '{mode}' arrives with F-IMPORT-UI (M2)")
         marker = run_id or new_ulid()
-        fields = {k: escape_template(v) for k, v in (set_fields or {}).items()}
-        fields[RUN_MARKER] = escape_template(marker)
         report = on_decision or (lambda d: None)
-        settings: dict[str, Any] = {
-            **dict(options or {}),
-            "quiet": True,
-            "threaded": False,  # decisions and stop checks happen one album at a time
-            "set_fields": fields,
-        }
+        settings = self._import_settings(options, set_fields, marker)
+        if mode != "quiet":
+            settings["incremental_skip_later"] = True  # albums left for a decision come back
         with self.library() as lib, config.overlay({"import": settings}):
             before = {a.id for a in lib.albums([_run_term(marker)])}
-            session = QuietImportSession(
-                lib, os.fsencode(path), should_stop=should_stop or (lambda: False), report=report
-            )
+            stop = should_stop or (lambda: False)
+            if mode == "quiet":
+                session: QuietImportSession = QuietImportSession(
+                    lib, os.fsencode(path), should_stop=stop, report=report
+                )
+            else:
+                imp = config.beets_config()["import"]
+                session = DecidingImportSession(
+                    lib,
+                    os.fsencode(path),
+                    # IMPORT-UI-1: beets' timid option asks about every album too.
+                    ask_all=mode == "interactive" or bool(imp["timid"].get(bool)),
+                    ask_duplicates=imp["duplicate_action"].get(str) == "ask",
+                    fingerprint=folder_fingerprint,
+                    should_stop=stop,
+                    report=report,
+                )
             session.run()
             imported = [
                 album_snapshot(a) for a in lib.albums([_run_term(marker)]) if a.id not in before
             ]
         for album in imported:
-            report(ImportDecision(path=album.path or str(path), outcome="imported"))
+            report(ImportOutcome(path=album.path or str(path), outcome="imported"))
+        questions = session.questions if isinstance(session, DecidingImportSession) else []
         return ImportResult(
             imported=imported,
             skipped=[SkippedFolder(path=d.path, reason=d.reason or "") for d in session.skipped],
             duplicates=[
                 SkippedFolder(path=d.path, reason=d.reason or "") for d in session.duplicates
             ],
+            questions=questions,
         )
+
+    def _import_settings(
+        self,
+        options: Mapping[str, str | bool] | None,
+        set_fields: Mapping[str, str] | None,
+        marker: str,
+    ) -> dict[str, Any]:
+        fields = {k: escape_template(v) for k, v in (set_fields or {}).items()}
+        fields[RUN_MARKER] = escape_template(marker)
+        return {
+            **dict(options or {}),
+            "quiet": True,
+            "threaded": False,  # decisions and stop checks happen one album at a time
+            "set_fields": fields,
+        }
+
+    def import_decided(
+        self,
+        path: Path,
+        action: ImportAction,
+        *,
+        fingerprint: str,
+        candidate_id: str | None = None,
+        run_id: str | None = None,
+        options: Mapping[str, str | bool] | None = None,
+        set_fields: Mapping[str, str] | None = None,
+    ) -> ImportResult:
+        """Apply an import decision to the one folder ``path`` (IMPORT-UI-11)."""
+        self._writable("import")
+        if not path.is_dir() or folder_fingerprint(str(path)) != fingerprint:
+            raise ImportApplyError("the folder changed; look it up again")
+        if action == "skip":
+            return ImportResult(
+                skipped=[SkippedFolder(path=str(path), reason="skipped by decision")]
+            )
+        if action == "candidate" and not candidate_id:
+            raise ImportApplyError("choose a candidate")
+        marker = run_id or new_ulid()
+        settings = self._import_settings(options, set_fields, marker)
+        settings["incremental"] = False  # the lookup left this folder for now, on purpose
+        settings["autotag"] = candidate_id is not None
+        if candidate_id is not None:
+            settings["search_ids"] = [candidate_id.split(":", 1)[-1]]
+        settings["duplicate_action"] = (
+            action
+            if action in ("keep", "remove", "merge")
+            else (
+                "skip"
+                if dict(options or {}).get("duplicate_action") in (None, "ask")
+                else dict(options or {}).get("duplicate_action")
+            )
+        )
+        with self.library() as lib, config.overlay({"import": settings}):
+            before = {a.id for a in lib.albums([_run_term(marker)])}
+            session = AppliedImportSession(
+                lib,
+                os.fsencode(path),
+                candidate_id=candidate_id,
+                should_stop=lambda: False,
+                report=lambda d: None,
+            )
+            session.run()
+            imported = [
+                album_snapshot(a) for a in lib.albums([_run_term(marker)]) if a.id not in before
+            ]
+        if session.missing is not None:
+            raise ImportApplyError(session.missing)
+        if not imported:
+            reasons = "; ".join(d.reason or "" for d in session.skipped) or "nothing was imported"
+            raise ImportApplyError(reasons)
+        return ImportResult(imported=imported)
+
+    def lookup(
+        self,
+        path: Path,
+        *,
+        ids: Sequence[str] = (),
+        artist: str | None = None,
+        album: str | None = None,
+    ) -> ImportQuestion:
+        """Look ``path`` up again without importing (IMPORT-UI-9)."""
+        if not path.is_dir():
+            raise ImportApplyError(f"{path} is not a folder any more")
+        settings = {"quiet": True, "threaded": False, "autotag": True, "incremental": False}
+        with self.library() as lib, config.overlay({"import": settings}):
+            session = LookupSession(
+                lib, os.fsencode(path), ids=list(ids), artist=artist, album=album
+            )
+            session.run()
+        return ImportQuestion(
+            kind="match",
+            path=str(path),
+            fingerprint=folder_fingerprint(str(path)),
+            items=session.items,
+            candidates=session.found,
+        )
+
+
+def folder_fingerprint(folder: str) -> str:
+    """Fingerprint of an album folder's files (F-TRIGGERS rule), to detect changes."""
+    files: list[tuple[str, int, int]] = []
+    for root, _dirs, names in os.walk(folder):
+        for name in names:
+            full = os.path.join(root, name)
+            try:
+                st = os.stat(full)
+            except OSError:
+                continue
+            files.append((os.path.relpath(full, folder), st.st_size, st.st_mtime_ns))
+    return fingerprint(files) or ""
 
 
 # -- helpers ------------------------------------------------------------------

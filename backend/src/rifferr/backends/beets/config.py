@@ -81,6 +81,11 @@ def overlay(values: Mapping[str, Any]) -> Iterator[None]:
             beets.config.sources.remove(source)
 
 
+def beets_config() -> Any:
+    """beets' (overlaid) configuration, for reading settings such as ``import.timid``."""
+    return beets.config
+
+
 def library_paths() -> tuple[Path, Path]:
     """The configured library DB file and music directory."""
     db = Path(beets.config["library"].as_filename())

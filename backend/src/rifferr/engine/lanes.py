@@ -13,10 +13,13 @@ from typing import Final, Literal, Protocol
 
 from pydantic import JsonValue
 
-LaneState = Literal["active", "waiting", "done", "failed", "rejected", "gone", "cancelled"]
+LaneState = Literal[
+    "active", "waiting", "done", "skipped", "failed", "rejected", "gone", "cancelled"
+]
 HoldKind = Literal["changeset", "gate", "import"]
 
-FINAL_LANE_STATES: Final = frozenset({"done", "failed", "rejected", "gone", "cancelled"})
+FINAL_LANE_STATES: Final = frozenset({"done", "skipped", "failed", "rejected", "gone", "cancelled"})
+"""``skipped``: an album the user chose not to import (F-IMPORT-UI IMPORT-UI-17)."""
 PENDING_PREFIX: Final = "pending:"
 
 

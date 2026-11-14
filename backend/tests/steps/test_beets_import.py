@@ -62,7 +62,7 @@ async def test_BEETS_IMPORT_5_two_step_workflow_import_then_shell(beets_env: Bee
     beets_env.inbox_album()
     r, events = await run(beets_env, TWO_STEP, {"inbox": str(beets_env.inbox)})
     assert r.state is RunState.succeeded
-    assert r.steps[0].outputs == {"imported": 1, "skipped": 0, "duplicates": 0}
+    assert r.steps[0].outputs == {"imported": 1, "skipped": 0, "duplicates": 0, "decisions": 0}
     [line] = [e.data["line"] for e in events if e.type == "run.step.log" and e.step_id == "list"]
     name, album_dir = json.loads(str(line))
     assert name == "Fixture Album (inbox)"
@@ -75,10 +75,10 @@ async def test_BEETS_IMPORT_6_and_7_decisions_logged_and_skips_evented(
     beets_env.inbox_album(name="a")
     beets_env.inbox_album(name="b")  # same album twice: the second is a duplicate
     src = "name: t\nsteps:\n  - id: import\n    uses: beets.import\n"
-    src += f"    with: {{ path: '{beets_env.inbox}' }}\n"
+    src += f"    with: {{ path: '{beets_env.inbox}', mode: quiet }}\n"
     r, events = await run(beets_env, src)
     assert r.state is RunState.succeeded
-    assert r.steps[0].outputs == {"imported": 1, "skipped": 1, "duplicates": 1}
+    assert r.steps[0].outputs == {"imported": 1, "skipped": 1, "duplicates": 1, "decisions": 0}
     logs = [str(e.data["line"]) for e in events if e.type == "run.step.log"]
     assert [line.split(" ", 1)[0] for line in logs] == ["duplicate", "skipped", "imported"]
     [skip] = [e for e in events if e.type == "run.step.import.skipped"]
@@ -103,13 +103,22 @@ async def test_BEETS_IMPORT_3_path_must_be_a_folder(
     assert message in (r.steps[0].error or "")
 
 
-@pytest.mark.parametrize("mode", ["auto", "interactive"])
-def test_BEETS_IMPORT_8_other_modes_are_validation_errors(mode: str) -> None:
-    errs = errors(
-        f"name: t\nsteps:\n  - {{id: i, uses: beets.import, with: {{path: /x, mode: {mode}}}}}\n"
-    )
-    assert len(errs) == 1
-    assert "arrives with import decisions in M2" in errs[0]
+def test_IMPORT_UI_1_modes_default_to_auto() -> None:
+    from rifferr.steps.beets_import import BeetsImportParams
+
+    assert BeetsImportParams(path="/x").mode == "auto"
+    for mode in ("quiet", "auto", "interactive"):
+        step = f"{{id: i, uses: beets.import, with: {{path: /x, mode: {mode}}}}}"
+        assert errors(f"name: t\nsteps:\n  - {step}\n") == []
+
+
+def test_IMPORT_UI_10_decision_timeout_needs_a_deciding_mode() -> None:
+    step = "name: t\nsteps:\n  - {id: i, uses: beets.import, with: {path: /x, %s}}\n"
+    assert errors(step % "decision_timeout: 7d, on_timeout: asis") == []
+    [err] = errors(step % "mode: quiet, decision_timeout: 7d")
+    assert "decision_timeout needs mode auto or interactive" in err
+    [err] = errors(step % "on_timeout: asis")
+    assert "on_timeout needs a decision_timeout" in err
 
 
 def test_BEETS_IMPORT_4_only_allowlisted_options() -> None:

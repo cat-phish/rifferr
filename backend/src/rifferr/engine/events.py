@@ -26,6 +26,9 @@ ENGINE_EVENTS = frozenset(
         # S-REVIEW
         "review.requested",
         "review.resolved",
+        # F-IMPORT-UI (IMPORT-UI-6, -12)
+        "import.requested",
+        "import.resolved",
         # C-LANES (LANES-2)
         "lane.started",
         "lane.waiting",

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from rifferr.backends.base import RUN_MARKER, ImportDecision
+from rifferr.backends.base import RUN_MARKER, ImportOutcome
 from rifferr.backends.beets import BeetsBackend
 from rifferr.core.selection import Selection
 from tests.backends.beets.conftest import BeetsEnv
@@ -51,7 +51,7 @@ def test_BEETS_IMPORT_5_imported_albums_and_items_get_the_run_marker(
 
 def test_BEETS_IMPORT_6_decisions_are_reported(beets_env: BeetsEnv) -> None:
     backend = beets_env.backend()
-    seen: list[ImportDecision] = []
+    seen: list[ImportOutcome] = []
     run_import(backend, beets_env.inbox_album(), on_decision=seen.append)
     assert [d.outcome for d in seen] == ["imported"]
 
@@ -59,7 +59,7 @@ def test_BEETS_IMPORT_6_decisions_are_reported(beets_env: BeetsEnv) -> None:
 def test_BEETS_IMPORT_7_duplicate_is_skipped_not_failed(beets_env: BeetsEnv) -> None:
     backend = beets_env.backend()
     run_import(backend, beets_env.inbox_album())
-    seen: list[ImportDecision] = []
+    seen: list[ImportOutcome] = []
     result = run_import(backend, beets_env.inbox_album(name="copy"), on_decision=seen.append)
     assert result.imported == []
     assert [s.reason for s in result.skipped] == ["duplicate of an album in the library"]

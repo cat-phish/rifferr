@@ -19,12 +19,13 @@ from pydantic import BaseModel, JsonValue
 
 from rifferr.core.changeset import ApplyResult, ChangeSet, ChangeSetState, JournalEntry
 from rifferr.core.ids import new_ulid
+from rifferr.core.imports import ImportDecision, ImportDecisionState
 from rifferr.core.review import GateState, ReviewGate
 from rifferr.core.triggers import DedupRecord
 from rifferr.engine.changesets import StoredChangeSet
 from rifferr.engine.events import Event
 from rifferr.engine.journal import JournalError, completed, failed, recovered, undone
-from rifferr.engine.lanes import Hold, Lane
+from rifferr.engine.lanes import FINAL_LANE_STATES, Hold, Lane
 
 JobState = Literal["queued", "running", "waiting_review", "succeeded", "failed", "cancelled"]
 #: ``run``: the run record itself (API-6). ``review_decision``: apply or reject a
@@ -32,7 +33,16 @@ JobState = Literal["queued", "running", "waiting_review", "succeeded", "failed",
 #: ``review_reject``: undo a run rejected at a review gate, then end it (REVIEW-8).
 #: ``manual_apply``: apply manual ChangeSets from the tag grid (TAG-GRID-8).
 #: ``repropose``: propose a conflicted ChangeSet again on current values (REVIEW-QUEUE-5).
-JobKind = Literal["run", "review_decision", "undo", "review_reject", "manual_apply", "repropose"]
+JobKind = Literal[
+    "run",
+    "review_decision",
+    "undo",
+    "review_reject",
+    "manual_apply",
+    "repropose",
+    "import_decision",
+    "import_lookup",
+]
 
 #: ChangeSet states that still hold a suspended run (CHANGESET-7).
 HOLDING_CHANGESETS = ("proposed", "conflicted")
@@ -774,6 +784,145 @@ def _utc(when: datetime) -> str:
     return when.astimezone(UTC).isoformat()
 
 
+class ImportResolvedError(ValueError):
+    """The import decision isn't pending any more (IMPORT-UI-8: decided once)."""
+
+    def __init__(self, decision_id: str, state: str) -> None:
+        super().__init__(f"import decision {decision_id} is already {state}")
+        self.decision_id = decision_id
+        self.state = state
+
+
+class ImportBusyError(ValueError):
+    """A job is applying or looking up the decision right now."""
+
+    def __init__(self, decision_id: str) -> None:
+        super().__init__(f"import decision {decision_id} is being worked on; try again shortly")
+        self.decision_id = decision_id
+
+
+class AppImportDecisions:
+    """``ImportDecisionStore`` backed by the ``import_decisions`` table (F-IMPORT-UI)."""
+
+    def __init__(self, db: AppDB) -> None:
+        self.db = db
+
+    @property
+    def _conn(self) -> sqlite3.Connection:
+        return self.db._conn  # pyright: ignore[reportPrivateUsage]
+
+    def add(self, decision: ImportDecision) -> None:
+        self._conn.execute(
+            "INSERT INTO import_decisions (id, profile, run_id, step_id, state, body,"
+            " created_at, deadline) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                decision.id,
+                decision.profile,
+                decision.run_id,
+                decision.step_id,
+                decision.state,
+                decision.model_dump_json(),
+                decision.created_at.isoformat(),
+                _utc(decision.deadline) if decision.deadline is not None else None,
+            ),
+        )
+
+    def save(self, decision: ImportDecision) -> None:
+        self._conn.execute(
+            "UPDATE import_decisions SET state = ?, body = ? WHERE id = ?",
+            (decision.state, decision.model_dump_json(), decision.id),
+        )
+
+    def get(self, decision_id: str) -> ImportDecision | None:
+        row = self._conn.execute(
+            "SELECT body FROM import_decisions WHERE id = ?", (decision_id,)
+        ).fetchone()
+        return ImportDecision.model_validate_json(row["body"]) if row else None
+
+    def claimed(self, decision_id: str) -> bool:
+        row = self._conn.execute(
+            "SELECT claim FROM import_decisions WHERE id = ?", (decision_id,)
+        ).fetchone()
+        return row is not None and row["claim"] is not None
+
+    def for_run(
+        self, run_id: str, state: ImportDecisionState | None = None
+    ) -> list[ImportDecision]:
+        sql, args = "SELECT body FROM import_decisions WHERE run_id = ?", [run_id]
+        if state is not None:
+            sql, args = sql + " AND state = ?", [*args, state]
+        rows = self._conn.execute(sql + " ORDER BY created_at, id", args).fetchall()
+        return [ImportDecision.model_validate_json(r["body"]) for r in rows]
+
+    def pending(
+        self, profile: str | None = None, run_id: str | None = None
+    ) -> list[ImportDecision]:
+        """Pending decisions, oldest first (IMPORT-UI-7)."""
+        sql, args = "SELECT body FROM import_decisions WHERE state = 'pending'", list[Any]()
+        if profile is not None:
+            sql, args = sql + " AND profile = ?", [*args, profile]
+        if run_id is not None:
+            sql, args = sql + " AND run_id = ?", [*args, run_id]
+        rows = self._conn.execute(sql + " ORDER BY created_at, id", args).fetchall()
+        return [ImportDecision.model_validate_json(r["body"]) for r in rows]
+
+    def overdue(self, now: datetime) -> list[ImportDecision]:
+        """Pending, unclaimed decisions whose deadline passed (IMPORT-UI-10)."""
+        rows = self._conn.execute(
+            "SELECT body FROM import_decisions WHERE state = 'pending' AND claim IS NULL"
+            " AND deadline IS NOT NULL AND deadline <= ? ORDER BY deadline, id",
+            (_utc(now),),
+        ).fetchall()
+        return [ImportDecision.model_validate_json(r["body"]) for r in rows]
+
+    def next_deadline(self) -> datetime | None:
+        row = self._conn.execute(
+            "SELECT MIN(deadline) FROM import_decisions WHERE state = 'pending'"
+            " AND deadline IS NOT NULL"
+        ).fetchone()
+        return datetime.fromisoformat(row[0]) if row and row[0] else None
+
+    def claim(self, decision_id: str, job: str) -> ImportDecision:
+        """Reserve a pending decision for one job. Raises ``KeyError`` (unknown),
+        ``ImportResolvedError`` (not pending) or ``ImportBusyError`` (claimed)."""
+        cur = self._conn.execute(
+            "UPDATE import_decisions SET claim = ? WHERE id = ? AND state = 'pending'"
+            " AND claim IS NULL",
+            (job, decision_id),
+        )
+        decision = self.get(decision_id)
+        if decision is None:
+            raise KeyError(decision_id)
+        if cur.rowcount != 1:
+            if decision.state != "pending":
+                raise ImportResolvedError(decision_id, decision.state)
+            raise ImportBusyError(decision_id)
+        return decision
+
+    def set_claim(self, decision_id: str, job: str) -> None:
+        """Hand a claim over to the job id it was reserved for."""
+        self._conn.execute(
+            "UPDATE import_decisions SET claim = ? WHERE id = ? AND claim IS NOT NULL",
+            (job, decision_id),
+        )
+
+    def release(self, decision: ImportDecision) -> None:
+        """Save ``decision`` and drop the claim (it stays pending, IMPORT-UI-13)."""
+        self._conn.execute(
+            "UPDATE import_decisions SET state = ?, body = ?, claim = NULL WHERE id = ?",
+            (decision.state, decision.model_dump_json(), decision.id),
+        )
+
+    def cancel_for_run(self, run_id: str) -> list[str]:
+        """Cancel the run's pending decisions (IMPORT-UI-14). Returns their ids."""
+        cancelled: list[str] = []
+        for decision in self.pending(run_id=run_id):
+            decision.state = "cancelled"
+            self.release(decision)
+            cancelled.append(decision.id)
+        return cancelled
+
+
 class AppJournal:
     """``Journal`` backed by the app DB's ``journal`` table (JOURNAL-8)."""
 
@@ -1000,10 +1149,12 @@ class AppLanes:
                     ),
                 )
 
-    def rename(self, run_id: str, old: str, new: str) -> None:
+    def rename(self, run_id: str, old: str, new: str, label: str | None = None) -> None:
+        """LANES-14: keep position, holds and history; optionally a new label."""
         self._conn.execute(
-            "UPDATE run_lanes SET key = ?, updated_at = ? WHERE run_id = ? AND key = ?",
-            (new, _now(), run_id, old),
+            "UPDATE run_lanes SET key = ?, label = COALESCE(?, label), updated_at = ?"
+            " WHERE run_id = ? AND key = ?",
+            (new, label, _now(), run_id, old),
         )
 
     def set_state(
@@ -1014,7 +1165,7 @@ class AppLanes:
         moved: list[str] = []
         sources = list(only_from)
         marks = ",".join("?" for _ in sources)
-        final = state in ("done", "failed", "rejected", "gone", "cancelled")
+        final = state in FINAL_LANE_STATES
         for key in keys:
             cur = self._conn.execute(
                 "UPDATE run_lanes SET state = ?, updated_at = ?"

@@ -533,10 +533,39 @@
     "With_beets_import": {
       "additionalProperties": false,
       "properties": {
+        "decision_timeout": {
+          "anyOf": [
+            {
+              "description": "A duration: whole numbers with d, h, m or s, e.g. 30m, 12h, 3d, 1d12h",
+              "pattern": "^(\\d+[dhms])+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Decide an unanswered import decision with on_timeout after this long (IMPORT-UI-10); default: wait indefinitely",
+          "title": "Decision Timeout"
+        },
         "mode": {
-          "const": "quiet",
-          "default": "quiet",
+          "default": "auto",
+          "description": "quiet: strong matches or quiet_fallback; auto: strong matches, the rest wait as import decisions; interactive: every album waits (F-IMPORT-UI)",
+          "enum": [
+            "quiet",
+            "auto",
+            "interactive"
+          ],
           "title": "Mode",
+          "type": "string"
+        },
+        "on_timeout": {
+          "default": "skip",
+          "enum": [
+            "skip",
+            "asis"
+          ],
+          "title": "On Timeout",
           "type": "string"
         },
         "options": {
@@ -598,7 +627,8 @@
                 "keep",
                 "remove",
                 "merge",
-                "upgrade"
+                "upgrade",
+                "ask"
               ],
               "type": "string"
             },
@@ -607,6 +637,7 @@
             }
           ],
           "default": null,
+          "description": "'ask' makes a duplicate an import decision in modes auto/interactive (IMPORT-UI-3); quiet mode skips it",
           "title": "Duplicate Action"
         },
         "hardlink": {

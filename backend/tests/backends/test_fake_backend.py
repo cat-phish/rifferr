@@ -39,7 +39,13 @@ class TestFakeBackendWithoutCapabilities(BackendContract):
 def test_BACKEND_2_capabilities_default() -> None:
     caps = FakeBackend().capabilities
     assert caps == BackendCapabilities(
-        import_=True, query=True, templates=True, apply=True, command_env=True, cli=True
+        import_=True,
+        query=True,
+        templates=True,
+        apply=True,
+        command_env=True,
+        cli=True,
+        import_decisions=True,
     )
 
 
@@ -205,9 +211,9 @@ def test_BACKEND_7_import_twice_is_skipped_as_duplicate(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("mode", ["auto", "interactive"])
-def test_BACKEND_7_only_quiet_mode_in_m0(tmp_path: Path, mode: Any) -> None:
-    fb = FakeBackend()
-    with pytest.raises(NotImplementedError, match="M2"):
+def test_IMPORT_UI_1_decision_modes_need_the_capability(tmp_path: Path, mode: Any) -> None:
+    fb = FakeBackend(BackendCapabilities(import_=True))
+    with pytest.raises(CapabilityError, match="import_decisions"):
         fb.import_folder(tmp_path, mode, None)
 
 

@@ -26,6 +26,13 @@ all album fields, as beets 2.x does); ``delete`` removes the field. Fields in
 ``read_only`` can't be changed, and values must fit ``field_types`` (fields not
 listed there take strings only, like an untyped beets flexible attribute).
 ``fail_writes`` simulates tag-write failures for items, by item id.
+
+Imports come from fixtures (``add_import_fixture``). In modes ``auto`` and
+``interactive`` an album spec may carry ``_rec`` (``strong``, default, or ``weak``),
+``_candidates`` (``[{"id", "distance", "fields"}]``), ``_folder`` (its album folder,
+default ``<path>/<album>``) and ``_duplicate`` (asked about under ``duplicate_action:
+ask``). Albums asked about wait in ``questions`` until ``import_decided``. Folders are
+"changed" with ``change_folder``; ``add_lookup_candidate`` feeds ``lookup``.
 """
 
 from __future__ import annotations
@@ -44,8 +51,8 @@ from rifferr.backends.base import (
     CapabilityError,
     ChangeSetRejected,
     DecisionCallback,
-    ImportDecision,
     ImportMode,
+    ImportOutcome,
     ImportResult,
     QueryError,
     SharedFields,
@@ -63,11 +70,24 @@ from rifferr.core.changeset import (
     diff_effects,
     find_conflicts,
 )
+from rifferr.core.imports import (
+    FolderItem,
+    ImportAction,
+    ImportApplyError,
+    ImportCandidate,
+    ImportQuestion,
+)
 from rifferr.core.selection import Selection
 from rifferr.core.snapshot import AlbumSnapshot, FieldValue, ItemSnapshot
 
 DEFAULT_CAPABILITIES = BackendCapabilities(
-    import_=True, query=True, templates=True, apply=True, command_env=True, cli=True
+    import_=True,
+    query=True,
+    templates=True,
+    apply=True,
+    command_env=True,
+    cli=True,
+    import_decisions=True,
 )
 #: Default command-line tool of a FakeBackend: prints its arguments as JSON (BACKEND-14).
 ECHO_CLI = (sys.executable, "-c", "import json, sys; print(json.dumps(sys.argv[1:]))")
@@ -161,6 +181,12 @@ class FakeBackend:
         self._import_fixtures: dict[str, list[dict[str, Any]] | str] = {}
         self._imported: set[str] = set()
         self.import_calls: list[ImportCall] = []
+        self._questions: dict[str, tuple[dict[str, Any], ImportQuestion]] = {}
+        self._folder_versions: dict[str, int] = {}
+        self._lookup_candidates: list[dict[str, Any]] = []
+        self.lookup_calls: list[tuple[str, tuple[str, ...], str | None, str | None]] = []
+        self.fail_lookup: str | None = None
+        """Message ``lookup`` and ``import_decided`` fail with (network errors)."""
 
     # -- building ------------------------------------------------------------
 
@@ -339,12 +365,12 @@ class FakeBackend:
         options: Mapping[str, str | bool] | None = None,
         set_fields: Mapping[str, str] | None = None,
         should_stop: Callable[[], bool] | None = None,
-        on_decision: Callable[[ImportDecision], None] | None = None,
+        on_decision: Callable[[ImportOutcome], None] | None = None,
     ) -> ImportResult:
-        """``options`` are recorded, not interpreted."""
+        """``options`` are recorded; only ``duplicate_action: ask`` is interpreted."""
         self._need("import_")
         if mode != "quiet":
-            raise NotImplementedError(f"import mode '{mode}' arrives with F-IMPORT-UI (M2)")
+            self._need("import_decisions")
         self.import_calls.append(
             ImportCall(path, mode, run_id, dict(options or {}), dict(set_fields or {}))
         )
@@ -360,20 +386,153 @@ class FakeBackend:
             reason = fixture
         if reason is not None or not isinstance(fixture, list):
             reason = reason or "skipped"
-            report(ImportDecision(path=key, outcome="skipped", reason=reason))
+            report(ImportOutcome(path=key, outcome="skipped", reason=reason))
             return ImportResult(skipped=[SkippedFolder(path=key, reason=reason)])
         imported: list[AlbumSnapshot] = []
-        for spec in fixture:
+        questions: list[ImportQuestion] = []
+        ask_duplicates = (options or {}).get("duplicate_action") == "ask"
+        for raw in fixture:
             if should_stop is not None and should_stop():
                 break
-            spec = {"path": key, **spec, **(set_fields or {})}
-            if run_id is not None:
-                spec[RUN_MARKER] = run_id
-            album = self.add_album(spec)
+            folder = str(raw.get("_folder") or f"{key}/{raw.get('album', 'album')}")
+            duplicate = bool(raw.get("_duplicate")) and ask_duplicates
+            weak = raw.get("_rec", "strong") != "strong"
+            if mode != "quiet" and (duplicate or weak or mode == "interactive"):
+                question = self._question(folder, raw, "duplicate" if duplicate else "match")
+                self._questions[folder] = (dict(raw), question)
+                questions.append(question)
+                continue
+            fields = _fixture_fields(raw)
+            candidates = raw.get("_candidates") or []
+            if mode != "quiet" and candidates:
+                fields.update(candidates[0].get("fields") or {})
+            album = self._add_imported(
+                folder if "_folder" in raw else key, fields, run_id, set_fields
+            )
             imported.append(album)
-            report(ImportDecision(path=album.path or key, outcome="imported"))
+            report(ImportOutcome(path=album.path or key, outcome="imported"))
         self._imported.add(key)
-        return ImportResult(imported=imported)
+        return ImportResult(imported=imported, questions=questions)
+
+    def _add_imported(
+        self,
+        path: str,
+        fields: Mapping[str, Any],
+        run_id: str | None,
+        set_fields: Mapping[str, str] | None,
+    ) -> AlbumSnapshot:
+        spec = {"path": path, **fields, **(set_fields or {})}
+        if run_id is not None:
+            spec[RUN_MARKER] = run_id
+        return self.add_album(spec)
+
+    def _fingerprint(self, folder: str) -> str:
+        return f"fake:{folder}:{self._folder_versions.get(folder, 0)}"
+
+    def change_folder(self, folder: str) -> None:
+        """Simulate files changing in ``folder`` after its lookup (IMPORT-UI-11)."""
+        self._folder_versions[folder] = self._folder_versions.get(folder, 0) + 1
+
+    def add_lookup_candidate(self, spec: Mapping[str, Any]) -> None:
+        """A candidate ``lookup`` finds by id or by artist/album: ``{"id", "distance",
+        "fields"}``."""
+        self._lookup_candidates.append(dict(spec))
+
+    def _question(self, folder: str, raw: Mapping[str, Any], kind: str) -> ImportQuestion:
+        fields = _fixture_fields(raw)
+        items = [
+            FolderItem(path=f"{folder}/{i.get('title', 'track')}.flac", tags=dict(i))
+            for i in raw.get("items", [])
+        ]
+        duplicates = [
+            a
+            for a in (_album_snapshot(x) for x in self._albums)
+            if a.fields.get("album") == fields.get("album")
+        ]
+        return ImportQuestion(
+            kind=kind,  # type: ignore[arg-type]
+            path=folder,
+            fingerprint=self._fingerprint(folder),
+            items=items,
+            candidates=[_candidate(c) for c in raw.get("_candidates") or []],
+            duplicates=duplicates if kind == "duplicate" else [],
+        )
+
+    def import_decided(
+        self,
+        path: Path,
+        action: ImportAction,
+        *,
+        fingerprint: str,
+        candidate_id: str | None = None,
+        run_id: str | None = None,
+        options: Mapping[str, str | bool] | None = None,
+        set_fields: Mapping[str, str] | None = None,
+    ) -> ImportResult:
+        self._need("import_decisions")
+        folder = str(path)
+        entry = self._questions.get(folder)
+        if entry is None:
+            raise ImportApplyError(f"no import question for {folder}")
+        if self._fingerprint(folder) != fingerprint:
+            raise ImportApplyError("the folder changed; look it up again")
+        if self.fail_lookup is not None and action == "candidate":
+            raise ImportApplyError(self.fail_lookup)
+        raw, _ = entry
+        if action == "skip":
+            del self._questions[folder]
+            return ImportResult(skipped=[SkippedFolder(path=folder, reason="skipped by decision")])
+        fields = _fixture_fields(raw)
+        if action == "candidate":
+            known = [*(raw.get("_candidates") or []), *self._lookup_candidates]
+            chosen = next((c for c in known if c.get("id") == candidate_id), None)
+            if chosen is None:
+                raise ImportApplyError(f"candidate {candidate_id} was not found again")
+            fields.update(chosen.get("fields") or {})
+        if action == "remove":
+            for album in [a for a in self._albums if a.fields.get("album") == fields.get("album")]:
+                self.remove_album(album.id)
+        del self._questions[folder]
+        album = self._add_imported(folder, fields, run_id, set_fields)
+        return ImportResult(imported=[album])
+
+    def lookup(
+        self,
+        path: Path,
+        *,
+        ids: Sequence[str] = (),
+        artist: str | None = None,
+        album: str | None = None,
+    ) -> ImportQuestion:
+        self._need("import_decisions")
+        folder = str(path)
+        self.lookup_calls.append((folder, tuple(ids), artist, album))
+        if self.fail_lookup is not None:
+            raise ImportApplyError(self.fail_lookup)
+        entry = self._questions.get(folder)
+        if entry is None:
+            raise ImportApplyError(f"no import question for {folder}")
+        raw, _ = entry
+        extra = [_candidate(c) for c in self._lookup_candidates]
+        if ids:
+            found = [c for c in extra if c.id in ids]
+        elif artist or album:
+            found = [
+                c
+                for c in extra
+                if (not artist or artist.lower() in c.artist.lower())
+                and (not album or album.lower() in c.album.lower())
+            ]
+        else:
+            found = [_candidate(c) for c in raw.get("_candidates") or []]
+        fresh = self._question(folder, raw, entry[1].kind)
+        question = fresh.model_copy(update={"candidates": found})
+        self._questions[folder] = (raw, fresh)
+        return question
+
+    def question(self, folder: str) -> ImportQuestion | None:
+        entry = self._questions.get(folder)
+        return entry[1] if entry else None
 
     def cli_command(self, subcommand: str, args: list[str], selection: Selection) -> list[str]:
         """``self.cli``, then the subcommand, args and query parts (BACKEND-14)."""
@@ -463,6 +622,24 @@ def _sort_key(item: _Item) -> tuple[int, int]:
         return v if isinstance(v, int) and not isinstance(v, bool) else 0
 
     return (num(item.fields.get("disc")), num(item.fields.get("track")))
+
+
+def _fixture_fields(raw: Mapping[str, Any]) -> dict[str, Any]:
+    return {k: v for k, v in raw.items() if not k.startswith("_")}
+
+
+def _candidate(spec: Mapping[str, Any]) -> ImportCandidate:
+    fields = dict(spec.get("fields") or {})
+    cid = str(spec["id"])
+    return ImportCandidate(
+        id=cid,
+        source=cid.split(":", 1)[0],
+        artist=str(fields.get("albumartist", fields.get("artist", ""))),
+        album=str(fields.get("album", "")),
+        year=fields.get("year") if isinstance(fields.get("year"), int) else None,
+        tracks=int(spec.get("tracks", 0)),
+        distance=float(spec.get("distance", 0.5)),
+    )
 
 
 def _album_snapshot(album: _Album, items: list[_Item] | None = None) -> AlbumSnapshot:

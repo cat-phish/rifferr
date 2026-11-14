@@ -13,7 +13,7 @@ from typing import Literal
 
 from pydantic import JsonValue
 
-from rifferr.appdb import AppChangeSets, AppDB, AppLanes, AppReviewGates
+from rifferr.appdb import AppChangeSets, AppDB, AppImportDecisions, AppLanes, AppReviewGates
 from rifferr.core.review import REJECTED_AT_REVIEW, ReviewGate
 from rifferr.engine.lanes import FINAL_LANE_STATES, lane_json
 
@@ -101,12 +101,13 @@ def settle(db: AppDB, run_id: str, emit: EmitRun) -> Settled:
 
 def _close_leftovers(db: AppDB, run_id: str, emit: EmitRun) -> None:
     """A finished run leaves nothing pending: proposed ChangeSets are rejected and
-    pending gates cancelled (CHANGESET-7, REVIEW-10)."""
+    pending gates and import decisions cancelled (CHANGESET-7, REVIEW-10, IMPORT-UI-14)."""
     store = AppChangeSets(db)
     for stored in store.for_run(run_id, "proposed"):
         store.set_state(stored.changeset.id, "rejected", resolved_by="review")
         emit("changeset.rejected", stored.changeset.step_id, {"changeset_id": stored.changeset.id})
     AppReviewGates(db).cancel_for_run(run_id)
+    AppImportDecisions(db).cancel_for_run(run_id)
 
 
 def _finish_whole(db: AppDB, run_id: str, emit: EmitRun) -> bool:

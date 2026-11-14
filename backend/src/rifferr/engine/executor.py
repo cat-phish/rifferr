@@ -13,7 +13,7 @@ import hashlib
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Any, Protocol, cast
 
 from pydantic import BaseModel, JsonValue
@@ -28,6 +28,7 @@ from rifferr.core.changeset import (
     TargetRef,
 )
 from rifferr.core.ids import new_ulid
+from rifferr.core.imports import ImportDecision, ImportQuestion
 from rifferr.core.profile import Redactor, merged_vars
 from rifferr.core.review import GateAlbum, GateRequest, ReviewGate
 from rifferr.core.selection import Selection
@@ -53,6 +54,7 @@ from rifferr.engine.changesets import (
     proposed_event,
 )
 from rifferr.engine.events import Event, EventSink
+from rifferr.engine.imports import ImportDecisionStore, InMemoryImportStore
 from rifferr.engine.journal import InMemoryJournal, Journal
 from rifferr.engine.lanes import (
     Hold,
@@ -66,6 +68,7 @@ from rifferr.engine.review import GateStore, InMemoryGateStore, conflicted_for, 
 from rifferr.engine.run import PassRecord, Run, RunState, Scalar, StepRecord
 from rifferr.engine.steps import (
     GateOptions,
+    ImportOptions,
     NoSecrets,
     SecretAccess,
     StepContext,
@@ -127,6 +130,8 @@ class _RunState:
         self.pass_lanes: list[Lane] = []
         self.lane_holds: dict[str, list[Hold]] = {}
         """Album id -> holds raised during the current pass (LANES-5)."""
+        self.lane_labels: dict[str, str] = {}
+        """Labels for lanes a hold creates (``pending:`` lanes, LANES-14)."""
 
 
 @dataclass(frozen=True)
@@ -148,8 +153,10 @@ class Engine:
         changesets: ChangeSetStore | None = None,
         gates: GateStore | None = None,
         lanes: LaneStore | None = None,
+        imports: ImportDecisionStore | None = None,
     ) -> None:
         self.registry = registry
+        self.imports: ImportDecisionStore = imports or InMemoryImportStore()
         self.lanes: LaneStore = lanes or InMemoryLaneStore()
         self.sink = sink
         self.journal: Journal = journal or InMemoryJournal()
@@ -412,7 +419,7 @@ class Engine:
         state.lane_holds = {}
         for key in held:  # holds on albums that had no lane in this pass (e.g. run-level steps)
             if key not in state.lanes:
-                state.lanes[key] = Lane(key, key, "active", spec.id)
+                state.lanes[key] = Lane(key, state.lane_labels.get(key, key), "active", spec.id)
                 self._emit_lane(state, "lane.started", state.lanes[key])
                 pass_lanes.append(state.lanes[key])
         for lane in pass_lanes:
@@ -449,10 +456,14 @@ class Engine:
     def _emit_lane(self, state: _RunState, type: str, lane: Lane) -> None:
         self._emit(state.run, type, None, lane_json(lane))
 
-    def _hold(self, state: _RunState, key: str, kind: str, ref: str) -> None:
+    def _hold(
+        self, state: _RunState, key: str, kind: str, ref: str, label: str | None = None
+    ) -> None:
         if kind not in ("changeset", "gate", "import"):
             raise ValueError(f"unknown hold kind {kind!r}")
         state.lane_holds.setdefault(key, []).append(Hold(cast(Any, kind), ref))
+        if label is not None:
+            state.lane_labels[key] = label
 
     def rename_lane(self, run_id: str, old: str, new: str) -> None:
         """LANES-14: a ``pending:`` lane becomes its album's lane once it is imported."""
@@ -533,7 +544,10 @@ class Engine:
                 open_gate=lambda requests, options, snapshots: self._open_gate(
                     state, spec, requests, options, snapshots
                 ),
-                on_hold=lambda key, kind, ref: self._hold(state, key, kind, ref),
+                on_hold=lambda key, kind, ref, label: self._hold(state, key, kind, ref, label),
+                request_import=lambda question, options: self._request_import(
+                    state, spec, question, options
+                ),
             )
             result = await self._run_cancellable(state, step_type.run(ctx))
             if state.cancel.is_set():
@@ -767,6 +781,44 @@ class Engine:
             data["deadline"] = gate.deadline.isoformat()
         self._emit(run, "review.requested", spec.id, data)
         return gate.id
+
+    # -- import decisions (F-IMPORT-UI) -------------------------------------------
+
+    def _request_import(
+        self, state: _RunState, spec: StepSpec, question: ImportQuestion, options: ImportOptions
+    ) -> str:
+        run = state.run
+        now = self.clock.now()
+        decision = ImportDecision(
+            id=new_ulid(),
+            profile=run.profile,
+            run_id=run.id,
+            step_id=spec.id,
+            kind=question.kind,
+            path=question.path,
+            fingerprint=question.fingerprint,
+            items=list(question.items),
+            candidates=list(question.candidates),
+            duplicates=list(question.duplicates),
+            options=dict(options.options),
+            set_fields=dict(options.set_fields),
+            created_at=now,
+            deadline=now + options.timeout if options.timeout is not None else None,
+            on_timeout=options.on_timeout,
+        )
+        self.imports.add(decision)
+        label = PurePath(question.path).name or question.path
+        self._hold(state, decision.lane_key, "import", decision.id, label)  # IMPORT-UI-5
+        data: dict[str, JsonValue] = {
+            "decision_id": decision.id,
+            "path": decision.path,
+            "kind": decision.kind,
+            "candidates": len(decision.candidates),
+        }
+        if decision.deadline is not None:
+            data["deadline"] = decision.deadline.isoformat()
+        self._emit(run, "import.requested", spec.id, _redact(data, state.redactor))
+        return decision.id
 
     def _change_emitter(
         self, state: _RunState, step_id: str
