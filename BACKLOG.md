@@ -37,6 +37,7 @@ are **not** part of the current task. Append here instead of acting on them.
 - B-033 [idea] (2026-11-12, from C-JOURNAL) Journal recovery reads current values through `LibraryBackend.query`, falling back to the whole library when an entry's targets aren't among its run's albums. Fine for rare crashes, but slow on big libraries. Consider a `LibraryBackend.fields(refs)` read by id (a C-BACKEND change) if recovery or the review queue needs it.
 - B-047 [idea] (2026-11-13, from F-TRIGGERS) A `trigger` plugin entry point, so plugins can add trigger kinds beyond watch, schedule and webhook (for example polling an *arr API).
 - B-048 [idea] (2026-11-13, from F-TRIGGERS) Rate-limit failed webhook authentication (per profile and webhook) so a leaked URL can't be used to brute-force its secret.
+- B-049 [idea] (2026-11-13, from F-TRIGGERS) Example workflows and docs for Lidarr Connect and slskd webhooks, built from real recorded payloads (paths redacted) used as record/replay fixtures. Deferred: the author doesn't use either, and the field names shouldn't be guessed.
 
 ## Issues
 - B-004 [bug] (2026-11-11, from session) Nix `pre-commit` package fails to build Python hook environments (`ModuleNotFoundError: No module named 'packaging'` in its virtualenv). Use the distro package or pipx; mention in contributor docs.

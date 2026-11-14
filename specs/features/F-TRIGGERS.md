@@ -10,8 +10,9 @@ validated but ignored (C-WORKFLOW WORKFLOW-13). This spec makes the server act o
 - **watch:** a folder is watched, and each new download in it starts a run once it has
   stopped changing (*settle*).
 - **schedule:** a cron expression in the profile's time zone (C-PROFILE `timezone`).
-- **webhook:** `POST` to an authenticated endpoint. Download managers (Lidarr Connect,
-  slskd) are the first documented callers, but nothing in the engine knows about them.
+- **webhook:** `POST` to an authenticated endpoint, for download managers and other tools.
+  Nothing in the engine knows about any particular caller (examples for Lidarr Connect and
+  slskd: B-049).
 - **dedup:** the same input with the same contents isn't started twice unless forced.
 - **concurrency:** one active run per profile; further triggers queue.
 
@@ -146,7 +147,7 @@ and filesystem so they're tested without real time or files.
   start-up scan fingerprints it, finds the same fingerprint, emits `trigger.skipped
   {reason: already_run}`.
 - A file is added to that folder later: the fingerprint changes, and a new run starts.
-- Lidarr posts `{"eventType": "Test"}`: `200 {ignored: "no_input"}`.
+- A caller posts a test event without a path, e.g. `{"eventType": "Test"}`: `200 {ignored: "no_input"}`.
 - A webhook payload names `/etc`: `422 bad_input`, nothing runs.
 - `schedule: "0 4 * * *"`, profile `timezone: Europe/Amsterdam`, server down 03:00–05:00:
   no 04:00 run; next is 04:00 the next day.
@@ -156,8 +157,8 @@ and filesystem so they're tested without real time or files.
 ## Extensibility
 - Trigger kinds are fixed in M2 (`watch`, `schedule`, `webhook`). A `trigger` plugin entry
   point is a non-goal here (B-047).
-- Callers are configured entirely in workflow YAML (`input`, `within`). Lidarr and slskd get
-  documented example workflows, not code.
+- Callers are configured entirely in workflow YAML (`input`, `within`). Specific callers get
+  documented example workflows, not code (B-049).
 
 ## Security & safety
 - Untrusted workflows never start unattended (TRIGGERS-2).
@@ -196,9 +197,9 @@ and filesystem so they're tested without real time or files.
 10. ~~Host allowlist for webhooks?~~ Resolved 2026-11-13 (author): as recommended: kept (TRIGGERS-17); the docs explain adding
     a container's host name.
 11. ~~Plugin trigger kinds?~~ Resolved 2026-11-13 (author): as recommended: deferred (B-047).
-12. ~~Sample payloads?~~ Resolved 2026-11-13 (author): as recommended: the author captures real Lidarr and slskd payloads
-    (paths redacted) for record/replay fixtures. The Lidarr and slskd example workflows and
-    docs wait for them; nothing else does.
+12. ~~Sample payloads?~~ Resolved 2026-11-13 (author): deferred to B-049. The author doesn't
+    use Lidarr or slskd; the webhook trigger stays general (`input`, `within`) and is tested
+    with synthetic payloads.
 
 ## Tasks
 - [ ] Add `watchfiles` and `cronsim` to `backend/pyproject.toml`.
@@ -216,6 +217,4 @@ and filesystem so they're tested without real time or files.
 - [ ] UI: triggers on the workflow page; trigger column in runs list; Playwright flow.
 - [ ] `examples/workflows/foobar-style.yaml`: `on.watch` on the inbox, steps use
       `{{ run.input }}`.
-- [ ] Lidarr and slskd example workflows and docs, from the author's recorded payloads
-      (open question 12).
 - [ ] `docs/coverage.md`; mark Implemented.
