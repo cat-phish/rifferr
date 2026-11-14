@@ -38,6 +38,7 @@ are **not** part of the current task. Append here instead of acting on them.
 - B-047 [idea] (2026-11-13, from F-TRIGGERS) A `trigger` plugin entry point, so plugins can add trigger kinds beyond watch, schedule and webhook (for example polling an *arr API).
 - B-048 [idea] (2026-11-13, from F-TRIGGERS) Rate-limit failed webhook authentication (per profile and webhook) so a leaked URL can't be used to brute-force its secret.
 - B-049 [idea] (2026-11-13, from F-TRIGGERS) Example workflows and docs for Lidarr Connect and slskd webhooks, built from real recorded payloads (paths redacted) used as record/replay fixtures. Deferred: the author doesn't use either, and the field names shouldn't be guessed.
+- B-050 [idea] (2026-11-13, from C-LANES) Run lanes in parallel within a pass, as architecture §2a describes ("lanes run in parallel up to a limit"). Likely shape: a `concurrency:` option on `per: album` steps such as `shell`. Needs care because beets' library is one SQLite file written from one worker.
 
 ## Issues
 - B-004 [bug] (2026-11-11, from session) Nix `pre-commit` package fails to build Python hook environments (`ModuleNotFoundError: No module named 'packaging'` in its virtualenv). Use the distro package or pipx; mention in contributor docs.

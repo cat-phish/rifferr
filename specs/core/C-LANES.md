@@ -123,41 +123,25 @@ Gate rejection: a gate over A and B is rejected with `on_reject: undo` → A and
 - Lane-scoped undo (LANES-11) only touches journal entries of this run for those albums.
 
 ## Non-goals
-- Running lanes in parallel within a pass (open question 6).
+- Running lanes in parallel within a pass (B-050).
 - Per-album decisions on a multi-album gate (F-REVIEW-QUEUE update with the queue dashboard).
 - Import decisions themselves (F-IMPORT-UI).
 - Item-level lanes.
 
 ## Open questions
-1. **Execution model.** I recommend passes: a step runs once for all lanes that are at it,
-   so `beets.command` stays one invocation per batch and steps keep their batch API. The
-   alternative is calling every step once per lane, which is simpler to reason about, but
-   N times slower for subprocess steps, and it would change every step type. Passes?
-2. **Run-level steps after a split.** I recommend they run once per pass, so a run-level
-   step can run more than once in a run: a `notify` after a review step sends once for the
-   albums done now and again for the ones resumed later. The alternative is a barrier:
-   run-level steps wait until every lane has reached them, so one album waiting for days
-   delays the rest's notification. Per pass, or barrier? Or a per-step choice
-   (`wait_for_all: true`)?
-3. **Final state with failed lanes.** I recommend `failed` if any lane failed (LANES-9),
-   so an unattended run with one broken album is visibly failed and S-NOTIFY's "run
-   failed" fires. The alternative is `succeeded` with a failed-lane count, matching how
-   RUN-5 treats `skip`/`continue`. Which?
-4. **Gate rejection scope.** I recommend that rejecting a gate ends and undoes only its
-   albums' lanes (LANES-11). Today it ends the whole run. OK?
-5. **Resume coalescing.** I recommend one queued resume job per run at a time; lanes
-   resolved meanwhile join it (LANES-8). OK?
-6. **Parallelism.** Architecture says "lanes run in parallel up to a limit." I recommend
-   deferring it to the BACKLOG. Passes already stop one album from blocking others, and
-   beets' library is one SQLite file written from one worker, so parallel writers would
-   need more care. A later `concurrency:` on `per: album` steps (shell) is the likely
-   shape. Defer?
-7. **Albums that join late.** LANES-1 creates a lane for any run album that appears before
-   a step, for example a second `beets.import`, positioned at that step. Such a lane skips
-   steps before it. Alternative: refuse workflows with more than one album-producing
-   step. Keep LANES-1?
-8. **Pending lanes for F-IMPORT-UI.** Is `pending:<id>`, renamed once imported (LANES-14),
-   the right hook, or should import decisions stay outside lanes until imported?
+1. ~~Execution model?~~ Resolved 2026-11-13 (author): as recommended: passes (LANES-3). Step types keep their batch API.
+2. ~~Run-level steps after a split?~~ Resolved 2026-11-13 (author): as recommended: once per pass (LANES-6), so a run-level
+   step can run more than once in a run.
+3. ~~Final state with failed lanes?~~ Resolved 2026-11-13 (author): as recommended: `failed` if any lane failed (LANES-9).
+4. ~~Gate rejection scope?~~ Resolved 2026-11-13 (author): as recommended: only the gate's albums' lanes end and are undone
+   (LANES-11).
+5. ~~Resume coalescing?~~ Resolved 2026-11-13 (author): as recommended: one queued resume job per run; lanes resolved
+   meanwhile join it (LANES-8).
+6. ~~Parallelism?~~ Resolved 2026-11-13 (author): as recommended: deferred (B-050).
+7. ~~Albums that join late?~~ Resolved 2026-11-13 (author): as recommended: keep LANES-1; a late album's lane starts at the
+   step where it appears.
+8. ~~Pending lanes for F-IMPORT-UI?~~ Resolved 2026-11-13 (author): as recommended: `pending:<id>`, renamed once imported
+   (LANES-14).
 
 ## Tasks
 - [ ] Engine: lanes, passes, positions; `run_level`; per-pass step records and outputs
