@@ -15,7 +15,7 @@ import { useDebouncedValue } from "@mantine/hooks";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useParams, useSearchParams } from "react-router";
-import { ApiError, api, ok, retrySuperseded } from "../api/client";
+import { ApiError, RequestOrder, api, ok } from "../api/client";
 import type { PreviewField, PreviewResponse, ScriptDetail } from "../api/types";
 import { BeetsTerm } from "../components/BeetsTerm";
 import { ErrorList } from "../components/ErrorList";
@@ -40,11 +40,6 @@ function show(value: Value, deleted = false): string {
   if (deleted || value === null) return "(absent)";
   if (Array.isArray(value)) return value.join("; ");
   return String(value);
-}
-
-/** One random id per editor, so a newer preview supersedes this editor's older one. */
-function clientId(): string {
-  return `editor-${Math.random().toString(36).slice(2)}`;
 }
 
 /** Edit a script file as YAML with a live preview grid (TAGSCRIPT-22). */
@@ -84,19 +79,25 @@ function Editor({
   const [savedText, setSavedText] = useState(file?.text ?? null);
   const [query, setQuery] = useState(() => params.get("query") ?? ""); // from the grid (TAG-GRID-12)
   const [conflict, setConflict] = useState(false);
-  const [client] = useState(clientId);
+  const [order] = useState(() => new RequestOrder("editor"));
   const [debouncedText] = useDebouncedValue(text, PREVIEW_DELAY_MS);
   const [debouncedQuery] = useDebouncedValue(query, PREVIEW_DELAY_MS);
 
   const preview = useQuery({
     queryKey: ["preview", profile, debouncedText, debouncedQuery],
     placeholderData: keepPreviousData,
-    retry: retrySuperseded,
+    retry: false,
     queryFn: async ({ signal }) =>
       ok(
         await api.POST("/api/profiles/{profile}/tagscript/preview", {
           params: { path: { profile } },
-          body: { script_text: debouncedText, query: debouncedQuery, limit: PREVIEW_LIMIT, client },
+          body: {
+            script_text: debouncedText,
+            query: debouncedQuery,
+            limit: PREVIEW_LIMIT,
+            client: order.client,
+            seq: order.next(),
+          },
           signal,
         }),
       ),

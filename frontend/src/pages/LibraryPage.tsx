@@ -18,7 +18,7 @@ import { useDebouncedValue } from "@mantine/hooks";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
-import { ApiError, api, ok, retrySuperseded } from "../api/client";
+import { ApiError, RequestOrder, api, ok } from "../api/client";
 import type { ProfileSummary } from "../api/types";
 import { BeetsTerm } from "../components/BeetsTerm";
 import { RecentEdits, type UndoResult } from "../components/RecentEdits";
@@ -78,10 +78,6 @@ interface Inflight {
   sent: Record<string, PendingTarget[]>;
 }
 
-function clientId(): string {
-  return `grid-${Math.random().toString(36).slice(2)}`;
-}
-
 function columnsFor(profile: ProfileSummary | undefined, scope: Scope): string[] {
   return profile?.grid_columns?.[scope] ?? DEFAULT_COLUMNS[scope];
 }
@@ -99,7 +95,7 @@ function Library({ profile, summary }: { profile: string; summary: ProfileSummar
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<Scope>("album");
   const [debouncedQuery] = useDebouncedValue(query, GRID_DELAY_MS);
-  const [client] = useState(clientId);
+  const [order] = useState(() => new RequestOrder("grid"));
   const [prefs, setPrefs] = useState<Record<Scope, ColumnPrefs>>(() => ({
     album: loadPrefs(profile, "album", columnsFor(summary, "album")),
     item: loadPrefs(profile, "item", columnsFor(summary, "item")),
@@ -122,11 +118,19 @@ function Library({ profile, summary }: { profile: string; summary: ProfileSummar
   const library = useQuery({
     queryKey: ["library", profile, debouncedQuery, scope],
     placeholderData: keepPreviousData,
-    retry: retrySuperseded,
+    retry: false,
     queryFn: async ({ signal }) =>
       ok(
         await api.GET("/api/profiles/{profile}/library", {
-          params: { path: { profile }, query: { query: debouncedQuery, scope, client } },
+          params: {
+            path: { profile },
+            query: {
+              query: debouncedQuery,
+              scope,
+              client: order.client,
+              seq: order.next(),
+            },
+          },
           signal,
         }),
       ),
