@@ -19,7 +19,15 @@ from rifferr.worker.supervisor import WorkerSupervisor
 RUN_LEVEL_EVENTS = frozenset({"run.started", "run.finished"})
 #: Also on ``/api/events``, so the review queue updates without polling (REVIEW-QUEUE-10).
 REVIEW_EVENTS = frozenset(
-    {"run.waiting_review", "run.resumed", "review.requested", "review.resolved", "job.finished"}
+    {
+        "run.waiting_review",
+        "run.resumed",
+        "review.requested",
+        "review.resolved",
+        "import.requested",
+        "import.resolved",
+        "job.finished",
+    }
 )
 #: Lane state changes (C-LANES LANES-2) go on ``/api/events`` too.
 LANE_EVENTS = frozenset({"lane.started", "lane.waiting", "lane.resumed", "lane.finished"})

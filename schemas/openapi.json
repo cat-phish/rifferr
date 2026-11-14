@@ -655,6 +655,73 @@
         "title": "FieldEffect",
         "type": "object"
       },
+      "FolderItem": {
+        "additionalProperties": false,
+        "description": "One file of the folder as it is now: its tags before any match.",
+        "properties": {
+          "format": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Format"
+          },
+          "length": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Seconds",
+            "title": "Length"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "tags": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Tags",
+            "type": "object"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "FolderItem",
+        "type": "object"
+      },
       "GateAlbum": {
         "additionalProperties": false,
         "description": "One album as the reviewer sees it at the gate (REVIEW-3).",
@@ -869,6 +936,450 @@
         "title": "HookAccepted",
         "type": "object"
       },
+      "ImportCandidate": {
+        "additionalProperties": false,
+        "description": "One match the backend's lookup found, in the backend's order (IMPORT-UI-2, -4).",
+        "properties": {
+          "album": {
+            "default": "",
+            "title": "Album",
+            "type": "string"
+          },
+          "artist": {
+            "default": "",
+            "title": "Artist",
+            "type": "string"
+          },
+          "catalognum": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Catalognum"
+          },
+          "country": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country"
+          },
+          "distance": {
+            "description": "0 is a perfect match",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Distance",
+            "type": "number"
+          },
+          "id": {
+            "description": "'<data_source>:<album id>', stable across lookups",
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "mapping": {
+            "items": {
+              "$ref": "#/components/schemas/TrackMatch"
+            },
+            "title": "Mapping",
+            "type": "array"
+          },
+          "media": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media"
+          },
+          "missing": {
+            "description": "Candidate tracks without a file",
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing",
+            "type": "array"
+          },
+          "penalties": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Penalties",
+            "type": "array"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "tracks": {
+            "default": 0,
+            "title": "Tracks",
+            "type": "integer"
+          },
+          "unmatched": {
+            "description": "Files without a candidate track",
+            "items": {
+              "type": "string"
+            },
+            "title": "Unmatched",
+            "type": "array"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year"
+          }
+        },
+        "required": [
+          "id",
+          "source",
+          "distance"
+        ],
+        "title": "ImportCandidate",
+        "type": "object"
+      },
+      "ImportDecision": {
+        "additionalProperties": false,
+        "description": "A stored import question and, once answered, its answer (IMPORT-UI-4, -12).",
+        "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "enum": [
+                  "candidate",
+                  "asis",
+                  "skip",
+                  "keep",
+                  "remove",
+                  "merge"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action"
+          },
+          "album_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Album Id"
+          },
+          "candidate_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Id"
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/ImportCandidate"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "deadline": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "decided_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided By"
+          },
+          "duplicates": {
+            "items": {
+              "$ref": "#/components/schemas/AlbumSnapshot"
+            },
+            "title": "Duplicates",
+            "type": "array"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "fingerprint": {
+            "title": "Fingerprint",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FolderItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "kind": {
+            "enum": [
+              "match",
+              "duplicate"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "on_timeout": {
+            "default": "skip",
+            "enum": [
+              "skip",
+              "asis"
+            ],
+            "title": "On Timeout",
+            "type": "string"
+          },
+          "options": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "title": "Options",
+            "type": "object"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "profile": {
+            "title": "Profile",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "set_fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Set Fields",
+            "type": "object"
+          },
+          "state": {
+            "default": "pending",
+            "enum": [
+              "pending",
+              "applied",
+              "skipped",
+              "cancelled"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "step_id": {
+            "title": "Step Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "profile",
+          "run_id",
+          "step_id",
+          "kind",
+          "path",
+          "fingerprint",
+          "created_at"
+        ],
+        "title": "ImportDecision",
+        "type": "object"
+      },
+      "ImportDecisionBody": {
+        "additionalProperties": false,
+        "description": "How to answer an import decision (IMPORT-UI-8). For kind ``duplicate`` the\naction is one of ``skip`` / ``keep`` / ``remove`` / ``merge``.",
+        "properties": {
+          "action": {
+            "enum": [
+              "candidate",
+              "asis",
+              "skip",
+              "keep",
+              "remove",
+              "merge"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "candidate_id": {
+            "anyOf": [
+              {
+                "maxLength": 400,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Id"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "title": "ImportDecisionBody",
+        "type": "object"
+      },
+      "ImportLookupBody": {
+        "additionalProperties": false,
+        "description": "Look the folder up again (IMPORT-UI-9): by release ids, or by artist and album.\nEmpty repeats the plain lookup.",
+        "properties": {
+          "album": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Album"
+          },
+          "artist": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artist"
+          },
+          "ids": {
+            "items": {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Ids",
+            "type": "array"
+          }
+        },
+        "title": "ImportLookupBody",
+        "type": "object"
+      },
       "ItemSnapshot": {
         "additionalProperties": false,
         "description": "One track. ``id`` is opaque and assigned by the backend.",
@@ -1013,6 +1524,7 @@
               "active",
               "waiting",
               "done",
+              "skipped",
               "failed",
               "rejected",
               "gone",
@@ -1657,7 +2169,7 @@
       },
       "QueueItem": {
         "additionalProperties": false,
-        "description": "One thing that waits for a decision (REVIEW-QUEUE-1). ``kind`` says which of\n``changeset`` / ``gate`` is set; later milestones add kinds.",
+        "description": "One thing that waits for a decision (REVIEW-QUEUE-1). ``kind`` says which of\n``changeset`` / ``gate`` / ``import_decision`` is set (IMPORT-UI-7).",
         "properties": {
           "changeset": {
             "anyOf": [
@@ -1688,10 +2200,21 @@
             "title": "Id",
             "type": "string"
           },
+          "import_decision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImportDecision"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "kind": {
             "enum": [
               "changeset",
-              "gate"
+              "gate",
+              "import"
             ],
             "title": "Kind",
             "type": "string"
@@ -2534,6 +3057,68 @@
         "title": "TargetRef",
         "type": "object"
       },
+      "TrackMatch": {
+        "additionalProperties": false,
+        "description": "How one file maps to a candidate's track.",
+        "properties": {
+          "item": {
+            "description": "The file's path",
+            "title": "Item",
+            "type": "string"
+          },
+          "length": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The candidate track's seconds",
+            "title": "Length"
+          },
+          "title_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title After"
+          },
+          "title_before": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title Before"
+          },
+          "track": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The candidate's track number",
+            "title": "Track"
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "title": "TrackMatch",
+        "type": "object"
+      },
       "TriggerStateOut": {
         "additionalProperties": false,
         "description": "One trigger of a workflow (TRIGGERS-4).",
@@ -3357,6 +3942,245 @@
         "summary": "All Events",
         "tags": [
           "runs"
+        ]
+      }
+    },
+    "/api/imports/{decision_id}": {
+      "get": {
+        "description": "The full import decision (IMPORT-UI-7).",
+        "operationId": "get_import_api_imports__decision_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "decision_id",
+            "required": true,
+            "schema": {
+              "title": "Decision Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportDecision"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Get Import",
+        "tags": [
+          "review"
+        ]
+      }
+    },
+    "/api/imports/{decision_id}/decision": {
+      "post": {
+        "description": "Answer an import decision, once; a worker job imports the folder (IMPORT-UI-8,\n-11). The result arrives as ``job.finished`` and ``import.resolved``.",
+        "operationId": "decide_import_api_imports__decision_id__decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "decision_id",
+            "required": true,
+            "schema": {
+              "title": "Decision Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportDecisionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobQueued"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Decide Import",
+        "tags": [
+          "review"
+        ]
+      }
+    },
+    "/api/imports/{decision_id}/lookup": {
+      "post": {
+        "description": "Look the folder up again by release ids or by artist and album (IMPORT-UI-9).",
+        "operationId": "lookup_import_api_imports__decision_id__lookup_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "decision_id",
+            "required": true,
+            "schema": {
+              "title": "Decision Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportLookupBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobQueued"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Lookup Import",
+        "tags": [
+          "review"
         ]
       }
     },
@@ -4491,7 +5315,7 @@
     },
     "/api/review": {
       "get": {
-        "description": "What waits for a decision, oldest first: run ChangeSets that are proposed or\nconflicted, and pending review gates (REVIEW-QUEUE-1).",
+        "description": "What waits for a decision, oldest first: run ChangeSets that are proposed or\nconflicted, pending review gates (REVIEW-QUEUE-1) and pending import decisions\n(IMPORT-UI-7).",
         "operationId": "review_queue_api_review_get",
         "parameters": [
           {

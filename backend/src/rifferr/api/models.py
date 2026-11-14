@@ -4,12 +4,13 @@ the OpenAPI document."""
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, StringConstraints
 
 from rifferr.appdb import JobState
 from rifferr.core.changeset import ChangeSet, ChangeSetState
+from rifferr.core.imports import MAX_LOOKUP_IDS, MAX_LOOKUP_TEXT, ImportAction, ImportDecision
 from rifferr.core.profile import GridColumns
 from rifferr.core.review import ReviewGate
 from rifferr.engine.changesets import CurrentTarget
@@ -137,7 +138,9 @@ class RunSummary(_Model):
     )
 
 
-LaneStateOut = Literal["active", "waiting", "done", "failed", "rejected", "gone", "cancelled"]
+LaneStateOut = Literal[
+    "active", "waiting", "done", "skipped", "failed", "rejected", "gone", "cancelled"
+]
 
 
 class LaneHold(_Model):
@@ -249,9 +252,9 @@ class JobQueued(_Model):
 
 class QueueItem(_Model):
     """One thing that waits for a decision (REVIEW-QUEUE-1). ``kind`` says which of
-    ``changeset`` / ``gate`` is set; later milestones add kinds."""
+    ``changeset`` / ``gate`` / ``import_decision`` is set (IMPORT-UI-7)."""
 
-    kind: Literal["changeset", "gate"]
+    kind: Literal["changeset", "gate", "import"]
     id: str
     profile: str
     run_id: str
@@ -261,6 +264,7 @@ class QueueItem(_Model):
     changeset: ChangeSet | None = None
     state: ChangeSetState | None = None
     gate: ReviewGate | None = None
+    import_decision: ImportDecision | None = None
 
 
 class ChangeSetDetail(_Model):
@@ -288,6 +292,26 @@ class Decision(_Model):
         default=None, description="Field-change indexes to accept; absent = all"
     )
     note: str | None = Field(default=None, max_length=2000)
+
+
+class ImportDecisionBody(_Model):
+    """How to answer an import decision (IMPORT-UI-8). For kind ``duplicate`` the
+    action is one of ``skip`` / ``keep`` / ``remove`` / ``merge``."""
+
+    action: ImportAction
+    candidate_id: str | None = Field(default=None, max_length=MAX_LOOKUP_TEXT * 2)
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class ImportLookupBody(_Model):
+    """Look the folder up again (IMPORT-UI-9): by release ids, or by artist and album.
+    Empty repeats the plain lookup."""
+
+    ids: list[Annotated[str, StringConstraints(min_length=1, max_length=MAX_LOOKUP_TEXT)]] = Field(
+        default_factory=list[str], max_length=MAX_LOOKUP_IDS
+    )
+    artist: str | None = Field(default=None, max_length=MAX_LOOKUP_TEXT)
+    album: str | None = Field(default=None, max_length=MAX_LOOKUP_TEXT)
 
 
 class GateDecisionBody(_Model):

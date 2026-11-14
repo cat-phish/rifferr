@@ -17,6 +17,8 @@ from rifferr.api.models import (
     CurrentValues,
     Decision,
     GateDecisionBody,
+    ImportDecisionBody,
+    ImportLookupBody,
     JobQueued,
     JobsQueued,
     QueueItem,
@@ -27,10 +29,14 @@ from rifferr.api.state import State
 from rifferr.appdb import (
     HOLDING_CHANGESETS,
     AppChangeSets,
+    AppImportDecisions,
     AppJournal,
     AppReviewGates,
     GateResolvedError,
+    ImportBusyError,
+    ImportResolvedError,
 )
+from rifferr.core.imports import ImportDecision
 from rifferr.core.review import ReviewGate
 from rifferr.engine.changesets import StoredChangeSet
 
@@ -50,7 +56,8 @@ async def review_queue(
     run: Annotated[str | None, Query()] = None,
 ) -> list[QueueItem]:
     """What waits for a decision, oldest first: run ChangeSets that are proposed or
-    conflicted, and pending review gates (REVIEW-QUEUE-1)."""
+    conflicted, pending review gates (REVIEW-QUEUE-1) and pending import decisions
+    (IMPORT-UI-7)."""
     workflows: dict[str, str | None] = {}
 
     def workflow(run_id: str) -> str | None:
@@ -87,6 +94,19 @@ async def review_queue(
                 step_id=gate.step_id,
                 created_at=gate.created_at,
                 gate=gate,
+            )
+        )
+    for decision in AppImportDecisions(state.db).pending(profile=profile, run_id=run):
+        items.append(
+            QueueItem(
+                kind="import",
+                id=decision.id,
+                profile=decision.profile,
+                run_id=decision.run_id,
+                workflow=workflow(decision.run_id),
+                step_id=decision.step_id,
+                created_at=decision.created_at,
+                import_decision=decision,
             )
         )
     items.sort(key=lambda i: (i.created_at, i.id))
@@ -243,4 +263,68 @@ async def undo_run(run_id: str, state: State) -> JobQueued:
         raise not_found(f"run {run_id}") from None
     except ValueError as exc:
         raise ApiError(409, "not_undoable", str(exc)) from None
+    return JobQueued(job_id=job_id)
+
+
+# -- import decisions (F-IMPORT-UI) ----------------------------------------------------
+
+
+@router.get("/imports/{decision_id}", response_model=ImportDecision, responses=ERROR_RESPONSES)
+async def get_import(decision_id: str, state: State) -> ImportDecision:
+    """The full import decision (IMPORT-UI-7)."""
+    decision = AppImportDecisions(state.db).get(decision_id)
+    if decision is None:
+        raise not_found(f"import decision {decision_id}")
+    return decision
+
+
+@router.post(
+    "/imports/{decision_id}/decision",
+    status_code=202,
+    response_model=JobQueued,
+    responses=ERROR_RESPONSES,
+)
+async def decide_import(decision_id: str, body: ImportDecisionBody, state: State) -> JobQueued:
+    """Answer an import decision, once; a worker job imports the folder (IMPORT-UI-8,
+    -11). The result arrives as ``job.finished`` and ``import.resolved``."""
+    try:
+        job_id = await state.supervisor.decide_import(
+            decision_id,
+            body.action,
+            candidate_id=body.candidate_id,
+            by=DECIDER,
+            note=body.note,
+        )
+    except KeyError:
+        raise not_found(f"import decision {decision_id}") from None
+    except ImportResolvedError as exc:
+        raise ApiError(409, "already_resolved", str(exc)) from None
+    except ImportBusyError as exc:
+        raise ApiError(409, "busy", str(exc)) from None
+    except ValueError as exc:
+        raise ApiError(400, "bad_request", str(exc)) from None
+    return JobQueued(job_id=job_id)
+
+
+@router.post(
+    "/imports/{decision_id}/lookup",
+    status_code=202,
+    response_model=JobQueued,
+    responses=ERROR_RESPONSES,
+)
+async def lookup_import(decision_id: str, body: ImportLookupBody, state: State) -> JobQueued:
+    """Look the folder up again by release ids or by artist and album (IMPORT-UI-9)."""
+    try:
+        job_id = await state.supervisor.lookup_import(
+            decision_id,
+            ids=[i.strip() for i in body.ids if i.strip()],
+            artist=(body.artist or "").strip() or None,
+            album=(body.album or "").strip() or None,
+        )
+    except KeyError:
+        raise not_found(f"import decision {decision_id}") from None
+    except ImportResolvedError as exc:
+        raise ApiError(409, "already_resolved", str(exc)) from None
+    except ImportBusyError as exc:
+        raise ApiError(409, "busy", str(exc)) from None
     return JobQueued(job_id=job_id)
