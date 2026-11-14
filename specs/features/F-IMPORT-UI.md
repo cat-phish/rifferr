@@ -1,5 +1,5 @@
 # F-IMPORT-UI: Import decisions in the review queue
-Status: Draft
+Status: Approved
 Milestone: M2
 
 ## Context
