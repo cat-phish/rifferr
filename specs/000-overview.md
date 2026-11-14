@@ -52,7 +52,7 @@ A row gets a link once its spec file exists. Build order: [docs/roadmap.md](../d
 | [F-REVIEW-QUEUE](features/F-REVIEW-QUEUE.md) | Review queue UI and dashboard | 2a | M1 | Implemented |
 | [F-TRIGGERS](features/F-TRIGGERS.md) | watch, schedule, webhook triggers; dedup; concurrency | 2a | M2 | Implemented |
 | [F-IMPORT-UI](features/F-IMPORT-UI.md) | Import decisions (auto/interactive beets.import) in the review queue | 2a, 3, 8 | M2 | Implemented |
-| [F-READ-ORDER](features/F-READ-ORDER.md) | Request order for superseded read-only queries (B-054) | 8 | M2 | Draft |
+| [F-READ-ORDER](features/F-READ-ORDER.md) | Request order for superseded read-only queries (B-054) | 8 | M2 | Approved |
 | F-COVER-PICKER | Cover search UI | 6 | M3 | Planned |
 | F-AI-CHAT | Chat panel and tools | 7 | M4 | Planned |
 | F-PACKAGING | PyPI and Docker packaging | 8, 10 | M5 | Planned |

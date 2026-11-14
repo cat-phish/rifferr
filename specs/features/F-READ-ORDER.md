@@ -1,5 +1,5 @@
 # F-READ-ORDER: Request order for superseded read-only queries
-Status: Draft
+Status: Approved
 Milestone: M2
 
 ## Context
@@ -108,10 +108,11 @@ as today (READ-ORDER-5).
 - Changing the read-only worker's one-request-at-a-time model.
 
 ## Open questions
-1. Is 256 remembered clients enough, or should it be a server setting? (Proposed: a
-   constant, since each browser tab uses one or two client ids.)
-2. Should `seq` be required whenever `client` is given in a later, breaking API version?
-   (Proposed: no; READ-ORDER-5 keeps it optional.)
+Resolved 2026-11-14 (author: "approved, go with your recommendations"):
+1. ~~Is 256 remembered clients enough, or a server setting?~~ A constant (each browser tab
+   uses one or two client ids).
+2. ~~Require `seq` whenever `client` is given, later?~~ No; `seq` stays optional
+   (READ-ORDER-5).
 
 ## Tasks
 - [ ] `seq` on `PreviewRequest` and the library route; `ask` passes it through
