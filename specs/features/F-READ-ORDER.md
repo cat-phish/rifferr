@@ -1,5 +1,5 @@
 # F-READ-ORDER: Request order for superseded read-only queries
-Status: Approved
+Status: Implemented
 Milestone: M2
 
 ## Context
@@ -76,6 +76,16 @@ order. It amends TAGSCRIPT-21 and TAG-GRID-2 (below) and comes from B-054.
 - Frontend: a small hook or helper that returns `{ client, next(): number }` per page,
   used by `LibraryPage` and `ScriptPage`.
 
+As implemented (2026-11-14):
+- `PreviewSupervisor._check_order` refuses a late request (READ-ORDER-3) before any
+  pending one is touched, then records the `seq`; the memory is an `OrderedDict` capped at
+  `SEQ_CLIENTS = 256` (`rifferr.worker.previews`), shared by all profiles of the server.
+- Frontend: `RequestOrder` (`frontend/src/api/client.ts`) gives each page a
+  `grid-…` / `editor-…` id and `next()`; both queries call `next()` inside `queryFn`, so a
+  retry or refetch gets a new `seq`. `retrySuperseded` is gone.
+- READ-ORDER-8 is the existing `TAG_GRID_15` Playwright test (now also named
+  `READ_ORDER_8`): 40 of 40 with `--repeat-each=40`, and the full e2e suite passed.
+
 ## Examples
 Out-of-order arrival, client `grid-abc`:
 
@@ -115,9 +125,9 @@ Resolved 2026-11-14 (author: "approved, go with your recommendations"):
    (READ-ORDER-5).
 
 ## Tasks
-- [ ] `seq` on `PreviewRequest` and the library route; `ask` passes it through
-- [ ] `PreviewSupervisor`: supersede by `seq` (READ-ORDER-2, -6), answer late arrivals at once (READ-ORDER-3), bounded highest-`seq` memory (READ-ORDER-4)
-- [ ] supervisor and API tests per behavior, including out-of-order arrival and no `seq` (READ-ORDER-5)
-- [ ] amend TAGSCRIPT-21, S-TAGSCRIPT Interfaces and TAG-GRID-2
-- [ ] regenerate TS client; grid and editor send `seq`; remove `retrySuperseded` (READ-ORDER-7)
-- [ ] repeated e2e run (READ-ORDER-8)
+- [x] `seq` on `PreviewRequest` and the library route; `ask` passes it through
+- [x] `PreviewSupervisor`: supersede by `seq` (READ-ORDER-2, -6), answer late arrivals at once (READ-ORDER-3), bounded highest-`seq` memory (READ-ORDER-4)
+- [x] supervisor and API tests per behavior, including out-of-order arrival and no `seq` (READ-ORDER-5)
+- [x] amend TAGSCRIPT-21, S-TAGSCRIPT Interfaces and TAG-GRID-2
+- [x] regenerate TS client; grid and editor send `seq`; remove `retrySuperseded` (READ-ORDER-7)
+- [x] repeated e2e run (READ-ORDER-8)

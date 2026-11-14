@@ -52,7 +52,7 @@ Author decisions (2026-11-11):
 
 ### Preview
 - TAGSCRIPT-20: `POST /api/profiles/{profile}/tagscript/preview` MUST evaluate a script (inline YAML text or a script file path) against a backend query, without proposing or writing anything. It returns, per target: label, before and after values of the changed fields, which actions hit it, errors, and the idempotence result with the responsible action. It takes `limit` (default 50 albums, max 500) and reports `truncated`. Validation errors come back with YAML line and column. No events are persisted.
-- TAGSCRIPT-21: Preview MUST run in the profile's read-only worker (F-WORKER amendment), so it answers while a run is active. A preview request MUST time out after 10 seconds with `504 preview_timeout`. A newer preview from the same client MUST supersede an older one still running (the older one is cancelled and answers `409 superseded`).
+- TAGSCRIPT-21: Preview MUST run in the profile's read-only worker (F-WORKER amendment), so it answers while a run is active. A preview request MUST time out after 10 seconds with `504 preview_timeout`. A newer preview from the same client MUST supersede an older one still running (the older one is cancelled and answers `409 superseded`). Which request is newer is set by `seq` when the request has one (F-READ-ORDER), otherwise by arrival.
 - TAGSCRIPT-22: The script editor page (`/scripts`, `/scripts/:name`) MUST list the profile's script files, edit one as YAML text, and show the live preview grid (before/after per target and field, changed cells highlighted, actions hit) for a query the user enters, updating 300 ms after the last edit. A second-pass difference MUST highlight the responsible action and the cells it affects. Saving MUST send the hash of the text that was loaded and get `409 hash_mismatch` if the file changed in between (API addition below). Text the editor saves is written as typed, so comments and ordering survive.
 
 ### C-BACKEND amendments this spec needs
@@ -143,8 +143,9 @@ As implemented (2026-11-12; `rifferr.tagscript`, `rifferr.steps.tagscript`, entr
   Idempotence findings are `warning` lines (`error` with `fail`).
 - New plugin API: `StepContext.profile_dir` and `ctx.interpolate(text)`.
 - The safety report finding is kind `auto_apply`.
-- Preview request: `{script_text | script, query, scope?, limit?, client?}`. `client` names
-  the caller, and a newer request with the same `client` supersedes the older one. The
+- Preview request: `{script_text | script, query, scope?, limit?, client?, seq?}`. `client`
+  names the caller, and a newer request with the same `client` supersedes the older one;
+  `seq` orders them (F-READ-ORDER). The
   response also has `album` (per target), `notes`, `deleted`, `idempotence_checked` and
   `albums` (evaluated). Script errors come back as 200 with `validation_errors`; a missing
   file is `404 script_not_found`. Preview interpolation sees the profile's vars and name;

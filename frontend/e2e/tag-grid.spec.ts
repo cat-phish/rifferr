@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
 
-test("TAG_GRID_15 library grid: query, expand, edit, check, apply, undo", async ({ page }) => {
+test("TAG_GRID_15 READ_ORDER_8 library grid: query, expand, edit, check, apply, undo", async ({
+  page,
+}) => {
   const token = process.env.RIFFERR_E2E_TOKEN ?? "";
   await page.goto(`/auth/exchange?token=${token}`);
   await page.getByRole("navigation").getByRole("link", { name: "Library" }).click();

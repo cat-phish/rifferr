@@ -316,7 +316,7 @@ async def started(previews: PreviewSupervisor) -> None:
     await asyncio.sleep(0.5)
 
 
-async def test_READ_ORDER_1_2_higher_seq_supersedes_lower(
+async def test_READ_ORDER_2_higher_seq_supersedes_lower(
     previews: PreviewSupervisor, slow: None
 ) -> None:
     first = asyncio.create_task(previews.request("main", request(), timeout=30, client="t", seq=1))
