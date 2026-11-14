@@ -28,7 +28,7 @@ to beets' `match.strong_rec_thresh`. Rifferr does the same, but through workflow
 and the review queue.
 
 This spec amends S-BEETS-IMPORT (BEETS-IMPORT-8), F-REVIEW-QUEUE (a third queue item kind)
-and C-LANES (a `skipped` lane state, open question 4).
+and C-LANES (a `skipped` lane state, IMPORT-UI-17).
 
 ## Behavior
 
@@ -37,7 +37,9 @@ and C-LANES (a `skipped` lane state, open question 4).
   - In `auto`, an album with a strong recommendation (beets' own `match.strong_rec_thresh`, not a Rifferr setting) MUST be imported with its best candidate, as in quiet mode. Every other album MUST become an import decision.
   - In `interactive`, every album MUST become an import decision, strong matches included.
   - `quiet` is unchanged (BEETS-IMPORT-4).
-  - The default mode is open question 1.
+  - The default mode MUST be `auto` (changes the published default from `quiet`; noted in the release notes).
+  - `mode: auto` with `import.timid: yes` in the user's beets config MUST behave as `interactive`.
+  - Loose tracks (singleton tasks) MUST keep quiet behavior in every mode: a strong match or `quiet_fallback`, never a decision.
 - IMPORT-UI-2: In both modes the lookup MUST use the user's beets config and plugins (metadata sources, `match.*` weights, `max_candidates`). Rifferr MUST NOT reorder, filter or rescore beets' candidates.
 - IMPORT-UI-3: A duplicate found while importing with `duplicate_action: ask` MUST become an import decision of kind `duplicate`, not a skip (quiet mode keeps skipping it, BEETS-IMPORT-4). Its choices are beets' own: `skip`, `keep` (both), `remove` (the old album) and `merge`.
 
@@ -64,7 +66,7 @@ and C-LANES (a `skipped` lane state, open question 4).
 - IMPORT-UI-10: With `with.decision_timeout` set (a duration), an undecided decision MUST be decided with `with.on_timeout` (`skip` or `asis`, default `skip`) once the deadline passes, decided by `timeout`, including at server start-up (as REVIEW-9). Without `decision_timeout` a decision waits indefinitely.
 
 ### Applying
-- IMPORT-UI-11: The decision job MUST run in the profile's worker. If the folder's fingerprint no longer matches, it MUST NOT import. The decision stays `pending` with the error "the folder changed; look it up again" (open question 6). Otherwise:
+- IMPORT-UI-11: The decision job MUST run in the profile's worker. If the folder's fingerprint no longer matches, it MUST NOT import. The decision stays `pending` with the error "the folder changed; look it up again". It is never looked up again automatically, so the user never applies a match they didn't see. Otherwise:
   - `candidate`: a beets import of that folder alone, with `search_ids` set to the candidate's album id, applying the candidate with that id. If the lookup no longer returns it, the decision stays `pending` with that error.
   - `asis`: a beets import of that folder alone, as-is.
   - `skip`: no import.
@@ -72,11 +74,13 @@ and C-LANES (a `skipped` lane state, open question 4).
 
   Imports use the stored `options` and `set` and mark the album with the run (BEETS-IMPORT-5, -13).
 - IMPORT-UI-12: After a successful apply the decision MUST become `applied` (or `skipped`) with `decided_by`, `decided_at`, `note` and the album id, and `import.resolved {decision_id, action, album_id?}` MUST be emitted. Then:
-  - the lane `pending:<id>` MUST be renamed to the album id, keeping its position and history (LANES-14), or end `skipped` for `skip`;
+  - the lane `pending:<id>` MUST be renamed to the album id, keeping its position and history (LANES-14), or end `skipped` for `skip` (IMPORT-UI-17);
   - the hold MUST be resolved (`Engine.resolve_hold`);
   - the run MUST be requeued if released (LANES-8) or settled (LANES-7, -9).
-- IMPORT-UI-13: If applying fails for any other reason (beets error, lookup error), the decision MUST stay `pending` with the error shown, and the run log gets an error line. Retrying with the same or another action is allowed (open question 5).
+- IMPORT-UI-13: If applying fails for any other reason (beets error, lookup error), the decision MUST stay `pending` with the error shown, and the run log gets an error line. Retrying with the same or another action is allowed.
 - IMPORT-UI-14: Cancelling the run MUST cancel its pending decisions (state `cancelled`, as REVIEW-10); their lanes end `cancelled` (LANES-13).
+
+- IMPORT-UI-17: Lanes MUST gain the final state `skipped` (amends C-LANES LANES-2): an album the user chose not to import. It is not a failure, and for the run's final state (LANES-9) it counts like `done`. A run whose lanes are all `skipped` ends `succeeded`.
 
 ### UI
 - IMPORT-UI-15: The review queue MUST render an import decision with:
@@ -96,7 +100,7 @@ and C-LANES (a `skipped` lane state, open question 4).
   uses: beets.import
   with:
     path: "{{ run.input }}"
-    mode: auto                  # quiet | auto | interactive
+    mode: auto                  # quiet | auto (default) | interactive
     decision_timeout: 7d        # optional (IMPORT-UI-10)
     on_timeout: skip            # skip | asis
 ```
@@ -169,35 +173,29 @@ Strong matches import unattended (line 1); the rest wait as import decisions (li
 - Imports are not undone by run undo (C-JOURNAL non-goal). The UI says so on the decision.
 
 ## Non-goals
-- Per-track (singleton) decisions: loose tracks keep quiet behavior (open question 3).
-- Choices that beets plugins add to the terminal prompt (`before_choose_candidate`, e.g. `mbsubmit`): backlog.
+- Per-track (singleton) decisions: loose tracks keep quiet behavior (IMPORT-UI-1, B-051).
+- Choices that beets plugins add to the terminal prompt (`before_choose_candidate`, e.g. `mbsubmit`): B-052.
 - Editing a candidate's tags before import (tag-grid edits after import cover this).
 - Several decisions on one screen (queue dashboard, F-REVIEW-QUEUE update).
 - Parallel lookups (B-050).
 
 ## Open questions
-1. Default `mode`? Architecture §2a says `auto`; today the default is `quiet`. Changing it
-   changes behavior for workflows that omit `mode` (published schema default). Recommend:
-   `auto`, with a release note; both examples set `mode` explicitly.
-2. Search by artist and album as well as by ID? Recommend: yes (IMPORT-UI-9). beets
-   supports both, and beets-flask offers both.
-3. Singletons and loose tracks? Recommend: quiet behavior in M2 (strong match or
-   `quiet_fallback`), with a backlog entry for item decisions.
-4. Lane state for a skipped album? `rejected` would cancel a run whose only waiting album
-   was skipped (LANES-11), and `gone` means something else. Recommend: add `skipped` to
-   LANES-2 as a final, non-failure state (amends C-LANES; counts as done for LANES-9).
-5. Failed apply: keep the decision pending with the error (retry), or end the lane `failed`?
-   Recommend: pending with error. A failed apply usually means a network error or a changed
-   folder, and the user can retry or skip.
-6. Folder changed between lookup and apply: refuse until it is looked up again, or look it
-   up again automatically? Recommend: refuse with "Look up again" (IMPORT-UI-11), so the
-   user never applies a match they didn't see.
-7. Decision timeout? Recommend: optional `decision_timeout` and `on_timeout: skip | asis`
-   (IMPORT-UI-10), off by default, the same as gates.
-8. `interactive` vs beets' `timid` option: `interactive` makes every album a decision, which
-   is what beets' `import.timid` does at the terminal. Recommend: keep `interactive` as the
-   step's mode and also honour `timid: yes` from the user's beets config in `auto`
-   (treated as `interactive`).
+1. ~~Default `mode`?~~ Resolved 2026-11-13 (author): as recommended: `auto`, with a release
+   note; both examples set `mode` explicitly (IMPORT-UI-1).
+2. ~~Search by artist and album as well as by ID?~~ Resolved 2026-11-13 (author): as
+   recommended: yes (IMPORT-UI-9).
+3. ~~Singletons and loose tracks?~~ Resolved 2026-11-13 (author): as recommended: quiet
+   behavior in M2 (IMPORT-UI-1); item decisions are B-051.
+4. ~~Lane state for a skipped album?~~ Resolved 2026-11-13 (author): as recommended: new
+   final state `skipped`, counted as done (IMPORT-UI-17).
+5. ~~Failed apply?~~ Resolved 2026-11-13 (author): as recommended: the decision stays
+   pending with the error, and the user can retry (IMPORT-UI-13).
+6. ~~Folder changed between lookup and apply?~~ Resolved 2026-11-13 (author): as
+   recommended: refuse with "Look up again" (IMPORT-UI-11).
+7. ~~Decision timeout?~~ Resolved 2026-11-13 (author): as recommended: optional
+   `decision_timeout` and `on_timeout: skip | asis`, off by default (IMPORT-UI-10).
+8. ~~`interactive` vs beets' `timid`?~~ Resolved 2026-11-13 (author): as recommended: keep
+   `interactive`, and treat `auto` with `import.timid: yes` as `interactive` (IMPORT-UI-1).
 
 ## Tasks
 - [ ] Backend: lookup `ImportSession` with deferral, `import_decided`, `lookup`; capability `import_decisions`; contract tests with recorded MusicBrainz responses (IMPORT-UI-1 to -4, -11).
@@ -205,5 +203,5 @@ Strong matches import unattended (line 1); the rest wait as import decisions (li
 - [ ] App DB `import_decisions`; worker jobs `import_decision`, `import_lookup`; lane rename, hold resolve and settle (IMPORT-UI-11 to -14).
 - [ ] API routes, queue item kind `import`, events; regenerate schemas and TS client (IMPORT-UI-6 to -9).
 - [ ] Review queue UI for import decisions; run page hold link; Playwright: weak match → search by ID → import → lane continues (IMPORT-UI-15, -16).
-- [ ] `skipped` lane state if open question 4 is accepted (C-LANES amendment).
+- [ ] `skipped` lane state (IMPORT-UI-17, C-LANES amendment): engine, API `LaneStateOut`, UI colors.
 - [ ] `foobar-style.yaml` uses `mode: auto`; `docs/coverage.md` line 2; S-BEETS-IMPORT and F-REVIEW-QUEUE notes; mark Implemented.
