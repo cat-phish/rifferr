@@ -36,6 +36,9 @@ ENGINE_EVENTS = frozenset(
         "lane.finished",
         # F-TAG-GRID: a job without a run finished (profile stream)
         "job.finished",
+        # S-NOTIFY (NOTIFY-4)
+        "notify.sent",
+        "notify.failed",
     }
 )
 

@@ -66,7 +66,9 @@ from rifferr.engine.changesets import (
 from rifferr.engine.events import profile_stream
 from rifferr.engine.lanes import lane_json
 from rifferr.engine.recovery import recover_pending
+from rifferr.engine.steps import NotifyTargets
 from rifferr.engine.undo import UndoContext, UndoError, undo_entry, undo_run
+from rifferr.notify import ProfileTargets, default_notifier
 from rifferr.profile_store import app_db_path, config_root, load_profile
 from rifferr.steps.registry import load_step_types
 from rifferr.worker.gates import gate_albums, reject_gate_lanes, settle
@@ -138,6 +140,7 @@ class Worker:
         secrets: SecretAccess | None = None,
         idle_timeout: float | None = None,
         cancel_grace: float = 5.0,
+        notify: NotifyTargets | None = None,
     ) -> None:
         self.profile = profile
         self.db = db
@@ -145,6 +148,8 @@ class Worker:
         self.backend = backend
         self.send = send
         self.secrets = secrets
+        self.notify = notify
+        """The profile's notification targets for ``notify`` steps (S-NOTIFY)."""
         self.idle_timeout = idle_timeout
         self.cancel_grace = cancel_grace
         self._engine: Engine | None = None
@@ -306,6 +311,7 @@ class Worker:
                 work_dir=self.profile.root,
                 profile_dir=self.profile.root,
                 secrets=self.secrets,
+                notify=self.notify,
                 last_seq=self._next_seq(job.run) - 1 if resume_after else 0,
             )
             if resume_after is not None:
@@ -958,6 +964,7 @@ def main(
             channel.send,
             secrets=secrets,
             idle_timeout=profile.worker.idle_timeout,
+            notify=ProfileTargets(profile.notify, secrets, default_notifier()),
         )
         await worker.serve(queue)
 

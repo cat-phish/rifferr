@@ -29,6 +29,7 @@ from rifferr.core.changeset import (
 )
 from rifferr.core.ids import new_ulid
 from rifferr.core.imports import ImportDecision, ImportQuestion
+from rifferr.core.notify import Notification, SendResult
 from rifferr.core.profile import Redactor, merged_vars
 from rifferr.core.review import GateAlbum, GateRequest, ReviewGate
 from rifferr.core.selection import Selection
@@ -70,6 +71,7 @@ from rifferr.engine.steps import (
     GateOptions,
     ImportOptions,
     NoSecrets,
+    NotifyTargets,
     SecretAccess,
     StepContext,
     StepFailure,
@@ -113,8 +115,10 @@ class _RunState:
         work_dir: Path | None,
         secrets: SecretAccess,
         profile_dir: Path | None = None,
+        notify: NotifyTargets | None = None,
     ) -> None:
         self.run = run
+        self.notify = notify
         self.profile_dir = profile_dir
         self.workflow = wf
         self.backend = backend
@@ -197,6 +201,7 @@ class Engine:
         secrets: SecretAccess | None = None,
         last_seq: int = 0,
         profile_dir: Path | None = None,
+        notify: NotifyTargets | None = None,
     ) -> Run:
         """Validate and create a queued run (RUN-10, RUN-11).
 
@@ -204,11 +209,19 @@ class Engine:
         ``work_dir``: default working directory for steps without a target (the profile dir).
         ``last_seq``: events already stored for this run (a resumed run, RUN-14).
         ``profile_dir``: the profile's folder, for steps that read files from it.
+        ``notify``: the profile's notification targets (S-NOTIFY), for ``ctx.notify``.
         ``run_input`` / ``trigger``: ``{{ run.input }}`` / ``{{ run.trigger }}``
         (TRIGGERS-5, -6); without an input the workflow's ``input`` is used.
         """
         supplied = {**profile_vars, **(run_vars or {})}
-        errors = validate(wf, self.registry, backend.capabilities, supplied, doc=doc)
+        errors = validate(
+            wf,
+            self.registry,
+            backend.capabilities,
+            supplied,
+            doc=doc,
+            notify_targets=notify.names() if notify is not None else [],
+        )
         if errors:
             raise RunValidationError(errors)
         resolved_vars = merged_vars(supplied, wf.vars)
@@ -242,6 +255,7 @@ class Engine:
             work_dir,
             secrets or NoSecrets(),
             profile_dir,
+            notify,
         )
         return run
 
@@ -548,6 +562,13 @@ class Engine:
                 request_import=lambda question, options: self._request_import(
                     state, spec, question, options
                 ),
+                notify=(
+                    (lambda targets, n: self._notify(state, spec.id, targets, n))
+                    if state.notify is not None
+                    else None
+                ),
+                notify_targets=state.notify.names() if state.notify is not None else (),
+                base_url=state.notify.base_url if state.notify is not None else None,
             )
             result = await self._run_cancellable(state, step_type.run(ctx))
             if state.cancel.is_set():
@@ -819,6 +840,27 @@ class Engine:
             data["deadline"] = decision.deadline.isoformat()
         self._emit(run, "import.requested", spec.id, _redact(data, state.redactor))
         return decision.id
+
+    async def _notify(
+        self, state: _RunState, step_id: str, targets: list[str] | None, n: Notification
+    ) -> list[SendResult]:
+        """``ctx.notify`` (S-NOTIFY NOTIFY-4, -12): send to each target at once and emit
+        the outcome of each."""
+        assert state.notify is not None
+        names = state.notify.names() if targets is None else list(dict.fromkeys(targets))
+        unknown = [t for t in names if t not in state.notify.names()]
+        if unknown:
+            raise StepFailure(f"unknown notification target(s): {', '.join(unknown)}")
+        results = await asyncio.gather(*(state.notify.send(t, n) for t in names))
+        for result in results:
+            data: dict[str, JsonValue] = {"target": result.target, "source": "step"}
+            if result.ok:
+                self._emit(state.run, "notify.sent", step_id, data)
+            else:
+                data["reason"] = "send_failed"
+                data["error"] = state.redactor.redact(result.error or "")
+                self._emit(state.run, "notify.failed", step_id, data)
+        return list(results)
 
     def _change_emitter(
         self, state: _RunState, step_id: str

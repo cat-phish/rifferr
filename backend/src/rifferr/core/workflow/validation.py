@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
+from collections.abc import Collection, Iterator, Mapping
 from typing import Any, cast
 
 from rifferr.backends.base import BackendCapabilities
@@ -28,13 +28,17 @@ def validate(
     profile_vars: Mapping[str, str] | None = None,
     *,
     doc: RoundTripDoc | None = None,
+    notify_targets: Collection[str] | None = None,
 ) -> list[ValidationError]:
     """Every problem with ``wf``. Profile-dependent checks run only when
-    ``profile_vars`` is given; capability checks only when ``backend_caps`` is."""
+    ``profile_vars`` is given; capability checks only when ``backend_caps`` is;
+    notification target names only when ``notify_targets`` is (S-NOTIFY NOTIFY-13)."""
     d = doc or RoundTripDoc.detached()
     errors: list[ValidationError] = []
     errors += _check_steps(wf, registry, backend_caps, d)
     errors += _check_expressions(wf, profile_vars, d)
+    if notify_targets is not None:
+        errors += _check_notify_targets(wf, registry, notify_targets, d)
     if profile_vars is not None:
         for name, decl in wf.vars.items():
             if decl.default is None and name not in profile_vars:
@@ -89,6 +93,42 @@ def _check_steps(
                         "which this profile's backend doesn't offer",
                     )
                 )
+    return errors
+
+
+NOTIFY_TARGET_REF = "notify-target"
+"""``json_schema_extra={"x-rifferr-ref": NOTIFY_TARGET_REF}`` marks a step parameter
+(a list of names) whose values must be the profile's notification targets."""
+
+
+def _check_notify_targets(
+    wf: Workflow, registry: StepRegistry, known: Collection[str], d: RoundTripDoc
+) -> list[ValidationError]:
+    errors: list[ValidationError] = []
+    for i, step in enumerate(wf.steps):
+        info = registry.get(step.uses)
+        if info is None:
+            continue
+        for name, field in info.params_model.model_fields.items():
+            extra = field.json_schema_extra
+            if not isinstance(extra, dict):
+                continue
+            if cast(dict[str, Any], extra).get("x-rifferr-ref") != NOTIFY_TARGET_REF:
+                continue
+            key = field.alias or name
+            value = step.with_.get(key)
+            values = [value] if isinstance(value, str) else value
+            if not isinstance(values, list):
+                continue
+            for j, v in enumerate(cast(list[Any], values)):
+                if isinstance(v, str) and "{{" not in v and v not in known:
+                    names = ", ".join(sorted(known)) or "none"
+                    errors.append(
+                        d.error(
+                            ("steps", i, "with", key, j),
+                            f"unknown notification target '{v}' (this profile has: {names})",
+                        )
+                    )
     return errors
 
 

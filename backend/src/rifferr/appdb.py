@@ -20,6 +20,7 @@ from pydantic import BaseModel, JsonValue
 from rifferr.core.changeset import ApplyResult, ChangeSet, ChangeSetState, JournalEntry
 from rifferr.core.ids import new_ulid
 from rifferr.core.imports import ImportDecision, ImportDecisionState
+from rifferr.core.notify import Notification, QueueRef
 from rifferr.core.review import GateState, ReviewGate
 from rifferr.core.triggers import DedupRecord
 from rifferr.engine.changesets import StoredChangeSet
@@ -1219,6 +1220,153 @@ def _lane(row: sqlite3.Row) -> Lane:
         steps={str(k): str(v) for k, v in json.loads(row["steps"]).items()},
         passes={str(k): int(v) for k, v in json.loads(row["passes"]).items()},
     )
+
+
+NotificationState = Literal["pending", "sent", "failed"]
+
+
+class StoredNotification(BaseModel):
+    """A rule notification to one target (S-NOTIFY NOTIFY-9, -15)."""
+
+    id: str
+    profile: str
+    run_id: str | None
+    event: str
+    dedup_key: str
+    target: str
+    state: NotificationState
+    attempts: int = 0
+    message: Notification
+    items: list[QueueRef] = []
+    remind_after: int | None = None
+    """Seconds between reminders (``review.needed`` only); None: no reminders."""
+    remind_limit: int = 0
+    reminders: int = 0
+    reminding: bool = False
+    parent: str | None = None
+    created_at: datetime
+    sent_at: datetime | None = None
+    last_reminded_at: datetime | None = None
+    error: str | None = None
+
+
+class AppNotifications:
+    """The ``notifications`` table: rule notifications recorded before they are sent."""
+
+    def __init__(self, db: AppDB) -> None:
+        self.db = db
+
+    @property
+    def _conn(self) -> sqlite3.Connection:
+        return self.db._conn  # pyright: ignore[reportPrivateUsage]
+
+    def add(
+        self,
+        *,
+        profile: str,
+        run_id: str | None,
+        event: str,
+        dedup_key: str,
+        target: str,
+        message: Notification,
+        items: Iterable[QueueRef] = (),
+        remind_after: int | None = None,
+        remind_limit: int = 0,
+        parent: str | None = None,
+        now: datetime | None = None,
+    ) -> StoredNotification | None:
+        """Record a notification as ``pending``; ``None`` if this transition was already
+        recorded for this target (NOTIFY-9)."""
+        row = self._conn.execute(
+            "INSERT OR IGNORE INTO notifications (id, profile, run_id, event, dedup_key, target,"
+            " state, message, items, remind_after, remind_limit, reminding, parent, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?) RETURNING *",
+            (
+                new_ulid(),
+                profile,
+                run_id,
+                event,
+                dedup_key,
+                target,
+                message.model_dump_json(),
+                json.dumps([i.model_dump(mode="json") for i in items]),
+                remind_after,
+                remind_limit,
+                int(remind_after is not None),
+                parent,
+                _utc(now) if now is not None else _now(),
+            ),
+        ).fetchone()
+        return _notification(row) if row else None
+
+    def get(self, notification_id: str) -> StoredNotification | None:
+        row = self._conn.execute(
+            "SELECT * FROM notifications WHERE id = ?", (notification_id,)
+        ).fetchone()
+        return _notification(row) if row else None
+
+    def attempt(self, notification_id: str, attempts: int) -> None:
+        self._conn.execute(
+            "UPDATE notifications SET attempts = ? WHERE id = ?", (attempts, notification_id)
+        )
+
+    def finish(
+        self, notification_id: str, ok: bool, error: str | None, now: datetime | None = None
+    ) -> None:
+        when = _utc(now) if now is not None else _now()
+        self._conn.execute(
+            "UPDATE notifications SET state = ?, error = ?, sent_at = ?,"
+            " reminding = CASE WHEN ? THEN reminding ELSE 0 END,"
+            " last_reminded_at = ? WHERE id = ?",
+            ("sent" if ok else "failed", error, when, int(ok), when, notification_id),
+        )
+
+    def pending(self) -> list[StoredNotification]:
+        rows = self._conn.execute(
+            "SELECT * FROM notifications WHERE state = 'pending' ORDER BY created_at, id"
+        ).fetchall()
+        return [_notification(r) for r in rows]
+
+    def reminding(self) -> list[StoredNotification]:
+        """Sent ``review.needed`` notifications that may still need reminders (NOTIFY-15)."""
+        rows = self._conn.execute(
+            "SELECT * FROM notifications WHERE reminding = 1 AND state = 'sent'"
+            " ORDER BY created_at, id"
+        ).fetchall()
+        return [_notification(r) for r in rows]
+
+    def reminded(self, notification_id: str, now: datetime) -> None:
+        self._conn.execute(
+            "UPDATE notifications SET reminders = reminders + 1, last_reminded_at = ?,"
+            " reminding = CASE WHEN reminders + 1 >= remind_limit THEN 0 ELSE 1 END"
+            " WHERE id = ?",
+            (_utc(now), notification_id),
+        )
+
+    def stop_reminding(self, notification_id: str) -> None:
+        self._conn.execute(
+            "UPDATE notifications SET reminding = 0 WHERE id = ?", (notification_id,)
+        )
+
+    def for_run(self, run_id: str) -> list[StoredNotification]:
+        rows = self._conn.execute(
+            "SELECT * FROM notifications WHERE run_id = ? ORDER BY created_at, id", (run_id,)
+        ).fetchall()
+        return [_notification(r) for r in rows]
+
+    def for_profile(self, profile: str) -> list[StoredNotification]:
+        rows = self._conn.execute(
+            "SELECT * FROM notifications WHERE profile = ? ORDER BY created_at, id", (profile,)
+        ).fetchall()
+        return [_notification(r) for r in rows]
+
+
+def _notification(row: sqlite3.Row) -> StoredNotification:
+    data = dict(row)
+    data["message"] = json.loads(data["message"])
+    data["items"] = json.loads(data["items"])
+    data["reminding"] = bool(data["reminding"])
+    return StoredNotification.model_validate(data)
 
 
 class SqliteEventSink:

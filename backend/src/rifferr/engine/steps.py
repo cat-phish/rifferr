@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import timedelta
 from pathlib import Path
@@ -13,6 +13,7 @@ from pydantic import BaseModel, JsonValue
 from rifferr.backends.base import BackendCapabilities, LibraryBackend
 from rifferr.core.changeset import ChangeSet, ChangeSetProposal, TargetRef
 from rifferr.core.imports import ImportQuestion, TimeoutAction
+from rifferr.core.notify import Notification, SendResult
 from rifferr.core.profile import Secret
 from rifferr.core.review import GateDecision, GateRequest, OnReject
 from rifferr.core.selection import Scope, Selection
@@ -111,6 +112,23 @@ class ImportOptions:
     on_timeout: TimeoutAction = "skip"
 
 
+class NotifyTargets(Protocol):
+    """A profile's notification targets (S-NOTIFY): the worker provides them."""
+
+    @property
+    def base_url(self) -> str | None: ...
+
+    def names(self) -> list[str]: ...
+
+    async def send(self, target: str, n: Notification) -> SendResult:
+        """Send with the profile's retries; never raises for a failed send."""
+        ...
+
+
+#: The engine's side of ``ctx.notify``: targets (None = all), notification -> results.
+SendNotification = Callable[[list[str] | None, Notification], Awaitable[list[SendResult]]]
+
+
 #: The engine's side of ``ctx.request_import``: question, options -> decision id.
 RequestImport = Callable[[ImportQuestion, ImportOptions], str]
 #: The engine's side of ``ctx.hold``: key, kind, ref, label.
@@ -129,6 +147,10 @@ def _no_gate(requests: list[GateRequest], options: GateOptions, s: SnapshotIndex
 
 def _no_import(question: ImportQuestion, options: ImportOptions) -> str:
     raise StepFailure("this run can't ask for import decisions")
+
+
+async def _no_notify(targets: list[str] | None, n: Notification) -> list[SendResult]:
+    raise StepFailure("this profile has no notification targets (notify.targets)")
 
 
 def _unchanged(value: str) -> str:
@@ -160,6 +182,9 @@ class StepContext:
         open_gate: OpenGate | None = None,
         on_hold: OnHold | None = None,
         request_import: RequestImport | None = None,
+        notify: SendNotification | None = None,
+        notify_targets: Iterable[str] = (),
+        base_url: str | None = None,
     ) -> None:
         self.run_id = run_id
         self.profile = profile
@@ -183,6 +208,11 @@ class StepContext:
         self._open_gate = open_gate or _no_gate
         self._on_hold = on_hold or _no_hold
         self._request_import = request_import or _no_import
+        self._notify = notify or _no_notify
+        self.notify_targets: list[str] = list(notify_targets)
+        """The profile's notification target names (S-NOTIFY NOTIFY-1)."""
+        self.base_url = base_url
+        """The profile's ``notify.base_url``, for links in notifications (NOTIFY-6)."""
         self._snapshots = SnapshotIndex()
         self.proposed: list[ChangeSet] = []
         """Every ChangeSet this step proposed so far, in order (after no-op dropping)."""
@@ -278,6 +308,14 @@ class StepContext:
         ``pending:<id>`` until the decision is applied. Returns the decision id.
         """
         return self._request_import(question, options or ImportOptions())
+
+    async def notify(
+        self, notification: Notification, targets: list[str] | None = None
+    ) -> list[SendResult]:
+        """Send to the profile's targets (``None``: all) with its retries (S-NOTIFY).
+        The engine emits ``notify.sent`` / ``notify.failed`` per target; a failed send
+        is a result, not an exception."""
+        return await self._notify(targets, notification)
 
 
 def _no_hold(key: str, kind: str, ref: str, label: str | None) -> None:

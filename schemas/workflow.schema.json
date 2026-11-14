@@ -182,6 +182,75 @@
               "type": "string"
             },
             "uses": {
+              "const": "notify",
+              "title": "Uses"
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Backend condition (a beets query).",
+              "title": "When"
+            },
+            "with": {
+              "$ref": "#/$defs/With_notify"
+            }
+          },
+          "required": [
+            "id",
+            "uses"
+          ],
+          "title": "Step: notify",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One entry of ``steps:`` (WORKFLOW-2, WORKFLOW-3).",
+          "properties": {
+            "apply": {
+              "default": "review",
+              "description": "Whether this step's ChangeSets apply automatically or wait for review. Ignored by steps that don't produce ChangeSets.",
+              "enum": [
+                "auto",
+                "review"
+              ],
+              "title": "Apply",
+              "type": "string"
+            },
+            "id": {
+              "pattern": "^[a-z][a-z0-9_-]*$",
+              "title": "Id",
+              "type": "string"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Name"
+            },
+            "on_error": {
+              "default": "stop",
+              "enum": [
+                "stop",
+                "skip",
+                "continue"
+              ],
+              "title": "On Error",
+              "type": "string"
+            },
+            "uses": {
               "const": "review",
               "title": "Uses"
             },
@@ -734,6 +803,89 @@
         }
       },
       "title": "ImporterOptions",
+      "type": "object"
+    },
+    "With_notify": {
+      "additionalProperties": false,
+      "properties": {
+        "body": {
+          "description": "Message. With per: album, a beets template, e.g. '$albumartist - $album' (https://beets.readthedocs.io/en/stable/reference/pathformat.html)",
+          "title": "Body",
+          "type": "string"
+        },
+        "link": {
+          "default": "run",
+          "description": "Link to the run page, the run's review queue, or none",
+          "enum": [
+            "run",
+            "review",
+            "none"
+          ],
+          "title": "Link",
+          "type": "string"
+        },
+        "per": {
+          "default": "run",
+          "description": "run: one message per pass; album: one per album",
+          "enum": [
+            "run",
+            "album"
+          ],
+          "title": "Per",
+          "type": "string"
+        },
+        "required": {
+          "default": false,
+          "description": "Fail the step when a target can't be reached",
+          "title": "Required",
+          "type": "boolean"
+        },
+        "skip_empty": {
+          "default": false,
+          "description": "per: run: send nothing when no album matches when:",
+          "title": "Skip Empty",
+          "type": "boolean"
+        },
+        "targets": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Notification targets from the profile's notify.targets; default: all",
+          "title": "Targets",
+          "x-rifferr-ref": "notify-target"
+        },
+        "title": {
+          "description": "Title. With per: album, a beets template",
+          "title": "Title",
+          "type": "string"
+        },
+        "type": {
+          "default": "info",
+          "description": "info, success, warning or failure",
+          "enum": [
+            "info",
+            "success",
+            "warning",
+            "failure"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "body"
+      ],
+      "title": "NotifyParams",
       "type": "object"
     },
     "With_review": {

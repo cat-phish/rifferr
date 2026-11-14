@@ -15,6 +15,7 @@ from typing import Annotated, Any, Final, Literal
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, PositiveInt
 from pydantic_core import PydanticCustomError
 
+from rifferr.core.notify import NotifySettings
 from rifferr.core.workflow import VarDecl, substitute
 from rifferr.core.workflow.errors import ValidationError
 from rifferr.core.workflow.interpolation import InterpolationError
@@ -204,6 +205,7 @@ class ProfileFile(BaseModel):
     worker: WorkerSettings = Field(default_factory=WorkerSettings)
     changes: ChangeSettings = Field(default_factory=ChangeSettings)
     ui: UiSettings = Field(default_factory=UiSettings)
+    notify: NotifySettings = Field(default_factory=NotifySettings)
     vars: dict[VarName, Annotated[str, Field(strict=True)]] = Field(default_factory=dict[str, str])
     secrets: dict[str, SecretRefField] = Field(default_factory=dict[str, SecretRef])
     timezone: str | None = Field(default=None, description="IANA time zone; default: system")
@@ -256,6 +258,7 @@ def parse_profile(
         worker=file.worker,
         changes=file.changes,
         ui=file.ui,
+        notify=file.notify,
         vars=resolve_vars(file.vars, env),
         secrets=file.secrets,
         timezone=file.timezone,
@@ -275,6 +278,8 @@ def _semantic_errors(
         resolve_vars(file.vars, env)
     except VarResolutionError as exc:
         errors.append(doc.error(("vars", exc.var), str(exc)))
+    for path, message in file.notify.checked(file.secrets):  # NOTIFY-1
+        errors.append(doc.error(path, message))
     if file.timezone and timezone_exists and not timezone_exists(file.timezone):
         errors.append(doc.error(("timezone",), f"unknown time zone {file.timezone!r}"))
     return errors
