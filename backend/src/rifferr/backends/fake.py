@@ -200,6 +200,10 @@ class FakeBackend:
         self._albums.append(album)
         return _album_snapshot(album)
 
+    def remove_album(self, album_id: str) -> None:
+        """Drop an album, as ``beet remove`` would (tests for LANES-12)."""
+        self._albums = [a for a in self._albums if a.id != album_id]
+
     def add_import_fixture(
         self,
         path: Path,
@@ -243,8 +247,11 @@ class FakeBackend:
         terms = parse_query(selection.query)
         out: list[AlbumSnapshot] = []
         ids = None if selection.ids is None else set(selection.ids)
+        album_ids = None if selection.album_ids is None else set(selection.album_ids)
         for album in self._albums:
             if selection.run_id is not None and album.fields.get(RUN_MARKER) != selection.run_id:
+                continue
+            if album_ids is not None and album.id not in album_ids:
                 continue
             if selection.scope == "album":
                 if (ids is None or album.id in ids) and _matches_all(terms, _album_env(album)):

@@ -20,6 +20,9 @@ class Selection(BaseModel):
       imported or touched). A step's default selection is ``for_run(run_id)``.
     - ``ids``: only the albums (scope ``album``) or items (scope ``item``) with these
       backend ids, e.g. to read the current values of a ChangeSet's targets.
+    - ``album_ids``: only albums with these backend ids, in either scope (with
+      ``scope="item"``, only their items). A pass of a step uses it to act on its
+      lanes' albums only (C-LANES LANES-3).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -28,6 +31,7 @@ class Selection(BaseModel):
     scope: Scope = "album"
     run_id: str | None = None
     ids: tuple[str, ...] | None = None
+    album_ids: tuple[str, ...] | None = None
 
     @classmethod
     def for_run(cls, run_id: str) -> Selection:

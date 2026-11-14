@@ -234,6 +234,18 @@ class BackendContract:
         assert album.id == first.id
         assert [i.id for i in album.items] == [item.id]
 
+    def test_LANES_3_album_ids_restrict_both_scopes(self, backend: LibraryBackend) -> None:
+        # A pass of a step acts on its lanes' albums only (C-LANES LANES-3).
+        self.need(backend, "query")
+        first, second = self.by_album(backend, "First EP"), self.by_album(backend, "Second (EP)")
+        found = backend.query(Selection(album_ids=(second.id, "no-such-id")))
+        assert album_names(found) == {"Second (EP)"}
+        assert backend.query(Selection(album_ids=())) == []
+        (album,) = backend.query(Selection(scope="item", album_ids=(first.id,)))
+        assert album.id == first.id
+        assert len(album.items) == len(first.items)
+        assert backend.query(Selection(album_ids=(first.id,), query="albumtype:album")) == []
+
     def test_BACKEND_6_matches_album_and_item(self, backend: LibraryBackend) -> None:
         album = self.by_album(backend, "First EP")
         assert backend.matches("albumtype:ep", album)

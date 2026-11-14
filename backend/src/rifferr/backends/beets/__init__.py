@@ -119,6 +119,9 @@ class BeetsBackend:
             if selection.run_id is not None:
                 marker = _run_term(selection.run_id)
                 allowed = {a.id for a in _fetch(lambda: lib.albums([marker])) if a.id is not None}
+            if selection.album_ids is not None:
+                wanted = _album_numbers(selection.album_ids)
+                allowed = wanted if allowed is None else allowed & wanted
             if selection.scope == "album":
                 if selection.ids is not None:
                     albums = _by_ids(lib, Album, selection.ids, parts)
@@ -187,6 +190,13 @@ class BeetsBackend:
         query = _split(selection.query) if selection.query else []
         if selection.run_id is not None:
             query.insert(0, _run_term(selection.run_id))
+        if selection.album_ids is not None:  # this pass's lanes only (LANES-3)
+            numbers = sorted(_album_numbers(selection.album_ids))
+            if not numbers:
+                raise ValueError("the selection has no albums")
+            # Album commands (-a) query the album's own id; item commands its album_id.
+            field = "id" if {"-a", "--album"} & set(args) else "album_id"
+            query.insert(1 if selection.run_id is not None else 0, _ids_term(field, numbers))
         if not query:
             raise ValueError("an empty selection would run on the whole library")
         return [sys.executable, "-m", "beets", subcommand, *args, *query]
@@ -275,6 +285,24 @@ def _parse(parts: list[str], model: type[Item] | type[Album]) -> tuple[Any, Any]
         return parse_query_parts(parts, model)
     except dbcore.InvalidQueryError as exc:
         raise QueryError(str(exc)) from exc
+
+
+def _ids_term(field: str, numbers: list[int]) -> str:
+    """One regexp query term matching exactly these ids (beets compares the text)."""
+    return f"{field}::^({'|'.join(str(n) for n in numbers)})$"
+
+
+def _album_numbers(ids: tuple[str, ...]) -> set[int]:
+    """beets album ids for the album snapshot ids in ``ids`` (``Selection.album_ids``)."""
+    numbers: set[int] = set()
+    for raw in ids:
+        try:
+            kind, number = parse_id(raw)
+        except KeyError:
+            continue
+        if kind == "album":
+            numbers.add(number)
+    return numbers
 
 
 def _by_ids[M: (Item, Album)](

@@ -8,6 +8,7 @@ import textwrap
 from pathlib import Path
 
 from rifferr.backends.beets import BeetsBackend
+from rifferr.backends.beets.snapshots import parse_id
 from rifferr.core.selection import Selection
 from rifferr.core.workflow import load_workflow
 from rifferr.engine import Engine, InMemoryEventSink, RunState, StepTypeRegistry
@@ -90,3 +91,25 @@ async def test_BEETS_COMMAND_11_beet_move_moves_the_runs_files(
     # The rename happened before the step, so the move changed only paths.
     assert info == ["Fixture Artist - Renamed: path changed"]
     assert run.steps[0].outputs == {"albums": 1, "changed": 1}
+
+
+def test_LANES_3_beets_cli_query_selects_only_the_pass_albums(beets_env: BeetsEnv) -> None:
+    """Contract: beets regexp terms on ``album_id`` (items) and ``id`` (albums, ``-a``)
+    match exactly the given ids, so ``beet`` commands see only this pass's lanes."""
+    backend = beets_env.backend()
+    for fixture in ("album-flac", "single-mp3"):
+        backend.import_folder(beets_env.inbox_album(fixture), "quiet", None, run_id=RUN)
+    first, second = backend.query(Selection(run_id=RUN))
+    selection = Selection(run_id=RUN, album_ids=(second.id,))
+    from beets.library import Library
+
+    lib = Library(str(beets_env.beetsdir / "library.db"), str(beets_env.music))
+    try:
+        item_query = backend.cli_command("ls", [], selection)[4:]
+        number = parse_id(second.id)[1]
+        assert {i.album_id for i in lib.items(item_query)} == {number}
+        album_query = backend.cli_command("ls", ["-a"], selection)[5:]
+        assert [a.id for a in lib.albums(album_query)] == [number]
+    finally:
+        lib._close()  # pyright: ignore[reportPrivateUsage]
+    del first
