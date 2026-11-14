@@ -23,9 +23,11 @@ decision still waits on (unattended first: a pending album must survive the nigh
   of files to delete, matched case-insensitively against the path relative to `path`, e.g.
   `"*.nfo"`, `"**/*.sfv"`; default none), `keep` (glob patterns never deleted, checked first;
   default none), `empty_dirs` (remove folders that are empty afterwards, default `true`),
-  `remove_root` (also remove `path` itself when it ends up empty, default `false`) and `trash`
-  (optional folder: move instead of delete). `mode: delete` with neither `delete` patterns nor
-  `empty_dirs` MUST be a validation error (nothing to do).
+  `remove_root` (also remove `path` itself when it ends up empty, default `false`), `trash`
+  (optional folder: move instead of delete), and `review` (`false` | `true`, default `false`)
+  with optional `timeout` (a Duration) and `on_timeout` (`keep` | `delete`, default `keep`).
+  `mode: delete` with neither `delete` patterns nor `empty_dirs` MUST be a validation error
+  (nothing to do); so MUST `review` in `report` mode and `on_timeout` without `timeout`.
 - FILES-CLEANUP-2: The step MUST be `run_level` (LANES-6): it runs once per pass, about a
   folder, not about albums. Its `when:` is not used and MUST be a validation error.
 
@@ -56,8 +58,7 @@ decision still waits on (unattended first: a pending album must survive the nigh
   `run.step.cleanup.report` with the listing (paths relative to `path`, class, size; at most
   1000 entries, then a count of the rest) and totals per class.
 - FILES-CLEANUP-9: In `report` mode the step MUST change nothing. In `delete` mode it MUST
-  delete (or move to `trash`, keeping relative paths, never overwriting: a clash gets a
-  numeric suffix) the `delete` files, then remove `empty` folders bottom-up, and `path` itself
+  delete (or move to `trash`, FILES-CLEANUP-15) the `delete` files, then remove `empty` folders bottom-up, and `path` itself
   only with `remove_root: true`. A file that changed between listing and deleting (size or
   mtime) MUST be skipped and logged.
 - FILES-CLEANUP-10: A failure to delete one file MUST be logged and counted, and the step goes
@@ -77,6 +78,39 @@ decision still waits on (unattended first: a pending album must survive the nigh
   report MUST list every `files.cleanup` step in `delete` mode as `destructive`, with its
   `path`, patterns and `trash`.
 
+### Review before deleting
+- FILES-CLEANUP-14: With `review: true`, the step MUST list as in FILES-CLEANUP-8, delete
+  nothing, and leave a *cleanup decision* in the review queue holding the listing, `path` and
+  the step's options, then hold the pass (C-LANES amendment below). The decision is `delete`
+  or `keep` (nothing deleted), with an optional note, decided once (`409 already_resolved`
+  after that). `delete` runs as a worker job that re-lists `path` and deletes only entries that
+  were in the reviewed listing as `delete` or `empty` and haven't changed since (size, mtime);
+  anything new or changed is left and logged. Then the held lanes resume at the next step, as
+  they do after `keep`. With `timeout`, the server decides `on_timeout` once it passes
+  (decided by `timeout`), also after a restart, as REVIEW-9. Cancelling the run cancels the
+  decision. Events: `cleanup.requested`, `cleanup.resolved`. For S-NOTIFY the decision is a
+  queue item like the others: hold kind `cleanup` counts for `review.needed` (NOTIFY-8) and
+  reminders (NOTIFY-15).
+- C-LANES amendment (LANES-16, new): A `run_level` step MAY hold its whole pass with
+  `ctx.hold_pass(kind, ref)`: every lane of that pass becomes `waiting` on the hold. If the pass
+  had no lanes, the run itself holds it: the run is `waiting_review` until it is resolved, then
+  resumes at the next step (RUN-14).
+- F-REVIEW-QUEUE amendment: `QueueItem.kind` gains `cleanup` (`cleanup_decision` field); the
+  queue shows the listing grouped by class with Delete and Keep everything;
+  `GET /api/cleanups/{id}`, `POST /api/cleanups/{id}/decision {decision: delete|keep, note?}`.
+
+### Trash
+- FILES-CLEANUP-15: With `trash`, files MUST be moved to `<trash>/<run_id>/<path relative to
+  path>`, never overwriting (a clash gets a numeric suffix). The step MUST create
+  `<trash>/.rifferr-trash` on first use and refuse a `trash` folder that exists, isn't empty
+  and has no such marker, so it never adopts a folder it didn't create. `trash` MUST NOT be
+  inside `path`.
+- FILES-CLEANUP-16: The profile setting `files.trash_keep` (a Duration, default none: keep
+  forever) MUST make every `files.cleanup` step, when it starts, permanently delete run
+  folders in its marked `trash` whose newest file is older than `trash_keep`. Only direct
+  children named like run ids are considered; anything else in the trash is left alone and
+  logged once.
+
 ## Interfaces
 ```python
 class CleanupParams(BaseModel):
@@ -87,6 +121,13 @@ class CleanupParams(BaseModel):
     empty_dirs: bool = True
     remove_root: bool = False
     trash: str | None = None
+    review: bool = False
+    timeout: Duration | None = None
+    on_timeout: Literal["keep", "delete"] | None = None   # default keep when timeout set
+
+# profile.yaml
+class FilesSettings(BaseModel):
+    trash_keep: Duration | None = None
 
 CleanupClass = Literal["delete", "keep", "in_library", "busy", "left", "empty"]
 
@@ -101,7 +142,10 @@ class CleanupEntry(BaseModel, frozen=True):
 def library_files(self, paths: list[Path]) -> set[Path]: ...
 def library_dirs(self) -> list[Path]: ...
 ```
-- Event: `run.step.cleanup.report {entries, truncated, totals}`.
+- Event: `run.step.cleanup.report {entries, truncated, totals}`; `cleanup.requested
+  {decision_id, path, totals}`, `cleanup.resolved {decision_id, decision, decided_by}`.
+- App DB: `cleanup_decisions` (id, profile, run_id, step_id, state, body JSON, created_at,
+  deadline, decided_at, decided_by, note). Worker job kind `cleanup_apply`.
 - Safety report finding: `destructive` (`files.cleanup` delete mode).
 
 ## Examples
@@ -137,31 +181,30 @@ def library_dirs(self) -> list[Path]: ...
 - Default `report` mode, trusted-only `delete`, destructive finding in the safety report.
 - Never outside `path`, never following symlinks, never library files, never busy folders,
   never `/`, home or library folders. Files changed since the listing are skipped.
-- `trash` makes a run reversible by hand; there is no undo in the journal (non-goal).
+- `trash` makes a run reversible by hand until `trash_keep` passes; there is no undo in the
+  journal (non-goal). The trash marker stops the step from emptying a folder it didn't make.
+- `review: true` deletes only what a person saw in the listing, unchanged since.
 - In Docker the step sees only mounted folders.
 
 ## Non-goals
 - Undo of deletions through the journal, or deletions as ChangeSets.
 - Moving leftovers elsewhere for manual tagging (checklist line 5): a `shell` or a later
   `files.move` step.
-- Reviewing the deletion list in the review queue before deleting (open question 1).
 - Built-in junk-file lists.
 
 ## Open questions
-1. Should there be an `apply: review` style option, where `delete` mode stops with the listing
-   in the review queue and deletes only after Continue? It needs a hold that isn't about an
-   album (gates and holds are per lane today), so it would touch C-LANES. Drafted as a
-   non-goal: report first, then switch the workflow to `delete`.
-2. FILES-CLEANUP-12 adds two backend reads and a capability. Is that acceptable, or should the
-   step only skip paths inside `library_dirs()` and not check individual files?
 3. Should `delete` patterns match audio files at all, or must the step refuse patterns that
    would match files the backend can import (a second guard against deleting unmatched
    albums)? Drafted: allowed, because FILES-CLEANUP-6 and -7 already protect library files and
    pending decisions.
-4. Should `trash` be emptied after some time (e.g. `trash_keep: 30d`), or is that the user's
-   job?
 5. Is "the input of another queued, running or waiting run" (FILES-CLEANUP-7) the right scope,
    or only pending import decisions?
+
+Resolved (author, 2026-11-14):
+1. Review before deleting: yes (FILES-CLEANUP-14, with a C-LANES and an F-REVIEW-QUEUE
+   amendment).
+2. The backend reads and the `files` capability are fine (FILES-CLEANUP-12).
+4. Emptying the trash is a profile setting, `files.trash_keep` (FILES-CLEANUP-16).
 
 ## Tasks
 - [ ] C-BACKEND amendment: `files` capability, `library_files`, `library_dirs`; FakeBackend and
@@ -170,4 +213,9 @@ def library_dirs(self) -> list[Path]: ...
 - [ ] Busy folders from import decisions and run inputs (FILES-CLEANUP-7)
 - [ ] Report event, delete/trash, empty folders, outputs (FILES-CLEANUP-8 to -11)
 - [ ] Trust refusal and safety-report finding (FILES-CLEANUP-13)
+- [ ] `ctx.hold_pass` and run-level holds (C-LANES LANES-16)
+- [ ] Cleanup decisions: store, worker job, timeout, cancel, events, S-NOTIFY hold kind
+      (FILES-CLEANUP-14)
+- [ ] Review queue: `cleanup` items, routes and UI, with a Playwright test (FILES-CLEANUP-14)
+- [ ] Trash layout, marker and `files.trash_keep` purge (FILES-CLEANUP-15, -16)
 - [ ] Use it in `examples/workflows/foobar-style.yaml`; update `docs/coverage.md` row 4
