@@ -33,6 +33,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     library: join(root, "library"),
     inbox: join(root, "inbox"),
     lanes: join(root, "lanes-inbox"),
+    imports: join(root, "imports-inbox"),
     watched: join(root, "watched"),
     home: join(root, "home"),
   };
@@ -42,7 +43,9 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     [
       `directory: ${dirs.library}`,
       `library: ${join(dirs.beets, "library.db")}`,
-      "plugins: []",
+      // A fixture metadata source instead of MusicBrainz (F-IMPORT-UI): no network.
+      `pluginpath: ['${join(backend, "tests", "backends", "beets", "beetsplug")}']`,
+      "plugins: [rifferrfixture]",
       "threaded: no",
       "create_backup_before_migrations: no",
       "import:",
@@ -65,6 +68,30 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
       recursive: true,
     });
   }
+  // One album for the import decisions test; its release is found only by ID.
+  cpSync(
+    join(backend, "tests", "fixtures", "audio", "album-flac"),
+    join(dirs.imports, "album-flac"),
+    {
+      recursive: true,
+    },
+  );
+  const releases = join(root, "releases.json");
+  writeFileSync(
+    releases,
+    JSON.stringify([
+      {
+        album_id: "e2e-release",
+        album: "Found By ID",
+        artist: "Fixture Artist",
+        search: false,
+        tracks: [
+          { title: "First", length: 0.5 },
+          { title: "Second", length: 0.5 },
+        ],
+      },
+    ]),
+  );
   const env = {
     ...process.env,
     HOME: dirs.home,
@@ -72,6 +99,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     RIFFERR_DATA_DIR: dirs.data,
     XDG_RUNTIME_DIR: dirs.run,
     BEETSDIR: dirs.beets,
+    RIFFERR_FIXTURE_RELEASES: releases,
   };
   const rifferr = (...args: string[]): string =>
     execFileSync(uv, ["run", "--project", backend, "rifferr", ...args], { env, encoding: "utf8" });
@@ -108,6 +136,10 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     join(dirs.config, "profiles", "main", "workflows", "review-flow.yaml"),
   );
   cpSync(
+    join(here, "import-flow.yaml"),
+    join(dirs.config, "profiles", "main", "workflows", "import-flow.yaml"),
+  );
+  cpSync(
     join(here, "lanes-flow.yaml"),
     join(dirs.config, "profiles", "main", "workflows", "lanes-flow.yaml"),
   );
@@ -134,6 +166,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   process.env.RIFFERR_E2E_TOKEN = readFileSync(tokenFile, "utf8").trim();
   process.env.RIFFERR_E2E_INBOX = dirs.inbox;
   process.env.RIFFERR_E2E_LANES_INBOX = dirs.lanes;
+  process.env.RIFFERR_E2E_IMPORTS_INBOX = dirs.imports;
   process.env.RIFFERR_E2E_WATCHED = dirs.watched;
   process.env.RIFFERR_E2E_FIXTURE = join(backend, "tests", "fixtures", "audio", "album-flac");
 

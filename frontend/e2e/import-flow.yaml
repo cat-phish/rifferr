@@ -1,0 +1,22 @@
+# Workflow for the import decisions e2e test (F-IMPORT-UI): an album beets can't match
+# waits as an import decision; the user finds its release by ID and imports it.
+name: import-flow
+description: Import albums; ones without a strong match wait for a decision.
+vars:
+  inbox:
+    description: Folder with album folders to import
+steps:
+  - id: import
+    uses: beets.import
+    with:
+      path: "{{ vars.inbox }}"
+      mode: auto
+      # The e2e beets config turns autotagging off for the other tests.
+      options: { autotag: yes, duplicate_action: keep }
+  - id: mark
+    uses: tags.script
+    apply: auto
+    with:
+      actions:
+        - name: mark
+          set: { import_e2e: done }
