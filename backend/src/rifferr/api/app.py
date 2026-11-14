@@ -22,7 +22,16 @@ from starlette.types import Scope
 from rifferr import __version__
 from rifferr.api import errors
 from rifferr.api.models import Health
-from rifferr.api.routes import library, profiles, review, runs, scripts, workflows
+from rifferr.api.routes import (
+    hooks,
+    library,
+    profiles,
+    review,
+    runs,
+    scripts,
+    triggers,
+    workflows,
+)
 from rifferr.api.security import (
     ASGIApp,
     SecurityConfig,
@@ -36,6 +45,7 @@ from rifferr.appdb import AppDB, SqliteEventSink
 from rifferr.engine import StepTypeRegistry
 from rifferr.profile_store import app_db_path, config_root
 from rifferr.steps.registry import load_step_types
+from rifferr.triggers import TriggerManager
 from rifferr.worker.previews import PreviewSupervisor
 from rifferr.worker.supervisor import Command, WorkerSupervisor
 
@@ -53,7 +63,8 @@ dev server with <code>rifferr serve --dev</code>.</p></body></html>
 """
 
 
-SERVER_PREFIXES = ("/api/", "/auth/", "/healthz", "/openapi.json")
+HOOKS_PREFIX = "/hooks/"
+SERVER_PREFIXES = ("/api/", "/auth/", HOOKS_PREFIX, "/healthz", "/openapi.json")
 
 
 class SpaStaticFiles(StaticFiles):
@@ -97,6 +108,10 @@ class ApiSettings:
     keepalive: float = KEEPALIVE
     write_token: bool = True
     """Write the token file for the CLI (SECURITY-8). Tests turn it off."""
+    triggers: bool = True
+    """Arm workflows' ``on:`` triggers (F-TRIGGERS)."""
+    trigger_reconcile: float = 2.0
+    """Seconds between checks for changed workflow files and trust (TRIGGERS-1)."""
 
     def security(self) -> SecurityConfig:
         dev_origins: tuple[str, ...] = ()
@@ -106,7 +121,14 @@ class ApiSettings:
                 f"http://127.0.0.1:{self.vite_port}",
             )
         return SecurityConfig(
-            port=self.port, token=self.token, no_auth=self.no_auth, dev_origins=dev_origins
+            port=self.port,
+            token=self.token,
+            no_auth=self.no_auth,
+            dev_origins=dev_origins,
+            # SECURITY-3: webhooks are called by other programs, not browsers, and check
+            # their own secrets (TRIGGERS-17). The Host allowlist still applies.
+            exempt_prefixes=(HOOKS_PREFIX,),
+            own_auth_prefixes=(HOOKS_PREFIX,),
         )
 
 
@@ -129,11 +151,23 @@ def create_api(settings: ApiSettings | None = None) -> FastAPI:
         supervisor.subscribe(state.hub.publish)
         supervisor.start()  # decides overdue review gates now and as deadlines pass
         app.state.rifferr = state
+        if settings.triggers:
+            state.triggers = TriggerManager(
+                config_root=state.config_root,
+                db=db,
+                registry=state.registry,
+                submit=supervisor.submit_run,
+                publish=state.hub.publish,
+                reconcile_interval=settings.trigger_reconcile,
+            )
+            await state.triggers.start()
         if settings.write_token and not settings.no_auth:
             write_token_file(settings.port, settings.token)
         try:
             yield
         finally:
+            if state.triggers is not None:  # TRIGGERS-25: before the supervisor
+                await state.triggers.stop()
             await previews.shutdown()
             await supervisor.shutdown()
             if settings.write_token and not settings.no_auth:
@@ -155,6 +189,8 @@ def create_api(settings: ApiSettings | None = None) -> FastAPI:
     app.include_router(scripts.router)
     app.include_router(library.router)
     app.include_router(review.router)
+    app.include_router(triggers.router)
+    app.include_router(hooks.router)
 
     @app.get("/healthz", response_model=Health, tags=["health"])
     async def healthz() -> Health:

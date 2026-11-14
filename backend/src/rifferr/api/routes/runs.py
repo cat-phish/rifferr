@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Annotated, Any, cast
 
 from fastapi import APIRouter, Header, Query
@@ -42,9 +43,19 @@ async def create_run(body: RunCreate, state: State) -> RunCreated:
     if c.errors:
         details = cast(JsonValue, [e.model_dump() for e in error_out(c.errors)])
         raise ApiError(422, "validation_failed", "the workflow has errors", details)
+    if body.input is not None and not Path(body.input).is_absolute():
+        raise ApiError(400, "bad_request", "input must be an absolute path")
     run_id = await state.supervisor.submit_run(
-        body.profile, c.text, source_name=str(path), run_vars=body.vars, workflow=body.workflow
+        body.profile,
+        c.text,
+        source_name=str(path),
+        run_vars=body.vars,
+        workflow=body.workflow,
+        trigger="manual",
+        run_input=body.input,
     )
+    if state.triggers is not None and body.input:  # TRIGGERS-21
+        state.triggers.remember_manual(body.profile, body.workflow, body.input, run_id)
     return RunCreated(id=run_id)
 
 
@@ -125,6 +136,8 @@ def summary(job: Job) -> RunSummary:
         created_at=job.created_at,
         started_at=job.started_at,
         finished_at=job.finished_at,
+        trigger=cast(Any, job.trigger or "manual"),
+        input=job.input,
     )
 
 

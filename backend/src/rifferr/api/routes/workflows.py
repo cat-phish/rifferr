@@ -197,4 +197,6 @@ async def trust_workflow(
             409, "hash_mismatch", "the workflow changed since it was reviewed; review it again"
         )
     state.db.trust(sha, str(path), "ui")
+    if state.triggers is not None:  # TRIGGERS-2: arm now, not at the next check
+        await state.triggers.reconcile()
     return TrustResult(name=name, sha256=sha)

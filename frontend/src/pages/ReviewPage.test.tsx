@@ -431,6 +431,7 @@ function runDetail(over: Partial<S["RunDetail"]> = {}): S["RunDetail"] {
     profile: "main",
     workflow: "tagging",
     workflow_hash: null,
+    trigger: "manual",
     state: "waiting_review",
     trusted: true,
     error: null,

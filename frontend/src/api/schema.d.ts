@@ -298,6 +298,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/profiles/{profile}/triggers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Triggers */
+        get: operations["list_triggers_api_profiles__profile__triggers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profiles/{profile}/webhooks/{name}/secret": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Webhook Secret
+         * @description Create or replace a webhook's secret; the response is the only time it is shown.
+         */
+        post: operations["create_webhook_secret_api_profiles__profile__webhooks__name__secret_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/review": {
         parameters: {
             query?: never;
@@ -541,6 +578,23 @@ export interface paths {
         get: operations["healthz_healthz_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hooks/{profile}/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Webhook */
+        post: operations["webhook_hooks__profile___name__post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -843,6 +897,15 @@ export interface components {
              * @constant
              */
             status: "ok";
+        };
+        /** HookAccepted */
+        HookAccepted: {
+            /** Ignored */
+            ignored?: string | null;
+            /** Run Id */
+            run_id?: string | null;
+            /** Skipped */
+            skipped?: string | null;
         };
         /**
          * ItemSnapshot
@@ -1166,6 +1229,11 @@ export interface components {
         };
         /** RunCreate */
         RunCreate: {
+            /**
+             * Input
+             * @description Folder for {{ run.input }} (TRIGGERS-7); default: the workflow's input
+             */
+            input?: string | null;
             /** Profile */
             profile: string;
             /**
@@ -1209,6 +1277,11 @@ export interface components {
             finished_at: string | null;
             /** Id */
             id: string;
+            /**
+             * Input
+             * @description The input its trigger gave
+             */
+            input?: string | null;
             /** Profile */
             profile: string;
             /** Started At */
@@ -1220,6 +1293,13 @@ export interface components {
             state: "queued" | "running" | "waiting_review" | "succeeded" | "failed" | "cancelled";
             /** Steps */
             steps: components["schemas"]["StepState"][];
+            /**
+             * Trigger
+             * @description What started the run (TRIGGERS-24)
+             * @default manual
+             * @enum {string}
+             */
+            trigger: "manual" | "watch" | "schedule" | "webhook";
             /** Trusted */
             trusted: boolean;
             /**
@@ -1246,6 +1326,11 @@ export interface components {
             finished_at: string | null;
             /** Id */
             id: string;
+            /**
+             * Input
+             * @description The input its trigger gave
+             */
+            input?: string | null;
             /** Profile */
             profile: string;
             /** Started At */
@@ -1255,6 +1340,13 @@ export interface components {
              * @enum {string}
              */
             state: "queued" | "running" | "waiting_review" | "succeeded" | "failed" | "cancelled";
+            /**
+             * Trigger
+             * @description What started the run (TRIGGERS-24)
+             * @default manual
+             * @enum {string}
+             */
+            trigger: "manual" | "watch" | "schedule" | "webhook";
             /** Trusted */
             trusted: boolean;
             /** Workflow */
@@ -1363,6 +1455,48 @@ export interface components {
              */
             scope: "album" | "item";
         };
+        /**
+         * TriggerStateOut
+         * @description One trigger of a workflow (TRIGGERS-4).
+         */
+        TriggerStateOut: {
+            /**
+             * Detail
+             * @description Why it is disabled or failing
+             */
+            detail: string | null;
+            /**
+             * Has Secret
+             * @description Webhooks: whether a secret has been created
+             */
+            has_secret?: boolean | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "watch" | "schedule" | "webhook";
+            /** Last Fired */
+            last_fired: string | null;
+            /** Last Run Id */
+            last_run_id: string | null;
+            /**
+             * Next Fire
+             * @description The next schedule time
+             */
+            next_fire: string | null;
+            /**
+             * Path
+             * @description The resolved watch folder
+             */
+            path: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "armed" | "disabled" | "error";
+            /** Workflow */
+            workflow: string;
+        };
         /** TrustRequest */
         TrustRequest: {
             /**
@@ -1423,6 +1557,20 @@ export interface components {
              * @description Set by the profile's vars
              */
             profile_value?: string | null;
+        };
+        /**
+         * WebhookSecret
+         * @description A new webhook secret. It is shown only in this response (TRIGGERS-17).
+         */
+        WebhookSecret: {
+            /** Name */
+            name: string;
+            /** Profile */
+            profile: string;
+            /** Secret */
+            secret: string;
+            /** Url Path */
+            url_path: string;
         };
         /** WorkflowDetail */
         WorkflowDetail: {
@@ -2446,6 +2594,123 @@ export interface operations {
             };
         };
     };
+    list_triggers_api_profiles__profile__triggers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TriggerStateOut"][];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    create_webhook_secret_api_profiles__profile__webhooks__name__secret_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile: string;
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookSecret"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     review_queue_api_review_get: {
         parameters: {
             query?: {
@@ -3168,6 +3433,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Health"];
+                };
+            };
+        };
+    };
+    webhook_hooks__profile___name__post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "content-type"?: string | null;
+            };
+            path: {
+                profile: string;
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Not started */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HookAccepted"];
+                };
+            };
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HookAccepted"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
         };

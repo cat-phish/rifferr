@@ -66,6 +66,10 @@ class SecurityConfig:
     exempt_prefixes: tuple[str, ...] = ()
     """Path prefixes exempt from the Origin and JSON checks (webhooks, M2)."""
     public_paths: frozenset[str] = field(default_factory=lambda: frozenset({HEALTH_PATH}))
+    own_auth_prefixes: tuple[str, ...] = ()
+    """Path prefixes whose routes authenticate requests themselves, instead of with the
+    local token (webhooks with their own secrets, TRIGGERS-17). Still behind the Host
+    allowlist."""
 
     @property
     def cookie_name(self) -> str:
@@ -338,7 +342,11 @@ class TokenAuth:
         if scope["type"] == "http" and path == EXCHANGE_PATH:
             await self._exchange(scope, send)
             return
-        if self.config.no_auth or path in self.config.public_paths:
+        if (
+            self.config.no_auth
+            or path in self.config.public_paths
+            or any(path.startswith(p) for p in self.config.own_auth_prefixes)
+        ):
             await self.app(scope, receive, send)
             return
         if self.config.token_ok(_cookie(scope, self.config.cookie_name)) or self.config.token_ok(

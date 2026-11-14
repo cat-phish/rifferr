@@ -829,6 +829,46 @@
         "title": "Health",
         "type": "object"
       },
+      "HookAccepted": {
+        "additionalProperties": false,
+        "properties": {
+          "ignored": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ignored"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "skipped": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skipped"
+          }
+        },
+        "title": "HookAccepted",
+        "type": "object"
+      },
       "ItemSnapshot": {
         "additionalProperties": false,
         "description": "One track. ``id`` is opaque and assigned by the backend.",
@@ -1753,6 +1793,18 @@
       "RunCreate": {
         "additionalProperties": false,
         "properties": {
+          "input": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Folder for {{ run.input }} (TRIGGERS-7); default: the workflow's input",
+            "title": "Input"
+          },
           "profile": {
             "title": "Profile",
             "type": "string"
@@ -1856,6 +1908,18 @@
             "title": "Id",
             "type": "string"
           },
+          "input": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The input its trigger gave",
+            "title": "Input"
+          },
           "profile": {
             "title": "Profile",
             "type": "string"
@@ -1890,6 +1954,18 @@
             },
             "title": "Steps",
             "type": "array"
+          },
+          "trigger": {
+            "default": "manual",
+            "description": "What started the run (TRIGGERS-24)",
+            "enum": [
+              "manual",
+              "watch",
+              "schedule",
+              "webhook"
+            ],
+            "title": "Trigger",
+            "type": "string"
           },
           "trusted": {
             "title": "Trusted",
@@ -1975,6 +2051,18 @@
             "title": "Id",
             "type": "string"
           },
+          "input": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The input its trigger gave",
+            "title": "Input"
+          },
           "profile": {
             "title": "Profile",
             "type": "string"
@@ -2001,6 +2089,18 @@
               "cancelled"
             ],
             "title": "State",
+            "type": "string"
+          },
+          "trigger": {
+            "default": "manual",
+            "description": "What started the run (TRIGGERS-24)",
+            "enum": [
+              "manual",
+              "watch",
+              "schedule",
+              "webhook"
+            ],
+            "title": "Trigger",
             "type": "string"
           },
           "trusted": {
@@ -2314,6 +2414,118 @@
         "title": "TargetRef",
         "type": "object"
       },
+      "TriggerStateOut": {
+        "additionalProperties": false,
+        "description": "One trigger of a workflow (TRIGGERS-4).",
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why it is disabled or failing",
+            "title": "Detail"
+          },
+          "has_secret": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Webhooks: whether a secret has been created",
+            "title": "Has Secret"
+          },
+          "kind": {
+            "enum": [
+              "watch",
+              "schedule",
+              "webhook"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "last_fired": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Fired"
+          },
+          "last_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Run Id"
+          },
+          "next_fire": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The next schedule time",
+            "title": "Next Fire"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The resolved watch folder",
+            "title": "Path"
+          },
+          "state": {
+            "enum": [
+              "armed",
+              "disabled",
+              "error"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "workflow": {
+            "title": "Workflow",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workflow",
+          "kind",
+          "state",
+          "detail",
+          "path",
+          "next_fire",
+          "last_fired",
+          "last_run_id"
+        ],
+        "title": "TriggerStateOut",
+        "type": "object"
+      },
       "TrustRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2480,6 +2692,36 @@
           "name"
         ],
         "title": "VarInfo",
+        "type": "object"
+      },
+      "WebhookSecret": {
+        "additionalProperties": false,
+        "description": "A new webhook secret. It is shown only in this response (TRIGGERS-17).",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "profile": {
+            "title": "Profile",
+            "type": "string"
+          },
+          "secret": {
+            "title": "Secret",
+            "type": "string"
+          },
+          "url_path": {
+            "title": "Url Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "profile",
+          "name",
+          "url_path",
+          "secret"
+        ],
+        "title": "WebhookSecret",
         "type": "object"
       },
       "WorkflowDetail": {
@@ -3957,6 +4199,164 @@
         ]
       }
     },
+    "/api/profiles/{profile}/triggers": {
+      "get": {
+        "operationId": "list_triggers_api_profiles__profile__triggers_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TriggerStateOut"
+                  },
+                  "title": "Response List Triggers Api Profiles  Profile  Triggers Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "List Triggers",
+        "tags": [
+          "triggers"
+        ]
+      }
+    },
+    "/api/profiles/{profile}/webhooks/{name}/secret": {
+      "post": {
+        "description": "Create or replace a webhook's secret; the response is the only time it is shown.",
+        "operationId": "create_webhook_secret_api_profiles__profile__webhooks__name__secret_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookSecret"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Create Webhook Secret",
+        "tags": [
+          "triggers"
+        ]
+      }
+    },
     "/api/review": {
       "get": {
         "description": "What waits for a decision, oldest first: run ChangeSets that are proposed or\nconflicted, and pending review gates (REVIEW-QUEUE-1).",
@@ -4963,6 +5363,129 @@
         "summary": "Healthz",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/hooks/{profile}/{name}": {
+      "post": {
+        "operationId": "webhook_hooks__profile___name__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "content-type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Content-Type"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HookAccepted"
+                }
+              }
+            },
+            "description": "Not started"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HookAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Webhook",
+        "tags": [
+          "hooks"
         ]
       }
     }

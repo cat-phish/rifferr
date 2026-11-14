@@ -106,6 +106,10 @@ class RunCreate(_Model):
     sha256: str | None = Field(
         default=None, description="Start only if the file still has this hash (API-17)"
     )
+    input: str | None = Field(
+        default=None,
+        description="Folder for {{ run.input }} (TRIGGERS-7); default: the workflow's input",
+    )
 
 
 class RunCreated(_Model):
@@ -123,6 +127,10 @@ class RunSummary(_Model):
     created_at: datetime
     started_at: datetime | None
     finished_at: datetime | None
+    trigger: Literal["manual", "watch", "schedule", "webhook"] = Field(
+        default="manual", description="What started the run (TRIGGERS-24)"
+    )
+    input: str | None = Field(default=None, description="The input its trigger gave")
 
 
 StepStatusOut = Literal["pending", "running", "succeeded", "failed", "skipped", "cancelled"]
@@ -266,3 +274,37 @@ class RunDecision(_Model):
 
 class JobsQueued(_Model):
     job_ids: list[str]
+
+
+# -- triggers (F-TRIGGERS) ------------------------------------------------------------
+
+
+class TriggerStateOut(_Model):
+    """One trigger of a workflow (TRIGGERS-4)."""
+
+    workflow: str
+    kind: Literal["watch", "schedule", "webhook"]
+    state: Literal["armed", "disabled", "error"]
+    detail: str | None = Field(description="Why it is disabled or failing")
+    path: str | None = Field(description="The resolved watch folder")
+    next_fire: datetime | None = Field(description="The next schedule time")
+    last_fired: datetime | None
+    last_run_id: str | None
+    has_secret: bool | None = Field(
+        default=None, description="Webhooks: whether a secret has been created"
+    )
+
+
+class WebhookSecret(_Model):
+    """A new webhook secret. It is shown only in this response (TRIGGERS-17)."""
+
+    profile: str
+    name: str
+    url_path: str
+    secret: str
+
+
+class HookAccepted(_Model):
+    run_id: str | None = None
+    skipped: str | None = None
+    ignored: str | None = None

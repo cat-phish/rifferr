@@ -40,6 +40,7 @@ function runDetail(over: Partial<RunDetail> = {}): RunDetail {
     profile: "main",
     workflow: "two-step",
     workflow_hash: SHA,
+    trigger: "manual",
     state: "running",
     trusted: true,
     error: null,

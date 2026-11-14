@@ -12,6 +12,7 @@ from fastapi import Depends, Request
 from rifferr.appdb import AppDB
 from rifferr.engine import Event, StepTypeRegistry
 from rifferr.engine.events import PROFILE_STREAM_PREFIX
+from rifferr.triggers import TriggerManager
 from rifferr.worker.previews import PreviewSupervisor
 from rifferr.worker.supervisor import WorkerSupervisor
 
@@ -67,6 +68,7 @@ class ServerState:
     registry: StepTypeRegistry
     keepalive: float
     hub: EventHub = field(default_factory=EventHub)
+    triggers: TriggerManager | None = None
 
 
 def server_state(request: Request) -> ServerState:
