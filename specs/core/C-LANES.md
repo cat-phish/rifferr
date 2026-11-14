@@ -1,5 +1,5 @@
 # C-LANES: Lanes, per-album progress through a run
-Status: Draft
+Status: Approved
 Milestone: M2
 
 ## Context
