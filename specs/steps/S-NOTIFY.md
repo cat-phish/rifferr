@@ -34,8 +34,8 @@ because Apprise URLs carry tokens and passwords.
 - NOTIFY-3: Resolved Apprise URLs MUST NOT appear in events, logs, run records, API responses or
   error messages. Rifferr refers to a target only by its name. Apprise's own log output MUST be
   routed through the profile's `Redactor` (C-PROFILE) before it reaches any Rifferr log.
-- NOTIFY-4: A failed send MUST be retried up to 3 times with backoff (5 s, 30 s, 2 min). Each
-  final outcome MUST emit `notify.sent` or `notify.failed` (`target`, `source`: `rule` or
+- NOTIFY-4: A failed send MUST be retried after each delay in `notify.retry` (a list of
+  Durations, default `[5s, 30s, 2m]`; `[]` means no retries). Each final outcome MUST emit `notify.sent` or `notify.failed` (`target`, `source`: `rule` or
   `step`, `reason`; `failed` also carries a redacted error message). Events go on the run's
   stream when there is a run, and on `/api/events`.
 - NOTIFY-5: A notification failure MUST NOT fail, block or delay a run, lane, gate or import,
@@ -65,11 +65,26 @@ because Apprise URLs carry tokens and passwords.
     with no lanes MUST NOT send a summary unless the rule sets `include_empty: true`.
   - `review.timeout`: a gate or import decision was decided by its timeout (REVIEW-9,
     F-IMPORT-UI). Not in the defaults.
+  - `worker.problem`: a profile's worker crashed, stopped answering, or refused to start
+    (F-WORKER). It has no run; the body names the profile and the reason, the link is the
+    dashboard (`/`), and the type is `failure`. Not in the defaults. Idle exits never match.
+
+  `review.needed` and `run.summary` MUST stay separate notifications, also when one transition
+  causes both.
 - NOTIFY-9: Rules MUST be evaluated in the server, from events as they are persisted, so that
   they also cover events the server itself emits (gate timeouts, worker crashes). Each rule
   event of a run MUST be sent at most once per target for the same pass and transition, also
   when events are replayed after a server restart: sent notifications are recorded in the app
   DB (`notifications`) before they are sent, and a pending record found at start-up is retried.
+- NOTIFY-16 (F-REVIEW-QUEUE amendment): `GET /api/review` MUST accept `run=<run_id>` to list only
+  that run's items, and `/review?run=<run_id>` MUST open the queue filtered to that run, with a
+  visible filter chip that clears it. An unknown run id shows an empty queue, not an error.
+- NOTIFY-15: A rule with `review.needed` MAY set `remind_after` (a Duration). While any item of
+  an earlier `review.needed` notification is still pending, the server MUST send a reminder
+  for it every `remind_after`, at most `remind_limit` times (default 3). The reminder lists only
+  the items still pending, says how long they have waited, and is recorded and deduplicated
+  like any rule notification (NOTIFY-9), so reminders survive a server restart. Deciding,
+  cancelling or timing out the last item stops its reminders.
 - NOTIFY-10: Rule messages MUST use built-in title and body text that names beets concepts
   plainly (album, query) and shows the workflow name, profile and album labels.
 
@@ -105,19 +120,22 @@ secrets:
   discord: keyring:rifferr/discord
 notify:
   base_url: https://rifferr.home.lan
+  retry: [5s, 30s, 2m]                      # default
   targets:
     phone: ntfy_phone
     discord: discord
   rules:                                    # omit for the defaults (NOTIFY-7)
-    - on: [review.needed, run.failed]
+    - on: [review.needed, run.failed, worker.problem]
       targets: [phone]
+      remind_after: 1d
     - on: run.summary
       targets: [discord]
       workflows: [inbox]
 ```
 ```python
 NotifyType = Literal["info", "success", "warning", "failure"]
-RuleEvent = Literal["review.needed", "run.failed", "run.summary", "review.timeout"]
+RuleEvent = Literal["review.needed", "run.failed", "run.summary", "review.timeout",
+                    "worker.problem"]
 
 class Notification(BaseModel, frozen=True):
     title: str; body: str; type: NotifyType = "info"; url: str | None = None
@@ -127,9 +145,12 @@ class NotifyRule(BaseModel):
     targets: list[str] | None = None          # None = all targets
     workflows: list[str] | None = None
     include_empty: bool = False               # run.summary only
+    remind_after: Duration | None = None      # review.needed only (NOTIFY-15)
+    remind_limit: int = 3
 
 class NotifySettings(BaseModel):
     base_url: AnyHttpUrl | None = None
+    retry: list[Duration] = ["5s", "30s", "2m"]
     targets: dict[str, str] = {}              # target name -> secrets key
     rules: list[NotifyRule] | None = None     # None = defaults
 
@@ -149,9 +170,9 @@ class NotifyParams(BaseModel):
     skip_empty: bool = False
 ```
 - App DB: `notifications` (id, profile, run_id, rule_event, dedup_key, target, state
-  `pending|sent|failed`, attempts, created_at, sent_at, error).
+  `pending|sent|failed`, attempts, created_at, sent_at, error, reminders, items JSON).
 - Events: `notify.sent {target, source}`, `notify.failed {target, source, reason, error}`.
-- Routes: `POST /api/profiles/{profile}/notify/test`. CLI: `rifferr notify test`.
+- Routes: `POST /api/profiles/{profile}/notify/test`; `GET /api/review?run=` (NOTIFY-16). CLI: `rifferr notify test`.
 - Module: `rifferr.notify` (models, rule matching, message building: pure) and
   `rifferr.notify.apprise` (the only module that imports Apprise).
 
@@ -190,7 +211,8 @@ class NotifyParams(BaseModel):
   plain text (Apprise `body_format: text`), never as HTML or Markdown.
 
 ## Non-goals
-- Quiet hours, digests or rate limits beyond NOTIFY-8's per-pass grouping.
+- Quiet hours, digests or rate limits beyond NOTIFY-8's per-pass grouping and NOTIFY-15's
+  reminder limit.
 - Custom rule message templates (step messages are templated; rule messages are fixed).
 - Desktop notifications (`notify-send`); Apprise's desktop backends are not set up or tested.
 - Replies or actions from the notification (accepting a review from ntfy).
@@ -199,15 +221,14 @@ class NotifyParams(BaseModel):
 1. Dependency: Apprise (BSD-2-Clause; pulls requests Apache-2.0, requests-oauthlib ISC, markdown
    BSD-3-Clause, click BSD-3-Clause, PyYAML MIT, certifi MPL-2.0, to be checked at the pinned
    version). Approve adding `apprise` to the dependency ledger?
-2. Should `run.summary` at `waiting_review` and a `review.needed` from the same moment be merged
-   into one notification, or stay two (as drafted)?
-3. B-019: add an opt-in `worker.problem` rule event (worker crash, hang, refusal to start) here,
-   or leave it in the backlog?
-4. `/review?run=<id>` (NOTIFY-6) needs the review queue to filter by run. F-REVIEW-QUEUE only has
-   `?item=`. Add the filter in this spec's tasks, or link to `/review` for now?
-5. Retry schedule (NOTIFY-4): fixed as drafted, or a profile setting?
-6. Should a pending `review.needed` be re-sent (a reminder) after some time, e.g. a rule option
-   `remind_after: 1d`? Drafted as a non-goal.
+
+Resolved (author, 2026-11-14):
+2. `run.summary` and `review.needed` from the same transition stay two notifications (NOTIFY-8).
+3. B-019 is covered by the opt-in `worker.problem` rule event (NOTIFY-8), left to the agent's
+   judgment. Idle exits are excluded: they are normal.
+4. The run filter is added here (NOTIFY-16).
+5. Retry delays are a profile setting, `notify.retry` (NOTIFY-4).
+6. Reminders for pending reviews: `remind_after` / `remind_limit` on rules (NOTIFY-15).
 
 ## Tasks
 - [ ] `rifferr.notify`: models, `NotifySettings` in `profile.yaml`, validation (NOTIFY-1, -6, -7)
@@ -215,6 +236,8 @@ class NotifyParams(BaseModel):
 - [ ] Rule engine in the server: event matching, grouping, dedup and the `notifications` table,
       restart recovery (NOTIFY-8 to -10)
 - [ ] `notify` step (NOTIFY-11 to -13)
+- [ ] Reminders (NOTIFY-15) and `worker.problem` from the supervisor (NOTIFY-8)
+- [ ] `GET /api/review?run=` and the `/review?run=` filter chip, with a Playwright test (NOTIFY-16)
 - [ ] Test route and `rifferr notify test` (NOTIFY-14)
 - [ ] Contract test for the Apprise implementation using a custom Apprise schema (no network)
 - [ ] Regenerate schemas and the TS client; update `docs/coverage.md` if the reference workflow

@@ -24,7 +24,7 @@ are **not** part of the current task. Append here instead of acting on them.
 - B-002 [idea] (2026-11-11, from session) Generated, read-only HTML dashboard of spec status and reference-workflow coverage (`spec.py html`).
 - B-003 [idea] (2026-11-11, from architecture §12) Desktop wrapper (pywebview or Tauri).
 
-- B-019 [idea] (2026-11-11, from F-WORKER) Notify on worker lifecycle events that matter for unattended imports: crash, hang, refusal to start, and (optionally) idle exit. Hook into S-NOTIFY (M2) once it exists.
+- B-019 [idea] (2026-11-11, from F-WORKER) Notify on worker lifecycle events that matter for unattended imports: crash, hang, refusal to start, and (optionally) idle exit. Hook into S-NOTIFY (M2) once it exists. → S-NOTIFY `worker.problem` rule event (Draft, 2026-11-14)
 
 - B-020 [idea] (2026-11-11, from F-SECURITY) Extend workflow trust to the local scripts and rules files a workflow references, so editing `./scripts/x.sh` resets trust like editing the workflow does (architecture §8 counts them as untrusted content). M0 only lists them in the safety report.
 
