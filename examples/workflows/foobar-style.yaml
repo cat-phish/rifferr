@@ -2,9 +2,10 @@
 # Rifferr can express it so far. It grows milestone by milestone; docs/coverage.md
 # maps each checklist line to the step that does it, or the milestone that will.
 #
-# Copy it into a profile's workflows/ folder and the scripts it uses from
-# examples/scripts/ into the profile's scripts/ folder, set `inbox` in the profile's
-# vars, and trust it (`rifferr trust`). From then on every album folder that lands in
+# Copy it and release-suffixes.yaml (which it calls) into a profile's workflows/
+# folder and the scripts they use from examples/scripts/ into the profile's scripts/
+# folder, set `inbox` in the profile's vars, and trust it (`rifferr trust`, which
+# trusts the called file too, each by its own hash). From then on every album folder that lands in
 # the inbox is imported once it has stopped changing. To import the whole inbox by hand:
 #   rifferr run foobar-style --profile main
 # or one album:
@@ -30,20 +31,12 @@ steps:
       # Strong matches import on their own; the rest wait in the review queue as import
       # decisions, holding only their own album.
       mode: auto
-  # EP / Single from albumtype or the album name, plus the " (EP)" / " (Single)"
-  # suffix. Applied without review: the rules are mechanical and every change can be
-  # undone from the run page.
-  - id: release-types
-    uses: tags.script
-    apply: auto
+  # Release-type suffixes live in their own file, so other import workflows can call
+  # them too. Its steps run here as suffixes/release-types and suffixes/compilations.
+  - id: suffixes
+    uses: workflow
     with:
-      script: release-types.yaml
-  # " (Compilation)" waits for review: some are Anthologies.
-  - id: compilations
-    uses: tags.script
-    apply: review
-    with:
-      script: compilation.yaml
+      workflow: release-suffixes.yaml
   # Checklist line 4: delete leftover junk and empty folders from the imported folder.
   # Music beets could import is never deleted (an unmatched album stays for line 5), nor
   # is a folder that still waits as an import decision: it is cleaned by the pass that

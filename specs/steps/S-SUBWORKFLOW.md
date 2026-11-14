@@ -1,5 +1,5 @@
 # S-SUBWORKFLOW: `workflow` step (call another workflow)
-Status: Approved
+Status: Implemented
 Milestone: M2
 
 ## Context
@@ -85,7 +85,12 @@ class Workflow(...):              # C-WORKFLOW, additive
 ```
 
 - Step type `workflow`, registered through the `rifferr.steps` entry point like every built-in.
-  It never runs itself: the engine expands it (SUBWORKFLOW-6). Its `run` raises if reached.
+  A written call never runs: the engine expands it (SUBWORKFLOW-6), and its `run` fails if
+  reached unexpanded. When the called workflow declares `outputs:`, expansion adds the call
+  step itself after the called steps, with the call's id; it resolves the outputs for its
+  lanes (SUBWORKFLOW-11). Without `outputs:` the call leaves no step of its own.
+- A call's `when` narrows by album: the engine queries the run's albums with it at album
+  scope and passes only the matching ones to the called step (SUBWORKFLOW-7).
 - Expansion lives in `core/workflow` (pure: it takes a loader callable for called files), so
   `rifferr validate`, the API's validate route and the worker share it.
 - Job payload: `source`, `source_name` as now, plus `called: [{path, source, sha256}]`.
@@ -132,7 +137,8 @@ steps:
     with: {message: "{{ steps.tagging.changed }} albums retagged"}
 ```
 
-Run step ids: `import`, `tagging/fix-case`, `tagging/genres`, `tell`. An album whose
+Run step ids: `import`, `tagging/fix-case`, `tagging/genres`, `tagging` (the call's outputs),
+`tell`. An album whose
 `tagging/fix-case` ChangeSet waits for review holds only its own lane; other albums go on to
 `tagging/genres` and `tell`.
 
@@ -175,14 +181,14 @@ Errors:
 5. ~~`outputs:` now or later?~~ Resolved 2026-11-14 (author): now (SUBWORKFLOW-11).
 
 ## Tasks
-- [ ] C-WORKFLOW: `outputs` field; `/` reserved in step ids; schema regenerated
-- [ ] `core/workflow` expansion: path rules, var binding, cycle and depth checks, `when` merge
-- [ ] Scoped interpolation contexts for called steps (vars, steps)
-- [ ] `workflow` step type and entry point; validation of `apply`/`on_error` on calls
-- [ ] Job payload carries called files; worker runs stored texts; resume uses them
-- [ ] Trust over every file; trust prompt and `rifferr trust` list called files
-- [ ] Safety report over called files
-- [ ] Events and API: expanded step ids, `call_path`, called file hashes
-- [ ] Run page groups called steps under their call
-- [ ] Example workflow: move a reusable part of `foobar-style.yaml` into a called file
-- [ ] Tests per behavior ID; Playwright for the trust prompt with a called file
+- [x] C-WORKFLOW: `outputs` field; `/` reserved in step ids; schema regenerated
+- [x] `core/workflow` expansion: path rules, var binding, cycle and depth checks, `when` merge
+- [x] Scoped interpolation contexts for called steps (vars, steps)
+- [x] `workflow` step type and entry point; validation of `apply`/`on_error` on calls
+- [x] Job payload carries called files; worker runs stored texts; resume uses them
+- [x] Trust over every file; trust prompt and `rifferr trust` list called files
+- [x] Safety report over called files
+- [x] Events and API: expanded step ids, `call_path`, called file hashes
+- [x] Run page groups called steps under their call
+- [x] Example workflow: move a reusable part of `foobar-style.yaml` into a called file
+- [x] Tests per behavior ID; Playwright for the trust prompt with a called file

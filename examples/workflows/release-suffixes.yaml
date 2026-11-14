@@ -1,0 +1,22 @@
+# Release-type tagging, shared by every import workflow of a profile that wants it.
+# foobar-style.yaml calls it with a `uses: workflow` step (S-SUBWORKFLOW), so the same
+# rules apply however an album came in, and changing them here changes them everywhere.
+# It can also run on its own, e.g. on albums already in the library. Trust it on its
+# own (`rifferr trust`): trusting a workflow that calls it doesn't trust it.
+name: Release-type suffixes
+description: EP / Single and Compilation suffixes from the release type.
+steps:
+  # EP / Single from albumtype or the album name, plus the " (EP)" / " (Single)"
+  # suffix. Applied without review: the rules are mechanical and every change can be
+  # undone from the run page.
+  - id: release-types
+    uses: tags.script
+    apply: auto
+    with:
+      script: release-types.yaml
+  # " (Compilation)" waits for review: some are Anthologies.
+  - id: compilations
+    uses: tags.script
+    apply: review
+    with:
+      script: compilation.yaml
