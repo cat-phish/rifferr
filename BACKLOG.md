@@ -35,6 +35,8 @@ are **not** part of the current task. Append here instead of acting on them.
 - B-028 [idea] (2026-11-11, from S-TAGSCRIPT) Tag-script visual builder: action-list builder with field autocomplete and a condition builder that writes beets queries (architecture §4 UI requirements), editing the same file as the YAML view (ruamel.yaml round-trip). Decide on a code editor component (e.g. CodeMirror 6, MIT) at the same time. Needs its own spec.
 - B-034 [idea] (2026-11-12, from S-TAGSCRIPT) Tag-script preview asks the backend for every album matching the query, then keeps `limit`. A wide query on a big library can hit the 10 s preview timeout. Consider a `limit` on `Selection` (a C-BACKEND change) or a count-then-fetch query.
 - B-033 [idea] (2026-11-12, from C-JOURNAL) Journal recovery reads current values through `LibraryBackend.query`, falling back to the whole library when an entry's targets aren't among its run's albums. Fine for rare crashes, but slow on big libraries. Consider a `LibraryBackend.fields(refs)` read by id (a C-BACKEND change) if recovery or the review queue needs it.
+- B-047 [idea] (2026-11-13, from F-TRIGGERS) A `trigger` plugin entry point, so plugins can add trigger kinds beyond watch, schedule and webhook (for example polling an *arr API).
+- B-048 [idea] (2026-11-13, from F-TRIGGERS) Rate-limit failed webhook authentication (per profile and webhook) so a leaked URL can't be used to brute-force its secret.
 
 ## Issues
 - B-004 [bug] (2026-11-11, from session) Nix `pre-commit` package fails to build Python hook environments (`ModuleNotFoundError: No module named 'packaging'` in its virtualenv). Use the distro package or pipx; mention in contributor docs.

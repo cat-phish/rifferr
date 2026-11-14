@@ -55,7 +55,7 @@ name: new-music
 on:
   watch:    { path: "{{ vars.inbox }}", settle: 10m }   # start once a folder stops changing
   schedule: "0 4 * * *"                                 # also sweep nightly
-  webhook:  { name: lidarr }                            # POST /hooks/lidarr (token-authenticated)
+  webhook:  { name: lidarr }                            # POST /hooks/<profile>/lidarr (own secret)
 steps: [...]
 ```
 
