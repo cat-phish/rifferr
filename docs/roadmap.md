@@ -180,6 +180,7 @@ Order: F-TRIGGERS (watch, schedule, webhook, dedup, concurrency) → lanes
 S-SUBWORKFLOW → queue dashboard (F-REVIEW-QUEUE update).
 
 - [x] F-TRIGGERS: Implemented 2026-11-13.
+- [x] C-LANES: Implemented 2026-11-13.
 
 ## M3 — Cover search
 

@@ -29,7 +29,7 @@ A row gets a link once its spec file exists. Build order: [docs/roadmap.md](../d
 | [C-WORKFLOW](core/C-WORKFLOW.md) | Workflow YAML schema, steps, interpolation | 2 | M0 | Implemented |
 | [C-BACKEND](core/C-BACKEND.md) | LibraryBackend protocol, snapshots, capabilities | 8 | M0 | Implemented |
 | [C-RUN](core/C-RUN.md) | Run state machine, events | 2, 2a | M0 | Implemented |
-| [C-LANES](core/C-LANES.md) | Lanes: per-album progress through a run | 2a | M2 | Approved |
+| [C-LANES](core/C-LANES.md) | Lanes: per-album progress through a run | 2a | M2 | Implemented |
 | [C-CHANGESET](core/C-CHANGESET.md) | ChangeSet model and apply/review policy | 2 | M1 | Approved |
 | [C-JOURNAL](core/C-JOURNAL.md) | Journal and undo | 2 | M1 | Approved |
 | [S-BEETS-IMPORT](steps/S-BEETS-IMPORT.md) | `beets.import` step | 3, 8 | M0 | Implemented |

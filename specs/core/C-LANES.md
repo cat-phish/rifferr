@@ -1,5 +1,5 @@
 # C-LANES: Lanes, per-album progress through a run
-Status: Approved
+Status: Implemented
 Milestone: M2
 
 ## Context
@@ -61,6 +61,19 @@ hold. This spec gives them the hook they need (LANES-14) but not the decisions.
 ### Hooks for other specs
 - LANES-14: `StepContext.hold(key, kind, ref)` MUST put the lane `key` on hold until `ref` is resolved through `Engine.resolve_hold(run_id, ref)`. `key` is a backend album id, or `pending:<id>` for an album the step hasn't imported yet (F-IMPORT-UI). A `pending:` lane MUST be renamed to its album id once the album exists, keeping its position and history.
 - LANES-15: `GET /api/runs/{id}` MUST include the run's lanes: album id, label, state, position (step id), holds, and the steps it ran with their status. The run page MUST show a lane table: album, state, current or last step, and a link to its holds in the review queue.
+
+Implementation notes (2026-11-13, added while implementing; not new behavior):
+- A step that is not run-level runs only in passes with lanes. A run whose albums never got a lane (for example its import found nothing) skips its per-album steps; they end `skipped`. A run-level step runs with zero lanes only while the run has no lanes yet; once lanes exist, a pass with none at that step doesn't run (LANES-3, -6).
+- `run_level` is a class attribute, or a function of the step's raw `with:` mapping (`shell` returns true for `per: run`). The test helper is `engine.steps.is_run_level`.
+- Selections carry `Selection.album_ids` (both scopes), implemented by every backend. The beets backend also adds it to `beet` command lines as one regexp term (`album_id::^(…)$`, or `id::` with `-a`/`--album`), so `beets.command` sees only the pass's albums. A contract test pins that beets query behavior.
+- `ctx.fail_target` always returns now: the step carries on with its other targets, and `on_error` is applied per lane after the pass (LANES-10). Failed item targets map to their album's lane.
+- Holds raised during a pass for albums without a lane yet (for example by a run-level step) create the lane at that step.
+- `Engine.resolve_hold(run_id, ref)` records the ref in the lane store (app DB `resolved_holds`), so a later resume job sees it. `LaneStore` is load/save/rename/resolve_hold/resolved_holds; the app DB implements it as `AppLanes`, which also stores each lane's pass numbers per step (`passes`, LANES-4) and a creation order (`seq`).
+- A resume needs `resume_after` (the job payload's, as before). A run suspended before C-LANES has no lane rows: on resume every run album gets a lane after that step, and `requeue_if_released` and gate rejection fall back to the old whole-run rules.
+- Gate rejection (`worker.gates.reject_gate_lanes`) settles the run afterwards: requeue if another lane was released meanwhile, keep waiting while lanes wait, otherwise finish it. Every lane rejected ends the run `cancelled` with reason `rejected_at_review` (as REVIEW-8); otherwise LANES-9 applies. Finishing a run this way rejects its leftover proposed ChangeSets and cancels its pending gates. `on_reject: undo` undoes the run's journal entries that touch the gate's albums or their items (`undo_run(..., targets=)`).
+- Re-proposing a conflicted ChangeSet (REVIEW-QUEUE-5) also swaps it in the waiting lane's holds.
+- A gate can still be decided only while its run is `waiting_review` (REVIEW-6 note), not while other lanes of the run are still running. Its lanes wait until then.
+- API names: `RunDetail.lanes` is the lane list; the counts are `RunSummary.lane_counts`, because `RunDetail` extends `RunSummary` and one field can't be both. `StepState.passes` counts the passes that ran.
 
 ## Interfaces
 ```python
@@ -144,14 +157,14 @@ Gate rejection: a gate over A and B is rejected with `on_reject: undo` → A and
    (LANES-14).
 
 ## Tasks
-- [ ] Engine: lanes, passes, positions; `run_level`; per-pass step records and outputs
+- [x] Engine: lanes, passes, positions; `run_level`; per-pass step records and outputs
       (LANES-1, -3, -4, -6).
-- [ ] Holds per lane for `apply: review`, gates and `ctx.hold`; resume jobs with coalescing
+- [x] Holds per lane for `apply: review`, gates and `ctx.hold`; resume jobs with coalescing
       (LANES-5, -7, -8, -14); update CHANGESET-7, REVIEW-3/-7/-8 wording.
-- [ ] Failure, rejection, gone and cancel per lane; lane-scoped undo (LANES-9 to -13).
-- [ ] Migration `run_lanes`; lane events; `/api/events` carries them.
-- [ ] API `RunDetail.lanes`, `RunSummary.lanes`; regenerate schemas and TS client.
-- [ ] Run page lane table; review queue links per lane (LANES-15); Playwright: one album
+- [x] Failure, rejection, gone and cancel per lane; lane-scoped undo (LANES-9 to -13).
+- [x] Migration `run_lanes`; lane events; `/api/events` carries them.
+- [x] API `RunDetail.lanes`, `RunSummary.lanes`; regenerate schemas and TS client.
+- [x] Run page lane table; review queue links per lane (LANES-15); Playwright: one album
       waits, the others finish.
-- [ ] `beets.import` and `shell` `per: run` are `run_level`; S-BEETS-IMPORT and S-SHELL notes.
-- [ ] `docs/coverage.md` if the reference workflow changes; mark Implemented.
+- [x] `beets.import` and `shell` `per: run` are `run_level`; S-BEETS-IMPORT and S-SHELL notes.
+- [x] `docs/coverage.md` if the reference workflow changes; mark Implemented.

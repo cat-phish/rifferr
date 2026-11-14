@@ -28,6 +28,8 @@ F-IMPORT-UI in M2. Prior art: beets-flask's `ImportSession` subclass (MIT).
 - BEETS-IMPORT-16: The import MUST run in a thread so the worker's event loop stays responsive; cancellation (RUN-8) MUST take effect between albums.
 - BEETS-IMPORT-12: Contract tests MUST pin, against a temp profile under `tmp_path` and generated audio fixtures: quiet import of a tagged fixture album, flexible attribute storage, `evaluate_template` on `$albumartist - $album`, and a query with `::` regex. They run first on any beets version bump.
 
+Note (2026-11-13, C-LANES): `beets.import` is `run_level` (LANES-6). It runs before any lane exists, and each album it imports gets a lane at the next step (LANES-1).
+
 ## Interfaces
 ```python
 class BeetsImportParams(BaseModel):
