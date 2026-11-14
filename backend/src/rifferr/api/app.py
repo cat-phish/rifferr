@@ -7,7 +7,8 @@ runs the latter under uvicorn.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+import asyncio
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -43,7 +44,9 @@ from rifferr.api.security import (
 from rifferr.api.state import ServerState
 from rifferr.appdb import AppDB, SqliteEventSink
 from rifferr.engine import StepTypeRegistry
-from rifferr.profile_store import app_db_path, config_root
+from rifferr.notify import Notifier, default_notifier
+from rifferr.notify.service import NotificationService
+from rifferr.profile_store import app_db_path, config_root, load_profile
 from rifferr.steps.registry import load_step_types
 from rifferr.triggers import TriggerManager
 from rifferr.worker.previews import PreviewSupervisor
@@ -112,6 +115,10 @@ class ApiSettings:
     """Arm workflows' ``on:`` triggers (F-TRIGGERS)."""
     trigger_reconcile: float = 2.0
     """Seconds between checks for changed workflow files and trust (TRIGGERS-1)."""
+    notifier: Notifier | None = None
+    """Sends notifications (S-NOTIFY); default: Apprise. Tests pass a fake."""
+    notify_sleep: Callable[[float], Awaitable[None]] | None = None
+    """How rule notifications wait between retries; tests skip the wait."""
 
     def security(self) -> SecurityConfig:
         dev_origins: tuple[str, ...] = ()
@@ -149,6 +156,18 @@ def create_api(settings: ApiSettings | None = None) -> FastAPI:
             keepalive=settings.keepalive,
         )
         supervisor.subscribe(state.hub.publish)
+        root = state.config_root
+        notifications = NotificationService(
+            db,
+            load_profile=lambda name: load_profile(root, name),
+            notifier=settings.notifier or default_notifier(),
+            publish=state.hub.publish,
+            sleep=settings.notify_sleep or asyncio.sleep,
+        )
+        state.notifications = notifications
+        supervisor.subscribe(notifications.on_event)  # S-NOTIFY rules (NOTIFY-9)
+        supervisor.subscribe_problems(notifications.on_worker_problem)
+        await notifications.start()  # retries what a stopped server left pending
         supervisor.start()  # decides overdue review gates now and as deadlines pass
         app.state.rifferr = state
         if settings.triggers:
@@ -170,6 +189,7 @@ def create_api(settings: ApiSettings | None = None) -> FastAPI:
                 await state.triggers.stop()
             await previews.shutdown()
             await supervisor.shutdown()
+            await notifications.stop()
             if settings.write_token and not settings.no_auth:
                 remove_token_file(settings.port)
             db.close()

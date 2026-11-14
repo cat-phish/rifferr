@@ -1719,6 +1719,52 @@
         "title": "ManualEdit",
         "type": "object"
       },
+      "NotifyTestBody": {
+        "additionalProperties": false,
+        "properties": {
+          "target": {
+            "description": "A target name from the profile's notify.targets",
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target"
+        ],
+        "title": "NotifyTestBody",
+        "type": "object"
+      },
+      "NotifyTestResult": {
+        "additionalProperties": false,
+        "description": "S-NOTIFY NOTIFY-14. ``error`` never contains the target's URL.",
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "sent": {
+            "title": "Sent",
+            "type": "boolean"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target",
+          "sent"
+        ],
+        "title": "NotifyTestResult",
+        "type": "object"
+      },
       "PreviewError": {
         "additionalProperties": false,
         "properties": {
@@ -4833,6 +4879,89 @@
         "summary": "Library",
         "tags": [
           "library"
+        ]
+      }
+    },
+    "/api/profiles/{profile}/notify/test": {
+      "post": {
+        "description": "Send a fixed test notification to one target (S-NOTIFY NOTIFY-14).",
+        "operationId": "notify_test_api_profiles__profile__notify_test_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotifyTestBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotifyTestResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Notify Test",
+        "tags": [
+          "profiles"
         ]
       }
     },

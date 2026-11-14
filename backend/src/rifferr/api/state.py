@@ -12,6 +12,7 @@ from fastapi import Depends, Request
 from rifferr.appdb import AppDB
 from rifferr.engine import Event, StepTypeRegistry
 from rifferr.engine.events import PROFILE_STREAM_PREFIX
+from rifferr.notify.service import NotificationService
 from rifferr.triggers import TriggerManager
 from rifferr.worker.previews import PreviewSupervisor
 from rifferr.worker.supervisor import WorkerSupervisor
@@ -37,7 +38,7 @@ def on_all_stream(event: Event) -> bool:
     """Whether ``GET /api/events`` carries ``event`` (API-9, REVIEW-QUEUE-10): run-level
     and review-level events and the ``changeset.*`` events of runs, plus the
     ``trigger.*`` events of profile streams (TRIGGERS-24) and ``lane.*`` (LANES-2)."""
-    if event.type.startswith("trigger."):
+    if event.type.startswith(("trigger.", "notify.")):  # TRIGGERS-24, S-NOTIFY NOTIFY-4
         return True
     if event.run_id.startswith(PROFILE_STREAM_PREFIX):
         return False
@@ -80,6 +81,7 @@ class ServerState:
     keepalive: float
     hub: EventHub = field(default_factory=EventHub)
     triggers: TriggerManager | None = None
+    notifications: NotificationService | None = None
 
 
 def server_state(request: Request) -> ServerState:

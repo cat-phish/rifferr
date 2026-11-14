@@ -45,6 +45,18 @@ class ProfileSummary(_Model):
     error: str | None = Field(default=None, description="Why the profile can't be loaded")
 
 
+class NotifyTestBody(_Model):
+    target: str = Field(description="A target name from the profile's notify.targets")
+
+
+class NotifyTestResult(_Model):
+    """S-NOTIFY NOTIFY-14. ``error`` never contains the target's URL."""
+
+    target: str
+    sent: bool
+    error: str | None = None
+
+
 class WorkflowError(_Model):
     path: str
     message: str

@@ -190,7 +190,7 @@ async def test_NOTIFY_4_step_sends_emit_notify_events(h: Harness) -> None:
     await h.engine.execute(run)
     assert events(h, run, "notify.sent") == [{"target": "discord", "source": "step"}]
     assert events(h, run, "notify.failed") == [
-        {"target": "phone", "source": "step", "reason": "send_failed", "error": "ntfy is down"}
+        {"target": "phone", "source": "step", "error": "ntfy is down"}
     ]
 
 

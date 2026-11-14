@@ -259,3 +259,20 @@ def test_NOTIFY_15_reminder_message() -> None:
 def test_NOTIFY_15_remind_limit_must_be_positive() -> None:
     with pytest.raises(ValueError, match="greater than or equal"):
         NotifyRule(on=["review.needed"], remind_limit=0)
+
+
+def test_NOTIFY_10_rule_messages_name_workflow_profile_and_albums() -> None:
+    items = [QueueRef(kind="gate", ref="g1", labels=("Nina Simone - Pastel Blues",))]
+    n = review_needed(items, profile="main", workflow="inbox", run_id="r1", base_url=None)
+    assert "inbox, profile main" in n.body
+    assert "Nina Simone - Pastel Blues" in n.body
+    assert "review queue" in n.body
+    s = run_summary(
+        {"done": 1},
+        status="succeeded",
+        profile="main",
+        workflow="inbox",
+        run_id="r1",
+        base_url=None,
+    )
+    assert "inbox, profile main" in s.body

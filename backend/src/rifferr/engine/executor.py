@@ -857,7 +857,6 @@ class Engine:
             if result.ok:
                 self._emit(state.run, "notify.sent", step_id, data)
             else:
-                data["reason"] = "send_failed"
                 data["error"] = state.redactor.redact(result.error or "")
                 self._emit(state.run, "notify.failed", step_id, data)
         return list(results)

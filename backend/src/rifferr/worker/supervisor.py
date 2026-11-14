@@ -54,6 +54,9 @@ GATE_CHECK_INTERVAL = 60.0
 
 Command = Callable[[str], list[str]]
 Listener = Callable[[Event], None]
+ProblemListener = Callable[[str, str, str | None], None]
+"""profile, reason (``worker_crashed`` / ``worker_hung`` / ``worker_failed_to_start``),
+error text."""
 ExitReason = Literal["worker_crashed", "worker_hung", "worker_failed_to_start", "server_shutdown"]
 
 
@@ -91,6 +94,7 @@ class WorkerSupervisor:
         self.watchdog_interval = watchdog_interval
         self._workers: dict[str, _Handle] = {}
         self._listeners: list[Listener] = []
+        self._problem_listeners: list[ProblemListener] = []
         self._shutting_down = False
         self._lock = asyncio.Lock()
         self.gate_check_interval = gate_check_interval
@@ -115,6 +119,11 @@ class WorkerSupervisor:
     def subscribe(self, listener: Listener) -> None:
         """Called with each worker event after it has been persisted (WORKER-4)."""
         self._listeners.append(listener)
+
+    def subscribe_problems(self, listener: ProblemListener) -> None:
+        """Called when a worker crashes, hangs or can't start; not for idle exits or a
+        server shutdown (S-NOTIFY ``worker.problem``)."""
+        self._problem_listeners.append(listener)
 
     async def submit_run(
         self,
@@ -631,6 +640,13 @@ class WorkerSupervisor:
             del self._workers[handle.profile]
         if code not in (0, None) or handle.kill_reason:
             log.warning("worker %s exited (%s, status %s)", handle.profile, reason, code)
+        problem = not handle.ready or handle.kill_reason == "worker_hung" or code not in (0, None)
+        if problem and not self._shutting_down and reason != "server_shutdown":
+            for problem_listener in self._problem_listeners:
+                try:
+                    problem_listener(handle.profile, reason, error)
+                except Exception:
+                    log.exception("worker problem listener failed")
         if handle.ready and not self._shutting_down and self.db.jobs(handle.profile, "queued"):
             await self._wake(handle.profile)  # e.g. idle exit raced with a new request
         current = asyncio.current_task()

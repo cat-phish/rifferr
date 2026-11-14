@@ -296,6 +296,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/profiles/{profile}/notify/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Notify Test
+         * @description Send a fixed test notification to one target (S-NOTIFY NOTIFY-14).
+         */
+        post: operations["notify_test_api_profiles__profile__notify_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/profiles/{profile}/scripts": {
         parameters: {
             query?: never;
@@ -1286,6 +1306,26 @@ export interface components {
              * @description Journal entry of the undo, once undone
              */
             undo_journal_id?: string | null;
+        };
+        /** NotifyTestBody */
+        NotifyTestBody: {
+            /**
+             * Target
+             * @description A target name from the profile's notify.targets
+             */
+            target: string;
+        };
+        /**
+         * NotifyTestResult
+         * @description S-NOTIFY NOTIFY-14. ``error`` never contains the target's URL.
+         */
+        NotifyTestResult: {
+            /** Error */
+            error?: string | null;
+            /** Sent */
+            sent: boolean;
+            /** Target */
+            target: string;
         };
         /** PreviewError */
         PreviewError: {
@@ -2854,6 +2894,68 @@ export interface operations {
             };
             /** @description Gateway Timeout */
             504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    notify_test_api_profiles__profile__notify_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotifyTestBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotifyTestResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

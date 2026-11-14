@@ -8,7 +8,7 @@ import logging
 import sys
 
 from rifferr import __version__
-from rifferr.cli import files, profiles, run, serve, webhooks
+from rifferr.cli import files, notify, profiles, run, serve, webhooks
 
 
 def version_text() -> str:
@@ -40,6 +40,7 @@ def parser() -> argparse.ArgumentParser:
     files.add_parsers(sub)
     profiles.add_parser(sub)
     webhooks.add_parser(sub)
+    notify.add_parser(sub)
     return p
 
 
