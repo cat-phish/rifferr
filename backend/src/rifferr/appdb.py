@@ -384,6 +384,28 @@ class AppDB:
                 ),
             )
 
+    def append_next(
+        self, stream: str, type_: str, data: dict[str, JsonValue], step_id: str | None = None
+    ) -> Event:
+        """Append an event with the next seq of ``stream``, chosen inside the write
+        transaction, so the server can share a stream with a worker (F-TRIGGERS)."""
+        with self._conn:
+            self._conn.execute("BEGIN IMMEDIATE")
+            event = Event(
+                seq=self.last_seq(stream) + 1,
+                ts=datetime.now(UTC),
+                run_id=stream,
+                type=type_,
+                step_id=step_id,
+                data=data,
+            )
+            self._conn.execute(
+                "INSERT INTO events (run_id, seq, ts, type, step_id, data)"
+                " VALUES (?, ?, ?, ?, ?, ?)",
+                (stream, event.seq, event.ts.isoformat(), type_, step_id, json.dumps(data)),
+            )
+        return event
+
     def last_seq(self, run_id: str) -> int:
         row = self._conn.execute(
             "SELECT COALESCE(MAX(seq), 0) FROM events WHERE run_id = ?", (run_id,)

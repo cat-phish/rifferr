@@ -207,10 +207,15 @@ cronsim, like cron, fires them right after the gap, which keeps a nightly sweep 
 losing a night. Changed to that; the author can ask for the original behavior. Aliases
 (`@daily`, ...) were added because cronsim doesn't parse them and WORKFLOW-13's tests
 already used `@daily`.
+
+Note (2026-11-13, implementation): under TRIGGERS-9, deletion events only reset the timer
+of a candidate that is already pending; deletions alone never create one. Otherwise beets
+moving an album's files out of the inbox would start a second run on whatever it leaves
+behind (cover images, logs).
 - [x] Add `watchfiles` and `cronsim` to `backend/pyproject.toml`.
 - [x] C-WORKFLOW: `input`, `run.input`, `run.trigger`, new watch/webhook fields, arm-time
       interpolation rules; regenerate schemas.
-- [ ] Core: duration parsing, cron next-fire (injected clock, time zone), dotted-path lookup,
+- [x] Core: duration parsing, cron next-fire (injected clock, time zone), dotted-path lookup,
       fingerprint, dedup decision; tests TRIGGERS-9, -12..-14, -19..-21.
 - [x] Migration: `trigger_inputs`, `webhook_secrets`, `jobs.trigger`, `jobs.input`.
 - [ ] `TriggerManager`: arm/re-arm on workflow file changes and trust; watcher with settle
