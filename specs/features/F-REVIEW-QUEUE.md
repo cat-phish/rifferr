@@ -137,6 +137,8 @@ Between proposal and decision someone sets the album to `Live!` → accepting gi
 8. `decided_by`: there are no user accounts in M1, so record `ui` for every UI decision
    (S-REVIEW already uses `ui`, `cli`, `timeout`). Resolved (approved 2026-11-13): as recommended — `ui`.
 
+Note (2026-11-13, F-IMPORT-UI): the queue has a third item kind, `import`, with an `import_decision` field (IMPORT-UI-7); `import.requested` and `import.resolved` go on `/api/events`.
+
 ## Tasks
 - [x] read-only worker: `changes.current`
 - [x] routes: queue, ChangeSet detail and current values, decisions, re-propose, gate decision, run decisions, run undo

@@ -73,11 +73,14 @@ Implementation notes (2026-11-13, added while implementing; not new behavior):
 - Gate rejection (`worker.gates.reject_gate_lanes`) settles the run afterwards: requeue if another lane was released meanwhile, keep waiting while lanes wait, otherwise finish it. Every lane rejected ends the run `cancelled` with reason `rejected_at_review` (as REVIEW-8); otherwise LANES-9 applies. Finishing a run this way rejects its leftover proposed ChangeSets and cancels its pending gates. `on_reject: undo` undoes the run's journal entries that touch the gate's albums or their items (`undo_run(..., targets=)`).
 - Re-proposing a conflicted ChangeSet (REVIEW-QUEUE-5) also swaps it in the waiting lane's holds.
 - A gate can still be decided only while its run is `waiting_review` (REVIEW-6 note), not while other lanes of the run are still running. Its lanes wait until then.
+- F-IMPORT-UI (2026-11-13) adds the final lane state `skipped` (IMPORT-UI-17, amends LANES-2): it counts like `done`, and a run whose lanes are all `skipped` ends `succeeded`.
 - API names: `RunDetail.lanes` is the lane list; the counts are `RunSummary.lane_counts`, because `RunDetail` extends `RunSummary` and one field can't be both. `StepState.passes` counts the passes that ran.
 
 ## Interfaces
 ```python
-LaneState = Literal["active", "waiting", "done", "failed", "rejected", "gone", "cancelled"]
+LaneState = Literal[
+    "active", "waiting", "done", "failed", "rejected", "gone", "cancelled", "skipped"
+]
 
 @dataclass
 class Lane:

@@ -198,3 +198,24 @@ def test_IMPORT_UI_3_duplicate_with_ask_becomes_a_question(beets_env: BeetsEnv) 
     ).imported
     assert len(b.query(Selection())) == 2
     del album
+
+
+NEAR = {**EXACT, "album_id": "near", "album": "Fixture Album Live"}
+WEAK_ONLY = "match:\n  strong_rec_thresh: 0.0\n"
+
+
+def test_IMPORT_UI_2_candidates_keep_beets_order(beets_env: BeetsEnv) -> None:
+    b = backend(beets_env, [OTHER, NEAR], WEAK_ONLY)
+    beets_env.inbox_album()
+    (q,) = b.import_folder(beets_env.inbox, "auto", None, run_id=RUN).questions
+    # beets' order (closest first), nothing filtered or rescored.
+    assert [c.id for c in q.candidates] == ["RifferrFixture:near", "RifferrFixture:other"]
+    assert q.candidates[0].distance <= q.candidates[1].distance
+
+
+def test_IMPORT_UI_2_candidates_follow_the_users_match_config(beets_env: BeetsEnv) -> None:
+    # match.ignored drops candidates with an artist penalty: beets filters, not Rifferr.
+    b = backend(beets_env, [OTHER, NEAR], WEAK_ONLY + "  ignored: [artist]\n")
+    beets_env.inbox_album()
+    (q,) = b.import_folder(beets_env.inbox, "auto", None, run_id=RUN).questions
+    assert [c.id for c in q.candidates] == ["RifferrFixture:near"]

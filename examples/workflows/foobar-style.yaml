@@ -27,7 +27,9 @@ steps:
     uses: beets.import
     with:
       path: "{{ run.input }}"
-      mode: quiet
+      # Strong matches import on their own; the rest wait in the review queue as import
+      # decisions, holding only their own album.
+      mode: auto
   # EP / Single from albumtype or the album name, plus the " (EP)" / " (Single)"
   # suffix. Applied without review: the rules are mechanical and every change can be
   # undone from the run page.

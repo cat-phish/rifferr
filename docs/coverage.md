@@ -6,8 +6,8 @@ workflow gains a capability (agent loop step 6).
 
 | # | Checklist line | Workflow step (`id` / `uses:`) | Spec ID | Status |
 |---|---|---|---|---|
-| 1 | `beet import -q` the unsorted folder | `import` / `beets.import` (`mode: quiet`, path `{{ run.input }}`). `on.watch` on `vars.inbox` starts one run per new album folder after 5 minutes without changes; manual runs import the whole inbox (`input:`); albums that wait for review hold only their own lane, the others finish | S-BEETS-IMPORT, F-TRIGGERS, C-LANES | Done (M1); unattended (M2) |
-| 2 | Interactive `beet import`: match albums or skip | — (ambiguous albums wait in review as import decisions) | F-IMPORT-UI | Planned (M2) |
+| 1 | `beet import -q` the unsorted folder | `import` / `beets.import` (`mode: auto`, path `{{ run.input }}`). `on.watch` on `vars.inbox` starts one run per new album folder after 5 minutes without changes; manual runs import the whole inbox (`input:`); albums that wait for review hold only their own lane, the others finish | S-BEETS-IMPORT, F-TRIGGERS, C-LANES | Done (M1); unattended (M2) |
+| 2 | Interactive `beet import`: match albums or skip | `import` / `beets.import` `mode: auto`: albums without a strong match wait in the review queue as import decisions (choose a candidate, search by ID or artist and album, import as-is, or skip); only their own lane waits | F-IMPORT-UI | Done (M2) |
 | 3 | Open the importer in foobar2000 | — (not needed: Rifferr's queue and tag grid replace it) | — | Not applicable |
 | 4 | Delete leftover files and empty folders in the unsorted folder | — | S-FILES-CLEANUP | Planned (M2) |
 | 5 | Fix leftovers' tags by hand and move them to "beets sorted" | Manual edits in the tag grid; the move is not covered yet | F-TAG-GRID | Partly (M1) |

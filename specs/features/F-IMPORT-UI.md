@@ -1,5 +1,5 @@
 # F-IMPORT-UI: Import decisions in the review queue
-Status: Approved
+Status: Implemented
 Milestone: M2
 
 ## Context
@@ -93,6 +93,18 @@ and C-LANES (a `skipped` lane state, IMPORT-UI-17).
 
   An error from IMPORT-UI-11 or -13 MUST be shown on the item with "Look up again". Labels use beets' terms (candidate, as-is, distance, `search_ids`) and link the beets importer docs.
 - IMPORT-UI-16: The run page lane table (LANES-15) MUST show a pending lane's hold as "import decision", linked to the queue item.
+
+Implementation notes (2026-11-13, added while implementing; not new behavior):
+- Questions come back in `ImportResult.questions`, not through the `decide` callback: the backend's import returns them, and the step calls `ctx.request_import` for each. `DecisionCallback` stays in the protocol, reserved. The old `backends.base.ImportDecision` (a per-folder outcome) is renamed `ImportOutcome`; `ImportDecision` is now the stored decision (`core.imports`).
+- `lookup(path, *, ids, artist, album)` returns an `ImportQuestion` rather than a candidate list, so a lookup also refreshes the folder's fingerprint and items. After a plain lookup of a changed folder the decision can be applied again (IMPORT-UI-11: never automatically).
+- The decision body is `{action, candidate_id?, note?}`; for kind `duplicate` the action itself is the duplicate choice (`skip`, `keep`, `remove`, `merge`), so there is no separate `duplicate_action` field. The duplicate's candidate is the match beets found before asking.
+- A duplicate decision has no as-is answer: on timeout it is always skipped, whatever `on_timeout` says. Skipping changes nothing in the library.
+- Decisions are claimed by one worker job at a time (app DB column `claim`). An answer or lookup while a job holds the decision answers `409 busy`; a failed job releases the claim and keeps the error (IMPORT-UI-13).
+- Validation errors answer `400 bad_request`, as every other route (API errors), not `422`.
+- beets 2.14 has no `match.max_candidates`; IMPORT-UI-2's contract test uses `match.strong_rec_thresh` and `match.ignored` instead.
+- The contract tests use a fixture metadata-source plugin (`tests/backends/beets/beetsplug/rifferrfixture.py`, releases from a JSON file) instead of recorded MusicBrainz responses: no network, and the same plugin serves the Playwright test.
+- Lane labels: a pending lane is labelled with the folder name; on import it is renamed to the album id and relabelled `albumartist - album`.
+- Overdue decisions are checked by the same timer as review gates, which also runs at server start-up.
 
 ## Interfaces
 ```yaml
@@ -198,10 +210,10 @@ Strong matches import unattended (line 1); the rest wait as import decisions (li
    `interactive`, and treat `auto` with `import.timid: yes` as `interactive` (IMPORT-UI-1).
 
 ## Tasks
-- [ ] Backend: lookup `ImportSession` with deferral, `import_decided`, `lookup`; capability `import_decisions`; contract tests with recorded MusicBrainz responses (IMPORT-UI-1 to -4, -11).
-- [ ] Engine/step: `ctx.request_import`, `ImportDecisionStore`, pending lanes and holds; step params `decision_timeout`, `on_timeout` (IMPORT-UI-5, -6, -10).
-- [ ] App DB `import_decisions`; worker jobs `import_decision`, `import_lookup`; lane rename, hold resolve and settle (IMPORT-UI-11 to -14).
-- [ ] API routes, queue item kind `import`, events; regenerate schemas and TS client (IMPORT-UI-6 to -9).
-- [ ] Review queue UI for import decisions; run page hold link; Playwright: weak match → search by ID → import → lane continues (IMPORT-UI-15, -16).
-- [ ] `skipped` lane state (IMPORT-UI-17, C-LANES amendment): engine, API `LaneStateOut`, UI colors.
-- [ ] `foobar-style.yaml` uses `mode: auto`; `docs/coverage.md` line 2; S-BEETS-IMPORT and F-REVIEW-QUEUE notes; mark Implemented.
+- [x] Backend: lookup `ImportSession` with deferral, `import_decided`, `lookup`; capability `import_decisions`; contract tests with a fixture metadata source (IMPORT-UI-1 to -4, -11).
+- [x] Engine/step: `ctx.request_import`, `ImportDecisionStore`, pending lanes and holds; step params `decision_timeout`, `on_timeout` (IMPORT-UI-5, -6, -10).
+- [x] App DB `import_decisions`; worker jobs `import_decision`, `import_lookup`; lane rename, hold resolve and settle (IMPORT-UI-11 to -14).
+- [x] API routes, queue item kind `import`, events; regenerate schemas and TS client (IMPORT-UI-6 to -9).
+- [x] Review queue UI for import decisions; run page hold link; Playwright: weak match → search by ID → import → lane continues (IMPORT-UI-15, -16).
+- [x] `skipped` lane state (IMPORT-UI-17, C-LANES amendment): engine, API `LaneStateOut`, UI colors.
+- [x] `foobar-style.yaml` uses `mode: auto`; `docs/coverage.md` line 2; S-BEETS-IMPORT and F-REVIEW-QUEUE notes; mark Implemented.

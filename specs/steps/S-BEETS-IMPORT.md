@@ -91,6 +91,8 @@ beets plugins configured by the user load as usual and affect import and templat
 - ~~Library handle?~~ Resolved 2026-11-11 (author): open per call (BEETS-IMPORT-14); S-BEETS-COMMAND may refine.
 - ~~Version range?~~ Resolved 2026-11-11 (author): `>=2.14,<2.15`; bumps start with the contract tests.
 
+Note (2026-11-13, F-IMPORT-UI): `mode` now accepts `quiet`, `auto` and `interactive`, and defaults to `auto` (IMPORT-UI-1); `duplicate_action: ask` makes duplicates import decisions outside quiet mode (IMPORT-UI-3). New params `decision_timeout` and `on_timeout` (IMPORT-UI-10); output `decisions`.
+
 ## Tasks
 - [x] config + plugin loading module and contract tests
 - [x] snapshot conversion
