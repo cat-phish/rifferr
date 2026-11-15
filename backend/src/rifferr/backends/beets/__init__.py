@@ -61,11 +61,18 @@ CAPABILITIES = BackendCapabilities(
     cli=True,
     import_decisions=True,
     files=True,
+    remove=True,
 )
 
 
 READ_ONLY_CAPABILITIES = CAPABILITIES.model_copy(
-    update={"import_": False, "apply": False, "cli": False, "import_decisions": False}
+    update={
+        "import_": False,
+        "apply": False,
+        "cli": False,
+        "import_decisions": False,
+        "remove": False,
+    }
 )
 
 
@@ -269,6 +276,21 @@ class BeetsBackend:
             if problems:
                 raise ChangeSetRejected(problems)
             return changes_apply.apply(lib, changes, write_tags=self.write_tags)
+
+    def remove_album(self, album_id: str, *, delete_files: bool) -> list[str]:
+        """beets' ``Album.remove``: with ``delete`` it deletes the files and art and
+        prunes emptied folders up to the library directory."""
+        self._writable("remove albums")
+        kind, number = parse_id(album_id)
+        if kind != "album":
+            raise KeyError(album_id)
+        with self.library() as lib:
+            album = lib.get_album(number)
+            if album is None:
+                raise KeyError(album_id)
+            paths = [os.fsdecode(item.path) for item in album.items()]
+            album.remove(delete=delete_files, with_items=True)
+        return paths if delete_files else []
 
     # -- import ----------------------------------------------------------------
 

@@ -37,6 +37,7 @@ from rifferr.appdb import (
     AppReviewGates,
     CleanupBusyError,
     CleanupResolvedError,
+    GateAlbumsError,
     GateResolvedError,
     ImportBusyError,
     ImportResolvedError,
@@ -232,13 +233,18 @@ async def repropose(changeset_id: str, state: State) -> JobQueued:
 
 @router.post("/reviews/{gate_id}/decision", response_model=ReviewGate, responses=ERROR_RESPONSES)
 async def decide_gate(gate_id: str, body: GateDecisionBody, state: State) -> ReviewGate:
-    """Continue or reject a review gate (REVIEW-QUEUE-6, S-REVIEW REVIEW-6 .. -8)."""
+    """Continue or reject a review gate (REVIEW-QUEUE-6, S-REVIEW REVIEW-6 .. -8), or only
+    some of its albums (DASHBOARD-11)."""
     try:
-        await state.supervisor.decide_gate(gate_id, body.decision, by=DECIDER, note=body.note)
+        await state.supervisor.decide_gate(
+            gate_id, body.decision, by=DECIDER, note=body.note, albums=body.albums
+        )
     except KeyError:
         raise not_found(f"review gate {gate_id}") from None
     except GateResolvedError as exc:
         raise ApiError(409, "already_resolved", str(exc)) from None
+    except GateAlbumsError as exc:  # DASHBOARD-11
+        raise ApiError(400, "bad_request", str(exc)) from None
     except ValueError as exc:
         raise ApiError(409, "not_waiting", str(exc)) from None
     gate = AppReviewGates(state.db).get(gate_id)

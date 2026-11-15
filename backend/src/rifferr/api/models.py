@@ -384,6 +384,11 @@ class ImportLookupBody(_Model):
 class GateDecisionBody(_Model):
     decision: Literal["continue", "reject"]
     note: str | None = Field(default=None, max_length=2000)
+    albums: list[str] | None = Field(
+        default=None,
+        min_length=1,
+        description="Decide only these albums' lanes; the others keep waiting (DASHBOARD-11)",
+    )
 
 
 class RunDecision(_Model):
@@ -427,3 +432,63 @@ class HookAccepted(_Model):
     run_id: str | None = None
     skipped: str | None = None
     ignored: str | None = None
+
+
+# -- dashboard (F-DASHBOARD) ---------------------------------------------------------
+
+InboxStateOut = Literal[
+    "settling",
+    "waiting",
+    "running",
+    "waiting_review",
+    "imported",
+    "failed",
+    "changed",
+    "undone",
+    "outside",
+]
+
+
+class InboxEntry(_Model):
+    path: str = Field(description="Relative to the watched folder")
+    state: InboxStateOut
+    changed_at: datetime | None = Field(description="Last change, while settling")
+    run_id: str | None = Field(description="The input's last run")
+
+
+class InboxFolder(_Model):
+    """One watch trigger's folder and its inputs (DASHBOARD-1)."""
+
+    workflow: str
+    folder: str
+    trigger_state: Literal["armed", "disabled", "error"]
+    detail: str | None
+    entries: list[InboxEntry]
+    omitted: int = Field(description="Inputs left out beyond the listing cap (DASHBOARD-2)")
+
+
+class ImportedAlbum(_Model):
+    id: str
+    label: str
+    items: int
+    undoable: bool
+    reason: str | None = Field(description="Why it can't be undone now")
+    deletes_files: bool = Field(description="Whether undo deletes its files (DASHBOARD-18)")
+    files_at: str | None = Field(description="The album's folder")
+
+
+class RecentImport(_Model):
+    """A run that imported albums still in the library (DASHBOARD-6)."""
+
+    run_id: str
+    workflow: str | None
+    input: str | None
+    state: JobState
+    finished_at: datetime | None
+    albums: list[ImportedAlbum]
+
+
+class ImportUndoBody(_Model):
+    albums: list[str] | None = Field(
+        default=None, min_length=1, description="Album ids; all of the run's when absent"
+    )

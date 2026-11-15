@@ -89,6 +89,7 @@ DEFAULT_CAPABILITIES = BackendCapabilities(
     cli=True,
     import_decisions=True,
     files=True,
+    remove=True,
 )
 #: Suffixes a FakeBackend treats as importable music (tests only; not engine policy).
 FAKE_IMPORTABLE = frozenset({".flac", ".mp3", ".ogg", ".opus", ".m4a", ".wav"})
@@ -192,6 +193,10 @@ class FakeBackend:
         self.music_dirs: list[Path] = []
         """What ``library_dirs`` returns."""
         self.importable_suffixes: frozenset[str] = FAKE_IMPORTABLE
+        self.removed: list[tuple[str, bool]] = []
+        """(album id, delete_files) per ``remove_album`` call."""
+        self.deleted: list[str] = []
+        """Paths ``remove_album`` would have deleted."""
         """Message ``lookup`` and ``import_decided`` fail with (network errors)."""
 
     # -- building ------------------------------------------------------------
@@ -232,9 +237,20 @@ class FakeBackend:
         self._albums.append(album)
         return _album_snapshot(album)
 
-    def remove_album(self, album_id: str) -> None:
-        """Drop an album, as ``beet remove`` would (tests for LANES-12)."""
+    def remove_album(self, album_id: str, *, delete_files: bool = False) -> list[str]:
+        """Drop an album, as ``beet remove`` would (LANES-12, DASHBOARD-7). With
+        ``delete_files`` the item paths are returned and recorded in ``deleted``; no
+        real file is touched."""
+        album = next((a for a in self._albums if a.id == album_id), None)
+        if album is None:
+            raise KeyError(album_id)
         self._albums = [a for a in self._albums if a.id != album_id]
+        self.removed.append((album_id, delete_files))
+        if not delete_files:
+            return []
+        paths = [item.path for item in album.items]
+        self.deleted.extend(paths)
+        return paths
 
     def add_import_fixture(
         self,

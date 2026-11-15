@@ -45,6 +45,7 @@ JobKind = Literal[
     "import_decision",
     "import_lookup",
     "cleanup_apply",
+    "import_undo",
 ]
 
 #: ChangeSet states that still hold a suspended run (CHANGESET-7).
@@ -671,6 +672,10 @@ class GateResolvedError(ValueError):
         super().__init__(f"review gate {gate_id} is already {state}")
 
 
+class GateAlbumsError(ValueError):
+    """Albums named in a gate decision that can't be decided on their own (DASHBOARD-11)."""
+
+
 class AppReviewGates:
     """``GateStore`` backed by the ``review_gates`` table (S-REVIEW)."""
 
@@ -751,6 +756,36 @@ class AppReviewGates:
             raise GateResolvedError(gate_id, gate.state)
         return gate
 
+    def decide_albums(
+        self, gate_id: str, albums: Iterable[str], state: Literal["continued", "rejected"]
+    ) -> ReviewGate:
+        """Record a decision for some of a pending gate's albums (DASHBOARD-11). Raises
+        ``KeyError`` for an unknown gate, ``GateResolvedError`` when it isn't pending,
+        and ``ValueError`` for an album that isn't the gate's or was already decided."""
+        with self._conn:
+            self._conn.execute("BEGIN IMMEDIATE")
+            row = self._conn.execute(
+                "SELECT * FROM review_gates WHERE id = ?", (gate_id,)
+            ).fetchone()
+            if row is None:
+                raise KeyError(gate_id)
+            gate = self._gate(row)
+            if gate.state != "pending":
+                raise GateResolvedError(gate_id, gate.state)
+            decisions = dict(gate.album_decisions)
+            known = {a.target.id for a in gate.albums}
+            for album in albums:
+                if album not in known:
+                    raise ValueError(f"album {album} is not at gate {gate_id}")
+                if album in decisions:
+                    raise ValueError(f"album {album} is already {decisions[album]}")
+                decisions[album] = state
+            self._conn.execute(
+                "UPDATE review_gates SET album_decisions = ? WHERE id = ?",
+                (json.dumps(decisions), gate_id),
+            )
+        return gate.model_copy(update={"album_decisions": decisions})
+
     def cancel(self, gate_id: str) -> bool:
         """Cancel one pending gate (its albums' lanes ended another way)."""
         cur = self._conn.execute(
@@ -778,6 +813,7 @@ class AppReviewGates:
                 "decided_at": datetime.fromisoformat(decided) if decided else None,
                 "decided_by": row["decided_by"],
                 "note": row["note"],
+                "album_decisions": json.loads(row["album_decisions"] or "{}"),
             }
         )
 
@@ -1154,14 +1190,47 @@ class AppTriggers:
     def record(self, profile: str, workflow: str, input_path: str) -> DedupRecord | None:
         """The last run for this input of ``workflow``, with that run's current state."""
         row = self._conn.execute(
-            "SELECT t.fingerprint, t.run_id, j.state FROM trigger_inputs t"
+            "SELECT t.fingerprint, t.run_id, t.undone_at, j.state FROM trigger_inputs t"
             " LEFT JOIN jobs j ON j.run_id = t.run_id AND j.kind = 'run'"
             " WHERE t.profile = ? AND t.workflow = ? AND t.input_path = ?",
             (profile, workflow, input_path),
         ).fetchone()
         if row is None:
             return None
-        return DedupRecord(row["fingerprint"], row["run_id"], row["state"])
+        return DedupRecord(
+            row["fingerprint"], row["run_id"], row["state"], row["undone_at"] is not None
+        )
+
+    def records(self, profile: str, workflow: str) -> dict[str, DedupRecord]:
+        """Every input of ``workflow`` with its last run (the inbox, DASHBOARD-1)."""
+        rows = self._conn.execute(
+            "SELECT t.input_path, t.fingerprint, t.run_id, t.undone_at, j.state"
+            " FROM trigger_inputs t"
+            " LEFT JOIN jobs j ON j.run_id = t.run_id AND j.kind = 'run'"
+            " WHERE t.profile = ? AND t.workflow = ?",
+            (profile, workflow),
+        ).fetchall()
+        return {
+            r["input_path"]: DedupRecord(
+                r["fingerprint"], r["run_id"], r["state"], r["undone_at"] is not None
+            )
+            for r in rows
+        }
+
+    def run_input(self, run_id: str) -> tuple[str, str] | None:
+        """``(input_path, fingerprint)`` recorded when ``run_id`` started, while it is
+        still the input's last run (DASHBOARD-18)."""
+        row = self._conn.execute(
+            "SELECT input_path, fingerprint FROM trigger_inputs WHERE run_id = ?", (run_id,)
+        ).fetchone()
+        return (row["input_path"], row["fingerprint"]) if row else None
+
+    def mark_undone(self, run_id: str) -> bool:
+        """The run's import was undone (DASHBOARD-9); the record stays."""
+        cur = self._conn.execute(
+            "UPDATE trigger_inputs SET undone_at = ? WHERE run_id = ?", (_now(), run_id)
+        )
+        return cur.rowcount > 0
 
     def remember(
         self, profile: str, workflow: str, input_path: str, fingerprint: str, run_id: str
@@ -1171,7 +1240,7 @@ class AppTriggers:
             " updated_at) VALUES (?, ?, ?, ?, ?, ?)"
             " ON CONFLICT (profile, workflow, input_path) DO UPDATE SET"
             " fingerprint = excluded.fingerprint, run_id = excluded.run_id,"
-            " updated_at = excluded.updated_at",
+            " updated_at = excluded.updated_at, undone_at = NULL",
             (profile, workflow, input_path, fingerprint, run_id, _now()),
         )
 
@@ -1269,6 +1338,28 @@ class AppLanes:
                         now,
                     ),
                 )
+
+    def drop_hold(self, run_id: str, keys: Iterable[str], ref: str) -> list[str]:
+        """Remove the hold ``ref`` from waiting lanes ``keys`` (a gate continued for those
+        albums only, DASHBOARD-11). Returns the keys it was removed from."""
+        dropped: list[str] = []
+        with self._conn:
+            self._conn.execute("BEGIN IMMEDIATE")
+            for key in keys:
+                row = self._conn.execute(
+                    "SELECT holds FROM run_lanes WHERE run_id = ? AND key = ?"
+                    " AND state = 'waiting'",
+                    (run_id, key),
+                ).fetchone()
+                if row is None:
+                    continue
+                holds = [h for h in json.loads(row["holds"]) if _hold(h).ref != ref]
+                self._conn.execute(
+                    "UPDATE run_lanes SET holds = ?, updated_at = ? WHERE run_id = ? AND key = ?",
+                    (json.dumps(holds), _now(), run_id, key),
+                )
+                dropped.append(key)
+        return dropped
 
     def rename(self, run_id: str, old: str, new: str, label: str | None = None) -> None:
         """LANES-14: keep position, holds and history; optionally a new label."""
@@ -1507,3 +1598,93 @@ def _job(row: sqlite3.Row) -> Job:
     data["payload"] = json.loads(data["payload"])
     data["result"] = json.loads(data["result"]) if data.get("result") else None
     return Job.model_validate(data)
+
+
+class AlbumRemoval(BaseModel):
+    """Write-ahead record of one album removed by an import undo (DASHBOARD-8)."""
+
+    id: str
+    profile: str
+    run_id: str
+    album_id: str
+    label: str
+    delete_files: bool
+    state: Literal["pending", "removed", "failed"]
+    deleted: list[str] = []
+    error: str | None = None
+    created_at: datetime
+    completed_at: datetime | None = None
+
+
+class AppRemovals:
+    """``album_removals``: written before an album is removed, completed after."""
+
+    def __init__(self, db: AppDB) -> None:
+        self.db = db
+
+    @property
+    def _conn(self) -> sqlite3.Connection:
+        return self.db._conn  # pyright: ignore[reportPrivateUsage]
+
+    def begin(
+        self, profile: str, run_id: str, album_id: str, label: str, delete_files: bool
+    ) -> AlbumRemoval:
+        removal = AlbumRemoval(
+            id=new_ulid(),
+            profile=profile,
+            run_id=run_id,
+            album_id=album_id,
+            label=label,
+            delete_files=delete_files,
+            state="pending",
+            created_at=datetime.now(UTC),
+        )
+        self._conn.execute(
+            "INSERT INTO album_removals (id, profile, run_id, album_id, label, delete_files,"
+            " state, created_at) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)",
+            (
+                removal.id,
+                profile,
+                run_id,
+                album_id,
+                label,
+                int(delete_files),
+                removal.created_at.isoformat(),
+            ),
+        )
+        return removal
+
+    def finish(
+        self,
+        removal_id: str,
+        state: Literal["removed", "failed"],
+        *,
+        deleted: list[str] | None = None,
+        error: str | None = None,
+    ) -> None:
+        self._conn.execute(
+            "UPDATE album_removals SET state = ?, deleted = ?, error = ?, completed_at = ?"
+            " WHERE id = ?",
+            (state, json.dumps(deleted or []), error, _now(), removal_id),
+        )
+
+    def pending(self, profile: str) -> list[AlbumRemoval]:
+        rows = self._conn.execute(
+            "SELECT * FROM album_removals WHERE profile = ? AND state = 'pending'"
+            " ORDER BY created_at, id",
+            (profile,),
+        ).fetchall()
+        return [_removal(r) for r in rows]
+
+    def for_run(self, run_id: str) -> list[AlbumRemoval]:
+        rows = self._conn.execute(
+            "SELECT * FROM album_removals WHERE run_id = ? ORDER BY created_at, id", (run_id,)
+        ).fetchall()
+        return [_removal(r) for r in rows]
+
+
+def _removal(row: sqlite3.Row) -> AlbumRemoval:
+    data = dict(row)
+    data["delete_files"] = bool(data["delete_files"])
+    data["deleted"] = json.loads(data["deleted"])
+    return AlbumRemoval.model_validate(data)

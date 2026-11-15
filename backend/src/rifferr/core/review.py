@@ -61,6 +61,14 @@ class ReviewGate(BaseModel):
     decided_by: str | None = None
     """``"ui"``, ``"cli"``, a user, or ``"timeout"``."""
     note: str | None = None
+    album_decisions: dict[str, Literal["continued", "rejected"]] = Field(
+        default_factory=dict[str, Literal["continued", "rejected"]],
+        description="Albums decided on their own while the gate is pending (DASHBOARD-11)",
+    )
+
+    def undecided(self) -> list[str]:
+        """Album ids not decided on their own yet, in the gate's order."""
+        return [a.target.id for a in self.albums if a.target.id not in self.album_decisions]
 
 
 class GateRequest(BaseModel):

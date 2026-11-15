@@ -25,6 +25,7 @@ REVIEW_EVENTS = frozenset(
         "run.resumed",
         "review.requested",
         "review.resolved",
+        "review.decided",
         "import.requested",
         "import.resolved",
         "cleanup.requested",
@@ -40,7 +41,9 @@ def on_all_stream(event: Event) -> bool:
     """Whether ``GET /api/events`` carries ``event`` (API-9, REVIEW-QUEUE-10): run-level
     and review-level events and the ``changeset.*`` events of runs, plus the
     ``trigger.*`` events of profile streams (TRIGGERS-24) and ``lane.*`` (LANES-2)."""
-    if event.type.startswith(("trigger.", "notify.")):  # TRIGGERS-24, S-NOTIFY NOTIFY-4
+    if event.type.startswith(
+        ("trigger.", "notify.", "inbox.")
+    ):  # TRIGGERS-24, NOTIFY-4, DASHBOARD-15
         return True
     if event.run_id.startswith(PROFILE_STREAM_PREFIX):
         return False

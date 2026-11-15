@@ -22,6 +22,7 @@ from rifferr.backends.base import LibraryBackend, QueryError
 from rifferr.core.changeset import ChangeSet
 from rifferr.core.profile import Profile
 from rifferr.core.selection import Selection
+from rifferr.core.snapshot import label
 from rifferr.core.workflow.errors import ValidationError
 from rifferr.core.workflow.interpolation import (
     InterpolationContext,
@@ -231,6 +232,8 @@ class ReadOnlyWorker:
             except QueryError as exc:
                 raise RequestFailed("bad_query", str(exc)) from None
             return {"targets": [t.model_dump(mode="json") for t in targets]}
+        if kind == "imports.recent":  # F-DASHBOARD DASHBOARD-6
+            return recent_albums(self.backend, request)
         raise RequestFailed("bad_request", f"unknown request kind {kind!r}")
 
     def _reply(
@@ -250,3 +253,32 @@ class ReadOnlyWorker:
 
     def _error(self, message: str) -> None:
         self.send(WorkerMessage(kind="error", message=message))
+
+
+def recent_albums(backend: LibraryBackend, request: dict[str, JsonValue]) -> dict[str, JsonValue]:
+    """The albums each of ``payload.run_ids`` imported (their ``RUN_MARKER``), with their
+    files, and the library folders (DASHBOARD-6, -18)."""
+    payload = request.get("payload")
+    run_ids = payload.get("run_ids") if isinstance(payload, dict) else None
+    if not isinstance(run_ids, list) or not all(isinstance(r, str) for r in run_ids):
+        raise RequestFailed("bad_request", "imports.recent needs run_ids: a list of run ids")
+    runs: dict[str, JsonValue] = {}
+    for run_id in run_ids:
+        assert isinstance(run_id, str)
+        try:
+            albums = backend.query(Selection(run_id=run_id))
+        except QueryError as exc:
+            raise RequestFailed("bad_query", str(exc)) from None
+        runs[run_id] = [
+            {
+                "id": a.id,
+                "label": label(a),
+                "path": a.path,
+                "items": [i.path for i in a.items],
+            }
+            for a in albums
+        ]
+    dirs: list[JsonValue] = (
+        [str(d) for d in backend.library_dirs()] if backend.capabilities.files else []
+    )
+    return {"runs": runs, "library_dirs": dirs}

@@ -76,6 +76,7 @@ from rifferr.steps.files_cleanup import apply_reviewed, outcome_counts
 from rifferr.steps.registry import load_step_types
 from rifferr.worker.cleanup import busy_folders
 from rifferr.worker.gates import gate_albums, reject_gate_lanes, settle
+from rifferr.worker.import_undo import recover_removals, undo_import
 from rifferr.worker.protocol import HEARTBEAT_INTERVAL, WorkerCommand, WorkerMessage, encode
 from rifferr.workflow_calls import stored_calls
 
@@ -256,6 +257,12 @@ class Worker:
         for entry in settled:
             note = " (uncertain: needs review)" if entry.uncertain else ""
             log.warning("recovered journal entry %s: %s%s", entry.id, entry.state, note)
+        if self.backend.capabilities.remove:
+            try:
+                for removal in recover_removals(self.db, self.backend, self.profile.name):
+                    log.warning("settled interrupted album removal %s", removal)
+            except Exception:
+                log.exception("album removal recovery failed")
 
     def _next_seq(self, run_id: str) -> int:
         return max(self.db.last_seq(run_id), self._sent.get(run_id, 0)) + 1
@@ -284,6 +291,9 @@ class Worker:
             return
         if job.kind == "cleanup_apply":
             self._apply_cleanup(job)
+            return
+        if job.kind == "import_undo":
+            self._undo_import(job)
             return
         payload = job.payload
         source = str(payload.get("source", ""))
@@ -693,6 +703,40 @@ class Worker:
         error = f"undo stopped at journal entry {stopped}" if stopped else None
         self._finish_job(job, "failed" if stopped else "succeeded", error, result)
 
+    # -- import undo (F-DASHBOARD DASHBOARD-7 .. -9) --------------------------------
+
+    def _undo_import(self, job: Job) -> None:
+        payload = job.payload
+        by = payload.get("by")
+        run_id = payload.get("run_id")
+        albums = payload.get("albums")
+        ctx = UndoContext(
+            backend=self.backend,
+            journal=self.journal,
+            store=self.changesets,
+            new_id=new_ulid,
+            now=lambda: datetime.now(UTC),
+            emitter_for=self._changeset_emitter,
+            by=by if isinstance(by, str) else None,
+        )
+        try:
+            if not isinstance(run_id, str):
+                raise ValueError("an import undo job needs run_id")
+            wanted = [str(a) for a in albums] if isinstance(albums, list) else None
+            result, error = undo_import(
+                self.db,
+                self.backend,
+                ctx,
+                profile=self.profile.name,
+                run_id=run_id,
+                albums=wanted,
+            )
+        except Exception as exc:
+            log.warning("import undo failed: %s", exc)
+            self._finish_job(job, "failed", f"{type(exc).__name__}: {exc}")
+            return
+        self._finish_job(job, "failed" if error else "succeeded", error, result)
+
     # -- manual edits (TAG-GRID-8) ------------------------------------------------
 
     def _apply_manual(self, job: Job) -> None:
@@ -779,7 +823,9 @@ class Worker:
             by=by if isinstance(by, str) else None,
         )
         result: dict[str, JsonValue] = {}
-        targets = self._gate_targets(run_id, gate)
+        chosen = job.payload.get("albums")
+        albums = [str(a) for a in chosen] if isinstance(chosen, list) else None
+        targets = self._gate_targets(run_id, gate, albums)
         try:
             outcome = undo_run(run_id, ctx, targets=targets)
             result = outcome.as_json()
@@ -813,16 +859,19 @@ class Worker:
             self._changeset_emitter(run_id, step)(type, data)
 
         if gate is not None:
-            reject_gate_lanes(self.db, gate, emit)
+            reject_gate_lanes(self.db, gate, emit, albums=albums)
         stopped_at = result.get("stopped_at") if isinstance(result, dict) else None
         error = f"undo stopped at journal entry {stopped_at}" if stopped_at else None
         self.db.finish_job(job.id, "failed" if error else "succeeded", error, result)
 
-    def _gate_targets(self, run_id: str, gate: ReviewGate | None) -> set[str] | None:
-        """The gate's albums and their items, when the run has lanes (LANES-11)."""
+    def _gate_targets(
+        self, run_id: str, gate: ReviewGate | None, chosen: list[str] | None = None
+    ) -> set[str] | None:
+        """The gate's albums (or ``chosen`` of them, DASHBOARD-11) and their items, when
+        the run has lanes (LANES-11)."""
         if gate is None or not self.lanes.load(run_id):
             return None
-        albums = gate_albums(gate)
+        albums = gate_albums(gate) if chosen is None else chosen
         targets = set(albums)
         try:
             for album in self.backend.query(Selection(run_id=run_id, album_ids=tuple(albums))):

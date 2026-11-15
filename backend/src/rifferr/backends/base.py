@@ -87,6 +87,8 @@ class BackendCapabilities(BaseModel):
     files: bool = False
     """``library_files``, ``library_dirs`` and ``importable`` answer which files and
     folders the library owns or could import (S-FILES-CLEANUP FILES-CLEANUP-12, -17)."""
+    remove: bool = False
+    """``remove_album`` removes an album from the library (F-DASHBOARD DASHBOARD-7)."""
 
     @staticmethod
     def display_name(field: str) -> str:
@@ -249,6 +251,16 @@ class LibraryBackend(Protocol):
     def importable(self, paths: Sequence[Path]) -> set[Path]:
         """Which of ``paths`` the backend could import as music (``files``): for beets,
         files its tag library recognizes, even when they fail to read."""
+        ...
+
+    def remove_album(self, album_id: str, *, delete_files: bool) -> list[str]:
+        """Remove the album and its items from the library (``remove``, DASHBOARD-7).
+
+        With ``delete_files`` its files are deleted too, and folders left empty inside
+        the library folders are removed; returns the deleted files' paths. Raises
+        ``KeyError`` for an unknown album. Only the worker's import undo calls this,
+        after journaling the removal (DASHBOARD-8).
+        """
         ...
 
     def cli_command(self, subcommand: str, args: list[str], selection: Selection) -> list[str]:

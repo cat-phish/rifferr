@@ -20,7 +20,7 @@ import logging
 import os
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, tzinfo
+from datetime import UTC, datetime, timedelta, tzinfo
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
@@ -28,7 +28,15 @@ from pydantic import JsonValue
 
 from rifferr.appdb import AppDB, AppTriggers
 from rifferr.core.profile import Profile, ProfileError, ProfileLoadError, merged_vars
-from rifferr.core.triggers import SettleTracker, SkipReason, dedup_skip, parse_duration, top_level
+from rifferr.core.triggers import (
+    InboxState,
+    SettleTracker,
+    SkipReason,
+    dedup_skip,
+    inbox_state,
+    parse_duration,
+    top_level,
+)
 from rifferr.core.workflow import (
     CALL_TYPE,
     WORKFLOW_SUFFIXES,
@@ -110,6 +118,49 @@ class Armed:
     tasks: list[asyncio.Task[None]] = field(default_factory=list[asyncio.Task[None]])
     retry_at: float | None = None
     """Monotonic time to re-arm at (a missing watch path, TRIGGERS-3)."""
+    tracker: SettleTracker | None = None
+    """The watch trigger's settling candidates (the inbox, F-DASHBOARD DASHBOARD-1)."""
+
+
+#: Inputs listed per watched folder (DASHBOARD-2).
+INBOX_LIMIT = 200
+
+
+def _list_inputs(root: Path, limit: int) -> tuple[list[tuple[str, bool, str | None]], int] | None:
+    """``(name, inside the folder, fingerprint)`` of the first ``limit`` candidate inputs
+    and how many were left out; ``None`` if the folder can't be read. A symbolic link out
+    of the folder is not followed (DASHBOARD-2)."""
+    try:
+        real_root = root.resolve(strict=True)
+        names = sorted(e.name for e in root.iterdir() if e.is_dir())
+    except OSError:
+        return None
+    entries: list[tuple[str, bool, str | None]] = []
+    for name in names[:limit]:
+        path = root / name
+        if not path.resolve().is_relative_to(real_root):
+            entries.append((name, False, None))
+        else:
+            entries.append((name, True, fs.input_fingerprint(path)))
+    return entries, max(0, len(names) - limit)
+
+
+@dataclass(frozen=True)
+class InboxItem:
+    path: str
+    state: InboxState
+    changed_at: datetime | None
+    run_id: str | None
+
+
+@dataclass
+class InboxFolder:
+    workflow: str
+    folder: str
+    trigger_state: StateName
+    detail: str | None
+    entries: list[InboxItem] = field(default_factory=list[InboxItem])
+    omitted: int = 0
 
 
 @dataclass(frozen=True)
@@ -316,6 +367,7 @@ class TriggerManager:
         polling = spec.poll is not None or self.env.get(FORCE_POLLING_ENV) == "1"
         poll_ms = int(parse_duration(spec.poll) * 1000) if spec.poll else 30_000
         tracker = SettleTracker(parse_duration(spec.settle))
+        armed.tracker = tracker
         now = self.monotonic()
         for entry in sorted(path.iterdir()):  # TRIGGERS-11: start-up scan
             if entry.is_dir():
@@ -371,11 +423,15 @@ class TriggerManager:
                         loose_since = now  # TRIGGERS-8: a loose file in the watch folder
                         continue
                     tracker.touch(top, now)
+                    if not pending:  # started settling (DASHBOARD-15)
+                        self._inbox_changed(armed, root / top)
                 for name in tracker.due(now):
                     folder = root / name
                     if not folder.is_dir() or not await asyncio.to_thread(fs.has_files, folder):
+                        self._inbox_changed(armed, folder)
                         continue  # TRIGGERS-9: gone or empty
                     await self.fire(armed, "watch", str(folder))
+                    self._inbox_changed(armed, folder)
                 if loose_since is not None and now - loose_since >= tracker.settle:
                     loose_since = None
                     self._emit(
@@ -555,6 +611,37 @@ class TriggerManager:
         if run_id is not None:
             data["run_id"] = run_id
         self._emit(armed.profile, "trigger.skipped", data)
+
+    def _inbox_changed(self, armed: Armed, path: Path) -> None:
+        self._emit(armed.profile, "inbox.changed", {"workflow": armed.name, "path": str(path)})
+
+    async def inbox(self, profile: str, *, limit: int = INBOX_LIMIT) -> list[InboxFolder]:
+        """Each watch trigger's folder and its candidate inputs (DASHBOARD-1, -2). The
+        folders are read off the event loop; the app DB on it."""
+        out: list[InboxFolder] = []
+        mono, wall = self.monotonic(), self.now()
+        for (p, _), armed in sorted(self.armed.items()):
+            info = armed.triggers.get("watch")
+            if p != profile or info is None or armed.watch_path is None:
+                continue
+            folder = InboxFolder(armed.name, str(armed.watch_path), info.state, info.detail)
+            out.append(folder)
+            listed = await asyncio.to_thread(_list_inputs, armed.watch_path, limit)
+            if listed is None:
+                continue
+            entries, folder.omitted = listed
+            records = self.store.records(profile, armed.name)
+            for name, inside, current in entries:
+                record = records.get(str(armed.watch_path / name))
+                if not inside:
+                    folder.entries.append(InboxItem(name, "outside", None, None))
+                    continue
+                last = armed.tracker.last(name) if armed.tracker is not None else None
+                changed = wall - timedelta(seconds=mono - last) if last is not None else None
+                state = inbox_state(record, current, settling=last is not None)
+                run_id = record.run_id if record is not None else None
+                folder.entries.append(InboxItem(name, state, changed, run_id))
+        return out
 
     def _emit_error(self, armed: Armed, kind: Kind | None, message: str) -> None:
         self._emit(

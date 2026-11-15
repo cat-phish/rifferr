@@ -28,6 +28,7 @@ from rifferr.appdb import (
     AppJournal,
     AppLanes,
     AppReviewGates,
+    GateAlbumsError,
     GateResolvedError,
     Job,
 )
@@ -277,6 +278,32 @@ class WorkerSupervisor:
         await self._wake(profile)
         return job.id
 
+    async def import_undo(
+        self, run_id: str, *, albums: list[str] | None = None, by: str | None = None
+    ) -> str:
+        """Queue the undo of a run's import (F-DASHBOARD DASHBOARD-7) as a worker job.
+
+        Raises ``KeyError`` for an unknown run and ``ValueError`` while it is queued or
+        running, or when ``albums`` is given but empty.
+        """
+        if self._shutting_down:
+            raise RuntimeError("server is shutting down")
+        job = self.db.job_for_run(run_id)
+        if job is None:
+            raise KeyError(run_id)
+        if job.state in ("queued", "running"):
+            raise ValueError(f"run {run_id} is {job.state}; undo its import once it has stopped")
+        if albums is not None and not albums:
+            raise ValueError("no albums to remove")
+        payload: dict[str, JsonValue] = {
+            "run_id": run_id,
+            "albums": list[JsonValue](albums) if albums is not None else None,
+            "by": by,
+        }
+        undo = self.db.submit_job(job.profile, "import_undo", payload, run_id)
+        await self._wake(job.profile)
+        return undo.id
+
     async def apply_manual(
         self, profile: str, changesets: list[ChangeSet], *, by: str | None = None
     ) -> tuple[str, list[str]]:
@@ -311,14 +338,18 @@ class WorkerSupervisor:
         *,
         by: str | None = None,
         note: str | None = None,
+        albums: list[str] | None = None,
     ) -> None:
-        """Decide a pending review gate, exactly once (REVIEW-6 .. -8).
+        """Decide a pending review gate, exactly once per album (REVIEW-6 .. -8).
 
         ``continue`` needs no worker job: the run is queued to resume once nothing else
         holds it (REVIEW-12). ``reject`` ends the run here (``on_reject: stop``) or
-        queues a worker job that undoes the run's changes first (``undo``). Raises
-        ``KeyError`` for an unknown gate, ``GateResolvedError`` when it was already
-        decided or cancelled, and ``ValueError`` while its run isn't waiting yet.
+        queues a worker job that undoes the run's changes first (``undo``). With
+        ``albums`` only those albums' lanes are decided; the gate stays pending until
+        every album is (DASHBOARD-11). Raises ``KeyError`` for an unknown gate,
+        ``GateResolvedError`` when it was already decided or cancelled, ``GateAlbumsError``
+        for albums that aren't undecided albums of the gate, and ``ValueError`` while
+        its run isn't waiting yet.
         """
         if self._shutting_down:
             raise RuntimeError("server is shutting down")
@@ -332,29 +363,56 @@ class WorkerSupervisor:
         if job is None or job.state != "waiting_review":
             state = job.state if job is not None else "missing"
             raise ValueError(f"run {gate.run_id} is {state}; the gate can't be decided yet")
-        decided = gates.decide(
-            gate_id, "continued" if decision == "continue" else "rejected", by=by, note=note
+        undecided = gate.undecided()
+        targets = list(dict.fromkeys(albums)) if albums is not None else undecided
+        if albums is not None:
+            wrong = [a for a in targets if a not in undecided]
+            if wrong:
+                raise GateAlbumsError(f"not undecided albums of gate {gate_id}: {', '.join(wrong)}")
+            if set(targets) != set(undecided) and not AppLanes(self.db).load(gate.run_id):
+                raise GateAlbumsError("this run has no lanes; decide the whole gate")
+        final = set(targets) == set(undecided)
+        verdict: Literal["continued", "rejected"] = (
+            "continued" if decision == "continue" else "rejected"
         )
+        if albums is not None or gate.album_decisions:
+            gates.decide_albums(gate_id, targets, verdict)
         data: dict[str, JsonValue] = {
             "gate_id": gate_id,
             "decision": decision,
             "decided_by": by,
-            "decided_at": decided.decided_at.isoformat() if decided.decided_at else None,
+            "albums": list[JsonValue](targets),
         }
         if note is not None:
             data["note"] = note
-        self._emit_run(gate.run_id, "review.resolved", gate.step_id, data)
+        if final:
+            decided = gates.decide(gate_id, verdict, by=by, note=note)
+            data["decided_at"] = decided.decided_at.isoformat() if decided.decided_at else None
+            self._emit_run(gate.run_id, "review.resolved", gate.step_id, data)
+        else:
+            decided = gates.get(gate_id) or gate
+            self._emit_run(gate.run_id, "review.decided", gate.step_id, data)
         if decision == "continue":
+            if not final:
+                AppLanes(self.db).drop_hold(gate.run_id, targets, gate_id)
             if self.db.requeue_if_released(gate.run_id):
                 await self._wake(gate.profile)
         elif gate.on_reject == "undo":
-            payload: dict[str, JsonValue] = {"gate_id": gate_id, "run_id": gate.run_id, "by": by}
+            payload: dict[str, JsonValue] = {
+                "gate_id": gate_id,
+                "run_id": gate.run_id,
+                "by": by,
+                "albums": list[JsonValue](targets),
+            }
             self.db.submit_job(gate.profile, "review_reject", payload, gate.run_id)
             await self._wake(gate.profile)
         else:
             run_id = gate.run_id
             outcome = reject_gate_lanes(
-                self.db, decided, lambda t, step, d: self._emit_run(run_id, t, step, d)
+                self.db,
+                decided,
+                lambda t, step, d: self._emit_run(run_id, t, step, d),
+                albums=targets,
             )
             if outcome.settled == "requeued":  # another lane was released meanwhile
                 await self._wake(gate.profile)

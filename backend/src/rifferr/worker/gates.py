@@ -7,7 +7,7 @@ the gate's albums for ``on_reject: undo``.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
@@ -41,7 +41,9 @@ def gate_albums(gate: ReviewGate) -> list[str]:
     return [a.target.id for a in gate.albums]
 
 
-def reject_gate_lanes(db: AppDB, gate: ReviewGate, emit: EmitRun) -> RejectOutcome:
+def reject_gate_lanes(
+    db: AppDB, gate: ReviewGate, emit: EmitRun, *, albums: Sequence[str] | None = None
+) -> RejectOutcome:
     """End the gate's albums' lanes ``rejected`` and settle the run (LANES-11).
 
     Their proposed ChangeSets become rejected, and gates only they waited for are
@@ -59,7 +61,8 @@ def reject_gate_lanes(db: AppDB, gate: ReviewGate, emit: EmitRun) -> RejectOutco
     lanes = store.load(run_id)
     if not lanes:
         return RejectOutcome("finished" if _finish_whole(db, run_id, emit) else "not_waiting", [])
-    keys = [k for k in gate_albums(gate) if k in lanes and not lanes[k].final]
+    chosen = gate_albums(gate) if albums is None else list(albums)  # DASHBOARD-11
+    keys = [k for k in chosen if k in lanes and not lanes[k].final]
     rejected = store.set_state(run_id, keys, "rejected", only_from=("waiting", "active"))
     changesets = AppChangeSets(db)
     gates = AppReviewGates(db)

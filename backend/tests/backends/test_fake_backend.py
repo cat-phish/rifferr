@@ -47,6 +47,7 @@ def test_BACKEND_2_capabilities_default() -> None:
         cli=True,
         import_decisions=True,
         files=True,
+        remove=True,
     )
 
 

@@ -24,6 +24,7 @@ from rifferr import __version__
 from rifferr.api import errors
 from rifferr.api.models import Health
 from rifferr.api.routes import (
+    dashboard,
     hooks,
     library,
     profiles,
@@ -211,6 +212,7 @@ def create_api(settings: ApiSettings | None = None) -> FastAPI:
     app.include_router(review.router)
     app.include_router(triggers.router)
     app.include_router(hooks.router)
+    app.include_router(dashboard.router)
 
     @app.get("/healthz", response_model=Health, tags=["health"])
     async def healthz() -> Health:
