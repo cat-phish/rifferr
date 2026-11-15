@@ -40,7 +40,7 @@ A row gets a link once its spec file exists. Build order: [docs/roadmap.md](../d
 | [S-NOTIFY](steps/S-NOTIFY.md) | `notify` step and notification rules | 2a, 3 | M2 | Implemented |
 | [S-FILES-CLEANUP](steps/S-FILES-CLEANUP.md) | `files.cleanup` step | 3 | M2 | Implemented |
 | [S-SUBWORKFLOW](steps/S-SUBWORKFLOW.md) | `workflow` (call another workflow) step | 3 | M2 | Implemented |
-| S-COVERS-SEARCH | `covers.search` step and provider protocol | 6 | M3 | Planned |
+| S-COVERS-SEARCH | `covers.search` step and provider protocol | 6 | M3 | Draft |
 | S-AI-TAG | `ai.tag` step | 7 | M4 | Planned |
 | [F-DEV-TOOLING](features/F-DEV-TOOLING.md) | Project skeleton, checks, CI, fixtures | 9, 10 | M0 | Implemented |
 | [F-SECURITY](features/F-SECURITY.md) | Host/Origin checks, local token, remote auth, workflow trust | 8 | M0 | Implemented |
