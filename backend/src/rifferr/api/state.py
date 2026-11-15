@@ -10,6 +10,7 @@ from typing import Annotated
 from fastapi import Depends, Request
 
 from rifferr.appdb import AppDB
+from rifferr.covers.service import CoverService
 from rifferr.engine import Event, StepTypeRegistry
 from rifferr.engine.events import PROFILE_STREAM_PREFIX
 from rifferr.notify.service import NotificationService
@@ -30,6 +31,8 @@ REVIEW_EVENTS = frozenset(
         "import.resolved",
         "cleanup.requested",
         "cleanup.resolved",
+        "cover.requested",
+        "cover.resolved",
         "job.finished",
     }
 )
@@ -42,8 +45,8 @@ def on_all_stream(event: Event) -> bool:
     and review-level events and the ``changeset.*`` events of runs, plus the
     ``trigger.*`` events of profile streams (TRIGGERS-24) and ``lane.*`` (LANES-2)."""
     if event.type.startswith(
-        ("trigger.", "notify.", "inbox.")
-    ):  # TRIGGERS-24, NOTIFY-4, DASHBOARD-15
+        ("trigger.", "notify.", "inbox.", "covers.")
+    ):  # TRIGGERS-24, NOTIFY-4, DASHBOARD-15, COVERS-SEARCH-19
         return True
     if event.run_id.startswith(PROFILE_STREAM_PREFIX):
         return False
@@ -87,6 +90,7 @@ class ServerState:
     hub: EventHub = field(default_factory=EventHub)
     triggers: TriggerManager | None = None
     notifications: NotificationService | None = None
+    covers: CoverService = field(default_factory=lambda: CoverService())
 
 
 def server_state(request: Request) -> ServerState:

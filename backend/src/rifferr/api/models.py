@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, StringConstraints
 
 from rifferr.appdb import JobState
 from rifferr.core.changeset import ChangeSet, ChangeSetState
+from rifferr.core.covers import CoverChoice, CoverQuery, CoverReview
 from rifferr.core.files import CleanupChoice, CleanupDecision
 from rifferr.core.imports import MAX_LOOKUP_IDS, MAX_LOOKUP_TEXT, ImportAction, ImportDecision
 from rifferr.core.profile import GridColumns
@@ -302,8 +303,8 @@ class JobQueued(_Model):
 
 class QueueItem(_Model):
     """One thing that waits for a decision (REVIEW-QUEUE-1). ``kind`` says which of
-    ``changeset`` / ``gate`` / ``import_decision`` / ``cleanup_decision`` is set
-    (IMPORT-UI-7, FILES-CLEANUP-14)."""
+    ``changeset`` / ``gate`` / ``import_decision`` / ``cleanup_decision`` /
+    ``cover_review`` is set (IMPORT-UI-7, FILES-CLEANUP-14, COVERS-SEARCH-21)."""
 
     kind: Literal["changeset", "gate", "import", "cleanup", "cover"]
     id: str
@@ -317,6 +318,7 @@ class QueueItem(_Model):
     gate: ReviewGate | None = None
     import_decision: ImportDecision | None = None
     cleanup_decision: CleanupDecision | None = None
+    cover_review: CoverReview | None = None
 
 
 class ChangeSetDetail(_Model):
@@ -492,3 +494,36 @@ class ImportUndoBody(_Model):
     albums: list[str] | None = Field(
         default=None, min_length=1, description="Album ids; all of the run's when absent"
     )
+
+
+# -- cover search (S-COVERS-SEARCH) ------------------------------------------------------
+
+
+class CoverSearchBody(_Model):
+    """Start a cover search (COVERS-SEARCH-19). ``query.folder`` is ignored: the
+    ``local`` provider only looks in the folder of the album under ``review_id``."""
+
+    profile: str
+    query: CoverQuery
+    providers: list[str] | None = Field(default=None, description="Default: the profile's")
+    refresh: bool = Field(default=False, description="Ignore cached results")
+    review_id: str | None = Field(default=None, description="The cover review it is for")
+
+
+class CoverSearchStarted(_Model):
+    search_id: str
+
+
+class CoverDecisionBody(_Model):
+    """Answer a cover review (COVERS-SEARCH-21). ``choose`` needs ``candidate_id``: one
+    of the review's candidates, or one from a search started for it."""
+
+    decision: CoverChoice
+    candidate_id: str | None = None
+
+
+class CoverDecided(_Model):
+    """``job_id`` is the worker job that sets the cover (``choose``); ``None`` otherwise."""
+
+    job_id: str | None = None
+    sha256: str | None = None

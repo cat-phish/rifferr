@@ -182,6 +182,75 @@
               "type": "string"
             },
             "uses": {
+              "const": "covers.search",
+              "title": "Uses"
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Backend condition (a beets query).",
+              "title": "When"
+            },
+            "with": {
+              "$ref": "#/$defs/With_covers_search"
+            }
+          },
+          "required": [
+            "id",
+            "uses"
+          ],
+          "title": "Step: covers.search",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One entry of ``steps:`` (WORKFLOW-2, WORKFLOW-3).",
+          "properties": {
+            "apply": {
+              "default": "review",
+              "description": "Whether this step's ChangeSets apply automatically or wait for review. Ignored by steps that don't produce ChangeSets.",
+              "enum": [
+                "auto",
+                "review"
+              ],
+              "title": "Apply",
+              "type": "string"
+            },
+            "id": {
+              "pattern": "^[a-z][a-z0-9_-]*$",
+              "title": "Id",
+              "type": "string"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Name"
+            },
+            "on_error": {
+              "default": "stop",
+              "enum": [
+                "stop",
+                "skip",
+                "continue"
+              ],
+              "title": "On Error",
+              "type": "string"
+            },
+            "uses": {
               "const": "files.cleanup",
               "title": "Uses"
             },
@@ -941,6 +1010,102 @@
         }
       },
       "title": "ImporterOptions",
+      "type": "object"
+    },
+    "With_covers_search": {
+      "additionalProperties": false,
+      "properties": {
+        "choose": {
+          "default": "auto",
+          "description": "auto: take the best cover; review: always ask",
+          "enum": [
+            "auto",
+            "review"
+          ],
+          "title": "Choose",
+          "type": "string"
+        },
+        "local_counts": {
+          "default": true,
+          "description": "With only_missing: an image in the album folder counts as art",
+          "title": "Local Counts",
+          "type": "boolean"
+        },
+        "max_tries": {
+          "default": 3,
+          "description": "Images auto downloads at most",
+          "maximum": 20,
+          "minimum": 1,
+          "title": "Max Tries",
+          "type": "integer"
+        },
+        "min_score": {
+          "default": 0.6,
+          "description": "Lowest score auto may take",
+          "minimum": 0,
+          "title": "Min Score",
+          "type": "number"
+        },
+        "on_none": {
+          "default": "review",
+          "description": "When auto finds no cover good enough",
+          "enum": [
+            "review",
+            "skip",
+            "fail"
+          ],
+          "title": "On None",
+          "type": "string"
+        },
+        "only_missing": {
+          "default": true,
+          "description": "Skip albums that already have art",
+          "title": "Only Missing",
+          "type": "boolean"
+        },
+        "providers": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Providers to ask, in order (default: the profile's)",
+          "title": "Providers"
+        },
+        "query": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Backend templates for the query fields (beets: $albumartist ...)",
+          "propertyNames": {
+            "enum": [
+              "artist",
+              "album",
+              "year",
+              "catalognum",
+              "barcode",
+              "mb_albumid",
+              "mb_releasegroupid"
+            ]
+          },
+          "title": "Query",
+          "type": "object"
+        },
+        "refresh": {
+          "default": false,
+          "description": "Ignore cached search results",
+          "title": "Refresh",
+          "type": "boolean"
+        }
+      },
+      "title": "CoversSearchParams",
       "type": "object"
     },
     "With_files_cleanup": {

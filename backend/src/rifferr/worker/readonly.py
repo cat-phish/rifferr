@@ -20,6 +20,7 @@ from pydantic import ValidationError as PydanticValidationError
 
 from rifferr.backends.base import LibraryBackend, QueryError
 from rifferr.core.changeset import ChangeSet
+from rifferr.core.covers import ART_FIELD
 from rifferr.core.profile import Profile
 from rifferr.core.selection import Selection
 from rifferr.core.snapshot import label
@@ -234,6 +235,8 @@ class ReadOnlyWorker:
             return {"targets": [t.model_dump(mode="json") for t in targets]}
         if kind == "imports.recent":  # F-DASHBOARD DASHBOARD-6
             return recent_albums(self.backend, request)
+        if kind == "albums.art":  # S-COVERS-SEARCH COVERS-SEARCH-22
+            return album_art(self.backend, request)
         raise RequestFailed("bad_request", f"unknown request kind {kind!r}")
 
     def _reply(
@@ -282,3 +285,23 @@ def recent_albums(backend: LibraryBackend, request: dict[str, JsonValue]) -> dic
         [str(d) for d in backend.library_dirs()] if backend.capabilities.files else []
     )
     return {"runs": runs, "library_dirs": dirs}
+
+
+def album_art(backend: LibraryBackend, request: dict[str, JsonValue]) -> dict[str, JsonValue]:
+    """An album's art file and sha256, ``None`` when it has none (COVERS-SEARCH-22)."""
+    payload = request.get("payload")
+    album_id = payload.get("album_id") if isinstance(payload, dict) else None
+    if not isinstance(album_id, str) or not album_id:
+        raise RequestFailed("bad_request", "album_id is required")
+    try:
+        found = backend.query(Selection(ids=(album_id,)))
+    except QueryError as exc:
+        raise RequestFailed("bad_query", str(exc)) from None
+    if not found:
+        raise RequestFailed("not_found", f"album {album_id} not found")
+    fields = found[0].fields
+    sha, path = fields.get(ART_FIELD), fields.get("artpath")
+    return {
+        "sha256": sha if isinstance(sha, str) else None,
+        "path": path if isinstance(path, str) and isinstance(sha, str) else None,
+    }

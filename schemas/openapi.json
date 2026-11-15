@@ -671,6 +671,349 @@
         "title": "CleanupOptions",
         "type": "object"
       },
+      "CoverDecided": {
+        "additionalProperties": false,
+        "description": "``job_id`` is the worker job that sets the cover (``choose``); ``None`` otherwise.",
+        "properties": {
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sha256"
+          }
+        },
+        "title": "CoverDecided",
+        "type": "object"
+      },
+      "CoverDecisionBody": {
+        "additionalProperties": false,
+        "description": "Answer a cover review (COVERS-SEARCH-21). ``choose`` needs ``candidate_id``: one\nof the review's candidates, or one from a search started for it.",
+        "properties": {
+          "candidate_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Id"
+          },
+          "decision": {
+            "enum": [
+              "choose",
+              "skip",
+              "fail"
+            ],
+            "title": "Decision",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "title": "CoverDecisionBody",
+        "type": "object"
+      },
+      "CoverQuery": {
+        "additionalProperties": false,
+        "description": "What to look for (COVERS-SEARCH-2).",
+        "properties": {
+          "album": {
+            "default": "",
+            "title": "Album",
+            "type": "string"
+          },
+          "artist": {
+            "default": "",
+            "title": "Artist",
+            "type": "string"
+          },
+          "barcode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Barcode"
+          },
+          "catalognum": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Catalognum"
+          },
+          "folder": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Folder"
+          },
+          "mb_albumid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mb Albumid"
+          },
+          "mb_releasegroupid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mb Releasegroupid"
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year"
+          }
+        },
+        "title": "CoverQuery",
+        "type": "object"
+      },
+      "CoverReview": {
+        "additionalProperties": false,
+        "description": "An album waiting for a person to pick its cover (COVERS-SEARCH-14).",
+        "properties": {
+          "album_id": {
+            "title": "Album Id",
+            "type": "string"
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/RankedCandidate"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "chosen": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The chosen image's sha256",
+            "title": "Chosen"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "decided_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided By"
+          },
+          "dropped": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            "title": "Dropped",
+            "type": "object"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "old_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Old Sha256"
+          },
+          "profile": {
+            "title": "Profile",
+            "type": "string"
+          },
+          "query": {
+            "$ref": "#/components/schemas/CoverQuery"
+          },
+          "reason": {
+            "default": "",
+            "description": "Why it waits, e.g. no candidate scored enough",
+            "title": "Reason",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "state": {
+            "default": "pending",
+            "enum": [
+              "pending",
+              "chosen",
+              "skipped",
+              "failed",
+              "cancelled"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "step_id": {
+            "title": "Step Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "profile",
+          "run_id",
+          "step_id",
+          "album_id",
+          "label",
+          "query",
+          "candidates",
+          "created_at"
+        ],
+        "title": "CoverReview",
+        "type": "object"
+      },
+      "CoverSearchBody": {
+        "additionalProperties": false,
+        "description": "Start a cover search (COVERS-SEARCH-19). ``query.folder`` is ignored: the\n``local`` provider only looks in the folder of the album under ``review_id``.",
+        "properties": {
+          "profile": {
+            "title": "Profile",
+            "type": "string"
+          },
+          "providers": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Default: the profile's",
+            "title": "Providers"
+          },
+          "query": {
+            "$ref": "#/components/schemas/CoverQuery"
+          },
+          "refresh": {
+            "default": false,
+            "description": "Ignore cached results",
+            "title": "Refresh",
+            "type": "boolean"
+          },
+          "review_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The cover review it is for",
+            "title": "Review Id"
+          }
+        },
+        "required": [
+          "profile",
+          "query"
+        ],
+        "title": "CoverSearchBody",
+        "type": "object"
+      },
+      "CoverSearchStarted": {
+        "additionalProperties": false,
+        "properties": {
+          "search_id": {
+            "title": "Search Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "search_id"
+        ],
+        "title": "CoverSearchStarted",
+        "type": "object"
+      },
       "CurrentTarget": {
         "additionalProperties": false,
         "description": "What one target of a ChangeSet holds now (REVIEW-QUEUE-3).",
@@ -2025,7 +2368,8 @@
               "changeset",
               "gate",
               "import",
-              "cleanup"
+              "cleanup",
+              "cover"
             ],
             "title": "Kind",
             "type": "string"
@@ -2784,7 +3128,7 @@
       },
       "QueueItem": {
         "additionalProperties": false,
-        "description": "One thing that waits for a decision (REVIEW-QUEUE-1). ``kind`` says which of\n``changeset`` / ``gate`` / ``import_decision`` / ``cleanup_decision`` is set\n(IMPORT-UI-7, FILES-CLEANUP-14).",
+        "description": "One thing that waits for a decision (REVIEW-QUEUE-1). ``kind`` says which of\n``changeset`` / ``gate`` / ``import_decision`` / ``cleanup_decision`` /\n``cover_review`` is set (IMPORT-UI-7, FILES-CLEANUP-14, COVERS-SEARCH-21).",
         "properties": {
           "changeset": {
             "anyOf": [
@@ -2800,6 +3144,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/CleanupDecision"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cover_review": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CoverReview"
               },
               {
                 "type": "null"
@@ -2840,7 +3194,8 @@
               "changeset",
               "gate",
               "import",
-              "cleanup"
+              "cleanup",
+              "cover"
             ],
             "title": "Kind",
             "type": "string"
@@ -2903,6 +3258,114 @@
           "created_at"
         ],
         "title": "QueueItem",
+        "type": "object"
+      },
+      "RankedCandidate": {
+        "additionalProperties": false,
+        "properties": {
+          "height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          },
+          "match_confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Match Confidence",
+            "type": "number"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "thumb_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumb Url"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "match_confidence",
+          "score"
+        ],
+        "title": "RankedCandidate",
         "type": "object"
       },
       "RecentImport": {
@@ -4402,6 +4865,115 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/albums/{album_id}/art": {
+      "get": {
+        "description": "The album's current art file (COVERS-SEARCH-22), read through the read-only worker.",
+        "operationId": "album_art_api_albums__album_id__art_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "album_id",
+            "required": true,
+            "schema": {
+              "title": "Album Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "A JPEG or PNG image"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
+          }
+        },
+        "summary": "Album Art",
+        "tags": [
+          "covers"
+        ]
+      }
+    },
     "/api/changesets/{changeset_id}": {
       "get": {
         "description": "A ChangeSet with its state, decisions and journal entries (REVIEW-QUEUE-2).",
@@ -4877,6 +5449,407 @@
         "summary": "Decide Cleanup",
         "tags": [
           "review"
+        ]
+      }
+    },
+    "/api/covers/image/{key}": {
+      "get": {
+        "description": "An image from the profile's art store (``key`` = sha256), or a candidate's image\nor thumbnail (``key`` = candidate id): only candidates Rifferr found itself.",
+        "operationId": "cover_image_api_covers_image__key__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The thumbnail, when the provider has one",
+            "in": "query",
+            "name": "thumb",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "The thumbnail, when the provider has one",
+              "title": "Thumb",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "A JPEG or PNG image"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Cover Image",
+        "tags": [
+          "covers"
+        ]
+      }
+    },
+    "/api/covers/reviews/{review_id}": {
+      "get": {
+        "operationId": "get_cover_review_api_covers_reviews__review_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "review_id",
+            "required": true,
+            "schema": {
+              "title": "Review Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoverReview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Get Cover Review",
+        "tags": [
+          "covers"
+        ]
+      }
+    },
+    "/api/covers/reviews/{review_id}/decision": {
+      "post": {
+        "description": "``choose`` downloads the candidate (it must be a JPEG or PNG passing the size\nfilters), keeps it in the art store and queues the job that sets it; ``skip`` lets\nthe album go on without a cover, ``fail`` fails it.",
+        "operationId": "decide_cover_api_covers_reviews__review_id__decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "review_id",
+            "required": true,
+            "schema": {
+              "title": "Review Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoverDecisionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoverDecided"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Decide Cover",
+        "tags": [
+          "covers"
+        ]
+      }
+    },
+    "/api/covers/search": {
+      "post": {
+        "description": "Ask the profile's cover providers (or ``providers``) at once; candidates, provider\nstates and the ranked result arrive as ``covers.candidate``, ``covers.provider`` and\n``covers.done`` events on the profile's stream.",
+        "operationId": "start_search_api_covers_search_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoverSearchBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoverSearchStarted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Start Search",
+        "tags": [
+          "covers"
+        ]
+      }
+    },
+    "/api/covers/search/{search_id}": {
+      "delete": {
+        "description": "Cancel a running search; its ``covers.done`` event says ``cancelled``.",
+        "operationId": "cancel_search_api_covers_search__search_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "search_id",
+            "required": true,
+            "schema": {
+              "title": "Search Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoverSearchStarted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Cancel Search",
+        "tags": [
+          "covers"
         ]
       }
     },

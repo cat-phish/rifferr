@@ -24,6 +24,7 @@ from rifferr import __version__
 from rifferr.api import errors
 from rifferr.api.models import Health
 from rifferr.api.routes import (
+    covers,
     dashboard,
     hooks,
     library,
@@ -191,6 +192,7 @@ def create_api(settings: ApiSettings | None = None) -> FastAPI:
             await previews.shutdown()
             await supervisor.shutdown()
             await notifications.stop()
+            await state.covers.close()
             if settings.write_token and not settings.no_auth:
                 remove_token_file(settings.port)
             db.close()
@@ -213,6 +215,7 @@ def create_api(settings: ApiSettings | None = None) -> FastAPI:
     app.include_router(triggers.router)
     app.include_router(hooks.router)
     app.include_router(dashboard.router)
+    app.include_router(covers.router)
 
     @app.get("/healthz", response_model=Health, tags=["health"])
     async def healthz() -> Health:

@@ -31,6 +31,7 @@ const KIND_LABEL: Record<QueueItem["kind"], string> = {
   gate: "review gates",
   import: "import decisions",
   cleanup: "folder cleanups",
+  cover: "cover choices",
 };
 
 const INBOX_COLOR: Record<InboxEntry["state"], string> = {
@@ -85,6 +86,7 @@ function itemLabel(item: QueueItem): string {
     return item.gate?.albums.map((a) => a.label).join(", ") ?? "review gate";
   if (item.kind === "import") return item.import_decision?.path ?? "import decision";
   if (item.kind === "cleanup") return item.cleanup_decision?.path ?? "folder cleanup";
+  if (item.kind === "cover") return item.cover_review?.label ?? "cover choice";
   const targets = item.changeset?.targets.length ?? 0;
   return `tag changes to ${count(targets, "target")}`;
 }

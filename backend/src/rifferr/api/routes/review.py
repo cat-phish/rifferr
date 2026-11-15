@@ -32,6 +32,7 @@ from rifferr.appdb import (
     HOLDING_CHANGESETS,
     AppChangeSets,
     AppCleanupDecisions,
+    AppCoverReviews,
     AppImportDecisions,
     AppJournal,
     AppReviewGates,
@@ -127,6 +128,19 @@ async def review_queue(
                 step_id=cleanup.step_id,
                 created_at=cleanup.created_at,
                 cleanup_decision=cleanup,
+            )
+        )
+    for cover in AppCoverReviews(state.db).pending(profile=profile, run_id=run):
+        items.append(
+            QueueItem(
+                kind="cover",
+                id=cover.id,
+                profile=cover.profile,
+                run_id=cover.run_id,
+                workflow=workflow(cover.run_id),
+                step_id=cover.step_id,
+                created_at=cover.created_at,
+                cover_review=cover,
             )
         )
     items.sort(key=lambda i: (i.created_at, i.id))

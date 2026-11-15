@@ -250,12 +250,20 @@ class SecurityHeaders:
         async def wrapped(message: Message) -> None:
             if message["type"] == "http.response.start":
                 names = {k.lower() for k, _ in SECURITY_HEADERS}
+                given = message.get("headers", [])
+                # A route's own, stricter CSP (e.g. images, COVERS-SEARCH-20) is kept and
+                # gets frame-ancestors added; it can never drop the fixed headers.
+                csp = [v for k, v in given if k.lower() == b"content-security-policy"]
                 headers = [
                     (k, v)
-                    for k, v in message.get("headers", [])
+                    for k, v in given
                     if not k.lower().startswith(b"access-control-") and k.lower() not in names
                 ]
-                message["headers"] = [*headers, *SECURITY_HEADERS]
+                fixed = [
+                    (k, csp[0] + b"; " + v if k == b"content-security-policy" and csp else v)
+                    for k, v in SECURITY_HEADERS
+                ]
+                message["headers"] = [*headers, *fixed]
             await send(message)
 
         await self.app(scope, receive, wrapped)
