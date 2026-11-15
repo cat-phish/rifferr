@@ -195,6 +195,8 @@ S-SUBWORKFLOW → queue dashboard (F-DASHBOARD).
 Order: S-COVERS-SEARCH (provider protocol, ranking, cache, first providers) →
 F-COVER-PICKER.
 
+- [ ] S-COVERS-SEARCH: Approved 2026-11-14.
+
 ## M4 — AI
 
 **Done when:** a genre step proposes vocabulary-valid values into review.

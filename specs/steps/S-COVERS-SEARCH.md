@@ -1,5 +1,5 @@
 # S-COVERS-SEARCH: `covers.search` step and cover provider protocol
-Status: Draft
+Status: Approved
 Milestone: M3
 
 ## Context
@@ -249,21 +249,18 @@ Auto mode takes the CAA image. Without an MBID, CAA yields nothing; iTunes's 0.6
 - Scraping any site without an official API.
 
 ## Open questions
-1. Writing art as a ChangeSet change (`TargetChange.art`, additive to the published proposal
-   schema; C-CHANGESET and C-JOURNAL gain art handling) versus a separate journaled "art
-   operation" outside ChangeSets. Recommended: the ChangeSet change, so review, apply policy,
-   undo and import undo (F-DASHBOARD) work unchanged.
-2. First providers: CAA, iTunes, Deezer and local meet "three providers" without keys.
-   Recommended: Discogs, fanart.tv and Last.fm as backlog entries for after F-COVER-PICKER.
-3. Embedding: recommended out of M3. A workflow can run `beet embedart` as a `beets.command`
-   step after `covers.search`; a built-in `embed` option can follow later.
-4. Resize/format (`max size`, JPEG quality): needs Pillow or ImageMagick through beets'
-   `ArtResizer`. Recommended: write images as downloaded in M3 and add resizing later, with no
-   new dependency now.
-5. Default `apply` for this step: recommended `auto` (a cover is easy to undo and the album
-   still passes any later review gate), unlike AI steps whose default is `review`.
-6. `only_missing` counts a local image in the folder as "has art" (`local_counts: true`).
-   Recommended as the default, since a folder image beets doesn't know about is still art.
+Resolved (author, 2026-11-14: "approved, go with your recommendations"):
+1. Art is a ChangeSet change (`TargetChange.art`, additive to the published proposal schema);
+   C-CHANGESET and C-JOURNAL gain art handling, so review, apply policy, undo and import undo
+   work unchanged.
+2. First providers: Cover Art Archive, iTunes, Deezer and local. Discogs, fanart.tv and Last.fm
+   are B-059.
+3. No embedding in M3; a `beets.command` step can run `beet embedart`. A built-in option is
+   B-060.
+4. Images are written as downloaded, no new dependency; resizing and format conversion are
+   B-061.
+5. The step's `apply` defaults to `auto`.
+6. `local_counts: true` is the default: a folder image counts as art.
 
 ## Tasks
 - [ ] Core: `CoverQuery`, `CoverCandidate`, `match_score`, `rank`, filters (COVERS-SEARCH-2, -3,
