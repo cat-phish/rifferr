@@ -89,6 +89,10 @@ class BackendCapabilities(BaseModel):
     folders the library owns or could import (S-FILES-CLEANUP FILES-CLEANUP-12, -17)."""
     remove: bool = False
     """``remove_album`` removes an album from the library (F-DASHBOARD DASHBOARD-7)."""
+    art: bool = False
+    """Albums carry ``art_sha256`` (``core.covers.ART_FIELD``), and ``apply`` sets or removes
+    an album's cover when a ChangeSet changes it (S-COVERS-SEARCH COVERS-SEARCH-16). The
+    image must be in the profile's art store; the old art is copied there first."""
 
     @staticmethod
     def display_name(field: str) -> str:

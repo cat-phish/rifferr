@@ -11,6 +11,7 @@ then raise ``CapabilityError`` instead (checked by ``test_BACKEND_2_...``).
 
 from __future__ import annotations
 
+import hashlib
 import shutil
 from collections.abc import Mapping
 from datetime import UTC, datetime
@@ -34,6 +35,7 @@ from rifferr.core.changeset import (
     TargetChange,
     TargetRef,
 )
+from rifferr.core.covers import ART_FIELD
 from rifferr.core.selection import Selection
 from rifferr.core.snapshot import AlbumSnapshot
 
@@ -330,6 +332,39 @@ class BackendContract:
         assert all(isinstance(k, str) and isinstance(v, str) for k, v in env.items())
 
     # -- ChangeSets (C-CHANGESET) ---------------------------------------------
+
+    # -- cover art (S-COVERS-SEARCH) ------------------------------------------------
+
+    def store_image(self, backend: LibraryBackend, data: bytes) -> str:
+        """Put an image where the backend takes art from; returns its sha256."""
+        store = getattr(backend, "art", None)
+        if store is not None:
+            return store.put(data)[0]
+        return hashlib.sha256(data).hexdigest()
+
+    def test_COVERS_SEARCH_18_art_is_set_kept_on_the_album_and_removed(
+        self, backend: LibraryBackend
+    ) -> None:
+        self.need(backend, "art")
+        self.need(backend, "apply")
+        album = self.by_album(backend, "First EP")
+        ref = TargetRef(scope="album", id=album.id)
+        sha = self.store_image(backend, b"\xff\xd8\xff\xe0 contract image")
+        result = backend.apply(changeset((ref, [FieldChange(field=ART_FIELD, new=sha)])))
+        assert result.applied
+        assert [(e.target, e.after) for e in result.effects] == [(ref, sha)]
+        now = self.by_album(backend, "First EP")
+        assert now.fields[ART_FIELD] == sha
+        assert all(ART_FIELD not in i.fields for i in now.items)
+        conflict = backend.apply(
+            changeset((ref, [FieldChange(field=ART_FIELD, op="delete", old="0" * 64)]))
+        )
+        assert not conflict.applied
+        removed = backend.apply(
+            changeset((ref, [FieldChange(field=ART_FIELD, op="delete", old=sha)]))
+        )
+        assert removed.applied
+        assert ART_FIELD not in self.by_album(backend, "First EP").fields
 
     def test_CHANGESET_10_album_change_is_stored_and_carried_to_items(
         self, backend: LibraryBackend

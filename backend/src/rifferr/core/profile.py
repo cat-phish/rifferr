@@ -15,6 +15,7 @@ from typing import Annotated, Any, Final, Literal
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, PositiveInt
 from pydantic_core import PydanticCustomError
 
+from rifferr.core.covers import CoverSettings
 from rifferr.core.duration import Duration
 from rifferr.core.notify import NotifySettings
 from rifferr.core.workflow import VarDecl, substitute
@@ -219,6 +220,7 @@ class ProfileFile(BaseModel):
     ui: UiSettings = Field(default_factory=UiSettings)
     notify: NotifySettings = Field(default_factory=NotifySettings)
     files: FilesSettings = Field(default_factory=FilesSettings)
+    covers: CoverSettings = Field(default_factory=CoverSettings)
     vars: dict[VarName, Annotated[str, Field(strict=True)]] = Field(default_factory=dict[str, str])
     secrets: dict[str, SecretRefField] = Field(default_factory=dict[str, SecretRef])
     timezone: str | None = Field(default=None, description="IANA time zone; default: system")

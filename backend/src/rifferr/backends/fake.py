@@ -45,6 +45,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from rifferr.artstore import ArtStore, art_problem
 from rifferr.backends.base import (
     RUN_MARKER,
     BackendCapabilities,
@@ -70,6 +71,7 @@ from rifferr.core.changeset import (
     diff_effects,
     find_conflicts,
 )
+from rifferr.core.covers import ART_FIELD, SHA256
 from rifferr.core.imports import (
     FolderItem,
     ImportAction,
@@ -90,6 +92,7 @@ DEFAULT_CAPABILITIES = BackendCapabilities(
     import_decisions=True,
     files=True,
     remove=True,
+    art=True,
 )
 #: Suffixes a FakeBackend treats as importable music (tests only; not engine policy).
 FAKE_IMPORTABLE = frozenset({".flac", ".mp3", ".ogg", ".opus", ".m4a", ".wav"})
@@ -168,8 +171,12 @@ class FakeBackend:
         read_only: frozenset[str] = READ_ONLY_FIELDS,
         field_types: Mapping[str, type] | None = None,
         cli: Sequence[str] = ECHO_CLI,
+        art_store: Path | None = None,
     ) -> None:
         self.capabilities = capabilities or DEFAULT_CAPABILITIES
+        self.art = ArtStore(art_store) if art_store is not None else None
+        """With a store, ``ART_FIELD`` changes need the image in it (COVERS-SEARCH-18);
+        without one any sha256 is accepted, as if every image were stored."""
         self.cli = list(cli)
         """argv prefix ``cli_command`` starts with; tests point it at their own script."""
         self._env = dict(env or {})
@@ -341,7 +348,10 @@ class FakeBackend:
                 problems.append(ChangeProblem(target=t.target, field="", message="not found"))
                 continue
             for c in t.changes:
-                message = self._field_problem(c.field, c.op, c.new)
+                if c.field == ART_FIELD:
+                    message = self._art_problem(t.target.scope, c.op, c.new)
+                else:
+                    message = self._field_problem(c.field, c.op, c.new)
                 if message is not None:
                     problems.append(ChangeProblem(target=t.target, field=c.field, message=message))
         return problems
@@ -362,6 +372,8 @@ class FakeBackend:
             assert obj is not None
             for c in t.changes:
                 self._set(obj, c.field, c.new, delete=c.op == "delete")
+                if c.field == ART_FIELD:
+                    continue  # cover art stays on the album
                 if isinstance(obj, _Album) and self._inherits(c.field):
                     for item in obj.items:
                         self._set(item, c.field, c.new, delete=c.op == "delete")
@@ -620,6 +632,17 @@ class FakeBackend:
             obj.fields.pop(name, None)
         else:
             obj.fields[name] = list(value) if isinstance(value, list) else value
+
+    def _art_problem(self, scope: str, op: str, value: FieldValue) -> str | None:
+        if not self.capabilities.art:
+            return "this library can't set cover art"
+        if self.art is not None:
+            return art_problem(scope, op, value, self.art)
+        if scope != "album":
+            return "cover art belongs to albums"
+        if op == "set" and not (isinstance(value, str) and SHA256.fullmatch(value)):
+            return "expects the image's sha256"
+        return None
 
     def _field_problem(self, name: str, op: str, value: FieldValue) -> str | None:
         if name in self.read_only:

@@ -20,6 +20,7 @@ from beets import dbcore
 from beets.library import Album, Item, Library
 from beets.library.queries import parse_query_parts
 
+from rifferr.artstore import ArtStore
 from rifferr.backends.base import (
     RUN_MARKER,
     BackendCapabilities,
@@ -62,6 +63,7 @@ CAPABILITIES = BackendCapabilities(
     import_decisions=True,
     files=True,
     remove=True,
+    art=True,
 )
 
 
@@ -72,6 +74,7 @@ READ_ONLY_CAPABILITIES = CAPABILITIES.model_copy(
         "cli": False,
         "import_decisions": False,
         "remove": False,
+        "art": False,
     }
 )
 
@@ -80,10 +83,13 @@ def from_profile(profile: Profile, *, read_only: bool = False) -> BeetsBackend:
     """``rifferr.backends`` entry point (BEETS-IMPORT-15, BACKEND-13)."""
     beetsdir = profile.require_beetsdir()
     config.load(beetsdir)
+    from rifferr.profile_store import art_store_path
+
     return BeetsBackend(
         Path(beetsdir).expanduser().resolve(),
         write_tags=profile.changes.write_tags,
         read_only=read_only,
+        art_store=art_store_path(profile.name),
     )
 
 
@@ -107,7 +113,14 @@ def escape_template(value: str) -> str:
 
 
 class BeetsBackend:
-    def __init__(self, beetsdir: Path, *, write_tags: bool = True, read_only: bool = False) -> None:
+    def __init__(
+        self,
+        beetsdir: Path,
+        *,
+        write_tags: bool = True,
+        read_only: bool = False,
+        art_store: Path | None = None,
+    ) -> None:
         if config.loaded_beetsdir() != beetsdir:
             raise RuntimeError(f"call config.load({beetsdir}) first")
         self.beetsdir = beetsdir
@@ -115,7 +128,10 @@ class BeetsBackend:
         """Write changed tags to files after applying (profile ``changes.write_tags``)."""
         self.read_only = read_only
         """Opened read-only (BACKEND-13): no apply or import, and SQLite refuses writes."""
-        self.capabilities = READ_ONLY_CAPABILITIES if read_only else CAPABILITIES
+        self.art = ArtStore(art_store) if art_store is not None else None
+        """Where cover images live by sha256 (COVERS-SEARCH-16); ``None``: no art."""
+        caps = READ_ONLY_CAPABILITIES if read_only else CAPABILITIES
+        self.capabilities = caps if self.art else caps.model_copy(update={"art": False})
 
     @contextlib.contextmanager
     def library(self) -> Iterator[Library]:
@@ -263,7 +279,7 @@ class BeetsBackend:
 
     def check(self, changes: ChangeSet) -> list[ChangeProblem]:
         with self.library() as lib:
-            return changes_apply.check(lib, changes)
+            return changes_apply.check(lib, changes, self.art)
 
     def _writable(self, what: str) -> None:
         if self.read_only:
@@ -272,10 +288,10 @@ class BeetsBackend:
     def apply(self, changes: ChangeSet) -> ApplyResult:
         self._writable("apply changes")
         with self.library() as lib:
-            problems = changes_apply.check(lib, changes)
+            problems = changes_apply.check(lib, changes, self.art)
             if problems:
                 raise ChangeSetRejected(problems)
-            return changes_apply.apply(lib, changes, write_tags=self.write_tags)
+            return changes_apply.apply(lib, changes, write_tags=self.write_tags, art=self.art)
 
     def remove_album(self, album_id: str, *, delete_files: bool) -> list[str]:
         """beets' ``Album.remove``: with ``delete`` it deletes the files and art and

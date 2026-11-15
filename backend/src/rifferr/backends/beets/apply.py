@@ -12,11 +12,19 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterable
+from pathlib import Path
 from typing import Any, Final
 
 from beets.library import Album, Item, Library
 
-from rifferr.backends.beets.snapshots import album_id, field_value, item_id, parse_id
+from rifferr.artstore import ArtStore, art_problem
+from rifferr.backends.beets.snapshots import (
+    album_id,
+    art_file,
+    item_id,
+    parse_id,
+    stored_fields,
+)
 from rifferr.core.changeset import (
     ApplyResult,
     ChangeProblem,
@@ -27,6 +35,7 @@ from rifferr.core.changeset import (
     diff_effects,
     find_conflicts,
 )
+from rifferr.core.covers import ART_FIELD
 from rifferr.core.snapshot import FieldValue
 
 #: Bookkeeping fields a ChangeSet can't touch; computed fields are refused too.
@@ -43,7 +52,7 @@ def load(lib: Library, ref: TargetRef) -> Item | Album | None:
     return lib.get_album(number) if kind == "album" else lib.get_item(number)
 
 
-def check(lib: Library, changes: ChangeSet) -> list[ChangeProblem]:
+def check(lib: Library, changes: ChangeSet, art: ArtStore | None = None) -> list[ChangeProblem]:
     problems: list[ChangeProblem] = []
     for t in changes.targets:
         obj = load(lib, t.target)
@@ -54,13 +63,25 @@ def check(lib: Library, changes: ChangeSet) -> list[ChangeProblem]:
         computed = set(model._getters())  # pyright: ignore[reportPrivateUsage]
         for c in t.changes:
             message: str | None = None
-            if c.field in READ_ONLY or c.field in computed:
+            if c.field == ART_FIELD:
+                message = art_problem(t.target.scope, c.op, c.new, art)
+                if message is None and c.op == "set" and isinstance(obj, Album):
+                    message = _folder_problem(obj)
+            elif c.field in READ_ONLY or c.field in computed:
                 message = "read-only field"
             elif c.op == "set":
                 message = _type_problem(model, c.field, c.new)
             if message is not None:
                 problems.append(ChangeProblem(target=t.target, field=c.field, message=message))
     return problems
+
+
+def _folder_problem(album: Album) -> str | None:
+    try:
+        folder = album.item_dir()
+    except ValueError:
+        return "the album has no items, so no folder for its cover"
+    return None if os.path.isdir(folder) else "the album's folder doesn't exist"
 
 
 def _type_problem(model: type[Item] | type[Album], field: str, value: FieldValue) -> str | None:
@@ -84,10 +105,12 @@ def _type_problem(model: type[Item] | type[Album], field: str, value: FieldValue
 
 def fields_of(obj: Item | Album) -> dict[str, FieldValue]:
     """Stored fields as snapshots show them (no computed fields)."""
-    return {k: field_value(obj.get(k)) for k in obj.keys(computed=False) if k not in ("id", "path")}
+    return stored_fields(obj)
 
 
-def apply(lib: Library, changes: ChangeSet, *, write_tags: bool) -> ApplyResult:
+def apply(
+    lib: Library, changes: ChangeSet, *, write_tags: bool, art: ArtStore | None = None
+) -> ApplyResult:
     """All or nothing in the library DB; call ``check`` first."""
     with lib.transaction():
         objects = {t.target: load(lib, t.target) for t in changes.targets}
@@ -105,7 +128,11 @@ def apply(lib: Library, changes: ChangeSet, *, write_tags: bool) -> ApplyResult:
             obj = objects[t.target]
             assert obj is not None, "check() refuses unknown targets"
             for c in t.changes:
-                if c.op == "delete":
+                if c.field == ART_FIELD:
+                    assert art is not None, "check() refuses art without a store"
+                    assert isinstance(obj, Album), "check() refuses art on items"
+                    _set_art(obj, art, None if c.op == "delete" else str(c.new))
+                elif c.op == "delete":
                     if c.field in obj:
                         del obj[c.field]
                 else:
@@ -127,6 +154,25 @@ def apply(lib: Library, changes: ChangeSet, *, write_tags: bool) -> ApplyResult:
                     if failure is not None:
                         failures.append(failure)
     return ApplyResult(applied=True, effects=effects, write_failures=failures)
+
+
+def _set_art(album: Album, art: ArtStore, sha: str | None) -> None:
+    """Set or remove the album's cover (COVERS-SEARCH-16, -17). Any image this would
+    replace or delete is copied into the art store first, so undo can bring it back."""
+    current = art_file(album)
+    if current is not None:
+        art.put_file(Path(current))
+    if sha is None:
+        if current is not None:
+            os.remove(current)
+        album.artpath = None
+        return
+    source = art.find(sha)
+    assert source is not None, "check() refuses images not in the store"
+    dest = album.art_destination(os.fsencode(source))
+    if os.path.isfile(dest) and (current is None or not os.path.samefile(dest, current)):
+        art.put_file(Path(os.fsdecode(dest)))  # an image beets would overwrite
+    album.set_art(os.fsencode(source), copy=True)
 
 
 def _albums(lib: Library, objects: Iterable[Item | Album | None]) -> list[Album]:

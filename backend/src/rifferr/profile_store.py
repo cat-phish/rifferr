@@ -46,6 +46,16 @@ def app_db_path(env: Mapping[str, str] | None = None) -> Path:
     return data_root(env) / APP_DB_FILE
 
 
+def art_store_path(profile: str, env: Mapping[str, str] | None = None) -> Path:
+    """The profile's art store (S-COVERS-SEARCH COVERS-SEARCH-16)."""
+    return data_root(env) / "art" / validate_profile_name(profile)
+
+
+def covers_cache_path(env: Mapping[str, str] | None = None) -> Path:
+    """The cover search cache (COVERS-SEARCH-11)."""
+    return data_root(env) / "cache" / "covers"
+
+
 def config_root(env: Mapping[str, str] | None = None) -> Path:
     """``RIFFERR_CONFIG_DIR`` (the Docker image sets ``/config``), else XDG, else ~/.config."""
     env = os.environ if env is None else env
