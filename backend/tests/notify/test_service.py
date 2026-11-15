@@ -448,3 +448,42 @@ async def test_FILES_CLEANUP_14_cleanup_hold_needs_review_and_reminds(db: AppDB)
     store.release(done)
     e.now = T0 + timedelta(hours=4)
     assert e.service.check_reminders() == 0
+
+
+# -- COVERS-SEARCH-14: cover reviews are queue items ----------------------------------
+
+
+async def test_COVERS_SEARCH_14_cover_hold_needs_review_and_reminds(db: AppDB) -> None:
+    from rifferr.appdb import AppCoverReviews
+    from rifferr.core.covers import CoverQuery, CoverReview
+
+    e = Env(
+        db, {"targets": {"phone": "ntfy"}, "rules": [{"on": "review.needed", "remind_after": "1h"}]}
+    )
+    run = e.run()
+    store = AppCoverReviews(db)
+    store.add(
+        CoverReview(
+            id="v1",
+            profile="main",
+            run_id=run,
+            step_id="art",
+            album_id="album-1",
+            label="Artist - Album",
+            query=CoverQuery(album="Album"),
+            candidates=[],
+            created_at=T0,
+        )
+    )
+    e.waiting(run, "album-1", "Artist - Album", ("cover", "v1"))
+    e.service.flush_all()
+    await e.settle()
+    assert e.titles() == [("phone", "1 album needs review")]
+    e.now = T0 + timedelta(hours=2)
+    assert e.service.check_reminders() == 1
+    done = store.get("v1")
+    assert done is not None
+    done.state = "skipped"
+    store.release(done)
+    e.now = T0 + timedelta(hours=4)
+    assert e.service.check_reminders() == 0

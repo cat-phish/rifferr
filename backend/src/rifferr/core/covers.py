@@ -378,7 +378,6 @@ class CoverReview(BaseModel):
     candidates: list[RankedCandidate]
     dropped: dict[str, dict[str, int]] = Field(default_factory=dict[str, dict[str, int]])
     old_sha256: str | None = None
-    apply: Literal["auto", "review"] = "auto"
     reason: str = Field(default="", description="Why it waits, e.g. no candidate scored enough")
     created_at: datetime
     decided_by: str | None = None

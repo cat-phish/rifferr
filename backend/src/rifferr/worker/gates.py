@@ -16,6 +16,7 @@ from pydantic import JsonValue
 from rifferr.appdb import (
     AppChangeSets,
     AppCleanupDecisions,
+    AppCoverReviews,
     AppDB,
     AppImportDecisions,
     AppLanes,
@@ -119,6 +120,7 @@ def _close_leftovers(db: AppDB, run_id: str, emit: EmitRun) -> None:
     AppReviewGates(db).cancel_for_run(run_id)
     AppImportDecisions(db).cancel_for_run(run_id)
     AppCleanupDecisions(db).cancel_for_run(run_id)
+    AppCoverReviews(db).cancel_for_run(run_id)
 
 
 def _finish_whole(db: AppDB, run_id: str, emit: EmitRun) -> bool:

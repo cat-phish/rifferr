@@ -23,6 +23,7 @@ from pydantic import JsonValue, ValidationError
 from rifferr.appdb import (
     AppChangeSets,
     AppCleanupDecisions,
+    AppCoverReviews,
     AppDB,
     AppImportDecisions,
     AppJournal,
@@ -33,6 +34,7 @@ from rifferr.appdb import (
     Job,
 )
 from rifferr.core.changeset import ChangeSet
+from rifferr.core.covers import CoverChoice
 from rifferr.core.files import CleanupChoice
 from rifferr.core.imports import ImportAction
 from rifferr.core.review import GateDecision
@@ -563,6 +565,76 @@ class WorkerSupervisor:
             await self._wake(claimed.profile)
         return None
 
+    # -- cover reviews (S-COVERS-SEARCH) ---------------------------------------------
+
+    async def decide_cover(
+        self,
+        review_id: str,
+        decision: CoverChoice,
+        *,
+        sha256: str | None = None,
+        rationale: str | None = None,
+        by: str | None = None,
+    ) -> str | None:
+        """Answer a cover review (COVERS-SEARCH-21). ``choose`` queues the worker job that
+        sets the image ``sha256`` (already in the art store) and returns its id; ``skip``
+        lets the album go on without a cover and ``fail`` fails its lane (``None``).
+        Raises ``KeyError`` (unknown), ``CoverResolvedError`` (decided already),
+        ``CoverBusyError`` (a job holds it) or ``ValueError`` while its run isn't
+        waiting yet."""
+        if self._shutting_down:
+            raise RuntimeError("server is shutting down")
+        store = AppCoverReviews(self.db)
+        found = store.get(review_id)
+        if found is None:
+            raise KeyError(review_id)
+        job = self.db.job_for_run(found.run_id)
+        if found.state == "pending" and (job is None or job.state != "waiting_review"):
+            state = job.state if job is not None else "missing"
+            raise ValueError(f"run {found.run_id} is {state}; the cover can't be decided yet")
+        if decision == "choose" and not sha256:
+            raise ValueError("choose needs the chosen image")
+        claimed = store.claim(review_id, "pending-job")
+        if decision == "choose":
+            payload: dict[str, JsonValue] = {
+                "review_id": review_id,
+                "sha256": sha256,
+                "rationale": rationale,
+                "by": by,
+            }
+            queued = self.db.submit_job(claimed.profile, "cover_apply", payload, claimed.run_id)
+            store.set_claim(review_id, queued.id)
+            await self._wake(claimed.profile)
+            return queued.id
+        run_id = claimed.run_id
+        claimed.state = "skipped" if decision == "skip" else "failed"
+        claimed.decided_by = by
+        claimed.decided_at = self._clock()
+        store.release(claimed)
+        lanes = AppLanes(self.db)
+        if decision == "fail":
+            moved = lanes.set_state(run_id, [claimed.album_id], "failed", only_from=("waiting",))
+            for key in moved:
+                data = {"key": key, "state": "failed", "reason": "no cover (review)"}
+                self._emit_run(run_id, "lane.finished", claimed.step_id, dict(data))
+        self._emit_run(
+            run_id,
+            "cover.resolved",
+            claimed.step_id,
+            {
+                "review_id": review_id,
+                "album_id": claimed.album_id,
+                "decision": decision,
+                "decided_by": by,
+            },
+        )
+        lanes.resolve_hold(run_id, review_id)
+        if settle(self.db, run_id, lambda t, step, d: self._emit_run(run_id, t, step, d)) == (
+            "requeued"
+        ):
+            await self._wake(claimed.profile)
+        return None
+
     async def decide_overdue_cleanups(self) -> list[str]:
         """Answer every overdue cleanup decision with its ``on_timeout``."""
         decided: list[str] = []
@@ -628,6 +700,7 @@ class WorkerSupervisor:
             AppReviewGates(self.db).cancel_for_run(run_id)  # REVIEW-10
             AppImportDecisions(self.db).cancel_for_run(run_id)  # IMPORT-UI-14
             AppCleanupDecisions(self.db).cancel_for_run(run_id)  # FILES-CLEANUP-14
+            AppCoverReviews(self.db).cancel_for_run(run_id)  # COVERS-SEARCH-14
             seq = self.db.last_seq(run_id) + 1
             self._persist(self._event(run_id, seq, "run.finished", {"status": "cancelled"}))
             return

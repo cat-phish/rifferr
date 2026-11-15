@@ -202,7 +202,7 @@ class QueueRef(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    kind: Literal["changeset", "gate", "import", "cleanup"]
+    kind: Literal["changeset", "gate", "import", "cleanup", "cover"]
     ref: str
     labels: tuple[str, ...] = ()
 

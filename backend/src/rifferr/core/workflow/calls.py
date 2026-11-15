@@ -314,12 +314,12 @@ def _rewritten(
         name=step.name,
         with_=_rewrite_values(step.with_, fn),  # pyright: ignore[reportCallIssue]
         when=rewrite(step.when, fn) if step.when is not None else None,
-        apply=step.apply,
         on_error=step.on_error,
         call_path=path,
         workflow=file[0],
         workflow_name=file[1],
         narrow=narrow,
+        **({"apply": step.apply} if "apply" in step.model_fields_set else {}),
     )
 
 

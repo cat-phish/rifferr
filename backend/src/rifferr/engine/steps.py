@@ -12,6 +12,7 @@ from pydantic import BaseModel, JsonValue
 
 from rifferr.backends.base import BackendCapabilities, LibraryBackend
 from rifferr.core.changeset import ChangeSet, ChangeSetProposal, TargetRef
+from rifferr.core.covers import CoverQuery, RankedCandidate
 from rifferr.core.files import BusyFolder, CleanupChoice, CleanupEntry, CleanupOptions
 from rifferr.core.imports import ImportQuestion, TimeoutAction
 from rifferr.core.notify import Notification, SendResult
@@ -71,6 +72,9 @@ class StepType(Protocol):
 
     Optional attribute ``force_review: bool`` (default False): the step's ChangeSets
     always wait for review, and ``apply: auto`` is a validation error (CHANGESET-6).
+
+    Optional attribute ``default_apply`` (``"auto"`` or ``"review"``, default ``"review"``):
+    the ``apply`` policy when the workflow doesn't set one (CHANGESET-6).
 
     Optional attribute ``accepts_when: bool`` (default True): False for steps that
     aren't about albums; ``when:`` is then a validation error.
@@ -146,6 +150,23 @@ class CleanupRequest:
     on_timeout: CleanupChoice = "keep"
 
 
+@dataclass(frozen=True)
+class CoverRequest:
+    """An album waiting for a person to pick its cover (COVERS-SEARCH-14)."""
+
+    album_id: str
+    label: str
+    query: CoverQuery
+    candidates: list[RankedCandidate]
+    dropped: Mapping[str, Mapping[str, int]] = field(default_factory=dict[str, Mapping[str, int]])
+    old_sha256: str | None = None
+    reason: str = ""
+
+
+#: The engine's side of ``ctx.request_cover``: request -> review id.
+RequestCover = Callable[[CoverRequest], str]
+
+
 #: The engine's side of ``ctx.request_cleanup``: request -> decision id.
 RequestCleanup = Callable[[CleanupRequest], str]
 #: The engine's side of ``ctx.hold_pass``: kind, ref, label for a pass without lanes.
@@ -178,6 +199,10 @@ async def _no_notify(targets: list[str] | None, n: Notification) -> list[SendRes
 
 def _no_cleanup(request: CleanupRequest) -> str:
     raise StepFailure("this run can't leave cleanup decisions")
+
+
+def _no_cover(request: CoverRequest) -> str:
+    raise StepFailure("this run can't leave cover reviews")
 
 
 def _no_hold_pass(kind: str, ref: str, label: str) -> None:
@@ -220,6 +245,7 @@ class StepContext:
         busy_folders: Callable[[], list[BusyFolder]] | None = None,
         request_cleanup: RequestCleanup | None = None,
         hold_pass: HoldPass | None = None,
+        request_cover: RequestCover | None = None,
     ) -> None:
         self.run_id = run_id
         self.profile = profile
@@ -252,6 +278,7 @@ class StepContext:
         self._busy_folders: Callable[[], list[BusyFolder]] = busy_folders or list[BusyFolder]
         self._request_cleanup = request_cleanup or _no_cleanup
         self._hold_pass = hold_pass or _no_hold_pass
+        self._request_cover = request_cover or _no_cover
         """The profile's ``notify.base_url``, for links in notifications (NOTIFY-6)."""
         self._snapshots = SnapshotIndex()
         self.proposed: list[ChangeSet] = []
@@ -363,6 +390,11 @@ class StepContext:
         """Leave a cleanup listing in the review queue and hold the pass until it is
         decided (FILES-CLEANUP-14). Returns the decision id."""
         return self._request_cleanup(request)
+
+    def request_cover(self, request: CoverRequest) -> str:
+        """Leave an album in the review queue to pick its cover; only that album's lane
+        waits (COVERS-SEARCH-14). Returns the review id."""
+        return self._request_cover(request)
 
     async def notify(
         self, notification: Notification, targets: list[str] | None = None

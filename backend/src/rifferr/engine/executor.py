@@ -27,6 +27,7 @@ from rifferr.core.changeset import (
     JournalEntry,
     TargetRef,
 )
+from rifferr.core.covers import CoverReview
 from rifferr.core.files import BusyFolder, CleanupDecision
 from rifferr.core.ids import new_ulid
 from rifferr.core.imports import ImportDecision, ImportQuestion
@@ -59,6 +60,7 @@ from rifferr.engine.changesets import (
     proposed_event,
 )
 from rifferr.engine.cleanup import CleanupDecisionStore, InMemoryCleanupStore
+from rifferr.engine.covers import CoverReviewStore, InMemoryCoverStore
 from rifferr.engine.events import Event, EventSink
 from rifferr.engine.imports import ImportDecisionStore, InMemoryImportStore
 from rifferr.engine.journal import InMemoryJournal, Journal
@@ -74,6 +76,7 @@ from rifferr.engine.review import GateStore, InMemoryGateStore, conflicted_for, 
 from rifferr.engine.run import PassRecord, Run, RunState, Scalar, StepRecord
 from rifferr.engine.steps import (
     CleanupRequest,
+    CoverRequest,
     GateOptions,
     ImportOptions,
     NoSecrets,
@@ -169,8 +172,10 @@ class Engine:
         lanes: LaneStore | None = None,
         imports: ImportDecisionStore | None = None,
         cleanups: CleanupDecisionStore | None = None,
+        covers: CoverReviewStore | None = None,
     ) -> None:
         self.registry = registry
+        self.covers: CoverReviewStore = covers or InMemoryCoverStore()
         self.cleanups: CleanupDecisionStore = cleanups or InMemoryCleanupStore()
         self.imports: ImportDecisionStore = imports or InMemoryImportStore()
         self.lanes: LaneStore = lanes or InMemoryLaneStore()
@@ -501,7 +506,7 @@ class Engine:
     def _hold(
         self, state: _RunState, key: str, kind: str, ref: str, label: str | None = None
     ) -> None:
-        if kind not in ("changeset", "gate", "import", "cleanup"):
+        if kind not in ("changeset", "gate", "import", "cleanup", "cover"):
             raise ValueError(f"unknown hold kind {kind!r}")
         state.lane_holds.setdefault(key, []).append(Hold(cast(Any, kind), ref))
         if label is not None:
@@ -545,6 +550,35 @@ class Engine:
             data["deadline"] = decision.deadline.isoformat()
         self._emit(run, "cleanup.requested", spec.id, _redact(data, state.redactor))
         return decision.id
+
+    def _request_cover(self, state: _RunState, spec: StepSpec, request: CoverRequest) -> str:
+        """COVERS-SEARCH-14: store the review and hold only that album's lane."""
+        run = state.run
+        review = CoverReview(
+            id=new_ulid(),
+            profile=run.profile,
+            run_id=run.id,
+            step_id=spec.id,
+            album_id=request.album_id,
+            label=request.label,
+            query=request.query,
+            candidates=list(request.candidates),
+            dropped={k: dict(v) for k, v in request.dropped.items()},
+            old_sha256=request.old_sha256,
+            reason=request.reason,
+            created_at=self.clock.now(),
+        )
+        self.covers.add(review)
+        self._hold(state, review.album_id, "cover", review.id)
+        data: dict[str, JsonValue] = {
+            "review_id": review.id,
+            "album_id": review.album_id,
+            "label": review.label,
+            "candidates": len(review.candidates),
+            "reason": review.reason,
+        }
+        self._emit(run, "cover.requested", spec.id, data)
+        return review.id
 
     def rename_lane(self, run_id: str, old: str, new: str) -> None:
         """LANES-14: a ``pending:`` lane becomes its album's lane once it is imported."""
@@ -637,6 +671,7 @@ class Engine:
                 profile_settings=state.profile_settings,
                 busy_folders=state.busy,
                 request_cleanup=lambda request: self._request_cleanup(state, spec, request),
+                request_cover=lambda request: self._request_cover(state, spec, request),
                 hold_pass=lambda kind, ref, label: self._hold_pass(state, kind, ref, label),
             )
             result = await self._run_cancellable(state, step_type.run(ctx))
@@ -820,7 +855,7 @@ class Engine:
         for cs in changesets:
             self.changesets.add(cs)
             emit("changeset.proposed", proposed_event(cs))
-            if spec.apply == "auto" and not force_review:
+            if apply_policy(spec, step_type) == "auto" and not force_review:
                 outcome = apply_changeset(
                     cs,
                     backend=state.backend,
@@ -1016,3 +1051,11 @@ def _redact(value: Any, redactor: Redactor) -> Any:
 
 
 __all__ = ["Clock", "Engine", "RunValidationError", "Scalar", "SystemClock"]
+
+
+def apply_policy(spec: StepSpec, step_type: object) -> str:
+    """The step's ``apply``, or its type's ``default_apply`` when the workflow doesn't
+    say (CHANGESET-6; ``covers.search`` defaults to ``auto``, COVERS-SEARCH-15)."""
+    if "apply" in spec.model_fields_set:
+        return spec.apply
+    return str(getattr(step_type, "default_apply", spec.apply))

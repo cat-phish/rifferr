@@ -26,6 +26,7 @@ from rifferr.appdb import (
     HOLDING_CHANGESETS,
     AppChangeSets,
     AppCleanupDecisions,
+    AppCoverReviews,
     AppDB,
     AppImportDecisions,
     AppJournal,
@@ -36,7 +37,8 @@ from rifferr.appdb import (
 )
 from rifferr.backends.base import CapabilityError, LibraryBackend
 from rifferr.backends.loader import load_backend
-from rifferr.core.changeset import ChangeSet
+from rifferr.core.changeset import ChangeSet, ChangeSource, FieldChange, TargetChange, TargetRef
+from rifferr.core.covers import ART_FIELD
 from rifferr.core.ids import new_ulid
 from rifferr.core.imports import ImportAction, ImportApplyError, merge_candidates
 from rifferr.core.profile import Profile, Redactor
@@ -167,6 +169,7 @@ class Worker:
         self.lanes = AppLanes(db)
         self.imports = AppImportDecisions(db)
         self.cleanups = AppCleanupDecisions(db)
+        self.covers = AppCoverReviews(db)
 
     async def serve(self, commands: Commands) -> None:
         """Run jobs until stopped, the server goes away, or idle too long (WORKER-7)."""
@@ -295,6 +298,9 @@ class Worker:
         if job.kind == "import_undo":
             self._undo_import(job)
             return
+        if job.kind == "cover_apply":
+            self._apply_cover(job)
+            return
         payload = job.payload
         source = str(payload.get("source", ""))
         source_name = str(payload.get("source_name", "<workflow>"))
@@ -313,6 +319,7 @@ class Worker:
             lanes=self.lanes,
             imports=self.imports,
             cleanups=self.cleanups,
+            covers=self.covers,
         )
         try:
             wf, doc = load_workflow(source, source_name)
@@ -357,6 +364,7 @@ class Worker:
                 self.db.finish(job.run, run.state.value)  # type: ignore[arg-type]
                 self.imports.cancel_for_run(job.run)  # nothing waits on a finished run
                 self.cleanups.cancel_for_run(job.run)
+                self.covers.cancel_for_run(job.run)
         except Exception as exc:  # an engine bug: still end the run cleanly
             log.exception("run %s crashed", run.id)
             self.db.finish(job.run, "failed", f"{type(exc).__name__}: {exc}")
@@ -569,6 +577,86 @@ class Worker:
             self.db,
             decision.run_id,
             lambda type, step, d: self._changeset_emitter(decision.run_id, step)(type, d),
+        )
+
+    def _apply_cover(self, job: Job) -> None:
+        """Set the cover a person chose (COVERS-SEARCH-21): a ChangeSet on the album's
+        ``art_sha256``, applied through the journal at once (the choice was the review),
+        then the album's lane goes on."""
+        payload = job.payload
+        review_id = str(payload.get("review_id"))
+        review = self.covers.get(review_id)
+        if review is None:
+            self._finish_job(job, "failed", f"no cover review {review_id}")
+            return
+        sha = str(payload.get("sha256"))
+        by = payload.get("by")
+        emit = self._changeset_emitter(review.run_id, review.step_id)
+        ref = TargetRef(scope="album", id=review.album_id)
+        try:
+            (album,) = self.backend.query(Selection(ids=(review.album_id,)))
+            old = album.fields.get(ART_FIELD)
+            rationale = payload.get("rationale")
+            cs = ChangeSet(
+                id=new_ulid(),
+                profile=review.profile,
+                run_id=review.run_id,
+                step_id=review.step_id,
+                source=ChangeSource(kind="step", name="covers.search"),
+                rationale=rationale if isinstance(rationale, str) else None,
+                created_at=datetime.now(UTC),
+                targets=[
+                    TargetChange(
+                        target=ref,
+                        changes=[FieldChange(field=ART_FIELD, old=old, new=sha)],
+                    )
+                ],
+            )
+            self.changesets.add(cs)
+            emit("changeset.proposed", proposed_event(cs))
+            outcome = apply_changeset(
+                cs,
+                backend=self.backend,
+                journal=self.journal,
+                store=self.changesets,
+                new_id=new_ulid,
+                now=lambda: datetime.now(UTC),
+                emit=emit,
+                resolved_by=by if isinstance(by, str) else None,
+            )
+        except Exception as exc:  # the album is gone, or the library refused: still waiting
+            log.warning("cover review %s: applying failed: %s", review_id, exc)
+            self.covers.set_claim(review_id, None)
+            message = f"{type(exc).__name__}: {exc}"
+            emit("run.step.log", {"stream": "error", "line": f"{review.label}: cover: {message}"})
+            self._finish_job(job, "failed", message)
+            return
+        if outcome.state != "applied":
+            self.covers.set_claim(review_id, None)
+            self._finish_job(job, "failed", f"the cover change was {outcome.state}")
+            return
+        review.state = "chosen"
+        review.chosen = sha
+        review.decided_by = by if isinstance(by, str) else None
+        review.decided_at = datetime.now(UTC)
+        self.covers.release(review)
+        emit(
+            "cover.resolved",
+            {
+                "review_id": review.id,
+                "album_id": review.album_id,
+                "decision": "choose",
+                "decided_by": review.decided_by,
+                "sha256": sha,
+                "changeset_id": cs.id,
+            },
+        )
+        self.lanes.resolve_hold(review.run_id, review.id)
+        self._finish_job(job, "succeeded", result={"changeset_id": cs.id, "sha256": sha})
+        settle(
+            self.db,
+            review.run_id,
+            lambda type, step, d: self._changeset_emitter(review.run_id, step)(type, d),
         )
 
     def _lookup_import(self, job: Job) -> None:

@@ -184,7 +184,7 @@ LaneStateOut = Literal[
 
 
 class LaneHold(_Model):
-    kind: Literal["changeset", "gate", "import", "cleanup"]
+    kind: Literal["changeset", "gate", "import", "cleanup", "cover"]
     ref: str = Field(
         description="ChangeSet id, review gate id, import decision id or cleanup decision id"
     )
@@ -305,7 +305,7 @@ class QueueItem(_Model):
     ``changeset`` / ``gate`` / ``import_decision`` / ``cleanup_decision`` is set
     (IMPORT-UI-7, FILES-CLEANUP-14)."""
 
-    kind: Literal["changeset", "gate", "import", "cleanup"]
+    kind: Literal["changeset", "gate", "import", "cleanup", "cover"]
     id: str
     profile: str
     run_id: str
