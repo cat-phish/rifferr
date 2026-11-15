@@ -47,6 +47,12 @@ notify = "rifferr.steps.notify:NotifyStep"
 "files.cleanup" = "rifferr.steps.files_cleanup:FilesCleanupStep"
 workflow = "rifferr.steps.workflow_call:WorkflowCallStep"
 
+[project.entry-points."rifferr.cover_providers"]
+coverartarchive = "rifferr.covers.providers:CoverArtArchive"
+itunes = "rifferr.covers.providers:ITunes"
+deezer = "rifferr.covers.providers:Deezer"
+local = "rifferr.covers.providers:LocalFiles"
+
 [project.entry-points."rifferr.backends"]
 beets = "rifferr.backends.beets:from_profile"
 

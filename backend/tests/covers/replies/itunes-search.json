@@ -1,0 +1,10 @@
+{"resultCount": 2, "results": [
+  {"wrapperType": "collection", "collectionType": "Album", "artistName": "Boards of Canada",
+   "collectionName": "Geogaddi", "releaseDate": "2002-02-18T08:00:00Z",
+   "collectionViewUrl": "https://music.apple.com/us/album/geogaddi/1",
+   "artworkUrl100": "https://is1-ssl.mzstatic.com/image/thumb/Music/aa/bb/cc/source/100x100bb.jpg"},
+  {"wrapperType": "collection", "collectionType": "Album", "artistName": "Boards of Canada",
+   "collectionName": "Music Has the Right to Children", "releaseDate": "1998-04-20T07:00:00Z",
+   "collectionViewUrl": "https://music.apple.com/us/album/mhtrtc/2",
+   "artworkUrl100": "https://is2-ssl.mzstatic.com/image/thumb/Music/dd/ee/ff/source/100x100bb.jpg"}
+]}
