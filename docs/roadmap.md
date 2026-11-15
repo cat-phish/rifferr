@@ -186,6 +186,7 @@ S-SUBWORKFLOW → queue dashboard (F-DASHBOARD).
 - [x] S-NOTIFY: Implemented 2026-11-14.
 - [x] S-FILES-CLEANUP: Implemented 2026-11-14.
 - [x] S-SUBWORKFLOW: Implemented 2026-11-14.
+- [x] F-DASHBOARD: Implemented 2026-11-14.
 
 ## M3 — Cover search
 

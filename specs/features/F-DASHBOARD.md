@@ -1,5 +1,5 @@
 # F-DASHBOARD: Queue dashboard
-Status: Approved
+Status: Implemented
 Milestone: M2
 
 ## Context
@@ -53,7 +53,7 @@ Page and updates:
 - DASHBOARD-14: `/` MUST show the dashboard for the selected profile with the four sections in this order: Needs review, Runs in progress, Inbox, Recent imports. The nav item "Runs" moves to `/runs`.
 - DASHBOARD-15: The dashboard MUST update from `GET /api/events` without polling. Run, review, import and cleanup events already arrive there; the trigger manager adds `inbox.changed {profile, workflow, path}` when a watched folder's candidates change state (settle started, settled, fired), coalesced to one per input per second.
 - DASHBOARD-16: Paths, labels and messages MUST be shown as text, never HTML.
-- DASHBOARD-17: A Playwright test MUST cover, against the e2e temp profile: an inbox folder shown as `waiting`, a run started from it shown in progress and then waiting for review, the waiting item reached from the dashboard, and an import undone from Recent imports.
+- DASHBOARD-17: A Playwright test MUST cover, against the e2e temp profile: a folder dropped into a watched folder shown in the inbox while it settles, a run started from it shown in progress and then waiting for review, the waiting item reached from the dashboard, and an import undone from Recent imports.
 
 ## Interfaces
 ```python
@@ -96,6 +96,33 @@ Routes: `GET /api/profiles/{profile}/inbox`, `GET /api/profiles/{profile}/import
 Job kind `import_undo`. Backend protocol: `remove(selection, delete_files)`
 (C-BACKEND, additive; the beets backend uses beets' library `remove`). Event
 `inbox.changed`. UI routes: `/` (dashboard), `/runs` unchanged.
+
+Implementation details (filled in while building):
+- The backend method is `remove_album(album_id, *, delete_files) -> list[str]` (the
+  deleted paths), behind a new `remove` capability; beets' `Album.remove(delete=...)`
+  deletes the files and art and prunes emptied folders up to the library directory.
+- Removal records live in their own table, `album_removals` (migration 013), not in the
+  ChangeSet journal: an import isn't a ChangeSet. A record is `pending` before the
+  removal and `removed` or `failed` after; at start-up the worker settles pending ones
+  (removed if the album is gone, failed otherwise) and never removes anything itself.
+- "Undone" is `trigger_inputs.undone_at`, cleared when the input is recorded for a new
+  run. `dedup_skip` returns the new reason `undone` for it.
+- The inbox lists armed and failing watch triggers only; an untrusted (disabled)
+  workflow has no resolved folder yet. Loose files in the watch folder are not listed
+  (the watcher never fires for them either).
+- "Import again" is `POST /api/runs` with the entry as `input`: a manual run, which
+  dedup never skips (TRIGGERS-21).
+- `RecentImport` also carries the run's `state`. Recent imports read the latest
+  `3 × limit` runs and keep the first `limit` that still have albums.
+- `ReviewGate.album_decisions` (album id -> `continued`/`rejected`) holds per-album
+  decisions while the gate is pending (column `review_gates.album_decisions`). A
+  per-album continue removes the gate's hold from those lanes; the gate's final state is
+  the last decision's. A partial decision emits `review.decided` (on `/api/events`);
+  the last one `review.resolved`, both with `albums`. Runs without lanes (suspended
+  before C-LANES) can only be decided as a whole (`400 bad_request`).
+- `inbox.changed` is emitted when an input starts settling and when it is handled after
+  settling, so it is coalesced to one per settle period. The UI also refreshes the inbox
+  on `run.*`, `trigger.*` and `job.finished`.
 
 ## Examples
 Inbox `/music/inbox` with the reference workflow's watch trigger:
@@ -179,12 +206,12 @@ decisions (DASHBOARD-11) let the user continue some albums and reject others.
    Resolved 2026-11-14 (author): new spec.
 
 ## Tasks
-- [ ] backend protocol `remove` + beets backend and contract test
-- [ ] `import_undo` worker job (journal, ChangeSet undo first, dedup record)
-- [ ] read-only worker request `imports.recent`
-- [ ] routes: inbox, recent imports, import undo
-- [ ] per-album gate decisions
-- [ ] `inbox.changed` events from the trigger manager
-- [ ] dashboard page on `/`; nav "Runs" to `/runs`
-- [ ] multi-select decisions on `/review`
-- [ ] Playwright test (DASHBOARD-17)
+- [x] backend protocol `remove` + beets backend and contract test
+- [x] `import_undo` worker job (journal, ChangeSet undo first, dedup record)
+- [x] read-only worker request `imports.recent`
+- [x] routes: inbox, recent imports, import undo
+- [x] per-album gate decisions
+- [x] `inbox.changed` events from the trigger manager
+- [x] dashboard page on `/`; nav "Runs" to `/runs`
+- [x] multi-select decisions on `/review`
+- [x] Playwright test (DASHBOARD-17)

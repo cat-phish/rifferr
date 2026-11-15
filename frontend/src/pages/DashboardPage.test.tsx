@@ -112,7 +112,7 @@ test("DASHBOARD_4 only runs in progress, with what they wait for", async () => {
   expect(rows[0]).toHaveTextContent("1 album waiting, 0 items to review");
 });
 
-test("DASHBOARD_1_3_16 inbox entries show their state as text and offer Import again", async () => {
+test("DASHBOARD_1 DASHBOARD_3 DASHBOARD_16 inbox entries show their state as text and offer Import again", async () => {
   const { calls } = setup();
   renderApp("/?profile=main");
   const entries = await screen.findAllByTestId("inbox-entry");
@@ -146,7 +146,7 @@ test("DASHBOARD_15 inbox refetches on inbox.changed", async () => {
   expect(await screen.findByText("Empty.")).toBeInTheDocument();
 });
 
-test("DASHBOARD_10 undo import confirms what happens to each album's files", async () => {
+test("DASHBOARD_6 DASHBOARD_10 undo import confirms what happens to each album's files", async () => {
   const { calls } = setup();
   renderApp("/?profile=main");
   fireEvent.click(await screen.findByRole("button", { name: "Undo import" }));
@@ -157,4 +157,59 @@ test("DASHBOARD_10 undo import confirms what happens to each album's files", asy
   expect(await screen.findByTestId("undo-queued")).toBeInTheDocument();
   const post = calls.find((c) => c.path === "/api/runs/R1/import-undo");
   expect(post?.body).toEqual({ albums: ["a1", "a2"] });
+});
+
+test("DASHBOARD_5 needs review counts each kind and links the oldest items", async () => {
+  const gates = Array.from({ length: 7 }, (_, n) => ({
+    kind: "gate" as const,
+    id: `g${String(n)}`,
+    profile: "main",
+    run_id: "R3",
+    workflow: "foobar-style",
+    step_id: "check",
+    created_at: T0,
+    changeset: null,
+    state: null,
+    gate: {
+      id: `g${String(n)}`,
+      profile: "main",
+      run_id: "R3",
+      step_id: "check",
+      state: "pending" as const,
+      albums: [
+        {
+          target: { scope: "album" as const, id: `a${String(n)}` },
+          label: `Album ${String(n)}`,
+          message: null,
+          shown: {},
+          changes: [],
+          conflicted: [],
+          imported_by_run: true,
+        },
+      ],
+      on_reject: "stop" as const,
+      on_timeout: null,
+      created_at: T0,
+      deadline: null,
+      decided_at: null,
+      decided_by: null,
+      note: null,
+      album_decisions: {},
+    },
+  }));
+  mockApi({
+    "GET /api/profiles": () => PROFILES,
+    "GET /api/runs": () => [],
+    "GET /api/review": () => gates,
+    "GET /api/profiles/main/inbox": () => [],
+    "GET /api/profiles/main/imports": () => [],
+  });
+  renderApp("/?profile=main");
+  expect(await screen.findByTestId("review-kinds")).toHaveTextContent("7 review gates");
+  const oldest = screen.getAllByTestId("review-oldest");
+  expect(oldest).toHaveLength(5);
+  expect(within(nth(oldest, 0)).getByRole("link", { name: "Album 0" })).toHaveAttribute(
+    "href",
+    "/review?profile=main&item=g0",
+  );
 });

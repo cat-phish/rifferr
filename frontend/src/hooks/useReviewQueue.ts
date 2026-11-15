@@ -54,7 +54,8 @@ export function useAppEvents(onEvent?: (event: RunEvent) => void): void {
       if (
         event.type.startsWith("run.") ||
         event.type.startsWith("trigger.") ||
-        event.type.startsWith("inbox.")
+        event.type.startsWith("inbox.") ||
+        event.type === "job.finished" // an import undo marks its input undone
       ) {
         void queryClient.invalidateQueries({ queryKey: ["inbox"] });
       }

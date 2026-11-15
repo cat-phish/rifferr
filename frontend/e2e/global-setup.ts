@@ -36,6 +36,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     imports: join(root, "imports-inbox"),
     cleanup: join(root, "cleanup-inbox"),
     watched: join(root, "watched"),
+    dashboard: join(root, "dashboard-inbox"),
     home: join(root, "home"),
   };
   for (const d of Object.values(dirs)) mkdirSync(d, { recursive: true, mode: 0o700 });
@@ -163,6 +164,17 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     readFileSync(join(here, "watch-flow.yaml"), "utf8").replace("WATCHED", dirs.watched),
   );
 
+  // A watched, trusted folder for the dashboard test (F-DASHBOARD DASHBOARD-17).
+  const dashboardFlow = join(dirs.config, "profiles", "main", "workflows", "dashboard-flow.yaml");
+  writeFileSync(
+    dashboardFlow,
+    readFileSync(join(here, "dashboard-flow.yaml"), "utf8").replace(
+      "DASHBOARD_FOLDER",
+      dirs.dashboard,
+    ),
+  );
+  rifferr("trust", dashboardFlow, "--yes");
+
   const server: ChildProcess = spawn(
     uv,
     ["run", "--project", backend, "rifferr", "serve", "--no-browser", "--port", String(E2E_PORT)],
@@ -182,6 +194,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   process.env.RIFFERR_E2E_IMPORTS_INBOX = dirs.imports;
   process.env.RIFFERR_E2E_CLEANUP_INBOX = dirs.cleanup;
   process.env.RIFFERR_E2E_WATCHED = dirs.watched;
+  process.env.RIFFERR_E2E_DASHBOARD = dirs.dashboard;
   process.env.RIFFERR_E2E_FIXTURE = join(backend, "tests", "fixtures", "audio", "album-flac");
 
   return async () => {
