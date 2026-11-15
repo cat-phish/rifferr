@@ -482,7 +482,7 @@ test("COVER_PICKER_16 the album grid shows art thumbnails in an Art column", asy
   expect(art.querySelector("img")?.getAttribute("loading")).toBe("lazy");
 });
 
-test("COVER_PICKER_14 change cover searches for the album and sets it as a manual edit", async () => {
+test("COVER_PICKER_2 COVER_PICKER_3 COVER_PICKER_14 change cover searches for the album and sets it as a manual edit", async () => {
   const api = mockApi({
     "GET /api/profiles": () => profiles(),
     "GET /api/profiles/main/library": () => page(2001, { art_sha256: "ab".repeat(32) }),

@@ -158,7 +158,7 @@ test("COVER_PICKER_13 no cover, and refusals show", async () => {
   });
 });
 
-test("COVER_PICKER_6 search streams candidates and provider states, ignoring other searches", async () => {
+test("COVER_PICKER_4 COVER_PICKER_6 COVER_PICKER_7 an edited query streams candidates and provider states, ignoring other searches", async () => {
   const { calls } = setup(review({ candidates: [] }));
   renderApp("/review?profile=main");
   const picker = await openPicker();
@@ -285,7 +285,7 @@ test("COVER_PICKER_9 weights re-rank at once, toggles hide, and a new provider i
   expect(bodies(calls, "/api/covers/search")[1]).toMatchObject({ providers: ["local"] });
 });
 
-test("COVER_PICKER_10 save as defaults sends the order, toggles and weights", async () => {
+test("COVER_PICKER_10 COVER_PICKER_11 save as defaults sends the order, toggles and weights", async () => {
   const { calls } = setup(review(), {
     "PUT /api/profiles/main/covers/providers": () => ({ ...VIEW, profile_hash: "h2" }),
   });
@@ -362,16 +362,18 @@ test("COVER_PICKER_18 a bad image is reported", async () => {
   );
 });
 
-test("COVER_PICKER_12 preview opens by keyboard and a failed image can't be chosen", async () => {
+test("COVER_PICKER_12 COVER_PICKER_15 focusable candidates with alt text; a failed image can't be chosen", async () => {
   setup(review(), {
     "GET /api/covers/image/c1": () => err(502, "image_unavailable", "itunes: HTTP 404"),
   });
   renderApp("/review?profile=main");
   const picker = await openPicker();
+  expect(within(picker).getByRole("img", { name: "itunes cover, 1200×1200" })).toBeInTheDocument();
   const first = within(picker).getAllByRole("button", {
     name: /^Preview itunes cover/,
   })[0] as HTMLElement;
   first.focus();
+  expect(first).toHaveFocus();
   fireEvent.click(first);
   const preview = await screen.findByTestId("cover-preview");
   expect(await within(preview).findByTestId("preview-failed")).toHaveTextContent(

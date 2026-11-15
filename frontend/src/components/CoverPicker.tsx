@@ -320,6 +320,7 @@ function PickerBody({
     onSuccess: (jobId) => {
       pendingJob.current = jobId ?? null;
       setOutcome("Setting the cover.");
+      settle();
       if (review !== null) void queryClient.invalidateQueries({ queryKey: ["review"] });
     },
     onError: (e, c) => {
@@ -340,21 +341,34 @@ function PickerBody({
     },
   });
 
+  // Outcomes seen on the stream, kept because the job can finish before the POST that
+  // queued it has answered.
+  const changeOutcomes = useRef(new Map<string, string>());
+  const finishedJobs = useRef(new Map<string, string>());
   function choiceEvent(e: CoverEvent) {
-    if (albumId === null || pendingJob.current === null) return;
-    const mine = e.data.changeset_id === pendingChange.current;
-    if (e.type.startsWith("changeset.") && !mine) return;
-    if (e.type === "changeset.applied") setOutcome("Cover set. Undo it from Recent edits.");
-    else if (e.type === "changeset.conflicted")
+    if (albumId === null) return;
+    if (e.type.startsWith("changeset.") && e.data.changeset_id)
+      changeOutcomes.current.set(e.data.changeset_id, e.type);
+    if (e.type === "job.finished" && e.data.job_id)
+      finishedJobs.current.set(e.data.job_id, e.data.state ?? "");
+    settle();
+  }
+  function settle() {
+    const change = pendingChange.current;
+    const job = pendingJob.current;
+    if (albumId === null || change === null || job === null) return;
+    const seen = changeOutcomes.current.get(change);
+    if (seen === "changeset.applied") setOutcome("Cover set. Undo it from Recent edits.");
+    else if (seen === "changeset.conflicted")
       setOutcome("The cover changed meanwhile; nothing was set. Search again to see it.");
-    else if (e.type === "changeset.failed") setOutcome("Setting the cover failed.");
-    else if (e.type === "job.finished" && e.data.job_id === pendingJob.current) {
-      pendingJob.current = null;
-      if (e.data.state !== "succeeded") setOutcome("Setting the cover failed.");
-      void queryClient.invalidateQueries({ queryKey: ["library", profile] });
-      void queryClient.invalidateQueries({ queryKey: ["recent-edits", profile] });
-      void queryClient.invalidateQueries({ queryKey: ["cover-query", profile, albumId] });
-    }
+    else if (seen === "changeset.failed") setOutcome("Setting the cover failed.");
+    const state = finishedJobs.current.get(job);
+    if (state === undefined) return;
+    pendingJob.current = null;
+    if (state !== "succeeded") setOutcome("Setting the cover failed.");
+    void queryClient.invalidateQueries({ queryKey: ["library", profile] });
+    void queryClient.invalidateQueries({ queryKey: ["recent-edits", profile] });
+    void queryClient.invalidateQueries({ queryKey: ["cover-query", profile, albumId] });
   }
 
   // -- own images (COVER-PICKER-17 to -19) ---------------------------------------------------

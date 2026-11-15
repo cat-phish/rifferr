@@ -10,6 +10,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -37,6 +38,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     cleanup: join(root, "cleanup-inbox"),
     watched: join(root, "watched"),
     dashboard: join(root, "dashboard-inbox"),
+    covers: join(root, "covers-inbox"),
     home: join(root, "home"),
   };
   for (const d of Object.values(dirs)) mkdirSync(d, { recursive: true, mode: 0o700 });
@@ -129,6 +131,51 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     ],
     { env, encoding: "utf8" },
   );
+  // Cover picker (F-COVER-PICKER e2e): only the local provider, so no
+  // network; an album in the library with an image in its folder, and one to import.
+  const profileYaml = join(dirs.config, "profiles", "main", "profile.yaml");
+  writeFileSync(
+    profileYaml,
+    readFileSync(profileYaml, "utf8") +
+      "covers:\n  providers:\n    - name: local\n      weight: 1\n",
+  );
+  const coverAlbum = join(root, "cover-album");
+  cpSync(
+    join(backend, "tests", "fixtures", "audio", "album-flac"),
+    join(coverAlbum, "album-flac"),
+    {
+      recursive: true,
+    },
+  );
+  execFileSync(
+    uv,
+    [
+      "run",
+      "--project",
+      backend,
+      "beet",
+      "import",
+      "-q",
+      "--set",
+      "album=Cover Sessions",
+      join(coverAlbum, "album-flac"),
+    ],
+    { env, encoding: "utf8" },
+  );
+  const coverFolder = findDir(dirs.library, "Cover Sessions");
+  writeFileSync(join(coverFolder, "folder.jpg"), jpegHeader(800, 800));
+  cpSync(
+    join(backend, "tests", "fixtures", "audio", "album-flac"),
+    join(dirs.covers, "album-flac"),
+    {
+      recursive: true,
+    },
+  );
+  cpSync(
+    join(here, "cover-flow.yaml"),
+    join(dirs.config, "profiles", "main", "workflows", "cover-flow.yaml"),
+  );
+
   cpSync(
     join(repo, "examples", "workflows", "two-step.yaml"),
     join(dirs.config, "profiles", "main", "workflows", "two-step.yaml"),
@@ -195,6 +242,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   process.env.RIFFERR_E2E_CLEANUP_INBOX = dirs.cleanup;
   process.env.RIFFERR_E2E_WATCHED = dirs.watched;
   process.env.RIFFERR_E2E_DASHBOARD = dirs.dashboard;
+  process.env.RIFFERR_E2E_COVERS_INBOX = dirs.covers;
   process.env.RIFFERR_E2E_FIXTURE = join(backend, "tests", "fixtures", "audio", "album-flac");
 
   return async () => {
@@ -208,4 +256,42 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     });
     rmSync(root, { recursive: true, force: true });
   };
+}
+
+/** The folder named ``name`` below ``root`` (beets' path format decides where). */
+function findDir(root: string, name: string): string {
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const path = join(root, entry.name);
+    if (entry.name === name) return path;
+    try {
+      return findDir(path, name);
+    } catch {
+      // not below this one
+    }
+  }
+  throw new Error(`no folder ${name} below ${root}`);
+}
+
+/** A JPEG header with a size: enough for Rifferr's checks (magic bytes, SOF). */
+function jpegHeader(width: number, height: number): Buffer {
+  const app0 = Buffer.from([
+    0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0,
+  ]);
+  const sof = Buffer.from([
+    0xff,
+    0xc0,
+    0,
+    11,
+    8,
+    height >> 8,
+    height & 0xff,
+    width >> 8,
+    width & 0xff,
+    1,
+    1,
+    0x11,
+    0,
+  ]);
+  return Buffer.concat([Buffer.from([0xff, 0xd8]), app0, sof, Buffer.from([0xff, 0xd9])]);
 }
