@@ -1,5 +1,5 @@
 # F-COVER-PICKER: Cover search UI
-Status: Approved
+Status: Implemented
 Milestone: M3
 
 ## Context
@@ -118,6 +118,56 @@ grid), `CoverPreview` (modal), `ProviderPanel` (toggles, sliders, order, save). 
 ranking function is `rankCandidates(candidates, providers)` in
 `frontend/src/covers/rank.ts`.
 
+### Implementation details
+Where the build differs from the text above, or adds to it:
+
+- **Filter reasons** are the existing `small` and `aspect` (`FilterReason` from
+  S-COVERS-SEARCH), not `too_small`.
+- **Candidate events:** `covers.candidate` carries the candidate as a `RankedCandidate`,
+  with its `score`, `size_score` and `filtered` inside it rather than next to it.
+  `covers.done` gains `hidden`: the candidates the hard filters dropped, scored, with their
+  reason. `Ranking.hidden` holds them on the server, and `score_candidate` scores one
+  candidate.
+- **Stored reviews** from before this spec have no `size_score`. The UI keeps their stored
+  score when weights change.
+- **The cover query** is `GET /api/profiles/{profile}/albums/{id}/cover-query`, not POST,
+  since it only reads. It comes from the read-only worker request `albums.cover_query`,
+  which uses `album_query` and `album_label` (refactored out of `steps/covers_search.py`).
+- **Uploads:** the profile is the `profile` query parameter and the body is `{data}`. That
+  way the size cap is known before the body is read. The route reads the body itself, with
+  the cap, and its schema is registered through `RAW_BODY_SCHEMAS` so the OpenAPI
+  `$ref` resolves (API-10). An upload candidate's `image_url` is `upload:<sha256>`, and
+  its bytes live in the cover cache. If the cache was pruned, choosing it says to add it
+  again. `upload` is never searched, even if a profile lists it.
+- **The album cover route** reuses the grid's `queue_manual`, factored out of
+  `create_changes`, and also answers `queued_behind`. The picker follows the ChangeSet and
+  the job on the profile stream. It keeps outcomes that arrive before the POST answers.
+- **Profile defaults:** `save_cover_providers` in `profile_store.py` rewrites
+  `covers.providers` with ruamel and keeps each provider's own `settings`. Listed providers
+  that weren't sent stay at the end. The result must load as a profile, and the save
+  refuses a stale `profile_hash` (`409 conflict`). Only installed providers may be
+  listed. The worker reads `profile.yaml` again when each run starts
+  (`Worker._current_settings`), so every saved setting, not only cover weights, applies
+  from the next run. A run that is already going keeps its settings. The server already
+  read the profile on every request.
+- **Bug fixed on the way:** `parse_profile` validated the `covers` section but didn't keep
+  it, so every profile used the default cover settings
+  (`test_PROFILE_2_covers_section_is_loaded`).
+- **Provider order** is changed with up/down buttons. Drag is B-066.
+- **Art column:** the column is the pseudo-field `@art` (`ART_COLUMN`, 64 px). It is in the
+  default album columns and in the column chooser, but not in bulk edit. Column settings a
+  browser saved before this spec, and `ui.grid_columns`, don't add it on their own. The
+  thumbnail URL carries the first 16 hex characters of the sha256, so a changed cover is a
+  new image to the browser's cache. Thumbnails are full-size files (B-064).
+- **`useEventStream`** gains `onOpen`. Album mode starts its search once the profile stream
+  is open, so its first events aren't missed. Events of a search whose POST hasn't
+  answered yet are buffered.
+- **Tests:** `backend/tests/api/test_cover_picker.py`, `tests/covers/test_rank_case.py`
+  with `frontend/src/lib/rank-case.json` (the same case is checked by
+  `lib/covers.test.ts`), `components/CoverPicker.test.tsx`, `pages/LibraryPage.test.tsx`
+  and `e2e/covers.spec.ts`. The e2e profile uses only the `local` provider and a pasted
+  image, so no test touches the network. The paste is simulated (B-065).
+
 ## Examples
 Review mode. "Boards of Canada - Geogaddi" waits because nothing scored 0.6 or more. The
 user opens it from the notification and the picker shows the three stored candidates. They
@@ -186,13 +236,13 @@ All resolved by the user on 2026-11-14:
 5. ~~Album mode at once or through review?~~ At once, as a manual edit (COVER-PICKER-14).
 
 ## Tasks
-- [ ] `size_score` and `filtered` on candidates and candidate events; schemas, TS client
-- [ ] `cover-query`, album `cover` route, `album_id` in search; manual ChangeSet on `art_sha256`
-- [ ] `GET`/`PUT` profile covers with ruamel round-trip and hash guard; profile reload
-- [ ] album art route ETag and caching headers
-- [ ] `rank.ts` with a test matching the server's ranking
-- [ ] `CoverPicker`, `ProviderPanel`, `CoverPreview`; review queue uses the picker
-- [ ] upload route (base64 JSON, checks, `upload` candidates); file picker, drop and paste in the picker
-- [ ] library grid: "Change cover" and the "Art" column
-- [ ] Playwright: review-mode pick through the `local` provider (no network), weight re-rank, paste an image, album-mode change and undo
-- [ ] coverage row 6 note, roadmap, overview status
+- [x] `size_score` and `filtered` on candidates and candidate events; schemas, TS client
+- [x] `cover-query`, album `cover` route, `album_id` in search; manual ChangeSet on `art_sha256`
+- [x] `GET`/`PUT` profile covers with ruamel round-trip and hash guard; profile reload
+- [x] album art route ETag and caching headers
+- [x] `lib/covers.ts` (`rankCandidates`) with a ranking case shared with the server's test
+- [x] `CoverPicker`, `ProviderPanel`, `CoverPreview`; review queue uses the picker
+- [x] upload route (base64 JSON, checks, `upload` candidates); file picker, drop and paste in the picker
+- [x] library grid: "Change cover" and the "Art" column
+- [x] Playwright: review-mode pick through the `local` provider (no network), weight re-rank, paste an image, album-mode change and undo
+- [x] coverage row 6 note, roadmap, overview status

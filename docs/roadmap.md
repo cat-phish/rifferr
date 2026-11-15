@@ -196,6 +196,7 @@ Order: S-COVERS-SEARCH (provider protocol, ranking, cache, first providers) →
 F-COVER-PICKER.
 
 - [x] S-COVERS-SEARCH: Implemented 2026-11-14.
+- [x] F-COVER-PICKER: Implemented 2026-11-14. M3 is done: covers can be picked from Cover Art Archive, iTunes, Deezer and local files, with weights.
 
 ## M4 — AI
 
