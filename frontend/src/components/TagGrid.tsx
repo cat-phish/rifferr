@@ -13,7 +13,9 @@ import {
 } from "@mantine/core";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useRef, useState } from "react";
+import { albumArt } from "../lib/covers";
 import {
+  ART_COLUMN,
   type AlbumSnapshot,
   type Edit,
   type FieldValue,
@@ -58,6 +60,9 @@ export interface GridProps {
   lists: Set<string>;
   onEdit: (row: Row, field: string, edit: Edit | null) => void;
   height?: number;
+  /** For the art column (COVER-PICKER-16): thumbnails and "Change cover". */
+  profile?: string;
+  onChangeCover?: (row: Row) => void;
 }
 
 type Line =
@@ -233,7 +238,7 @@ function HeaderCell({ scope, field, ...props }: { scope: Scope; field: string } 
       }}
     >
       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        {field}
+        {field === ART_COLUMN ? "Art" : field}
       </span>
       <div
         aria-hidden
@@ -327,6 +332,68 @@ function GridRow({
 }
 
 function Cell({ row, field, ...props }: { row: Row; field: string } & GridProps) {
+  if (field === ART_COLUMN) {
+    const sha = row.fields.art_sha256;
+    return <ArtCell key={typeof sha === "string" ? sha : "none"} row={row} {...props} />;
+  }
+  return <FieldCell row={row} field={field} {...props} />;
+}
+
+/** The album's current art, loaded only for rows on screen (the grid is virtual), and
+ * "Change cover" (COVER-PICKER-2, -16). */
+function ArtCell({ row, ...props }: { row: Row } & GridProps) {
+  const w = props.widths[row.target.scope][ART_COLUMN] ?? props.defaultWidth;
+  const [missing, setMissing] = useState(false);
+  const album = row.target.scope === "album";
+  const sha = row.fields.art_sha256;
+  // The sha in the URL makes a changed cover a new image for the browser's cache.
+  const version = typeof sha === "string" ? `&v=${sha.slice(0, 16)}` : "";
+  return (
+    <div
+      role="gridcell"
+      data-testid="art-cell"
+      data-field={ART_COLUMN}
+      style={{
+        width: w,
+        minWidth: w,
+        display: "flex",
+        alignItems: "center",
+        gap: 2,
+        padding: "0 4px",
+      }}
+    >
+      {album && props.profile !== undefined && !missing && (
+        <img
+          src={albumArt(props.profile, row.album) + version}
+          alt=""
+          loading="lazy"
+          width={28}
+          height={28}
+          style={{ objectFit: "cover", borderRadius: 2 }}
+          onError={() => {
+            setMissing(true);
+          }}
+        />
+      )}
+      {album && props.onChangeCover && (
+        <Tooltip label="Change cover">
+          <ActionIcon
+            size="sm"
+            variant="subtle"
+            aria-label={`Change cover of ${show(row.fields.album) || row.album}`}
+            onClick={() => {
+              props.onChangeCover?.(row);
+            }}
+          >
+            ✎
+          </ActionIcon>
+        </Tooltip>
+      )}
+    </div>
+  );
+}
+
+function FieldCell({ row, field, ...props }: { row: Row; field: string } & GridProps) {
   const [open, setOpen] = useState(false);
   const w = props.widths[row.target.scope][field] ?? props.defaultWidth;
   const key = cellKey(row.key, field);

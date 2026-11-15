@@ -17,7 +17,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useContext, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { api, ok } from "../api/client";
-import { CoverReviewView } from "../components/CoverReviewView";
+import { CoverPicker } from "../components/CoverPicker";
 import { CleanupDecisionView } from "../components/CleanupDecisionView";
 import { ImportDecisionView } from "../components/ImportDecisionView";
 import type { GateAlbum, QueueItem, ReviewGate } from "../api/types";
@@ -291,7 +291,10 @@ function RunCard({ group, focus }: { group: RunGroup; focus: string | null }) {
                 </Group>
               }
             >
-              <CoverReviewView review={item.cover_review} />
+              <CoverPicker
+                profile={item.cover_review.profile}
+                mode={{ kind: "review", review: item.cover_review }}
+              />
             </ItemCard>
           ) : (
             <ChangeSetCard key={item.id} item={item} focused={focus === item.id} />

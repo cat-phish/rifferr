@@ -21,12 +21,15 @@ import { Link } from "react-router";
 import { ApiError, RequestOrder, api, ok } from "../api/client";
 import type { ProfileSummary } from "../api/types";
 import { BeetsTerm } from "../components/BeetsTerm";
+import { CoverPicker } from "../components/CoverPicker";
 import { RecentEdits, type UndoResult } from "../components/RecentEdits";
 import { type CellConflict, TagGrid } from "../components/TagGrid";
 import { useEventStream } from "../hooks/useEventStream";
 import { useProfile, withProfile } from "../hooks/useProfile";
 import {
   type ColumnPrefs,
+  ART_COLUMN,
+  ART_WIDTH,
   DEFAULT_COLUMNS,
   DEFAULT_WIDTH,
   type Edit,
@@ -45,6 +48,7 @@ import {
   problemsByCell,
   savePrefs,
   setEdit,
+  show,
   toRequest,
   withEdit,
 } from "../lib/grid";
@@ -76,6 +80,12 @@ interface Inflight {
   job: string;
   behind: string[];
   sent: Record<string, PendingTarget[]>;
+}
+
+function albumLabel(row: Row): string {
+  const artist = show(row.fields.albumartist ?? row.fields.artist);
+  const album = show(row.fields.album) || row.album;
+  return artist ? `${artist} - ${album}` : album;
 }
 
 function columnsFor(profile: ProfileSummary | undefined, scope: Scope): string[] {
@@ -318,7 +328,9 @@ function Library({ profile, summary }: { profile: string; summary: ProfileSummar
   }, [profile, prefs]);
   const seen = (s: Scope) =>
     (s === "album" ? library.data?.album_fields : library.data?.item_fields) ?? [];
-  const choices = (s: Scope) => [...new Set([...prefs[s].columns, ...seen(s)])].sort();
+  const choices = (s: Scope) =>
+    [...new Set([...prefs[s].columns, ...seen(s), ...(s === "album" ? [ART_COLUMN] : [])])].sort();
+  const [coverRow, setCoverRow] = useState<Row | null>(null);
 
   // -- edits ---------------------------------------------------------------------------
   const edit = (row: Row, field: string, e: Edit | null) => {
@@ -445,7 +457,12 @@ function Library({ profile, summary }: { profile: string; summary: ProfileSummar
               albums={albums}
               scope={scope}
               columns={{ album: prefs.album.columns, item: prefs.item.columns }}
-              widths={{ album: prefs.album.widths, item: prefs.item.widths }}
+              widths={{
+                album: { [ART_COLUMN]: ART_WIDTH, ...prefs.album.widths },
+                item: prefs.item.widths,
+              }}
+              profile={profile}
+              onChangeCover={setCoverRow}
               defaultWidth={DEFAULT_WIDTH}
               onResize={(s, field, width) => {
                 setPrefs((p) => ({
@@ -589,9 +606,24 @@ function Library({ profile, summary }: { profile: string; summary: ProfileSummar
           </Stack>
         </Grid.Col>
       </Grid>
+      <Modal
+        opened={coverRow !== null}
+        onClose={() => {
+          setCoverRow(null);
+        }}
+        title="Change cover"
+        size="90%"
+      >
+        {coverRow !== null && (
+          <CoverPicker
+            profile={profile}
+            mode={{ kind: "album", albumId: coverRow.album, label: albumLabel(coverRow) }}
+          />
+        )}
+      </Modal>
       <BulkEdit
         mode={bulk}
-        fields={choices(scope === "album" ? "album" : "item")}
+        fields={choices(scope === "album" ? "album" : "item").filter((f) => f !== ART_COLUMN)}
         onClose={() => {
           setBulk(null);
         }}

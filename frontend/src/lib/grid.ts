@@ -9,8 +9,12 @@ export type FieldValue = boolean | number | string | string[] | null;
 export type Scope = "album" | "item";
 
 /** Built-in default columns: beets' own field names (TAG-GRID-3, open question 1). */
+/** The album grid's art column (COVER-PICKER-16): a thumbnail, not a field. */
+export const ART_COLUMN = "@art";
+export const ART_WIDTH = 64;
+
 export const DEFAULT_COLUMNS: Record<Scope, string[]> = {
-  album: ["albumartist", "album", "year", "albumtype", "genre"],
+  album: [ART_COLUMN, "albumartist", "album", "year", "albumtype", "genre"],
   item: ["track", "title", "artist", "album", "length"],
 };
 export const DEFAULT_WIDTH = 160;

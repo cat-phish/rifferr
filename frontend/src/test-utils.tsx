@@ -84,6 +84,7 @@ export class FakeEventSource {
   readonly url: string;
   readyState = 1;
   onerror: ((ev: Event) => void) | null = null;
+  onopen: ((ev: Event) => void) | null = null;
   private listeners = new Map<string, ((ev: MessageEvent<string>) => void)[]>();
 
   constructor(url: string | URL) {
@@ -95,6 +96,10 @@ export class FakeEventSource {
   }
   close(): void {
     this.readyState = 2;
+  }
+  /** The stream connected (``useEventStream``'s ``onOpen``). */
+  open(): void {
+    this.onopen?.(new Event("open"));
   }
   emit(type: string, data: unknown, id?: number): void {
     const ev = new MessageEvent<string>(type, {
