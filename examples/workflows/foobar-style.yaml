@@ -11,7 +11,7 @@
 # or one album:
 #   rifferr run foobar-style --profile main --input "/path/to/inbox/Artist - Album"
 name: foobar-style
-description: Import new albums with beets, then fix release-type suffixes.
+description: Import new albums with beets, fix release-type suffixes, find missing covers.
 vars:
   inbox:
     description: Folder with new albums to import (the checklist's "Stage 1, unsorted")
@@ -37,6 +37,12 @@ steps:
     uses: workflow
     with:
       workflow: release-suffixes.yaml
+  # Checklist line 6, album art: albums without art get the best cover from the
+  # providers in the profile's `covers` settings (Cover Art Archive, local images,
+  # iTunes and Deezer by default). When none scores well enough, only that album waits
+  # in the review queue for a cover choice. The cover is a ChangeSet, so undo removes it.
+  - id: art
+    uses: covers.search
   # Checklist line 4: delete leftover junk and empty folders from the imported folder.
   # Music beets could import is never deleted (an unmatched album stays for line 5), nor
   # is a folder that still waits as an import decision: it is cleaned by the pass that

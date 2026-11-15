@@ -1,5 +1,5 @@
 # S-COVERS-SEARCH: `covers.search` step and cover provider protocol
-Status: Approved
+Status: Implemented
 Milestone: M3
 
 ## Context
@@ -218,6 +218,52 @@ class ArtChange(BaseModel, frozen=True):        # on an album TargetChange
 - Events: `covers.candidate`, `covers.provider`, `covers.done` (search); review item kind
   `cover`.
 
+### Implementation details
+Where the build differs from the text above, and why (2026-11-14):
+- **The cover is a field change, not `TargetChange.art`.** An album's cover is the album field
+  `art_sha256` (`core.covers.ART_FIELD`): the sha256 of its art file, computed by the backend
+  from `artpath`. A cover ChangeSet sets it (or deletes it to remove the art). This keeps
+  Open question 1's intent, since review, conflicts, the journal, undo and import undo need no
+  changes, and the published proposal schema doesn't change at all. `ArtChange` was not
+  built. The image's size, type and provider are in the ChangeSet's `rationale`. Snapshots
+  show `art_sha256` (and beets' own `artpath`) instead of an `art` object (COVERS-SEARCH-22).
+- **Nothing is ever lost.** Before beets replaces or removes an art file, or overwrites an
+  image already at the art destination, the backend copies it into the art store (by
+  sha256, never evicted). Undo can always restore it, and removing art deletes the file only
+  once a copy is stored. A cover is refused when the album's folder doesn't exist.
+- **Entry points:** providers register under `rifferr.cover_providers`, the group name
+  `rifferr.plugins` already published, not `rifferr.covers`.
+- **Query fields are backend templates** (`$albumartist`, beets syntax), evaluated per album,
+  not `{{ }}`. Workflow interpolation runs once per step, not per album.
+- **`apply` defaults to `auto` through a new optional step-type attribute,
+  `default_apply`.** It applies when the workflow doesn't set `apply`. Called workflows keep
+  this.
+- **A person's choice applies at once.** Choosing in the review queue is already the review,
+  so the `choose` job applies the ChangeSet without a second review. Its `old` is the
+  album's art when applied.
+- **Routes:**
+  - Decisions are `POST /api/covers/reviews/{id}/decision`, which answers 202 for every
+    decision, like cleanups.
+  - `GET /api/covers/reviews/{id}` returns one review.
+  - `DELETE /api/covers/search/{id}` answers 200 with the search id.
+  - Searches from the API ignore `query.folder`: the `local` provider only looks in the
+    folder of the review named by `review_id`, and a chosen local image must be in that
+    folder.
+  - Image routes may set their own stricter CSP. The security middleware keeps it and adds
+    `frame-ancestors 'none'`, so this only tightens the rule.
+- **Probing:** `choose: auto` downloads candidates whose size the provider didn't give
+  (up to `max_tries`) and ranks them again at their real size. iTunes and Cover Art Archive
+  give no sizes.
+- **Secrets:** a provider with `needs: true` names its secret as `settings.secret`. The
+  value reaches it as `settings["token"]`, and the profile's matching rules arrive under
+  `settings["_match"]` (`covers.base.confidence`).
+- **UI:** a cover review shows in the queue as a "Cover choice" card: the stored
+  candidates, "Use this cover", "No cover" and "Fail this album". The full picker
+  (streaming search, editable query, weights, preview) is F-COVER-PICKER, which also brings
+  the Playwright test.
+- Provider replies in `backend/tests/covers/replies/` are hand-written from the documented
+  API shapes, since tests have no network.
+
 ## Examples
 Query `{artist: "Boards of Canada", album: "Geogaddi", year: 2002}`, weights CAA 3, iTunes 1:
 - CAA 1500×1500, confidence 1.0: score `3 × 1.0 × 1.0 = 3.0`.
@@ -263,13 +309,13 @@ Resolved (author, 2026-11-14: "approved, go with your recommendations"):
 6. `local_counts: true` is the default: a folder image counts as art.
 
 ## Tasks
-- [ ] Core: `CoverQuery`, `CoverCandidate`, `match_score`, `rank`, filters (COVERS-SEARCH-2, -3,
+- [x] Core: `CoverQuery`, `CoverCandidate`, `match_score`, `rank`, filters (COVERS-SEARCH-2, -3,
       -7 to -10)
-- [ ] `rifferr.covers`: protocol, entry points, `CoverHttp`, cache (COVERS-SEARCH-1, -5, -6, -11)
-- [ ] Providers: coverartarchive, itunes, deezer, local, with recorded replies (COVERS-SEARCH-4)
-- [ ] ChangeSet `art` change, journal art store, `set_art`/`clear_art` in beets and fake
+- [x] `rifferr.covers`: protocol, entry points, `CoverHttp`, cache (COVERS-SEARCH-1, -5, -6, -11)
+- [x] Providers: coverartarchive, itunes, deezer, local, with recorded replies (COVERS-SEARCH-4)
+- [x] ChangeSet `art` change, journal art store, `set_art`/`clear_art` in beets and fake
       backends, contract tests (COVERS-SEARCH-15 to -18, -22)
-- [ ] `covers.search` step and `cover` review items (COVERS-SEARCH-12 to -14)
-- [ ] API: search, images, cover decisions, album art (COVERS-SEARCH-19 to -22)
-- [ ] Profile `covers` settings and validation; regenerate schemas and TS client
-- [ ] `docs/coverage.md` row 6; example workflow step
+- [x] `covers.search` step and `cover` review items (COVERS-SEARCH-12 to -14)
+- [x] API: search, images, cover decisions, album art (COVERS-SEARCH-19 to -22)
+- [x] Profile `covers` settings and validation; regenerate schemas and TS client
+- [x] `docs/coverage.md` row 6; example workflow step
