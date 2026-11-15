@@ -1,5 +1,5 @@
 # F-DASHBOARD: Queue dashboard
-Status: Draft
+Status: Approved
 Milestone: M2
 
 ## Context
@@ -26,9 +26,9 @@ the dashboard takes `/` and `/runs` stays the runs list.
 
 ## Behavior
 Inbox:
-- DASHBOARD-1: `GET /api/profiles/{profile}/inbox` MUST list, for each armed or failing `watch` trigger, the watched folder and its candidate inputs (the same top-level entries the watcher would fire for, F-TRIGGERS), each with a state: `settling` (changed less than `settle` ago), `waiting` (settled, not started yet, or queued behind another run), `running`, `waiting_review`, `imported` (the dedup record's fingerprint matches and its run succeeded or is waiting), `failed` (the last run for it failed or was cancelled), or `changed` (imported before, changed since). Each entry carries its last run id when there is one.
+- DASHBOARD-1: `GET /api/profiles/{profile}/inbox` MUST list, for each armed or failing `watch` trigger, the watched folder and its candidate inputs (the same top-level entries the watcher would fire for, F-TRIGGERS), each with a state: `settling` (changed less than `settle` ago), `waiting` (settled, not started yet, or queued behind another run), `running`, `waiting_review`, `imported` (the dedup record's fingerprint matches and its run succeeded or is waiting), `failed` (the last run for it failed or was cancelled), `changed` (imported before, changed since), or `undone` (its run's import was undone, DASHBOARD-9). Each entry carries its last run id when there is one.
 - DASHBOARD-2: The inbox listing MUST read only the filesystem and the app DB (never beets), MUST stay inside the watched folder (symbolic links out of it are listed as `outside` and not followed), and MUST cap the entries per folder (open question 3), saying how many were left out.
-- DASHBOARD-3: An entry in `failed` or `changed` MUST offer "Import again", which fires the trigger's workflow for that input with `force` (F-TRIGGERS dedup override), going through the same trust and concurrency checks as a manual run.
+- DASHBOARD-3: An entry in `failed`, `changed` or `undone` MUST offer "Import again", which fires the trigger's workflow for that input with `force` (F-TRIGGERS dedup override), going through the same trust and concurrency checks as a manual run.
 
 Runs in progress:
 - DASHBOARD-4: The dashboard MUST show the profile's queued, running and `waiting_review` runs, newest first, with workflow, trigger, input, state, started time, and for `waiting_review` the number of waiting lanes and queue items. Rows link to the run page.
@@ -38,10 +38,11 @@ Items needing review:
 
 Recent imports:
 - DASHBOARD-6: `GET /api/profiles/{profile}/imports?limit=` MUST list the most recent runs that imported albums, newest first, each with its albums (label, id, item count) as the read-only worker finds them by `RUN_MARKER`, and whether each album can still be undone.
-- DASHBOARD-7: `POST /api/runs/{id}/import-undo {albums?: [id]}` MUST queue a worker job that removes those albums of the run (all of them when absent) from the library, after first undoing the run's applied ChangeSets for them (JOURNAL-6, lane-scoped as LANES-11). It answers `202 {job_id}`; `409` while the run is queued or running. Files are handled as open question 1 decides.
+- DASHBOARD-7: `POST /api/runs/{id}/import-undo {albums?: [id]}` MUST queue a worker job that removes those albums of the run (all of them when absent) from the library, after first undoing the run's applied ChangeSets for them (JOURNAL-6, lane-scoped as LANES-11). It answers `202 {job_id}`; `409` while the run is queued or running.
+- DASHBOARD-18: The import undo MUST delete an album's files only when all of these hold: the file is inside the backend's library directories (`library_dirs`); it is not inside the run's input folder; and the run's input folder still exists with the fingerprint recorded when the run started, so the originals are untouched (the import copied). Otherwise the files stay where they are (open question 1). Folders left empty by a deletion inside the library directories are removed too.
 - DASHBOARD-8: The import undo MUST write a journal entry per album before removing it (non-negotiable 3), stop at the first album it can't remove, and report what it removed and why it stopped, in the job's `result` (`job.finished`, F-REVIEW-QUEUE).
-- DASHBOARD-9: After an import undo, the dedup record for the run's input MUST be cleared, so the inbox shows the input as `waiting` again if it is still there (open question 2).
-- DASHBOARD-10: "Undo import" MUST ask for confirmation naming the albums and saying what happens to their files.
+- DASHBOARD-9: After an import undo of all of a run's albums, the dedup record for the run's input MUST be marked undone, not deleted: triggers still treat the input as seen and never re-import it by themselves, and the inbox shows it as `undone` with "Import again" (open question 2).
+- DASHBOARD-10: "Undo import" MUST ask for confirmation naming the albums and saying, per album, whether its files are deleted or stay (and where), using the same rule as DASHBOARD-18. `RecentImport` albums carry that answer (`deletes_files`, `files_at`).
 
 Queue changes:
 - DASHBOARD-11: `POST /api/reviews/{gate_id}/decision` MUST accept an optional `albums: [id]`: the decision then applies only to those albums' lanes. Lanes not named stay waiting on the gate, and the gate stays `pending` until every lane is decided (open question 5). Without `albums` it behaves as now (REVIEW-QUEUE-6).
@@ -59,7 +60,7 @@ Page and updates:
 class InboxEntry(BaseModel):
     path: str                     # relative to the watched folder
     state: Literal["settling", "waiting", "running", "waiting_review",
-                   "imported", "failed", "changed", "outside"]
+                   "imported", "failed", "changed", "undone", "outside"]
     changed_at: datetime | None
     run_id: str | None
 
@@ -74,6 +75,8 @@ class InboxFolder(BaseModel):
 class ImportedAlbum(BaseModel):
     id: str; label: str; items: int
     undoable: bool; reason: str | None     # why not, e.g. "already removed"
+    deletes_files: bool                    # DASHBOARD-18
+    files_at: str | None                   # the album's folder
 
 class RecentImport(BaseModel):
     run_id: str; workflow: str; input: str | None
@@ -116,6 +119,13 @@ A gate holds three albums; the user continues A and B and rejects C:
 `{decision: continue, albums: [A, B]}` resumes those lanes; the gate stays pending for
 C; `{decision: reject, albums: [C]}` applies `on_reject` to C's lane and resolves the gate.
 
+A workflow that imports in place and adds albums to the library only after review
+(`beets.import` with `copy: no, move: no`, steps, a `review` gate, then
+`beets.command move` for the continued albums): undo before the move removes the
+albums from the library database and undoes their tag changes; the files stay in the
+inbox (they are inside the input folder, DASHBOARD-18), shown as `undone`. Per-album gate
+decisions (DASHBOARD-11) let the user continue some albums and reject others.
+
 ## Extensibility
 - Inbox states come from triggers, so any trigger kind with a folder can list one later
   (webhook inputs have no folder and are left out).
@@ -148,18 +158,25 @@ C; `{decision: reject, albums: [C]}` applies `on_reject` to C's lane and resolve
    inbox); (c) always offer "also delete files", off by default. Recommended: (b) —
    with copy imports, (b) leaves nothing behind and loses nothing; with move imports it
    behaves as (a) and the confirmation says the files stay in the library folder.
+   Resolved 2026-11-14 (author): (b), as DASHBOARD-18. The author's own workflow imports in place and moves files into the library only after review, so undo must never delete files that are still the only copy.
 2. Clearing the dedup record after undo (DASHBOARD-9) means a watch trigger may import
    the folder again on its next scan if it is still in the inbox. Recommended: clear it,
    but the input waits for an explicit "Import again" rather than firing by itself
    (state `waiting`, marked "undone").
+   Resolved 2026-11-14 (author): as recommended; the record is marked undone (DASHBOARD-9).
 3. Inbox cap: recommended 200 entries per folder.
+   Resolved 2026-11-14 (author): 200.
 4. Needs review: recommended the oldest 5 items plus counts, linking to `/review`.
+   Resolved 2026-11-14 (author): as recommended.
 5. Per-album gate decisions (DASHBOARD-11): include now, or leave whole-gate only?
    Recommended: include; C-LANES and F-IMPORT-UI both deferred it to this spec.
+   Resolved 2026-11-14 (author): include.
 6. Multi-select on `/review` (DASHBOARD-13): include now, or defer to the backlog?
    Recommended: include, same reason.
+   Resolved 2026-11-14 (author): include.
 7. New spec vs. editing F-REVIEW-QUEUE: recommended a new spec (this one), since
    F-REVIEW-QUEUE is Implemented; it gets a note pointing here.
+   Resolved 2026-11-14 (author): new spec.
 
 ## Tasks
 - [ ] backend protocol `remove` + beets backend and contract test
