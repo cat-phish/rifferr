@@ -32,6 +32,9 @@ The reference workflow (docs/original-checklist.md, coverage row 6) picks covers
 in foobar2000. With this spec, the albums that `covers.search` couldn't settle on its own
 get the same hand pick, in the review queue.
 
+The user can also use an image of their own (open question 4): from a file, by drag and
+drop, or by pasting it from the clipboard.
+
 ## Behavior
 Opening the picker:
 - COVER-PICKER-1: A cover review in the review queue (F-REVIEW-QUEUE) MUST show the picker in place of the S-COVERS-SEARCH card. The deep link `/review?item=<review id>` opens it focused. The picker starts with the review's stored candidates, ranked as stored, and doesn't search again until asked.
@@ -55,6 +58,11 @@ Preview and choosing:
 - COVER-PICKER-13: In review mode, "Use this cover" (on the card or in the preview) MUST send `choose` with that candidate (COVERS-SEARCH-21), and "No cover" and "Fail this album" stay. After the 202 the picker shows "Setting the cover", and shows the outcome from `cover.resolved` and the job's end. A refusal (`422 bad_image`, `409 busy` or `409 already_resolved`) MUST be shown on that candidate, and the others stay choosable.
 - COVER-PICKER-14: In album mode, "Use this cover" MUST call `POST /api/profiles/{profile}/albums/{id}/cover {candidate_id, old_sha256}`. The server downloads and checks the image (as COVERS-SEARCH-21), keeps it in the art store, and queues one `manual_apply` job. That job applies a manual ChangeSet (source `manual` / `ui`, CHANGESET-14) on the album's `art_sha256`, with `old` as sent, so a cover changed meanwhile comes back as a conflict (CHANGESET-8). The change then appears in "Recent edits" with Undo (TAG-GRID-11). A local candidate MUST be an image in that album's folder, which the server learns from the read-only worker, never from the client. `POST /api/covers/search` takes `album_id` for the `local` provider in the same way.
 - COVER-PICKER-15: The picker MUST work by keyboard alone. Candidates are focusable in rank order, Enter opens the preview, and the preview's "Use this cover" is its default button. Every image has alt text naming the provider and size.
+
+Own images (upload and paste):
+- COVER-PICKER-17: The picker MUST accept an image of the user's own in three ways: "Upload image" (a file picker), dropping an image file on the picker, and pasting image data from the clipboard (Ctrl/Cmd+V while the picker has focus, or the "Paste image" button through the Clipboard API). Each sends `POST /api/covers/uploads {profile, data}`, where `data` is the image base64-encoded in JSON, so the route stays JSON-only (F-SECURITY). Several images at once are sent one by one.
+- COVER-PICKER-18: The upload route MUST decode the image and check it as a downloaded one: JPEG or PNG by magic bytes, at most `covers.max_bytes`, and the real size from its header. It keeps the bytes in the cover cache and answers a candidate with provider `upload`, `match_confidence` 1.0, its size, and a `size_score` and `filtered` like any other. The candidate joins the grid at its score (weight 1.0 unless the profile lists `upload`; it isn't a searchable provider) and can be previewed and chosen through -13 or -14 like any other. A bad image answers `422 bad_image` with the reason, and an image that is too small or the wrong shape is still accepted but shown as filtered, so the user can see why.
+- COVER-PICKER-19: Pasted text MUST NOT be fetched. When the clipboard holds a URL or other text and no image, the picker says "Paste an image, not a link: copy the image itself". The server never fetches a client-sent URL (COVERS-SEARCH-20).
 
 Library grid:
 - COVER-PICKER-16: The library grid in album scope MUST have an "Art" column, shown by default and hideable like the others (TAG-GRID-3), with a small thumbnail of each album's current art. Thumbnails load lazily, only for visible rows, from `GET /api/albums/{id}/art`, which sends `Cache-Control: private, max-age=3600` and an `ETag` of the art's sha256. An album without art shows an empty cell.
@@ -86,6 +94,13 @@ class AlbumCoverQueued(_Model):           # 202
     changeset_id: str
     job_id: str
     sha256: str
+
+class CoverUploadBody(_Model):            # POST /api/covers/uploads
+    profile: str
+    data: str                             # base64; decoded size <= covers.max_bytes
+
+class CoverUploaded(_Model):              # 201
+    candidate: RankedCandidate            # provider "upload"
 
 class CoverProvidersView(_Model):         # GET /api/profiles/{profile}/covers
     providers: list[ProviderSetting]      # settings values with secrets left out
@@ -143,6 +158,10 @@ the next `covers.search` step uses weight 3.
   key. It is JSON-only behind the F-SECURITY middleware. It is the first route that writes
   `profile.yaml` (open question 1).
 - Provider settings returned by `GET …/covers` leave out secret references (PROFILE-4).
+- Uploads arrive as base64 JSON, so no multipart or other non-JSON body is accepted
+  anywhere. The request body is capped at `covers.max_bytes` × 4/3 plus a small overhead
+  before decoding. Uploaded bytes are checked by magic bytes, served only through the image
+  route with its no-script CSP, and never parsed beyond the header.
 - A cover change outside a run is a manual ChangeSet: it is journaled and undoable, and
   the art store keeps the old art (COVERS-SEARCH-17).
 
@@ -152,29 +171,19 @@ the next `covers.search` step uses weight 3.
   picker. Those stay in `profile.yaml`.
 - Back covers and other non-front art.
 - Searching the cover of several albums at once. Each album gets its own picker.
-- Uploading an image from the user's computer (open question 4).
+- Fetching an image from a pasted or typed URL (COVER-PICKER-19).
 
 ## Open questions
-1. Writing `profile.yaml` from the UI: no route does this yet. Recommendation: allow it for
-   `covers.providers` only (COVER-PICKER-10), with a content-hash guard and a ruamel
-   round-trip. The other choice is to keep weights per session only and have the user
-   edit the file by hand, but then the "saved per profile" part of architecture §6 would
-   go unmet.
-2. When `profile.yaml` changes, how do running workers learn the new weights?
-   Recommendation: a profile is read again when each run and each search starts, so a
-   running run keeps the values it started with. If workers cache the profile today, the
+All resolved by the user on 2026-11-14:
+1. ~~Writing `profile.yaml` from the UI?~~ Yes, for `covers.providers` only, with the
+   content-hash guard and ruamel round-trip (COVER-PICKER-10).
+2. ~~How running workers learn new weights?~~ The profile is read again when each run and
+   each search starts. A running run keeps its values. If workers cache the profile, the
    supervisor restarts an idle worker after the write.
-3. The grid "Art" column: shown by default, or opt-in? Each thumbnail is a read-only worker
-   request and a full-size file, because there is no resizing yet (B-061). Recommendation:
-   shown by default, lazy, with ETag caching (COVER-PICKER-16). If large grids are slow,
-   switch to opt-in and record it in the backlog.
-4. Uploading an image file as a cover: it would need an upload route that takes a file
-   (every mutating route is JSON-only today). Recommendation: leave it out and put it in
-   the backlog. A local image in the album folder already works through the `local`
-   provider.
-5. Album mode applies at once, as a manual edit does (TAG-GRID-8), rather than going to the
-   review queue. Recommendation: at once. Choosing the cover is already the review, as with
-   COVERS-SEARCH-21.
+3. ~~Art column default?~~ Shown by default, lazy, with ETag caching (COVER-PICKER-16).
+4. ~~Uploading an image?~~ Yes, including copy and paste (COVER-PICKER-17 to -19). It is
+   sent as base64 JSON so every mutating route stays JSON-only.
+5. ~~Album mode at once or through review?~~ At once, as a manual edit (COVER-PICKER-14).
 
 ## Tasks
 - [ ] `size_score` and `filtered` on candidates and candidate events; schemas, TS client
@@ -183,6 +192,7 @@ the next `covers.search` step uses weight 3.
 - [ ] album art route ETag and caching headers
 - [ ] `rank.ts` with a test matching the server's ranking
 - [ ] `CoverPicker`, `ProviderPanel`, `CoverPreview`; review queue uses the picker
+- [ ] upload route (base64 JSON, checks, `upload` candidates); file picker, drop and paste in the picker
 - [ ] library grid: "Change cover" and the "Art" column
-- [ ] Playwright: review-mode pick through the `local` provider (no network), weight re-rank, album-mode change and undo
+- [ ] Playwright: review-mode pick through the `local` provider (no network), weight re-rank, paste an image, album-mode change and undo
 - [ ] coverage row 6 note, roadmap, overview status
