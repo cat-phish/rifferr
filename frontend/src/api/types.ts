@@ -43,3 +43,7 @@ export type ImportDecision = S["ImportDecision"];
 export type ImportCandidate = S["ImportCandidate"];
 export type CleanupDecision = S["CleanupDecision"];
 export type CleanupEntry = S["CleanupEntry"];
+export type InboxFolder = S["InboxFolder"];
+export type InboxEntry = S["InboxEntry"];
+export type RecentImport = S["RecentImport"];
+export type ImportedAlbum = S["ImportedAlbum"];

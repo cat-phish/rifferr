@@ -13,8 +13,11 @@ export const APP_EVENTS = [
   "run.finished",
   "review.requested",
   "review.resolved",
+  "review.decided",
   "import.requested",
   "import.resolved",
+  "cleanup.requested",
+  "cleanup.resolved",
   "changeset.proposed",
   "changeset.applied",
   "changeset.rejected",
@@ -24,6 +27,7 @@ export const APP_EVENTS = [
   "trigger.fired",
   "trigger.skipped",
   "trigger.error",
+  "inbox.changed",
 ] as const;
 
 /** What waits for a decision in ``profile`` (REVIEW-QUEUE-1). */
@@ -46,6 +50,18 @@ export function useAppEvents(onEvent?: (event: RunEvent) => void): void {
       if (event.type.startsWith("run.") || event.type === "trigger.fired") {
         void queryClient.invalidateQueries({ queryKey: ["runs"] });
       }
+      // The dashboard's inbox and recent imports (F-DASHBOARD DASHBOARD-15).
+      if (
+        event.type.startsWith("run.") ||
+        event.type.startsWith("trigger.") ||
+        event.type.startsWith("inbox.")
+      ) {
+        void queryClient.invalidateQueries({ queryKey: ["inbox"] });
+      }
+      if (event.type === "run.finished" || event.type === "job.finished") {
+        void queryClient.invalidateQueries({ queryKey: ["imports"] });
+      }
+      if (event.type.startsWith("inbox.")) return;
       if (event.type.startsWith("trigger.")) {
         void queryClient.invalidateQueries({ queryKey: ["triggers"] });
         return;

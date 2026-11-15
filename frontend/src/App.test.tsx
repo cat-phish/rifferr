@@ -411,7 +411,7 @@ test("UI_SHELL_8 cancel posts to the run's cancel route", async () => {
 test("UI_SHELL_9 runs list refetches on dashboard events", async () => {
   let runs = [runDetail({ state: "queued" })];
   mockApi({ "GET /api/profiles": () => PROFILES, "GET /api/runs": () => runs });
-  renderApp("/?profile=main");
+  renderApp("/runs?profile=main");
   const table = await screen.findByTestId("runs");
   expect(within(table).getByText("queued")).toBeInTheDocument();
   expect(within(table).getByRole("link", { name: "two-step" })).toHaveAttribute(

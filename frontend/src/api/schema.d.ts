@@ -297,6 +297,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/profiles/{profile}/imports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Recent Imports
+         * @description The latest runs whose imported albums are still in the library (DASHBOARD-6).
+         */
+        get: operations["recent_imports_api_profiles__profile__imports_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profiles/{profile}/inbox": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Inbox
+         * @description Each watch trigger's folder and its inputs with their state (DASHBOARD-1, -2).
+         */
+        get: operations["inbox_api_profiles__profile__inbox_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/profiles/{profile}/journal/{entry_id}/undo": {
         parameters: {
             query?: never;
@@ -491,7 +531,8 @@ export interface paths {
         put?: never;
         /**
          * Decide Gate
-         * @description Continue or reject a review gate (REVIEW-QUEUE-6, S-REVIEW REVIEW-6 .. -8).
+         * @description Continue or reject a review gate (REVIEW-QUEUE-6, S-REVIEW REVIEW-6 .. -8), or only
+         *     some of its albums (DASHBOARD-11).
          */
         post: operations["decide_gate_api_reviews__gate_id__decision_post"];
         delete?: never;
@@ -590,6 +631,27 @@ export interface paths {
         get: operations["run_events_api_runs__run_id__events_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{run_id}/import-undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Undo
+         * @description Queue the removal of the run's imported albums, after undoing its changes to
+         *     them (DASHBOARD-7). The report arrives as ``job.finished`` on the run's stream.
+         */
+        post: operations["import_undo_api_runs__run_id__import_undo_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1150,6 +1212,11 @@ export interface components {
         /** GateDecisionBody */
         GateDecisionBody: {
             /**
+             * Albums
+             * @description Decide only these albums' lanes; the others keep waiting (DASHBOARD-11)
+             */
+            albums?: string[] | null;
+            /**
              * Decision
              * @enum {string}
              */
@@ -1353,6 +1420,87 @@ export interface components {
             artist?: string | null;
             /** Ids */
             ids?: string[];
+        };
+        /** ImportUndoBody */
+        ImportUndoBody: {
+            /**
+             * Albums
+             * @description Album ids; all of the run's when absent
+             */
+            albums?: string[] | null;
+        };
+        /** ImportedAlbum */
+        ImportedAlbum: {
+            /**
+             * Deletes Files
+             * @description Whether undo deletes its files (DASHBOARD-18)
+             */
+            deletes_files: boolean;
+            /**
+             * Files At
+             * @description The album's folder
+             */
+            files_at: string | null;
+            /** Id */
+            id: string;
+            /** Items */
+            items: number;
+            /** Label */
+            label: string;
+            /**
+             * Reason
+             * @description Why it can't be undone now
+             */
+            reason: string | null;
+            /** Undoable */
+            undoable: boolean;
+        };
+        /** InboxEntry */
+        InboxEntry: {
+            /**
+             * Changed At
+             * @description Last change, while settling
+             */
+            changed_at: string | null;
+            /**
+             * Path
+             * @description Relative to the watched folder
+             */
+            path: string;
+            /**
+             * Run Id
+             * @description The input's last run
+             */
+            run_id: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "settling" | "waiting" | "running" | "waiting_review" | "imported" | "failed" | "changed" | "undone" | "outside";
+        };
+        /**
+         * InboxFolder
+         * @description One watch trigger's folder and its inputs (DASHBOARD-1).
+         */
+        InboxFolder: {
+            /** Detail */
+            detail: string | null;
+            /** Entries */
+            entries: components["schemas"]["InboxEntry"][];
+            /** Folder */
+            folder: string;
+            /**
+             * Omitted
+             * @description Inputs left out beyond the listing cap (DASHBOARD-2)
+             */
+            omitted: number;
+            /**
+             * Trigger State
+             * @enum {string}
+             */
+            trigger_state: "armed" | "disabled" | "error";
+            /** Workflow */
+            workflow: string;
         };
         /**
          * ItemSnapshot
@@ -1707,8 +1855,36 @@ export interface components {
             /** Workflow */
             workflow?: string | null;
         };
+        /**
+         * RecentImport
+         * @description A run that imported albums still in the library (DASHBOARD-6).
+         */
+        RecentImport: {
+            /** Albums */
+            albums: components["schemas"]["ImportedAlbum"][];
+            /** Finished At */
+            finished_at: string | null;
+            /** Input */
+            input: string | null;
+            /** Run Id */
+            run_id: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "running" | "waiting_review" | "succeeded" | "failed" | "cancelled";
+            /** Workflow */
+            workflow: string | null;
+        };
         /** ReviewGate */
         ReviewGate: {
+            /**
+             * Album Decisions
+             * @description Albums decided on their own while the gate is pending (DASHBOARD-11)
+             */
+            album_decisions?: {
+                [key: string]: "continued" | "rejected";
+            };
             /** Albums */
             albums: components["schemas"]["GateAlbum"][];
             /**
@@ -3121,6 +3297,142 @@ export interface operations {
             };
         };
     };
+    recent_imports_api_profiles__profile__imports_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                profile: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecentImport"][];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Gateway Timeout */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    inbox_api_profiles__profile__inbox_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InboxFolder"][];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     undo_entry_api_profiles__profile__journal__entry_id__undo_post: {
         parameters: {
             query?: never;
@@ -4106,6 +4418,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_undo_api_runs__run_id__import_undo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportUndoBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobQueued"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
         };
