@@ -14,6 +14,7 @@ export interface paths {
         /**
          * Album Art
          * @description The album's current art file (COVERS-SEARCH-22), read through the read-only worker.
+         *     Its ``ETag`` is the art's sha256, so an unchanged cover answers 304 (COVER-PICKER-16).
          */
         get: operations["album_art_api_albums__album_id__art_get"];
         put?: never;
@@ -249,6 +250,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/covers/uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Cover
+         * @description Add an image of the user's own as a candidate of provider ``upload``. The body is
+         *     JSON with the image base64-encoded; it may be at most the profile's
+         *     ``covers.max_bytes`` once decoded.
+         */
+        post: operations["upload_cover_api_covers_uploads_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/events": {
         parameters: {
             query?: never;
@@ -351,6 +374,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/profiles/{profile}/albums/{album_id}/cover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set Album Cover
+         * @description Download and check the candidate, keep it in the art store, and queue a manual
+         *     ChangeSet on the album's ``art_sha256`` (undoable from Recent edits).
+         */
+        post: operations["set_album_cover_api_profiles__profile__albums__album_id__cover_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profiles/{profile}/albums/{album_id}/cover-query": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Album Cover Query
+         * @description The album's cover query from the backend templates ``covers.search`` uses by default,
+         *     its label and its art's sha256. The folder is left out.
+         */
+        get: operations["album_cover_query_api_profiles__profile__albums__album_id__cover_query_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/profiles/{profile}/changes": {
         parameters: {
             query?: never;
@@ -391,6 +456,48 @@ export interface paths {
          *     (TAG-GRID-7).
          */
         post: operations["check_changes_api_profiles__profile__changes_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profiles/{profile}/covers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Cover Providers
+         * @description The profile's cover providers in order (without their own settings), every
+         *     installed provider, and the hash a save must send back.
+         */
+        get: operations["cover_providers_api_profiles__profile__covers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profiles/{profile}/covers/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save Providers
+         * @description Save the toggles, weights and order as ``covers.providers`` in ``profile.yaml``,
+         *     keeping the rest of the file. ``409 conflict`` when the file changed since it was read.
+         */
+        put: operations["save_providers_api_profiles__profile__covers_providers_put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -926,6 +1033,28 @@ export interface components {
             status: "cancel_requested";
         };
         /**
+         * AlbumCoverBody
+         * @description Set an album's cover outside a run (COVER-PICKER-14). ``old_sha256`` is the art the
+         *     user saw; a different current one comes back as a conflict.
+         */
+        AlbumCoverBody: {
+            /** Candidate Id */
+            candidate_id: string;
+            /** Old Sha256 */
+            old_sha256?: string | null;
+        };
+        /** AlbumCoverQueued */
+        AlbumCoverQueued: {
+            /** Changeset Id */
+            changeset_id: string;
+            /** Job Id */
+            job_id: string;
+            /** Queued Behind */
+            queued_behind?: string[];
+            /** Sha256 */
+            sha256: string;
+        };
+        /**
          * AlbumSnapshot
          * @description An album with its items in track order (disc, then track).
          */
@@ -1209,6 +1338,46 @@ export interface components {
              */
             decision: "choose" | "skip" | "fail";
         };
+        /** CoverProviderOrder */
+        CoverProviderOrder: {
+            /** Enabled */
+            enabled: boolean;
+            /** Name */
+            name: string;
+            /** Weight */
+            weight: number;
+        };
+        /** CoverProvidersBody */
+        CoverProvidersBody: {
+            /** Profile Hash */
+            profile_hash: string;
+            /**
+             * Providers
+             * @description In the new order
+             */
+            providers: components["schemas"]["CoverProviderOrder"][];
+        };
+        /**
+         * CoverProvidersView
+         * @description The profile's cover providers as the picker edits them (COVER-PICKER-9, -10).
+         */
+        CoverProvidersView: {
+            /**
+             * Profile Hash
+             * @description sha256 of profile.yaml as read
+             */
+            profile_hash: string;
+            /**
+             * Providers
+             * @description In the profile's order
+             */
+            providers: components["schemas"]["CoverProviderOrder"][];
+            /**
+             * Registered
+             * @description Every installed cover provider
+             */
+            registered: string[];
+        };
         /**
          * CoverQuery
          * @description What to look for (COVERS-SEARCH-2).
@@ -1236,6 +1405,18 @@ export interface components {
             mb_releasegroupid?: string | null;
             /** Year */
             year?: number | null;
+        };
+        /**
+         * CoverQueryAnswer
+         * @description An album's cover query from the default templates (COVER-PICKER-2). ``query.folder``
+         *     is left out: the server looks it up itself.
+         */
+        CoverQueryAnswer: {
+            /** Art Sha256 */
+            art_sha256?: string | null;
+            /** Label */
+            label: string;
+            query: components["schemas"]["CoverQuery"];
         };
         /**
          * CoverReview
@@ -1298,6 +1479,11 @@ export interface components {
          *     ``local`` provider only looks in the folder of the album under ``review_id``.
          */
         CoverSearchBody: {
+            /**
+             * Album Id
+             * @description The library album it is for, when there is no review (COVER-PICKER-14)
+             */
+            album_id?: string | null;
             /** Profile */
             profile: string;
             /**
@@ -1322,6 +1508,22 @@ export interface components {
         CoverSearchStarted: {
             /** Search Id */
             search_id: string;
+        };
+        /**
+         * CoverUploadBody
+         * @description An image the user added, base64-encoded (COVER-PICKER-17). The profile is the
+         *     ``profile`` query parameter, so the size cap is known before the body is read.
+         */
+        CoverUploadBody: {
+            /**
+             * Data
+             * @description The image file, base64
+             */
+            data: string;
+        };
+        /** CoverUploaded */
+        CoverUploaded: {
+            candidate: components["schemas"]["RankedCandidate"];
         };
         /**
          * CurrentTarget
@@ -2118,6 +2320,11 @@ export interface components {
         };
         /** RankedCandidate */
         RankedCandidate: {
+            /**
+             * Filtered
+             * @description Why the hard filters hide it, or null
+             */
+            filtered?: ("small" | "aspect") | null;
             /** Height */
             height?: number | null;
             /** Id */
@@ -2132,6 +2339,11 @@ export interface components {
             provider: string;
             /** Score */
             score: number;
+            /**
+             * Size Score
+             * @description The size part of the score (COVER-PICKER-8)
+             */
+            size_score?: number | null;
             /** Source Url */
             source_url?: string | null;
             /** Thumb Url */
@@ -2730,7 +2942,9 @@ export interface operations {
             query: {
                 profile: string;
             };
-            header?: never;
+            header?: {
+                "if-none-match"?: string | null;
+            };
             path: {
                 album_id: string;
             };
@@ -3479,6 +3693,68 @@ export interface operations {
             };
         };
     };
+    upload_cover_api_covers_uploads_post: {
+        parameters: {
+            query: {
+                profile: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoverUploadBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoverUploaded"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     all_events_api_events_get: {
         parameters: {
             query?: never;
@@ -3701,6 +3977,164 @@ export interface operations {
             };
         };
     };
+    set_album_cover_api_profiles__profile__albums__album_id__cover_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile: string;
+                album_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlbumCoverBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlbumCoverQueued"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Gateway Timeout */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    album_cover_query_api_profiles__profile__albums__album_id__cover_query_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile: string;
+                album_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoverQueryAnswer"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Gateway Timeout */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     recent_changes_api_profiles__profile__changes_get: {
         parameters: {
             query?: {
@@ -3912,6 +4346,126 @@ export interface operations {
             };
             /** @description Gateway Timeout */
             504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    cover_providers_api_profiles__profile__covers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoverProvidersView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    save_providers_api_profiles__profile__covers_providers_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoverProvidersBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoverProvidersView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

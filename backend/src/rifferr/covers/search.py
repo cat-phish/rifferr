@@ -1,5 +1,6 @@
 """Running a cover search across providers, and downloading a chosen image
-(S-COVERS-SEARCH COVERS-SEARCH-4 to -6, -9, -11, -13)."""
+(S-COVERS-SEARCH COVERS-SEARCH-4 to -6, -9, -11, -13), and images the user adds
+themselves (F-COVER-PICKER COVER-PICKER-18)."""
 
 from __future__ import annotations
 
@@ -19,10 +20,13 @@ from rifferr.core.covers import (
     CoverSettings,
     ImageInfo,
     ProviderSetting,
+    RankedCandidate,
     Ranking,
     filter_reason,
     parse_size,
     rank,
+    score_candidate,
+    sha256_hex,
     sniff_image,
 )
 from rifferr.core.duration import parse_duration
@@ -31,6 +35,11 @@ from rifferr.covers.cache import CoverCache
 from rifferr.covers.http import CoverHttp, CoverHttpError
 
 log = logging.getLogger(__name__)
+
+UPLOAD_PROVIDER = "upload"
+"""Candidates the user added (COVER-PICKER-18). Not a searchable provider: a profile may
+list it only to give it a weight."""
+UPLOAD_SCHEME = "upload:"
 
 ProviderState = Literal["searching", "done", "failed", "skipped"]
 
@@ -72,6 +81,7 @@ def plan(settings: CoverSettings, only: Sequence[str] | None = None) -> Plan:
         chosen = [p for p in settings.providers if p.enabled]
     else:
         chosen = [settings.provider(n) or ProviderSetting(name=n) for n in dict.fromkeys(only)]
+    chosen = [p for p in chosen if p.name != UPLOAD_PROVIDER]
     return Plan(
         order=[p.name for p in chosen],
         weights={p.name: p.weight for p in chosen},
@@ -220,6 +230,8 @@ async def download(
         if url is None:
             raise DownloadError("the candidate has no image to fetch")
         data = cache.image(url) if cache is not None else None
+        if data is None and url.startswith(UPLOAD_SCHEME):
+            raise DownloadError("the added image is no longer cached; add it again")
         if data is None:
             provider = providers.get(candidate.provider)
             if provider is None:
@@ -252,3 +264,31 @@ def _read_local(path: Path, limit: int) -> bytes:
         return path.read_bytes()
     except OSError as exc:
         raise DownloadError(f"can't read {path.name}: {exc.strerror}") from None
+
+
+# -- the user's own images (COVER-PICKER-18) ---------------------------------------------
+
+
+def accept_upload(data: bytes, settings: CoverSettings, cache: CoverCache) -> RankedCandidate:
+    """Check an image the user added and keep it in the cache as a candidate of provider
+    ``upload``. Images the hard filters would drop are kept too, marked ``filtered``.
+    Raises ``DownloadError``."""
+    limit = parse_size(settings.max_bytes)
+    if len(data) > limit:
+        raise DownloadError(f"the image is larger than {limit} bytes")
+    info = sniff_image(data)
+    if info is None:
+        raise DownloadError("not a JPEG or PNG image")
+    url = UPLOAD_SCHEME + sha256_hex(data)
+    candidate = CoverCandidate.make(
+        UPLOAD_PROVIDER,
+        image_url=url,
+        title="Added image",
+        width=info.width,
+        height=info.height,
+        match_confidence=1.0,
+    )
+    cache.store_image(url, data)
+    cache.remember(candidate)
+    own = settings.provider(UPLOAD_PROVIDER)
+    return score_candidate(candidate, settings, own.weight if own is not None else 1.0)

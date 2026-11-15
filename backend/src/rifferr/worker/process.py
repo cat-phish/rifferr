@@ -41,7 +41,7 @@ from rifferr.core.changeset import ChangeSet, ChangeSource, FieldChange, TargetC
 from rifferr.core.covers import ART_FIELD
 from rifferr.core.ids import new_ulid
 from rifferr.core.imports import ImportAction, ImportApplyError, merge_candidates
-from rifferr.core.profile import Profile, Redactor
+from rifferr.core.profile import Profile, ProfileError, ProfileLoadError, Redactor
 from rifferr.core.review import ReviewGate
 from rifferr.core.selection import Selection
 from rifferr.core.snapshot import label
@@ -267,6 +267,18 @@ class Worker:
             except Exception:
                 log.exception("album removal recovery failed")
 
+    def _current_settings(self) -> Profile:
+        """``profile.yaml`` as it is now, so a run uses settings saved since the worker
+        started, such as cover weights (F-COVER-PICKER open question 2). Falls back to
+        the profile the worker started with when the file can't be read."""
+        try:
+            return load_profile(self.profile.root.parent.parent, self.profile.name)
+        except (ProfileError, ProfileLoadError, OSError) as exc:
+            log.warning(
+                "profile %s: using the settings loaded at start: %s", self.profile.name, exc
+            )
+            return self.profile
+
     def _next_seq(self, run_id: str) -> int:
         return max(self.db.last_seq(run_id), self._sent.get(run_id, 0)) + 1
 
@@ -339,7 +351,7 @@ class Worker:
                 profile_dir=self.profile.root,
                 secrets=self.secrets,
                 notify=self.notify,
-                profile_settings=self.profile,
+                profile_settings=self._current_settings(),
                 busy=lambda: busy_folders(self.db, self.profile.name, job.run),
                 calls=stored_calls(wf, doc, payload),
                 last_seq=self._next_seq(job.run) - 1 if resume_after else 0,

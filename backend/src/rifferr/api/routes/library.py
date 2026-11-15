@@ -20,7 +20,7 @@ from rifferr.api.models import ChangesCreated, JobQueued, ManualEdit
 from rifferr.api.readonly import READ_ONLY_RESPONSES, ask
 from rifferr.api.routes.runs import SSE_RESPONSE
 from rifferr.api.routes.workflows import get_profile
-from rifferr.api.state import State
+from rifferr.api.state import ServerState, State
 from rifferr.appdb import AppChangeSets, AppJournal
 from rifferr.core.ids import new_ulid
 from rifferr.core.selection import Scope
@@ -73,7 +73,7 @@ async def library(
     return LibraryPage.model_validate(result)
 
 
-async def _check(state: State, profile: str, body: ManualChanges) -> CheckResult:
+async def _check(state: ServerState, profile: str, body: ManualChanges) -> CheckResult:
     result = await ask(
         state,
         profile,
@@ -100,6 +100,12 @@ async def create_changes(profile: str, body: ManualChanges, state: State) -> Cha
     """Turn edits into manual ChangeSets, one per album, and queue them to apply now
     (TAG-GRID-8). Checked again first: ``422 invalid_changes`` lists the problems."""
     get_profile(state, profile)
+    return await queue_manual(state, profile, body)
+
+
+async def queue_manual(state: ServerState, profile: str, body: ManualChanges) -> ChangesCreated:
+    """Check ``body`` again, make its manual ChangeSets and queue the job applying them
+    (TAG-GRID-8; also COVER-PICKER-14)."""
     checked = await _check(state, profile, body)
     if checked.problems:
         details = cast(JsonValue, [p.model_dump(mode="json") for p in checked.problems])

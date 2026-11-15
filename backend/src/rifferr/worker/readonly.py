@@ -23,7 +23,7 @@ from rifferr.core.changeset import ChangeSet
 from rifferr.core.covers import ART_FIELD
 from rifferr.core.profile import Profile
 from rifferr.core.selection import Selection
-from rifferr.core.snapshot import label
+from rifferr.core.snapshot import AlbumSnapshot, label
 from rifferr.core.workflow.errors import ValidationError
 from rifferr.core.workflow.interpolation import (
     InterpolationContext,
@@ -33,6 +33,7 @@ from rifferr.core.workflow.interpolation import (
 from rifferr.engine.changesets import current_values
 from rifferr.engine.manual import LibraryQuery, ManualChanges, check_manual, library_page
 from rifferr.script_store import ScriptPathError, resolve_script
+from rifferr.steps.covers_search import QueryTemplateError, album_label, album_query
 from rifferr.tagscript.loader import parse_script
 from rifferr.tagscript.models import with_overrides
 from rifferr.tagscript.preview import PreviewError, PreviewRequest, PreviewResponse, preview
@@ -237,6 +238,8 @@ class ReadOnlyWorker:
             return recent_albums(self.backend, request)
         if kind == "albums.art":  # S-COVERS-SEARCH COVERS-SEARCH-22
             return album_art(self.backend, request)
+        if kind == "albums.cover_query":  # F-COVER-PICKER COVER-PICKER-2, -14
+            return album_cover_query(self.backend, request)
         raise RequestFailed("bad_request", f"unknown request kind {kind!r}")
 
     def _reply(
@@ -287,8 +290,7 @@ def recent_albums(backend: LibraryBackend, request: dict[str, JsonValue]) -> dic
     return {"runs": runs, "library_dirs": dirs}
 
 
-def album_art(backend: LibraryBackend, request: dict[str, JsonValue]) -> dict[str, JsonValue]:
-    """An album's art file and sha256, ``None`` when it has none (COVERS-SEARCH-22)."""
+def _one_album(backend: LibraryBackend, request: dict[str, JsonValue]) -> AlbumSnapshot:
     payload = request.get("payload")
     album_id = payload.get("album_id") if isinstance(payload, dict) else None
     if not isinstance(album_id, str) or not album_id:
@@ -299,9 +301,32 @@ def album_art(backend: LibraryBackend, request: dict[str, JsonValue]) -> dict[st
         raise RequestFailed("bad_query", str(exc)) from None
     if not found:
         raise RequestFailed("not_found", f"album {album_id} not found")
-    fields = found[0].fields
+    return found[0]
+
+
+def album_art(backend: LibraryBackend, request: dict[str, JsonValue]) -> dict[str, JsonValue]:
+    """An album's art file and sha256, ``None`` when it has none (COVERS-SEARCH-22)."""
+    fields = _one_album(backend, request).fields
     sha, path = fields.get(ART_FIELD), fields.get("artpath")
     return {
         "sha256": sha if isinstance(sha, str) else None,
         "path": path if isinstance(path, str) and isinstance(sha, str) else None,
+    }
+
+
+def album_cover_query(
+    backend: LibraryBackend, request: dict[str, JsonValue]
+) -> dict[str, JsonValue]:
+    """The cover query of an album from the default templates, with its folder, label and
+    art sha256 (COVER-PICKER-2, -14)."""
+    album = _one_album(backend, request)
+    try:
+        query = album_query(backend, album)
+    except QueryTemplateError as exc:
+        raise RequestFailed("bad_query", str(exc)) from None
+    sha = album.fields.get(ART_FIELD)
+    return {
+        "query": query.model_dump(mode="json"),
+        "label": album_label(album),
+        "art_sha256": sha if isinstance(sha, str) else None,
     }

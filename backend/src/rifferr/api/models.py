@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, StringConstraints
 
 from rifferr.appdb import JobState
 from rifferr.core.changeset import ChangeSet, ChangeSetState
-from rifferr.core.covers import CoverChoice, CoverQuery, CoverReview
+from rifferr.core.covers import CoverChoice, CoverQuery, CoverReview, RankedCandidate
 from rifferr.core.files import CleanupChoice, CleanupDecision
 from rifferr.core.imports import MAX_LOOKUP_IDS, MAX_LOOKUP_TEXT, ImportAction, ImportDecision
 from rifferr.core.profile import GridColumns
@@ -508,6 +508,10 @@ class CoverSearchBody(_Model):
     providers: list[str] | None = Field(default=None, description="Default: the profile's")
     refresh: bool = Field(default=False, description="Ignore cached results")
     review_id: str | None = Field(default=None, description="The cover review it is for")
+    album_id: str | None = Field(
+        default=None,
+        description="The library album it is for, when there is no review (COVER-PICKER-14)",
+    )
 
 
 class CoverSearchStarted(_Model):
@@ -520,6 +524,60 @@ class CoverDecisionBody(_Model):
 
     decision: CoverChoice
     candidate_id: str | None = None
+
+
+class CoverQueryAnswer(_Model):
+    """An album's cover query from the default templates (COVER-PICKER-2). ``query.folder``
+    is left out: the server looks it up itself."""
+
+    query: CoverQuery
+    label: str
+    art_sha256: str | None = None
+
+
+class AlbumCoverBody(_Model):
+    """Set an album's cover outside a run (COVER-PICKER-14). ``old_sha256`` is the art the
+    user saw; a different current one comes back as a conflict."""
+
+    candidate_id: str
+    old_sha256: str | None = None
+
+
+class AlbumCoverQueued(_Model):
+    changeset_id: str
+    job_id: str
+    sha256: str
+    queued_behind: list[str] = Field(default_factory=list[str])
+
+
+class CoverUploadBody(_Model):
+    """An image the user added, base64-encoded (COVER-PICKER-17). The profile is the
+    ``profile`` query parameter, so the size cap is known before the body is read."""
+
+    data: str = Field(description="The image file, base64")
+
+
+class CoverUploaded(_Model):
+    candidate: RankedCandidate
+
+
+class CoverProviderOrder(_Model):
+    name: str
+    enabled: bool
+    weight: float = Field(ge=0, le=10)
+
+
+class CoverProvidersView(_Model):
+    """The profile's cover providers as the picker edits them (COVER-PICKER-9, -10)."""
+
+    providers: list[CoverProviderOrder] = Field(description="In the profile's order")
+    registered: list[str] = Field(description="Every installed cover provider")
+    profile_hash: str = Field(description="sha256 of profile.yaml as read")
+
+
+class CoverProvidersBody(_Model):
+    providers: list[CoverProviderOrder] = Field(description="In the new order")
+    profile_hash: str
 
 
 class CoverDecided(_Model):

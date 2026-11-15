@@ -18,7 +18,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
 from rifferr.artstore import ArtStore
-from rifferr.backends.base import BackendCapabilities, TemplateError
+from rifferr.backends.base import BackendCapabilities, LibraryBackend, TemplateError
 from rifferr.core.changeset import ChangeSetProposal, ProposedFieldChange, TargetRef
 from rifferr.core.covers import (
     ART_FIELD,
@@ -149,7 +149,7 @@ class CoversSearchStep:
             for album in ctx.albums():
                 if ctx.cancelled:
                     break
-                label = _label(album)
+                label = album_label(album)
                 current = album.fields.get(ART_FIELD)
                 if params.only_missing and _has_art(album, current, params, settings):
                     ctx.log(f"{label}: has art, skipped", target=album.id)
@@ -235,7 +235,7 @@ class CoversSearchStep:
         ctx.log(f"{label}: waiting for a cover choice in the review queue", target=album.id)
 
 
-def _label(album: AlbumSnapshot) -> str:
+def album_label(album: AlbumSnapshot) -> str:
     artist = album.fields.get("albumartist") or album.fields.get("artist") or ""
     name = album.fields.get("album") or album.id
     return f"{artist} - {name}" if artist else str(name)
@@ -262,12 +262,29 @@ def build_query(
     ctx: StepContext, album: AlbumSnapshot, mapping: Mapping[QueryField, str]
 ) -> CoverQuery:
     """COVERS-SEARCH-2: each field from a backend template on the album."""
+    try:
+        return album_query(ctx.backend, album, mapping)
+    except QueryTemplateError as exc:
+        raise StepFailure(str(exc)) from None
+
+
+class QueryTemplateError(Exception):
+    """A query field's template failed on the album."""
+
+
+def album_query(
+    backend: LibraryBackend,
+    album: AlbumSnapshot,
+    mapping: Mapping[QueryField, str] | None = None,
+) -> CoverQuery:
+    """The cover query of ``album``: each field from a backend template (COVERS-SEARCH-2,
+    COVER-PICKER-2). Raises ``QueryTemplateError``."""
     values: dict[str, object] = {"folder": album.path}
-    for name, template in {**DEFAULT_QUERY, **mapping}.items():
+    for name, template in {**DEFAULT_QUERY, **(mapping or {})}.items():
         try:
-            text = ctx.backend.evaluate(template, album).strip()
+            text = backend.evaluate(template, album).strip()
         except TemplateError as exc:
-            raise StepFailure(f"query.{name}: {exc}") from None
+            raise QueryTemplateError(f"query.{name}: {exc}") from None
         if name == "year":
             values[name] = int(text) if text.isdigit() and int(text) > 0 else None
         elif name in ("artist", "album"):

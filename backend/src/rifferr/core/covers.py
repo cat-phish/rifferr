@@ -172,8 +172,17 @@ class CoverCandidate(BaseModel):
         )
 
 
+FilterReason = Literal["small", "aspect"]
+
+
 class RankedCandidate(CoverCandidate):
     score: float
+    size_score: float | None = Field(
+        default=None, description="The size part of the score (COVER-PICKER-8)"
+    )
+    filtered: FilterReason | None = Field(
+        default=None, description="Why the hard filters hide it, or null"
+    )
 
 
 def candidate_id(provider: str, ref: str) -> str:
@@ -230,8 +239,6 @@ def match_score(
 
 # -- ranking (COVERS-SEARCH-7, -9, -10) ----------------------------------------------
 
-FilterReason = Literal["small", "aspect"]
-
 
 def filter_reason(width: int | None, height: int | None, s: CoverSettings) -> FilterReason | None:
     """Why the hard filters drop an image of this size, or ``None`` (unknown sizes pass)."""
@@ -253,6 +260,8 @@ def size_score(width: int | None, height: int | None, s: CoverSettings) -> float
 @dataclass
 class Ranking:
     ranked: list[RankedCandidate] = field(default_factory=list[RankedCandidate])
+    hidden: list[RankedCandidate] = field(default_factory=list[RankedCandidate])
+    """Candidates the hard filters dropped, scored as if they hadn't (COVER-PICKER-8)."""
     dropped: dict[str, dict[str, int]] = field(default_factory=dict[str, dict[str, int]])
     """provider -> filter reason -> count."""
 
@@ -274,24 +283,32 @@ def rank(
         if c.id in seen:
             continue
         seen.add(c.id)
-        reason = filter_reason(c.width, c.height, settings)
-        if reason is not None:
+        ranked = score_candidate(c, settings, weights.get(c.provider, 1.0))
+        if ranked.filtered is not None:
             counts = out.dropped.setdefault(c.provider, {})
-            counts[reason] = counts.get(reason, 0) + 1
+            counts[ranked.filtered] = counts.get(ranked.filtered, 0) + 1
+            out.hidden.append(ranked)
             continue
-        score = (
-            weights.get(c.provider, 1.0)
-            * c.match_confidence
-            * size_score(c.width, c.height, settings)
-        )
-        out.ranked.append(RankedCandidate(**c.model_dump(), score=round(score, 4)))
+        out.ranked.append(ranked)
 
     def key(c: RankedCandidate) -> tuple[float, int, int]:
         area = (c.width or 0) * (c.height or 0)
         return (-c.score, position.get(c.provider, len(position)), -area)
 
     out.ranked.sort(key=key)
+    out.hidden.sort(key=key)
     return out
+
+
+def score_candidate(c: CoverCandidate, settings: CoverSettings, weight: float) -> RankedCandidate:
+    """``c`` with its score, size score and hard-filter reason (COVERS-SEARCH-7, COVER-PICKER-8)."""
+    sized = size_score(c.width, c.height, settings)
+    return RankedCandidate(
+        **c.model_dump(),
+        score=round(weight * c.match_confidence * sized, 4),
+        size_score=round(sized, 4),
+        filtered=filter_reason(c.width, c.height, settings),
+    )
 
 
 # -- images ---------------------------------------------------------------------------

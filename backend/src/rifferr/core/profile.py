@@ -275,6 +275,7 @@ def parse_profile(
         ui=file.ui,
         notify=file.notify,
         files=file.files,
+        covers=file.covers,
         vars=resolve_vars(file.vars, env),
         secrets=file.secrets,
         timezone=file.timezone,

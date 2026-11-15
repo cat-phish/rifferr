@@ -8,14 +8,16 @@ runs the latter under uvicorn.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import Response
 from starlette.types import Scope
@@ -141,6 +143,23 @@ class ApiSettings:
         )
 
 
+def _add_schemas(app: FastAPI, models: Mapping[str, type[BaseModel]]) -> None:
+    """Put the models of routes that read their body themselves (to cap its size) into
+    the OpenAPI components, so their ``$ref`` request bodies resolve (API-10)."""
+    generate = app.openapi
+
+    def openapi() -> dict[str, Any]:
+        doc = generate()
+        found = doc.setdefault("components", {}).setdefault("schemas", {})
+        for name, model in models.items():
+            found.setdefault(
+                name, model.model_json_schema(ref_template="#/components/schemas/{model}")
+            )
+        return doc
+
+    app.openapi = openapi  # type: ignore[method-assign]
+
+
 def create_api(settings: ApiSettings | None = None) -> FastAPI:
     settings = settings or ApiSettings()
 
@@ -216,6 +235,7 @@ def create_api(settings: ApiSettings | None = None) -> FastAPI:
     app.include_router(hooks.router)
     app.include_router(dashboard.router)
     app.include_router(covers.router)
+    _add_schemas(app, covers.RAW_BODY_SCHEMAS)
 
     @app.get("/healthz", response_model=Health, tags=["health"])
     async def healthz() -> Health:

@@ -21,6 +21,63 @@
         "title": "Accepted",
         "type": "object"
       },
+      "AlbumCoverBody": {
+        "additionalProperties": false,
+        "description": "Set an album's cover outside a run (COVER-PICKER-14). ``old_sha256`` is the art the\nuser saw; a different current one comes back as a conflict.",
+        "properties": {
+          "candidate_id": {
+            "title": "Candidate Id",
+            "type": "string"
+          },
+          "old_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Old Sha256"
+          }
+        },
+        "required": [
+          "candidate_id"
+        ],
+        "title": "AlbumCoverBody",
+        "type": "object"
+      },
+      "AlbumCoverQueued": {
+        "additionalProperties": false,
+        "properties": {
+          "changeset_id": {
+            "title": "Changeset Id",
+            "type": "string"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "queued_behind": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Queued Behind",
+            "type": "array"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "changeset_id",
+          "job_id",
+          "sha256"
+        ],
+        "title": "AlbumCoverQueued",
+        "type": "object"
+      },
       "AlbumSnapshot": {
         "additionalProperties": false,
         "description": "An album with its items in track order (disc, then track).",
@@ -732,6 +789,89 @@
         "title": "CoverDecisionBody",
         "type": "object"
       },
+      "CoverProviderOrder": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "weight": {
+            "maximum": 10.0,
+            "minimum": 0.0,
+            "title": "Weight",
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "enabled",
+          "weight"
+        ],
+        "title": "CoverProviderOrder",
+        "type": "object"
+      },
+      "CoverProvidersBody": {
+        "additionalProperties": false,
+        "properties": {
+          "profile_hash": {
+            "title": "Profile Hash",
+            "type": "string"
+          },
+          "providers": {
+            "description": "In the new order",
+            "items": {
+              "$ref": "#/components/schemas/CoverProviderOrder"
+            },
+            "title": "Providers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "providers",
+          "profile_hash"
+        ],
+        "title": "CoverProvidersBody",
+        "type": "object"
+      },
+      "CoverProvidersView": {
+        "additionalProperties": false,
+        "description": "The profile's cover providers as the picker edits them (COVER-PICKER-9, -10).",
+        "properties": {
+          "profile_hash": {
+            "description": "sha256 of profile.yaml as read",
+            "title": "Profile Hash",
+            "type": "string"
+          },
+          "providers": {
+            "description": "In the profile's order",
+            "items": {
+              "$ref": "#/components/schemas/CoverProviderOrder"
+            },
+            "title": "Providers",
+            "type": "array"
+          },
+          "registered": {
+            "description": "Every installed cover provider",
+            "items": {
+              "type": "string"
+            },
+            "title": "Registered",
+            "type": "array"
+          }
+        },
+        "required": [
+          "providers",
+          "registered",
+          "profile_hash"
+        ],
+        "title": "CoverProvidersView",
+        "type": "object"
+      },
       "CoverQuery": {
         "additionalProperties": false,
         "description": "What to look for (COVERS-SEARCH-2).",
@@ -814,6 +954,36 @@
           }
         },
         "title": "CoverQuery",
+        "type": "object"
+      },
+      "CoverQueryAnswer": {
+        "additionalProperties": false,
+        "description": "An album's cover query from the default templates (COVER-PICKER-2). ``query.folder``\nis left out: the server looks it up itself.",
+        "properties": {
+          "art_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Art Sha256"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "query": {
+            "$ref": "#/components/schemas/CoverQuery"
+          }
+        },
+        "required": [
+          "query",
+          "label"
+        ],
+        "title": "CoverQueryAnswer",
         "type": "object"
       },
       "CoverReview": {
@@ -952,6 +1122,18 @@
         "additionalProperties": false,
         "description": "Start a cover search (COVERS-SEARCH-19). ``query.folder`` is ignored: the\n``local`` provider only looks in the folder of the album under ``review_id``.",
         "properties": {
+          "album_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The library album it is for, when there is no review (COVER-PICKER-14)",
+            "title": "Album Id"
+          },
           "profile": {
             "title": "Profile",
             "type": "string"
@@ -1012,6 +1194,35 @@
           "search_id"
         ],
         "title": "CoverSearchStarted",
+        "type": "object"
+      },
+      "CoverUploadBody": {
+        "additionalProperties": false,
+        "description": "An image the user added, base64-encoded (COVER-PICKER-17). The profile is the\n``profile`` query parameter, so the size cap is known before the body is read.",
+        "properties": {
+          "data": {
+            "description": "The image file, base64",
+            "title": "Data",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "CoverUploadBody",
+        "type": "object"
+      },
+      "CoverUploaded": {
+        "additionalProperties": false,
+        "properties": {
+          "candidate": {
+            "$ref": "#/components/schemas/RankedCandidate"
+          }
+        },
+        "required": [
+          "candidate"
+        ],
+        "title": "CoverUploaded",
         "type": "object"
       },
       "CurrentTarget": {
@@ -3263,6 +3474,22 @@
       "RankedCandidate": {
         "additionalProperties": false,
         "properties": {
+          "filtered": {
+            "anyOf": [
+              {
+                "enum": [
+                  "small",
+                  "aspect"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the hard filters hide it, or null",
+            "title": "Filtered"
+          },
           "height": {
             "anyOf": [
               {
@@ -3313,6 +3540,18 @@
           "score": {
             "title": "Score",
             "type": "number"
+          },
+          "size_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The size part of the score (COVER-PICKER-8)",
+            "title": "Size Score"
           },
           "source_url": {
             "anyOf": [
@@ -4867,7 +5106,7 @@
   "paths": {
     "/api/albums/{album_id}/art": {
       "get": {
-        "description": "The album's current art file (COVERS-SEARCH-22), read through the read-only worker.",
+        "description": "The album's current art file (COVERS-SEARCH-22), read through the read-only worker.\nIts ``ETag`` is the art's sha256, so an unchanged cover answers 304 (COVER-PICKER-16).",
         "operationId": "album_art_api_albums__album_id__art_get",
         "parameters": [
           {
@@ -4886,6 +5125,22 @@
             "schema": {
               "title": "Profile",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "if-none-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-None-Match"
             }
           }
         ],
@@ -5853,6 +6108,89 @@
         ]
       }
     },
+    "/api/covers/uploads": {
+      "post": {
+        "description": "Add an image of the user's own as a candidate of provider ``upload``. The body is\nJSON with the image base64-encoded; it may be at most the profile's\n``covers.max_bytes`` once decoded.",
+        "operationId": "upload_cover_api_covers_uploads_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoverUploadBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoverUploaded"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Upload Cover",
+        "tags": [
+          "covers"
+        ]
+      }
+    },
     "/api/events": {
       "get": {
         "description": "run.started / run.finished across all runs (API-9), plus the review-level and\n``changeset.*`` events of runs (REVIEW-QUEUE-10).",
@@ -6137,6 +6475,220 @@
         "summary": "Get Profiles",
         "tags": [
           "profiles"
+        ]
+      }
+    },
+    "/api/profiles/{profile}/albums/{album_id}/cover": {
+      "post": {
+        "description": "Download and check the candidate, keep it in the art store, and queue a manual\nChangeSet on the album's ``art_sha256`` (undoable from Recent edits).",
+        "operationId": "set_album_cover_api_profiles__profile__albums__album_id__cover_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "album_id",
+            "required": true,
+            "schema": {
+              "title": "Album Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlbumCoverBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlbumCoverQueued"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
+          }
+        },
+        "summary": "Set Album Cover",
+        "tags": [
+          "covers"
+        ]
+      }
+    },
+    "/api/profiles/{profile}/albums/{album_id}/cover-query": {
+      "get": {
+        "description": "The album's cover query from the backend templates ``covers.search`` uses by default,\nits label and its art's sha256. The folder is left out.",
+        "operationId": "album_cover_query_api_profiles__profile__albums__album_id__cover_query_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "album_id",
+            "required": true,
+            "schema": {
+              "title": "Album Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoverQueryAnswer"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
+          }
+        },
+        "summary": "Album Cover Query",
+        "tags": [
+          "covers"
         ]
       }
     },
@@ -6430,6 +6982,162 @@
         "summary": "Check Changes",
         "tags": [
           "library"
+        ]
+      }
+    },
+    "/api/profiles/{profile}/covers": {
+      "get": {
+        "description": "The profile's cover providers in order (without their own settings), every\ninstalled provider, and the hash a save must send back.",
+        "operationId": "cover_providers_api_profiles__profile__covers_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoverProvidersView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Cover Providers",
+        "tags": [
+          "covers"
+        ]
+      }
+    },
+    "/api/profiles/{profile}/covers/providers": {
+      "put": {
+        "description": "Save the toggles, weights and order as ``covers.providers`` in ``profile.yaml``,\nkeeping the rest of the file. ``409 conflict`` when the file changed since it was read.",
+        "operationId": "save_providers_api_profiles__profile__covers_providers_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoverProvidersBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoverProvidersView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Save Providers",
+        "tags": [
+          "covers"
         ]
       }
     },

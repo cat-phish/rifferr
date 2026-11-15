@@ -1,0 +1,75 @@
+{
+  "comment": "Shared by backend/tests/covers/test_rank_case.py and lib/covers.test.ts: the UI must rank exactly as the server (COVER-PICKER-8).",
+  "settings": {
+    "target_size": 1000,
+    "min_size": 500,
+    "max_aspect_error": 0.1,
+    "unknown_size_score": 0.5
+  },
+  "providers": [
+    { "name": "coverartarchive", "enabled": true, "weight": 3 },
+    { "name": "itunes", "enabled": true, "weight": 1 },
+    { "name": "deezer", "enabled": true, "weight": 1 }
+  ],
+  "candidates": [
+    {
+      "provider": "itunes",
+      "image_url": "https://x/i600",
+      "width": 600,
+      "height": 600,
+      "match_confidence": 1.0
+    },
+    {
+      "provider": "deezer",
+      "image_url": "https://x/d1000",
+      "width": 1000,
+      "height": 1000,
+      "match_confidence": 0.6
+    },
+    {
+      "provider": "itunes",
+      "image_url": "https://x/i1200",
+      "width": 1200,
+      "height": 1200,
+      "match_confidence": 0.6
+    },
+    { "provider": "coverartarchive", "image_url": "https://x/caa", "match_confidence": 1.0 },
+    {
+      "provider": "deezer",
+      "image_url": "https://x/small",
+      "width": 300,
+      "height": 300,
+      "match_confidence": 1.0
+    },
+    {
+      "provider": "itunes",
+      "image_url": "https://x/wide",
+      "width": 1200,
+      "height": 800,
+      "match_confidence": 1.0
+    },
+    {
+      "provider": "deezer",
+      "image_url": "https://x/d900",
+      "width": 900,
+      "height": 900,
+      "match_confidence": 0.5
+    },
+    {
+      "provider": "itunes",
+      "image_url": "https://x/i900",
+      "width": 900,
+      "height": 900,
+      "match_confidence": 0.5
+    }
+  ],
+  "expected": [
+    "https://x/caa",
+    "https://x/i1200",
+    "https://x/i600",
+    "https://x/d1000",
+    "https://x/i900",
+    "https://x/d900"
+  ],
+  "hidden": ["https://x/small", "https://x/wide"]
+}
