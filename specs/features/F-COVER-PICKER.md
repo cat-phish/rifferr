@@ -1,5 +1,5 @@
 # F-COVER-PICKER: Cover search UI
-Status: Draft
+Status: Approved
 Milestone: M3
 
 ## Context
