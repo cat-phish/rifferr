@@ -370,7 +370,7 @@ class TriggerManager:
         armed.tracker = tracker
         now = self.monotonic()
         for entry in sorted(path.iterdir()):  # TRIGGERS-11: start-up scan
-            if entry.is_dir():
+            if entry.is_dir() and fs.is_inside_entry(path, entry.name):
                 tracker.touch(entry.name, now)
         ready = asyncio.Event()
         armed.tasks.append(
@@ -422,11 +422,16 @@ class TriggerManager:
                     if top == rel and not (root / top).is_dir():
                         loose_since = now  # TRIGGERS-8: a loose file in the watch folder
                         continue
+                    if not fs.is_inside_entry(root, top):
+                        continue  # SEC-01: a link out of the watch folder is never fired on
                     tracker.touch(top, now)
                     if not pending:  # started settling (DASHBOARD-15)
                         self._inbox_changed(armed, root / top)
                 for name in tracker.due(now):
                     folder = root / name
+                    if not fs.is_inside_entry(root, name):
+                        self._skipped(armed, "watch", str(folder), "outside", None)
+                        continue
                     if not folder.is_dir() or not await asyncio.to_thread(fs.has_files, folder):
                         self._inbox_changed(armed, folder)
                         continue  # TRIGGERS-9: gone or empty

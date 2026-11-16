@@ -57,3 +57,15 @@ def confine(candidate: str, within: Path) -> Path:
     if real == root or not real.is_relative_to(root):
         raise OutsideError("input is not inside the webhook's 'within' folder")
     return real
+
+
+def is_inside_entry(root: Path, name: str) -> bool:
+    """SEC-01: a top-level watch entry is a real folder (not a symlink) that resolves
+    inside ``root``."""
+    entry = root / name
+    try:
+        if entry.is_symlink():
+            return False
+        return entry.resolve(strict=True).is_relative_to(root.resolve(strict=True))
+    except OSError:
+        return False

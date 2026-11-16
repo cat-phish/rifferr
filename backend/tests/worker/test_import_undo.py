@@ -110,6 +110,8 @@ async def test_DASHBOARD_18_copies_in_the_library_are_deleted(h: Harness, tmp_pa
     assert fingerprint is not None
     AppTriggers(h.db).remember("main", "wf", str(source), fingerprint, RUN)
     add(h, "A", library / "A")
+    (library / "A").mkdir(parents=True)
+    (library / "A" / "t.flac").write_bytes(b"audio")  # SEC-03: a byte-identical copy
     await run_and_undo(h)
     assert h.backend.removed[-1][1] is True
     assert h.backend.deleted == [str(library / "A" / "t.flac")]

@@ -9,6 +9,8 @@ fingerprint it had when the run started.
 
 from __future__ import annotations
 
+import hashlib
+import os
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -37,9 +39,48 @@ def originals(recorded: tuple[str, str] | None) -> Originals:
         return Originals(None, False)
     path, fingerprint = recorded
     folder = Path(path)
-    if not folder.is_dir():
+    if not folder.is_dir() or _has_links(folder):  # SEC-03: links hide files from the fingerprint
         return Originals(path, False)
     return Originals(path, fs.input_fingerprint(folder) == fingerprint)
+
+
+def _has_links(folder: Path) -> bool:
+    for _root, dirs, names in os.walk(folder, followlinks=False):
+        if any(Path(_root, n).is_symlink() for n in (*dirs, *names)):
+            return True
+    return False
+
+
+def _digest(path: Path) -> str | None:
+    h = hashlib.sha256()
+    try:
+        with path.open("rb") as fh:
+            while chunk := fh.read(1 << 20):
+                h.update(chunk)
+    except OSError:
+        return None
+    return h.hexdigest()
+
+
+def _are_copies(paths: Sequence[str], source: Path) -> bool:
+    """SEC-03: every library file has a byte-identical file still in the input folder."""
+    sizes: dict[int, list[Path]] = {}
+    for root, _dirs, names in os.walk(source, followlinks=False):
+        for name in names:
+            full = Path(root, name)
+            try:
+                sizes.setdefault(full.stat().st_size, []).append(full)
+            except OSError:
+                continue
+    for raw in paths:
+        try:
+            size = Path(raw).stat().st_size
+        except OSError:
+            return False
+        digest = _digest(Path(raw))
+        if digest is None or not any(_digest(c) == digest for c in sizes.get(size, ())):
+            return False
+    return True
 
 
 def deletes_files(paths: Sequence[str], library_dirs: Sequence[Path], found: Originals) -> bool:
@@ -54,7 +95,7 @@ def deletes_files(paths: Sequence[str], library_dirs: Sequence[Path], found: Ori
             return False
         if not any(path.is_relative_to(root) for root in roots):
             return False
-    return True
+    return _are_copies(paths, source)
 
 
 def library_dirs(backend: LibraryBackend) -> list[Path]:

@@ -110,6 +110,9 @@ async def test_DASHBOARD_6_10_recent_imports_say_what_undo_does_to_files(
 
     def albums(run: str, name: str) -> list[dict[str, Any]]:
         path = library / name
+        if name == "C":  # SEC-03: deletion needs a byte-identical copy of the input's files
+            path.mkdir(parents=True, exist_ok=True)
+            (path / "1.flac").write_bytes(b"x")
         return [{"id": f"a-{name}", "label": name, "path": str(path), "items": [f"{path}/1.flac"]}]
 
     async def fake_ask(state: Any, profile: str, kind: str, payload: dict[str, Any], **_: Any):  # type: ignore[no-untyped-def]

@@ -6,6 +6,7 @@ Uses only the LibraryBackend protocol: whatever library the profile's backend is
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 from typing import Literal, Self
 
@@ -87,6 +88,11 @@ class BeetsImportStep:
             raise StepFailure(f"import folder {path} does not exist")
         if not path.is_dir():
             raise StepFailure(f"import path {path} is not a folder")
+        escaping = await asyncio.to_thread(_escaping_links, path)
+        if escaping:
+            raise StepFailure(
+                f"import folder {path} holds a symbolic link that leaves it: {escaping}"
+            )
         if params.mode != "quiet" and not ctx.backend.capabilities.import_decisions:
             raise StepFailure(
                 f"this profile's backend can't ask about imports; mode '{params.mode}' "
@@ -125,6 +131,24 @@ class BeetsImportStep:
                 "decisions": len(result.questions),
             }
         )
+
+
+def _escaping_links(folder: Path) -> str | None:
+    """SEC-02: the first symbolic link under ``folder`` (links are not followed while
+    looking) whose target is not inside the real folder, or ``None``."""
+    real = folder.resolve()
+    for root, dirs, names in os.walk(folder, followlinks=False):
+        dirs.sort()
+        for name in sorted(dirs + names):
+            link = Path(root, name)
+            if link.is_symlink():
+                try:
+                    inside = link.resolve().is_relative_to(real)
+                except (OSError, RuntimeError):
+                    inside = False
+                if not inside:
+                    return str(link.relative_to(folder))
+    return None
 
 
 def _log_decision(ctx: StepContext, decision: ImportOutcome) -> None:
