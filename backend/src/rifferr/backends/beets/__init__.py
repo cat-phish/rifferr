@@ -234,6 +234,27 @@ class BeetsBackend:
                     raw = value if isinstance(value, bytes) else os.fsencode(str(value))
                     if raw in wanted:
                         found.add(wanted[raw])
+            # SEC-06: stored paths aren't resolved; match the rest by real path (a linked
+            # parent folder), and protect album art too.
+            rest = {k: v for k, v in wanted.items() if v not in found}
+            if rest:
+                by_name: dict[bytes, list[Path]] = {}
+                for k, v in rest.items():
+                    by_name.setdefault(os.path.basename(k), []).append(v)
+                with lib.transaction() as tx:
+                    rows = tx.query("SELECT path FROM items UNION SELECT artpath FROM albums")
+                for row in rows:
+                    value = row[0]
+                    if not value:
+                        continue
+                    raw = value if isinstance(value, bytes) else os.fsencode(str(value))
+                    cands = by_name.get(os.path.basename(raw))
+                    if not cands:
+                        continue
+                    real = os.path.realpath(raw)
+                    for v in cands:
+                        if os.fsencode(os.path.realpath(v)) == os.fsencode(real):
+                            found.add(v)
         return found
 
     def library_dirs(self) -> list[Path]:

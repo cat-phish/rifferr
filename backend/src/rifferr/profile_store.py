@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import tempfile
 import zoneinfo
 from collections.abc import Mapping, Sequence
 from datetime import datetime, tzinfo
@@ -30,6 +31,23 @@ SCRIPTS_DIR = "scripts"
 
 
 APP_DB_FILE = "rifferr.db"
+
+
+def atomic_write(path: Path, data: bytes) -> None:
+    """SEC-09: write via a fresh unique temp file (never a pre-existing name or link)."""
+    fd, name = tempfile.mkstemp(dir=path.parent, prefix=".tmp-")
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(data)
+        try:
+            mode = path.stat().st_mode & 0o777
+        except OSError:
+            mode = 0o644
+        os.chmod(name, mode)
+        os.replace(name, path)
+    except BaseException:
+        Path(name).unlink(missing_ok=True)
+        raise
 
 
 def data_root(env: Mapping[str, str] | None = None) -> Path:
@@ -239,7 +257,5 @@ def save_cover_providers(
         text, str(path), name=name, root=path.parent, env=env, timezone_exists=_timezone_exists
     )
     data_out = text.encode("utf-8")
-    tmp = path.with_name(f".{path.name}.tmp")
-    tmp.write_bytes(data_out)
-    os.replace(tmp, path)
+    atomic_write(path, data_out)
     return hashlib.sha256(data_out).hexdigest()

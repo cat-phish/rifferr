@@ -6,6 +6,7 @@ run the step through the engine with a FakeBackend and a folder under ``tmp_path
 
 from __future__ import annotations
 
+import os
 import textwrap
 from pathlib import Path
 from typing import Any
@@ -189,14 +190,14 @@ async def test_FILES_CLEANUP_9_delete_mode_removes_matches_and_empty_folders(
 async def test_FILES_CLEANUP_10_a_failed_deletion_fails_the_step(
     h: Harness, inbox: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    real = Path.unlink
+    real = os.unlink
 
-    def unlink(self: Path, missing_ok: bool = False) -> None:
-        if self.name == "info.nfo":
+    def unlink(path: str, *args: Any, **kwargs: Any) -> None:
+        if path == "info.nfo":  # SEC-04: execute unlinks by name through a folder descriptor
             raise PermissionError(13, "Permission denied")
-        real(self, missing_ok)
+        real(path, *args, **kwargs)
 
-    monkeypatch.setattr(Path, "unlink", unlink)
+    monkeypatch.setattr(os, "unlink", unlink)
     run = start(h, step(inbox, mode="delete", delete=["*.nfo", "*.jpg"]))
     await h.engine.execute(run)
     assert run.state is RunState.failed

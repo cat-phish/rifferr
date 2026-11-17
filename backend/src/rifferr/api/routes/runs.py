@@ -23,7 +23,13 @@ from rifferr.api.models import (
 from rifferr.api.routes.workflows import check, error_out, find_workflow, get_profile
 from rifferr.api.state import ServerState, State
 from rifferr.appdb import AppJournal, AppLanes, Job
+from rifferr.core.profile import merged_vars
 from rifferr.core.workflow import CalledStep, WorkflowLoadError, expand, load_workflow
+from rifferr.core.workflow.interpolation import (
+    InterpolationContext,
+    InterpolationError,
+    interpolate,
+)
 from rifferr.engine.lanes import counts
 from rifferr.engine.undo import run_entries
 from rifferr.workflow_calls import called_hashes, stored_calls
@@ -34,6 +40,29 @@ SSE_RESPONSE: dict[int | str, dict[str, Any]] = {
     200: {"content": {"text/event-stream": {"schema": {"type": "string"}}}, "description": "SSE"}
 }
 TERMINAL = {"succeeded", "failed", "cancelled"}
+
+
+def _confine_manual_input(wf: Any, profile_vars: Any, value: str) -> None:
+    """SEC-07: when the workflow names a watch folder (or webhook ``within``), a manual
+    input must lie inside it or equal it."""
+    on = getattr(wf, "on", None)
+    if on is None:
+        return
+    raw = on.webhook.within if on.webhook is not None and on.webhook.within else None
+    if raw is None and on.watch is not None:
+        raw = on.watch.path
+    if raw is None:
+        return
+    try:
+        ctx = InterpolationContext(vars=merged_vars(profile_vars, wf.vars), profile={"name": ""})
+        root = Path(interpolate(raw, ctx)).resolve()
+    except (InterpolationError, OSError, ValueError):
+        return  # the trigger can't arm either; nothing to confine against
+    real = Path(value).resolve()
+    if real != root and not real.is_relative_to(root):
+        raise ApiError(
+            400, "input_outside_watch", f"input must be inside the workflow's folder {root}"
+        )
 
 
 @router.post("/runs", status_code=201, response_model=RunCreated, responses=ERROR_RESPONSES)
@@ -49,6 +78,8 @@ async def create_run(body: RunCreate, state: State) -> RunCreated:
         raise ApiError(422, "validation_failed", "the workflow has errors", details)
     if body.input is not None and not Path(body.input).is_absolute():
         raise ApiError(400, "bad_request", "input must be an absolute path")
+    if body.input is not None:
+        _confine_manual_input(c.workflow, profile.vars, body.input)  # SEC-07
     run_id = await state.supervisor.submit_run(
         body.profile,
         c.text,

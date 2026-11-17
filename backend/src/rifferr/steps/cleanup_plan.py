@@ -8,6 +8,7 @@ Library knowledge comes in as functions, so the backend stays behind its protoco
 
 from __future__ import annotations
 
+import errno
 import os
 import re
 import shutil
@@ -102,12 +103,16 @@ def check_root(root: Path, library_dirs: Sequence[Path], home: Path | None) -> P
     real = Path(os.path.realpath(root))
     if real == Path(real.anchor):
         raise CleanupError("refusing to clean the file system root")
-    if home is not None and real == Path(os.path.realpath(home)):
-        raise CleanupError("refusing to clean the home folder")
+    if home is not None:
+        home_real = Path(os.path.realpath(home))
+        if real == home_real or home_real.is_relative_to(real):  # SEC-05
+            raise CleanupError("refusing to clean the home folder or a folder holding it")
     for lib in library_dirs:
         lib_real = Path(os.path.realpath(lib))
         if lib_real == real or lib_real.is_relative_to(real):
             raise CleanupError(f"refusing to clean {real}: it holds the library folder {lib}")
+        if real.is_relative_to(lib_real):  # SEC-05
+            raise CleanupError(f"refusing to clean {real}: it is inside the library folder {lib}")
     return real
 
 
@@ -286,39 +291,66 @@ def execute(
             continue
         path = p.root / entry.path
         try:
-            st = path.lstat()
+            dfd, name = _open_parent(p.root, entry.path)
         except FileNotFoundError:
             result.lines.append(("info", f"{entry.path}: already gone"))
             continue
-        size_changed = entry.kind == "file" and st.st_size != entry.size
-        if size_changed or st.st_mtime_ns != entry.mtime_ns:
+        except OSError:  # a parent is now a link or not a folder (SEC-04)
             result.changed += 1
             result.lines.append(("error", f"{entry.path}: changed since it was listed; left"))
             continue
         try:
-            if trash is not None:
-                target = _free(trash / run_id / entry.path)
-                target.parent.mkdir(parents=True, exist_ok=True)
-                if _same_fs(path, target.parent):
-                    os.replace(path, target)
+            try:
+                st = os.lstat(name, dir_fd=dfd)
+            except FileNotFoundError:
+                result.lines.append(("info", f"{entry.path}: already gone"))
+                continue
+            size_changed = entry.kind == "file" and st.st_size != entry.size
+            if size_changed or st.st_mtime_ns != entry.mtime_ns:
+                result.changed += 1
+                result.lines.append(("error", f"{entry.path}: changed since it was listed; left"))
+                continue
+            try:
+                if trash is not None:
+                    target = _free(trash / run_id / entry.path)
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    try:
+                        tfd = os.open(target.parent, os.O_RDONLY | os.O_DIRECTORY)
+                        try:
+                            os.rename(name, target.name, src_dir_fd=dfd, dst_dir_fd=tfd)
+                        finally:
+                            os.close(tfd)
+                    except OSError as exc:
+                        if exc.errno != errno.EXDEV:
+                            raise
+                        # other file system: the parent folder must still be the one we hold
+                        if not os.path.samestat(os.fstat(dfd), os.stat(path.parent)):
+                            raise
+                        shutil.move(path, target)
+                    result.moved += 1
+                    result.lines.append(("info", f"{entry.path}: moved to trash"))
                 else:
-                    shutil.move(path, target)
-                result.moved += 1
-                result.lines.append(("info", f"{entry.path}: moved to trash"))
-            else:
-                path.unlink()
-                result.deleted += 1
-                result.lines.append(("info", f"{entry.path}: deleted"))
-            result.bytes_freed += entry.size or 0
-        except OSError as exc:
-            result.failed += 1
-            result.lines.append(("error", f"{entry.path}: can't remove: {exc.strerror}"))
+                    os.unlink(name, dir_fd=dfd)
+                    result.deleted += 1
+                    result.lines.append(("info", f"{entry.path}: deleted"))
+                result.bytes_freed += entry.size or 0
+            except OSError as exc:
+                result.failed += 1
+                result.lines.append(("error", f"{entry.path}: can't remove: {exc.strerror}"))
+        finally:
+            os.close(dfd)
     for entry in p.entries:  # deepest first, as listed
         if entry.cls != "empty" or (only is not None and entry.path not in only):
             continue
-        path = p.root if entry.path == "." else p.root / entry.path
         try:
-            path.rmdir()
+            if entry.path == ".":
+                p.root.rmdir()
+            else:
+                dfd, name = _open_parent(p.root, entry.path)
+                try:
+                    os.rmdir(name, dir_fd=dfd)
+                finally:
+                    os.close(dfd)
             result.dirs_removed += 1
             result.lines.append(("info", f"{entry.path}/: removed empty folder"))
         except FileNotFoundError:
@@ -326,6 +358,22 @@ def execute(
         except OSError as exc:  # not empty any more, or no permission: leave it
             result.lines.append(("info", f"{entry.path}/: left ({exc.strerror})"))
     return result
+
+
+def _open_parent(root: Path, rel: str) -> tuple[int, str]:
+    """SEC-04: a descriptor for the folder holding ``rel``, reached one part at a time
+    without following links, and the entry's name in it. Caller closes the descriptor."""
+    *dirs, name = Path(rel).parts
+    fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        for part in dirs:
+            nxt = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+            os.close(fd)
+            fd = nxt
+    except BaseException:
+        os.close(fd)
+        raise
+    return fd, name
 
 
 def _free(target: Path) -> Path:

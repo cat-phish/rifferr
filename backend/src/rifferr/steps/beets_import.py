@@ -14,7 +14,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from rifferr.backends.base import BackendCapabilities, ImportOutcome
 from rifferr.core.duration import Duration, parse_duration
-from rifferr.engine import StepContext, StepFailure, StepResult
+from rifferr.core.workflow.safety import DESTRUCTIVE_DUPLICATE_ACTIONS
+from rifferr.engine import StepContext, StepFailure, StepRefused, StepResult
 from rifferr.engine.steps import ImportOptions
 
 
@@ -83,6 +84,12 @@ class BeetsImportStep:
     async def run(self, ctx: StepContext) -> StepResult:
         params = ctx.params
         assert isinstance(params, BeetsImportParams)
+        action = params.options.duplicate_action
+        if action in DESTRUCTIVE_DUPLICATE_ACTIONS and not ctx.trusted:  # SEC-08
+            raise StepRefused(
+                f"beets.import with duplicate_action: {action} can remove an album already "
+                "in the library; it runs only in trusted workflows"
+            )
         path = Path(params.path)
         if not path.exists():
             raise StepFailure(f"import folder {path} does not exist")

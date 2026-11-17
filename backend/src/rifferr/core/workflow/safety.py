@@ -53,9 +53,10 @@ FindingKind = Literal[
 ]
 #: Library subcommands that delete files or library entries (``beets.command``).
 DESTRUCTIVE_LIBRARY_COMMANDS: frozenset[str] = frozenset({"remove"})
-#: Step types that only propose ChangeSets; with ``apply: auto`` they change tags
-#: without review, which the report lists as information (TAGSCRIPT-18).
-PROPOSING_STEPS: frozenset[str] = frozenset({"tags.script"})
+#: ``beets.import`` duplicate actions that remove or replace an album already in the
+#: library (SEC-08).
+DESTRUCTIVE_DUPLICATE_ACTIONS: frozenset[str] = frozenset({"remove", "merge", "upgrade"})
+VARIABLE_PROGRAM_WARNING = "program comes from a variable: trust does not cover what it runs"
 
 
 class Finding(BaseModel):
@@ -95,7 +96,7 @@ def safety_report(wf: Workflow, calls: Calls | None = None) -> SafetyReport:
 def _report(wf: Workflow) -> SafetyReport:
     findings: list[Finding] = []
     for step in wf.steps:
-        if step.uses in PROPOSING_STEPS and step.apply == "auto":
+        if step.apply == "auto":  # TAGSCRIPT-18; any step that proposes ChangeSets (SEC-65)
             findings.append(
                 Finding(
                     step_id=step.id,
@@ -108,6 +109,9 @@ def _report(wf: Workflow) -> SafetyReport:
             continue
         if step.uses == "files.cleanup":
             findings += _cleanup_findings(step.id, step.with_)
+            continue
+        if step.uses == "beets.import":
+            findings += _import_findings(step.id, step.with_)
             continue
         if step.uses != "shell":
             continue
@@ -153,6 +157,40 @@ def _cleanup_findings(step_id: str, params: dict[str, Any]) -> list[Finding]:
     return [Finding(step_id=step_id, kind="destructive", detail="; ".join(parts))]
 
 
+def _import_findings(step_id: str, params: dict[str, Any]) -> list[Finding]:
+    """A ``beets.import`` step's options that move files or replace library albums
+    outside ChangeSets (SEC-65). Options left to the user's beets config are not listed."""
+    raw = params.get("options")
+    options = cast(dict[str, Any], raw) if isinstance(raw, dict) else {}
+    path = params.get("path", "?")
+    out: list[Finding] = []
+    if options.get("move") is True:
+        out.append(
+            Finding(
+                step_id=step_id,
+                kind="destructive",
+                detail=f"moves the files in {path} into the library (move: true)",
+            )
+        )
+    if options.get("write") is True:
+        out.append(
+            Finding(
+                step_id=step_id, kind="destructive", detail="writes tags into the imported files"
+            )
+        )
+    action = options.get("duplicate_action")
+    if action in DESTRUCTIVE_DUPLICATE_ACTIONS:
+        out.append(
+            Finding(
+                step_id=step_id,
+                kind="destructive",
+                detail=f"duplicate_action: {action}: may remove an album already in the "
+                "library; needs a trusted workflow",
+            )
+        )
+    return out
+
+
 def _library_command_findings(step_id: str, params: dict[str, Any]) -> list[Finding]:
     """A ``beets.command`` step changes the library outside ChangeSets (BEETS-COMMAND-13)."""
     command = str(params.get("command", ""))
@@ -188,11 +226,40 @@ def _program_positions(words: list[str]) -> set[int]:
     return positions
 
 
-def _word_findings(step_id: str, words: list[str]) -> list[Finding]:
+def _word_findings(
+    step_id: str, words: list[str], seen: set[tuple[str, str]] | None = None
+) -> list[Finding]:
     out: list[Finding] = []
-    seen: set[tuple[str, str]] = set()
+    seen = set[tuple[str, str]]() if seen is None else seen
     programs = _program_positions(words)
     for index, word in enumerate(words):
+        templated = "$" in word or "{{" in word
+        if index in programs and templated and ("local_script", word) not in seen:
+            seen.add(("local_script", word))
+            out.append(
+                Finding(
+                    step_id=step_id,
+                    kind="local_script",
+                    detail=f"{word}: {VARIABLE_PROGRAM_WARNING}",
+                )
+            )
+        if (
+            index in programs
+            and os.path.basename(word) in INTERPRETERS
+            and index + 2 < len(words)
+            and words[index + 1] == "-c"
+        ):
+            # SEC-65: the code an interpreter gets as a string is scanned too
+            if ("shell_string", word) not in seen:
+                seen.add(("shell_string", word))
+                out.append(
+                    Finding(
+                        step_id=step_id,
+                        kind="shell_string",
+                        detail=f"runs code given as a string: {os.path.basename(word)} -c",
+                    )
+                )
+            out += _word_findings(step_id, _split(words[index + 2]), seen)
         name = os.path.basename(word)
         for kind, tools in (("network_tool", NETWORK_TOOLS), ("destructive", DESTRUCTIVE_TOOLS)):
             if name in tools and (kind, name) not in seen:
