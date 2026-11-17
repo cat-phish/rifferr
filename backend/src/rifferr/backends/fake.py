@@ -326,6 +326,9 @@ class FakeBackend:
         terms = parse_query(condition)
         return _matches_all(terms, _snapshot_env(target, None, self._stored_fields(target)))
 
+    def escape_template(self, text: str) -> str:
+        return _SPECIALS.sub(r"$\1", text)
+
     def evaluate(self, template: str, target: ItemSnapshot | AlbumSnapshot) -> str:
         self._need("templates")
         album_fields = self._album_fields_for(target)
@@ -800,17 +803,22 @@ def _numeric_match(term: _Term, value: float) -> bool:
 
 # -- templates ----------------------------------------------------------------
 
-_TEMPLATE = re.compile(r"\$\$|\$\{(?P<braced>[A-Za-z0-9_]+)\}|\$(?P<bare>[A-Za-z0-9_]+)")
+_TEMPLATE = re.compile(
+    r"\$(?P<escaped>[$%},])|\$\{(?P<braced>[A-Za-z0-9_]+)\}|\$(?P<bare>[A-Za-z0-9_]+)"
+)
 _FUNCTION = re.compile(r"%[A-Za-z0-9_]+\{")
+_SPECIALS = re.compile(r"([$%},])")
+"""Characters with a ``$`` escape, as in beets."""
+_SPECIALS_ESCAPED = re.compile(r"\$[$%},]")
 
 
 def render_template(template: str, env: Mapping[str, FieldValue]) -> str:
-    if _FUNCTION.search(template):
+    if _FUNCTION.search(_SPECIALS_ESCAPED.sub("", template)):
         raise TemplateError("FakeBackend doesn't support template functions (%func{...})")
 
     def sub(m: re.Match[str]) -> str:
-        if m.group(0) == "$$":
-            return "$"
+        if m["escaped"]:
+            return m["escaped"]
         name = m["braced"] or m["bare"]
         if name not in env:
             return m.group(0)

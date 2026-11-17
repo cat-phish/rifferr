@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from rifferr.backends.base import BackendCapabilities, TemplateError
 from rifferr.core.notify import Notification, NotifyType, SendResult, review_link, run_link
+from rifferr.core.workflow.template_fields import TEMPLATE_EXTRA
 from rifferr.core.workflow.validation import NOTIFY_TARGET_REF
 from rifferr.engine import StepContext, StepResult
 from rifferr.engine.steps import StepFailure
@@ -29,10 +30,13 @@ class NotifyParams(BaseModel):
         description="Notification targets from the profile's notify.targets; default: all",
         json_schema_extra={"x-rifferr-ref": NOTIFY_TARGET_REF},
     )
-    title: str = Field(description="Title. With per: album, a beets template")
+    title: str = Field(
+        description="Title. With per: album, a beets template", json_schema_extra=TEMPLATE_EXTRA
+    )
     body: str = Field(
         description=f"Message. With per: album, a beets template, e.g. "
-        f"'$albumartist - $album' ({TEMPLATE_DOCS})"
+        f"'$albumartist - $album' ({TEMPLATE_DOCS})",
+        json_schema_extra=TEMPLATE_EXTRA,
     )
     type: NotifyType = Field(default="info", description="info, success, warning or failure")
     per: Literal["run", "album"] = Field(

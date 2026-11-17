@@ -40,6 +40,7 @@ from rifferr.core.triggers import (
 from rifferr.core.workflow import (
     CALL_TYPE,
     WORKFLOW_SUFFIXES,
+    Calls,
     InterpolationContext,
     InterpolationError,
     Workflow,
@@ -58,8 +59,8 @@ from rifferr.profile_store import (
     profile_dir,
 )
 from rifferr.triggers import fs
-from rifferr.trust import WorkflowFileError, read_workflow_file
-from rifferr.workflow_calls import read_calls
+from rifferr.trust import WorkflowFileError, read_workflow_file, workflow_hash
+from rifferr.workflow_calls import called_trust, read_calls
 
 log = logging.getLogger(__name__)
 
@@ -70,6 +71,15 @@ StateName = Literal["armed", "disabled", "error"]
 FORCE_POLLING_ENV = "RIFFERR_FORCE_POLLING"
 PATH_RETRY = 60.0
 WATCH_TICK_MS = 500
+
+
+def _calls_digest(sha: str, calls: Calls) -> str:
+    """One digest over the workflow and every file it calls, so any change re-arms."""
+    parts = [sha]
+    for path, f in sorted(calls.files.items()):
+        parts.append(f"{path}={workflow_hash(f.text) if f.text else 'unreadable'}")
+    parts.extend(str(e) for e in calls.errors)
+    return "calls:" + workflow_hash("\n".join(parts))
 
 
 class Submit(Protocol):
@@ -106,7 +116,11 @@ class Armed:
     name: str
     path: Path
     sha256: str
+    """The digest that decides re-arming: the file's hash, plus every called file's when
+    it calls any (SEC-61)."""
     text: str = ""
+    calls: Calls | None = None
+    """The files it calls, read with it; a fired run gets exactly these texts (SEC-61)."""
     workflow: Workflow | None = None
     error: str | None = None
     trusted: bool = False
@@ -206,6 +220,7 @@ class TriggerManager:
         self._loop_task: asyncio.Task[None] | None = None
         self._fire_lock = asyncio.Lock()
         self._stopping = False
+        self._parsed: dict[tuple[str, str], tuple[str, Workflow | None]] = {}
 
     # -- lifecycle ---------------------------------------------------------------------
 
@@ -260,7 +275,14 @@ class TriggerManager:
                 ambiguous = len(paths) > 1
                 if ambiguous:
                     sha = "ambiguous:" + ",".join(p.name for p in paths)
-                trusted = not ambiguous and self.db.is_trusted(sha)
+                calls = None if ambiguous or not text else self._read_calls(key, path, sha, text)
+                trusted = (  # SEC-61, SUBWORKFLOW-13: the file and every file it calls
+                    not ambiguous
+                    and self.db.is_trusted(sha, profile_name)
+                    and all(c.trusted for c in called_trust(self.db, calls, profile_name))
+                )
+                if calls is not None:
+                    sha = _calls_digest(sha, calls)
                 old = self.armed.get(key)
                 retry_at = old.retry_at if old is not None else None
                 due = retry_at is not None and self.monotonic() >= retry_at
@@ -268,13 +290,32 @@ class TriggerManager:
                     continue
                 if old is not None:
                     await self._disarm(old)
-                armed = Armed(profile_name, name, path, sha, text, trusted=trusted)
+                armed = Armed(profile_name, name, path, sha, text, calls, trusted=trusted)
                 if ambiguous:
                     armed.error = f"'{name}' matches {', '.join(p.name for p in paths)}"
                 self.armed[key] = armed
                 await self._arm(armed)
         for key in [k for k in self.armed if k not in seen]:
             await self._disarm(self.armed.pop(key))
+        for key in [k for k in self._parsed if k not in seen]:
+            del self._parsed[key]
+
+    def _read_calls(self, key: tuple[str, str], path: Path, sha: str, text: str) -> Calls | None:
+        """The files the workflow calls, read now (SEC-61); ``None`` when it calls none.
+        The workflow is parsed once per content."""
+        cached = self._parsed.get(key)
+        if cached is not None and cached[0] == sha:
+            wf = cached[1]
+        else:
+            try:
+                wf, _ = load_workflow(text, str(path))
+            except WorkflowLoadError:
+                wf = None  # _arm reports it
+            self._parsed[key] = (sha, wf)
+        if wf is None or not any(s.uses == CALL_TYPE for s in wf.steps):
+            return None
+        folder = profile_dir(self.config_root, key[0]) / WORKFLOWS_DIR
+        return read_calls(folder, wf, None, path)
 
     async def _arm(self, armed: Armed) -> None:
         if armed.error is None and not armed.text:
@@ -285,7 +326,7 @@ class TriggerManager:
             try:
                 profile = load_profile(self.config_root, armed.profile, self.env)
                 wf, doc = load_workflow(armed.text, str(armed.path))
-                errors = validate(wf, self.registry, None, profile.vars, doc=doc)
+                errors = validate(wf, self.registry, None, profile.vars, doc=doc, calls=armed.calls)
                 if errors:
                     armed.error = "; ".join(str(e) for e in errors[:3])
             except WorkflowLoadError as exc:
@@ -548,17 +589,30 @@ class TriggerManager:
     # -- firing ------------------------------------------------------------------------
 
     def _called(self, armed: Armed) -> dict[str, str] | None:
-        """The files the workflow calls, read now: the run keeps these texts
-        (SUBWORKFLOW-12)."""
-        if armed.workflow is None or not any(s.uses == CALL_TYPE for s in armed.workflow.steps):
-            return None
-        folder = profile_dir(self.config_root, armed.profile) / WORKFLOWS_DIR
-        return read_calls(folder, armed.workflow, None, armed.path).texts()
+        """The called files' texts read and checked when it was armed: the run keeps
+        these (SUBWORKFLOW-12, SEC-61)."""
+        return armed.calls.texts() if armed.calls is not None else None
+
+    def _fire_problem(self, armed: Armed) -> str | None:
+        """Why ``armed`` must not submit a run now (SEC-61): it is in error, or it or a
+        file it calls is not trusted in its profile."""
+        if armed.error is not None:
+            return armed.error
+        texts = [armed.text, *(self._called(armed) or {}).values()]
+        if not armed.trusted or not all(
+            self.db.is_trusted(workflow_hash(t), armed.profile) for t in texts
+        ):
+            return "untrusted: the workflow or a file it calls is not trusted; not run"
+        return None
 
     async def fire(
         self, armed: Armed, kind: FireKind, input_path: str, *, force: bool = False
     ) -> FireResult:
         """Deduplicate and submit one run (TRIGGERS-19 .. -24)."""
+        problem = self._fire_problem(armed)
+        if problem is not None:  # SEC-61: never submit a run that would be untrusted
+            self._emit_error(armed, None if kind == "manual" else kind, problem)
+            return FireResult(None)
         async with self._fire_lock:  # one decision at a time per server
             fp = None
             if input_path:

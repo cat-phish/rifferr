@@ -188,6 +188,9 @@ class BeetsBackend:
             query, _ = _parse(_split(condition), type(obj))
             return bool(query.match(obj))
 
+    def escape_template(self, text: str) -> str:
+        return escape_template(text)
+
     def evaluate(self, template: str, target: ItemSnapshot | AlbumSnapshot) -> str:
         """On the target's values, over the stored object (BACKEND-10)."""
         with self.library() as lib:

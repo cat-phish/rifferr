@@ -1096,7 +1096,8 @@
             ]
           },
           "title": "Query",
-          "type": "object"
+          "type": "object",
+          "x-rifferr-template": true
         },
         "refresh": {
           "default": false,
@@ -1224,7 +1225,8 @@
         "body": {
           "description": "Message. With per: album, a beets template, e.g. '$albumartist - $album' (https://beets.readthedocs.io/en/stable/reference/pathformat.html)",
           "title": "Body",
-          "type": "string"
+          "type": "string",
+          "x-rifferr-template": true
         },
         "link": {
           "default": "run",
@@ -1279,7 +1281,8 @@
         "title": {
           "description": "Title. With per: album, a beets template",
           "title": "Title",
-          "type": "string"
+          "type": "string",
+          "x-rifferr-template": true
         },
         "type": {
           "default": "info",
@@ -1315,7 +1318,8 @@
           ],
           "default": null,
           "description": "Shown for each album: a beets template, e.g. 'Check $albumartist - $album before the files move' (https://beets.readthedocs.io/en/stable/reference/pathformat.html)",
-          "title": "Message"
+          "title": "Message",
+          "x-rifferr-template": true
         },
         "on_reject": {
           "default": "stop",
@@ -1385,7 +1389,8 @@
           ],
           "default": null,
           "description": "Working directory (templated)",
-          "title": "Cwd"
+          "title": "Cwd",
+          "x-rifferr-template": true
         },
         "emits": {
           "default": "none",
@@ -1401,9 +1406,10 @@
           "additionalProperties": {
             "type": "string"
           },
-          "description": "Extra variables",
+          "description": "Extra variables (values templated)",
           "title": "Env",
-          "type": "object"
+          "type": "object",
+          "x-rifferr-template": true
         },
         "per": {
           "default": "album",
@@ -1429,7 +1435,8 @@
           ],
           "code_text": true,
           "description": "Command as an argv list, or a string run by /bin/sh -c (needs shell: true). A string may not hold run data ({{ run.input }}, run-supplied vars, {{ steps.* }}): read $RIFFERR_RUN_INPUT / $RIFFERR_VAR_<NAME> instead",
-          "title": "Run"
+          "title": "Run",
+          "x-rifferr-template": true
         },
         "secrets": {
           "description": "Profile secrets to expose as RIFFERR_SECRET_<NAME>",
@@ -1573,7 +1580,8 @@
           },
           "minItems": 1,
           "title": "Values",
-          "type": "array"
+          "type": "array",
+          "x-rifferr-template": true
         }
       },
       "required": [
@@ -2269,7 +2277,8 @@
           },
           "minProperties": 1,
           "title": "Set",
-          "type": "object"
+          "type": "object",
+          "x-rifferr-template": true
         },
         "when": {
           "anyOf": [

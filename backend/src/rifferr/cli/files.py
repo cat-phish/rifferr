@@ -42,7 +42,10 @@ def add_parsers(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> Non
     v.set_defaults(func=cmd_validate)
     t = sub.add_parser("trust", help="trust a workflow file's exact content")
     t.add_argument("file", type=Path)
-    t.add_argument("--profile", help="validate against this profile first")
+    t.add_argument(
+        "--profile",
+        help="validate against this profile and trust it there only (without it: every profile)",
+    )
     t.add_argument("--yes", action="store_true", help="don't ask for confirmation")
     t.set_defaults(func=cmd_trust)
 
@@ -154,22 +157,24 @@ def cmd_trust(args: argparse.Namespace) -> int:
         return EXIT_INVALID
     db = AppDB(app_db_path())
     try:
-        return _trust(args, c, db)
+        return _trust(args, c, db, profile.name if profile is not None else "")
     finally:
         db.close()
 
 
-def _trust(args: argparse.Namespace, c: Checked, db: AppDB) -> int:
+def _trust(args: argparse.Namespace, c: Checked, db: AppDB, profile: str) -> int:
     """Trust the file and every untrusted file it calls, each by its own hash
-    (SUBWORKFLOW-13)."""
+    (SUBWORKFLOW-13), in ``profile``, or in every profile when it is "" (SEC-63)."""
     path = c.path
     assert c.workflow is not None
-    untrusted = [f for f in called_trust(db, c.calls) if not f.trusted]
+    untrusted = [f for f in called_trust(db, c.calls, profile) if not f.trusted]
     print(f"{path}: sha256 {c.sha256}")
     folder = c.folder or path.parent
     for f in untrusted:
         print(f"{folder / f.path}: called, not trusted: sha256 {f.sha256}")
     print_safety(path, safety_report(c.workflow, c.calls))
+    where = f"in profile '{profile}'" if profile else "in every profile (no --profile given)"
+    print(f"{path}: will be trusted {where}")
     if not args.yes:
         if not sys.stdin.isatty():
             print(
@@ -184,9 +189,9 @@ def _trust(args: argparse.Namespace, c: Checked, db: AppDB) -> int:
         if answer.strip().lower() not in ("y", "yes"):
             print("not trusted")
             return EXIT_INVALID
-    db.trust(c.sha256, str(path.resolve()), "cli")  # the bytes shown above (CLI-12)
+    db.trust(c.sha256, str(path.resolve()), "cli", profile)  # the bytes shown above (CLI-12)
     print(f"trusted {path}")
     for f in untrusted:
-        db.trust(f.sha256, str((folder / f.path).resolve()), "cli")
+        db.trust(f.sha256, str((folder / f.path).resolve()), "cli", profile)
         print(f"trusted {folder / f.path}")
     return EXIT_OK

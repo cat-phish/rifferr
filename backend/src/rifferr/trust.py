@@ -32,8 +32,9 @@ def read_workflow_file(path: Path) -> tuple[str, str]:
     return text, workflow_hash(data)
 
 
-def trust_file(db: AppDB, path: Path, trusted_by: str) -> str:
-    """Trust the current content of ``path``. Only for an explicit user action."""
+def trust_file(db: AppDB, path: Path, trusted_by: str, profile: str | None = None) -> str:
+    """Trust the current content of ``path`` in ``profile`` (``None``: every profile).
+    Only for an explicit user action."""
     _, sha = read_workflow_file(path)
-    db.trust(sha, str(path), trusted_by)
+    db.trust(sha, str(path), trusted_by, profile)
     return sha

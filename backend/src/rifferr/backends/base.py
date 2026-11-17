@@ -154,6 +154,11 @@ class LibraryBackend(Protocol):
 
     def evaluate(self, template: str, target: ItemSnapshot | AlbumSnapshot) -> str: ...
 
+    def escape_template(self, text: str) -> str:
+        """``text`` made literal in a template: ``evaluate`` of the result gives back
+        ``text`` on any target (SEC-22)."""
+        ...
+
     def matches(self, condition: str, target: ItemSnapshot | AlbumSnapshot) -> bool: ...
 
     # ``evaluate`` and ``matches`` use the field values in ``target``, not the stored

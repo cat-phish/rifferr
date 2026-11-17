@@ -235,6 +235,7 @@ class StepContext:
         propose: Propose | None = None,
         profile_dir: Path | None = None,
         interpolate: Callable[[str], str] | None = None,
+        interpolate_template: Callable[[str], str] | None = None,
         open_gate: OpenGate | None = None,
         on_hold: OnHold | None = None,
         request_import: RequestImport | None = None,
@@ -257,6 +258,9 @@ class StepContext:
         self.profile_dir = profile_dir
         """The profile's folder (``scripts/``, ``rules/`` ... live under it), if known."""
         self._interpolate: Callable[[str], str] = interpolate or _unchanged
+        self._interpolate_template: Callable[[str], str] = (
+            interpolate_template or interpolate or _unchanged
+        )
         self.trusted = trusted
         """Whether this run's workflow is trusted to run shell/python steps (F-SECURITY)."""
         self._secrets = secrets or NoSecrets()
@@ -313,6 +317,11 @@ class StepContext:
         """``{{ ... }}`` interpolation (C-WORKFLOW) with this step's context, for text a
         step reads itself (e.g. a script file). Raises ``StepFailure`` on a bad expression."""
         return self._interpolate(value)
+
+    def interpolate_template(self, value: str) -> str:
+        """Like ``interpolate``, for text the backend then evaluates as a template:
+        values from outside the workflow come out escaped, so they stay literal (SEC-22)."""
+        return self._interpolate_template(value)
 
     def secret(self, name: str) -> Secret:
         """Resolve a profile secret by name. Its value is masked in this run's events."""

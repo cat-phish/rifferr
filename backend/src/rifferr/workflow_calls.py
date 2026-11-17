@@ -58,8 +58,9 @@ class CalledTrust:
     text: str
 
 
-def called_trust(db: AppDB, calls: Calls | None) -> list[CalledTrust]:
-    """Each readable called file with its hash and whether it is trusted (SUBWORKFLOW-13)."""
+def called_trust(db: AppDB, calls: Calls | None, profile: str | None) -> list[CalledTrust]:
+    """Each readable called file with its hash and whether it is trusted in ``profile``
+    (SUBWORKFLOW-13, SEC-63; ``None``: any trust row, for the CLI without a profile)."""
     if calls is None:
         return []
     out: list[CalledTrust] = []
@@ -67,7 +68,7 @@ def called_trust(db: AppDB, calls: Calls | None) -> list[CalledTrust]:
         if not f.text and f.workflow is None:
             continue  # unreadable; validation reports it
         sha = workflow_hash(f.text)
-        out.append(CalledTrust(path, sha, db.is_trusted(sha), f.text))
+        out.append(CalledTrust(path, sha, db.is_trusted(sha, profile), f.text))
     return out
 
 

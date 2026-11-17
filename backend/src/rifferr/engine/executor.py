@@ -13,6 +13,7 @@ import hashlib
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from functools import partial
 from pathlib import Path, PurePath
 from typing import Any, Protocol, cast
 
@@ -50,7 +51,8 @@ from rifferr.core.workflow import (
     interpolate,
     validate,
 )
-from rifferr.core.workflow.interpolation import rewrite
+from rifferr.core.workflow.interpolation import rewrite, substitute
+from rifferr.core.workflow.template_fields import interpolate_fields
 from rifferr.engine.changesets import (
     ChangeSetStore,
     InMemoryChangeSetStore,
@@ -661,6 +663,7 @@ class Engine:
                 ),
                 profile_dir=state.profile_dir,
                 interpolate=lambda value: self._interpolate_text(state, value),
+                interpolate_template=lambda value: self._interpolate_template_text(state, value),
                 open_gate=lambda requests, options, snapshots: self._open_gate(
                     state, spec, requests, options, snapshots
                 ),
@@ -802,13 +805,43 @@ class Engine:
         except InterpolationError as exc:
             raise StepFailure(str(exc)) from exc
 
+    def _interpolate_template(self, state: _RunState, ctx: InterpolationContext, value: str) -> str:
+        """``{{ }}`` for text the backend then evaluates as a template (SEC-22): values
+        from outside the workflow (run fields, run-supplied vars, step outputs) are
+        escaped so the backend reads them as literal text. Workflow and profile values
+        stay templates."""
+        escape = state.backend.escape_template
+
+        def resolve(path: tuple[str, ...]) -> str:
+            text = ctx.resolve(path)
+            root, *rest = path
+            outside = root in ("run", "steps") or (
+                root == "vars" and len(rest) == 1 and rest[0] in state.run_supplied
+            )
+            return escape(text) if outside else text
+
+        return substitute(value, resolve)
+
+    def _interpolate_template_text(self, state: _RunState, value: str) -> str:
+        try:
+            return self._interpolate_template(state, self._interpolation_context(state), value)
+        except InterpolationError as exc:
+            raise StepFailure(str(exc)) from exc
+
     def _prepare_params(self, state: _RunState, spec: StepSpec) -> BaseModel:
         ctx = self._interpolation_context(state)
         step_type = self.registry.step_type(spec.uses)
         assert step_type is not None
         try:
             _refuse_run_data_in_code(step_type.params_model, spec.with_, state.run_supplied)
-            values = _interpolate_values(spec.with_, ctx)
+            plain = partial(interpolate, ctx=ctx)
+            # SEC-22: a run-level step evaluates no templates, so its values stay as is.
+            template = (
+                plain
+                if is_run_level(step_type, spec.with_)
+                else partial(self._interpolate_template, state, ctx)
+            )
+            values = interpolate_fields(step_type.params_model, spec.with_, plain, template)
         except InterpolationError as exc:
             raise StepFailure(str(exc)) from exc
         try:
@@ -1072,17 +1105,6 @@ def _refuse_run_data_in_code(
             return expr.text
 
         rewrite(value, check)
-
-
-def _interpolate_values(value: Any, ctx: InterpolationContext) -> Any:
-    if isinstance(value, str):
-        return interpolate(value, ctx)
-    if isinstance(value, dict):
-        items = cast(dict[str, Any], value).items()
-        return {k: _interpolate_values(v, ctx) for k, v in items}
-    if isinstance(value, list):
-        return [_interpolate_values(v, ctx) for v in cast(list[Any], value)]
-    return value
 
 
 def _redact(value: Any, redactor: Redactor) -> Any:

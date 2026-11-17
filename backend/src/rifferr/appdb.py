@@ -408,21 +408,30 @@ class AppDB:
 
     # -- trust (F-SECURITY) ----------------------------------------------------
 
-    def trust(self, sha256: str, path_hint: str, trusted_by: str) -> None:
-        """Record an explicit user decision to trust this exact content (SECURITY-12)."""
+    def trust(
+        self, sha256: str, path_hint: str, trusted_by: str, profile: str | None = None
+    ) -> None:
+        """Record an explicit user decision to trust this exact content (SECURITY-12) in
+        ``profile``; ``None`` or "" trusts it in every profile (SEC-63: only ``rifferr
+        trust`` without ``--profile``, which says so)."""
         self._conn.execute(
-            "INSERT INTO trusted_files (sha256, path_hint, trusted_at, trusted_by)"
-            " VALUES (?, ?, ?, ?) ON CONFLICT (sha256) DO UPDATE SET"
+            "INSERT INTO trusted_files (sha256, profile, path_hint, trusted_at, trusted_by)"
+            " VALUES (?, ?, ?, ?, ?) ON CONFLICT (sha256, profile) DO UPDATE SET"
             " path_hint = excluded.path_hint, trusted_at = excluded.trusted_at,"
             " trusted_by = excluded.trusted_by",
-            (sha256, path_hint, _now(), trusted_by),
+            (sha256, profile or "", path_hint, _now(), trusted_by),
         )
 
-    def is_trusted(self, sha256: str) -> bool:
-        row = self._conn.execute(
-            "SELECT 1 FROM trusted_files WHERE sha256 = ?", (sha256,)
-        ).fetchone()
-        return row is not None
+    def is_trusted(self, sha256: str, profile: str | None = None) -> bool:
+        """Whether this content is trusted in ``profile``: trusted there or in every
+        profile (SEC-63); "" asks for every-profile trust only. Every trust *decision*
+        passes a profile; ``None`` only asks whether any trust row exists for the content."""
+        if profile is None:
+            sql, args = "SELECT 1 FROM trusted_files WHERE sha256 = ?", (sha256,)
+        else:
+            sql = "SELECT 1 FROM trusted_files WHERE sha256 = ? AND profile IN ('', ?)"
+            args = (sha256, profile)
+        return self._conn.execute(sql, args).fetchone() is not None
 
     # -- events ----------------------------------------------------------------
 

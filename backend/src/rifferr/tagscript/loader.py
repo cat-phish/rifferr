@@ -7,18 +7,23 @@ script's string values, as it does to a step's inline actions.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, cast
 
 from rifferr.core.workflow.errors import ValidationError
 from rifferr.core.workflow.loader import validate_model
+from rifferr.core.workflow.template_fields import interpolate_fields
 from rifferr.core.workflow.yamldoc import YamlSyntaxError, parse
 from rifferr.tagscript.models import TagScript
 
 
 def parse_script(
-    text: str, source: str, interpolate: Callable[[str], str] | None = None
+    text: str,
+    source: str,
+    interpolate: Callable[[str], str] | None = None,
+    interpolate_template: Callable[[str], str] | None = None,
 ) -> tuple[TagScript | None, list[ValidationError]]:
-    """The script in ``text``, or None and every problem (with line and column)."""
+    """The script in ``text``, or None and every problem (with line and column).
+    ``interpolate_template`` handles the values that are backend templates (``set``,
+    ``append_unique.values``; SEC-22), ``interpolate`` the rest."""
     try:
         doc = parse(text, source)
     except YamlSyntaxError as exc:
@@ -27,17 +32,6 @@ def parse_script(
     if data is None:
         return None, [ValidationError(source, "", "the script file is empty")]
     if interpolate is not None:
-        data = _interpolate(data, interpolate)
+        data = interpolate_fields(TagScript, data, interpolate, interpolate_template or interpolate)
     script, errors = validate_model(TagScript, data, doc, ())
     return script, errors
-
-
-def _interpolate(value: Any, fn: Callable[[str], str]) -> Any:
-    if isinstance(value, str):
-        return fn(value)
-    if isinstance(value, dict):
-        mapping = cast(dict[str, Any], value)
-        return {k: _interpolate(v, fn) for k, v in mapping.items()}
-    if isinstance(value, list):
-        return [_interpolate(v, fn) for v in cast(list[Any], value)]
-    return value

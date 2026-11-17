@@ -49,18 +49,20 @@ class Checked:
     missing_vars: list[str] = field(default_factory=list[str])
     calls: Calls | None = None
     """The files it calls, read with it (S-SUBWORKFLOW)."""
+    profile: str = ""
+    """The profile it was read from: trust is per profile (SEC-63)."""
 
     def called(self, state: ServerState) -> list[CalledWorkflow]:
         return [
             CalledWorkflow(path=c.path, sha256=c.sha256, trusted=c.trusted, yaml=c.text)
-            for c in called_trust(state.db, self.calls)
+            for c in called_trust(state.db, self.calls, self.profile)
         ]
 
     def trusted(self, state: ServerState) -> bool:
         """The run would be trusted: this file and every file it calls (SUBWORKFLOW-13)."""
-        if not self.sha256 or not state.db.is_trusted(self.sha256):
+        if not self.sha256 or not state.db.is_trusted(self.sha256, self.profile):
             return False
-        return all(c.trusted for c in called_trust(state.db, self.calls))
+        return all(c.trusted for c in called_trust(state.db, self.calls, self.profile))
 
 
 def get_profile(state: ServerState, name: str) -> Profile:
@@ -109,14 +111,17 @@ def check(
     Unless ``for_start``, vars that are supplied at start (no default, not set by the
     profile) are reported as ``missing_vars`` instead of errors (API-16).
     """
+    pn = profile.name
     try:
         text, sha = read_workflow_file(path)
     except WorkflowFileError as exc:
-        return Checked(name, path, "", "", None, [ValidationError(str(path), "", str(exc))])
+        return Checked(
+            name, path, "", "", None, [ValidationError(str(path), "", str(exc))], profile=pn
+        )
     try:
         wf, doc = load_workflow(text, str(path))
     except WorkflowLoadError as exc:
-        return Checked(name, path, text, sha, None, list(exc.errors))
+        return Checked(name, path, text, sha, None, list(exc.errors), profile=pn)
     known = {**profile.vars, **run_vars}
     infos = [
         VarInfo(
@@ -132,7 +137,9 @@ def check(
         known |= dict.fromkeys(missing, "")  # placeholders: supplied at start
     calls = read_calls(profile_dir(state.config_root, profile.name) / WORKFLOWS_DIR, wf, doc, path)
     errors = validate(wf, state.registry, None, known, doc=doc, calls=calls)
-    return Checked(name, path, text, sha, wf, errors, infos, [] if for_start else missing, calls)
+    return Checked(
+        name, path, text, sha, wf, errors, infos, [] if for_start else missing, calls, pn
+    )
 
 
 def error_out(errors: list[ValidationError]) -> list[WorkflowError]:
@@ -213,13 +220,13 @@ async def trust_workflow(
     p = get_profile(state, profile)
     path = find_workflow(state, profile, name)
     c = check(state, p, name, path, {})
-    if not c.sha256:
+    if not c.sha256 or c.errors:  # SEC-64: the same rule as `rifferr trust --profile`
         raise ApiError(422, "validation_failed", "; ".join(str(e) for e in c.errors))
     if c.sha256 != body.sha256:
         raise ApiError(
             409, "hash_mismatch", "the workflow changed since it was reviewed; review it again"
         )
-    called = {f.path: f for f in called_trust(state.db, c.calls)}
+    called = {f.path: f for f in called_trust(state.db, c.calls, profile)}
     for f in called.values():
         if not f.trusted and body.called.get(f.path) != f.sha256:
             raise ApiError(
@@ -233,9 +240,9 @@ async def trust_workflow(
                 409, "hash_mismatch", f"called workflow '{rel}' changed since it was reviewed"
             )
     workflows = profile_dir(state.config_root, profile) / WORKFLOWS_DIR
-    state.db.trust(c.sha256, str(path), "ui")
+    state.db.trust(c.sha256, str(path), "ui", profile)  # SEC-63: in this profile only
     for rel, sha in body.called.items():
-        state.db.trust(sha, str(workflows / rel), "ui")
+        state.db.trust(sha, str(workflows / rel), "ui", profile)
     if state.triggers is not None:  # TRIGGERS-2: arm now, not at the next check
         await state.triggers.reconcile()
     return TrustResult(name=name, sha256=c.sha256, called=dict(body.called))

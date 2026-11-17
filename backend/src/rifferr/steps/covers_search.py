@@ -30,6 +30,7 @@ from rifferr.core.covers import (
 )
 from rifferr.core.duration import parse_duration
 from rifferr.core.snapshot import AlbumSnapshot
+from rifferr.core.workflow.template_fields import TEMPLATE_EXTRA
 from rifferr.covers.base import CoverProvider
 from rifferr.covers.cache import CoverCache
 from rifferr.covers.providers import local_images
@@ -84,6 +85,7 @@ class CoversSearchParams(BaseModel):
     query: dict[QueryField, str] = Field(
         default_factory=dict[QueryField, str],
         description="Backend templates for the query fields (beets: $albumartist ...)",
+        json_schema_extra=TEMPLATE_EXTRA,
     )
     refresh: bool = Field(default=False, description="Ignore cached search results")
 

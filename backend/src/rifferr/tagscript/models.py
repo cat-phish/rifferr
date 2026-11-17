@@ -24,6 +24,7 @@ from pydantic import (
 )
 
 from rifferr.core.changeset import FieldName
+from rifferr.core.workflow.template_fields import TEMPLATE_EXTRA
 
 ActionScope = Literal["album", "item"]
 Idempotence = Literal["warn", "fail", "off"]
@@ -141,7 +142,7 @@ class AppendSpec(BaseModel):
     model_config = _SPEC
 
     field: FieldName
-    values: Annotated[list[str], Field(min_length=1)]
+    values: Annotated[list[str], Field(min_length=1, json_schema_extra=TEMPLATE_EXTRA)]
 
 
 def placeholder_names(pattern: str) -> list[str]:
@@ -160,7 +161,7 @@ SetValue = Annotated[bool, Field(strict=True)] | int | float | str | list[str]
 
 
 class SetAction(ActionBase):
-    set: Annotated[dict[FieldName, SetValue], Field(min_length=1)]
+    set: Annotated[dict[FieldName, SetValue], Field(min_length=1, json_schema_extra=TEMPLATE_EXTRA)]
 
 
 class CopyAction(ActionBase):

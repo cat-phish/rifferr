@@ -39,6 +39,7 @@ from rifferr.core.changeset import (
 )
 from rifferr.core.profile import env_var_name
 from rifferr.core.snapshot import AlbumSnapshot, ItemSnapshot
+from rifferr.core.workflow.template_fields import TEMPLATE_EXTRA
 from rifferr.engine import StepContext, StepFailure, StepRefused, StepResult
 from rifferr.steps.process import run_process
 
@@ -56,13 +57,19 @@ class ShellParams(BaseModel):
         description="Command as an argv list, or a string run by /bin/sh -c (needs shell: true). "
         "A string may not hold run data ({{ run.input }}, run-supplied vars, {{ steps.* }}): "
         "read $RIFFERR_RUN_INPUT / $RIFFERR_VAR_<NAME> instead",
-        json_schema_extra={"code_text": True},
+        json_schema_extra={"code_text": True, **TEMPLATE_EXTRA},
     )
     shell: bool = Field(default=False, description="Run a string command through /bin/sh -c")
     per: Literal["run", "album", "item"] = "album"
     timeout: PositiveInt = Field(default=600, description="Seconds before the command is stopped")
-    cwd: str | None = Field(default=None, description="Working directory (templated)")
-    env: dict[str, str] = Field(default_factory=dict[str, str], description="Extra variables")
+    cwd: str | None = Field(
+        default=None, description="Working directory (templated)", json_schema_extra=TEMPLATE_EXTRA
+    )
+    env: dict[str, str] = Field(
+        default_factory=dict[str, str],
+        description="Extra variables (values templated)",
+        json_schema_extra=TEMPLATE_EXTRA,
+    )
     secrets: list[str] = Field(
         default_factory=list[str],
         description="Profile secrets to expose as RIFFERR_SECRET_<NAME>",

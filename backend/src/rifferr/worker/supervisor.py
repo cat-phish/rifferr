@@ -170,7 +170,7 @@ class WorkerSupervisor:
             "source": source,
             "source_name": source_name,
             "vars": dict(run_vars or {}),
-            "trusted": all(self.db.is_trusted(h) for h in hashes),
+            "trusted": all(self.db.is_trusted(h, profile) for h in hashes),
             "trigger": trigger,
             "input": run_input or "",
         }

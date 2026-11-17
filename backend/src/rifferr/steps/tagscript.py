@@ -58,7 +58,7 @@ def load(ctx: StepContext, params: TagScriptParams) -> LoadedScript:
         raise StepFailure(str(exc)) from None
     data = path.read_bytes()
     text = data.decode("utf-8")
-    script, errors = parse_script(text, params.script, ctx.interpolate)
+    script, errors = parse_script(text, params.script, ctx.interpolate, ctx.interpolate_template)
     if script is None:
         raise StepFailure("invalid script:\n" + "\n".join(str(e) for e in errors))
     try:
