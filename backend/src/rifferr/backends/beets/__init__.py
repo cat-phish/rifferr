@@ -288,18 +288,30 @@ class BeetsBackend:
         """
         self._writable(f"run beet {subcommand}")
         query = _split(selection.query) if selection.query else []
+        terms: list[str] = []
         if selection.run_id is not None:
-            query.insert(0, _run_term(selection.run_id))
+            terms.append(_run_term(selection.run_id))
         if selection.album_ids is not None:  # this pass's lanes only (LANES-3)
             numbers = sorted(_album_numbers(selection.album_ids))
             if not numbers:
                 raise ValueError("the selection has no albums")
             # Album commands (-a) query the album's own id; item commands its album_id.
-            field = "id" if {"-a", "--album"} & set(args) else "album_id"
-            query.insert(1 if selection.run_id is not None else 0, _ids_term(field, numbers))
-        if not query:
+            terms.append(_ids_term("id" if _album_mode(args) else "album_id", numbers))
+        # beets splits the query into OR groups at parts ending in ","; every group
+        # must carry the run terms or it matches the whole library (BEETS-COMMAND-4).
+        grouped: list[str] = [] if query else list(terms)
+        if not query and not terms:
             raise ValueError("an empty selection would run on the whole library")
-        return [sys.executable, "-m", "beets", subcommand, *args, *query]
+        start = True
+        for part in query:
+            if start:
+                grouped += terms
+                start = False
+            grouped.append(part)
+            if part.endswith(","):
+                start = True
+        # "--": a query part starting with "-" is a query, never a beet option.
+        return [sys.executable, "-m", "beets", subcommand, *args, "--", *grouped]
 
     def check(self, changes: ChangeSet) -> list[ChangeProblem]:
         with self.library() as lib:
@@ -509,6 +521,16 @@ def _split(query: str) -> list[str]:
         return shlex.split(query)  # beets' own query string rule
     except ValueError as exc:
         raise QueryError(f"invalid query {query!r}: {exc}") from exc
+
+
+def _album_mode(args: list[str]) -> bool:
+    """``-a``/``--album``, also inside a short-flag cluster such as ``-ay``."""
+    for arg in args:
+        if arg == "--":
+            break
+        if arg == "--album" or (re.fullmatch(r"-[A-Za-z]+", arg) and "a" in arg):
+            return True
+    return False
 
 
 def _run_term(run_id: str) -> str:

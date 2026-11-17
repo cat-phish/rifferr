@@ -29,6 +29,7 @@ from pydantic import JsonValue
 from rifferr.appdb import AppDB, AppTriggers
 from rifferr.core.profile import Profile, ProfileError, ProfileLoadError, merged_vars
 from rifferr.core.triggers import (
+    ACTIVE_STATES,
     InboxState,
     SettleTracker,
     SkipReason,
@@ -363,6 +364,10 @@ class TriggerManager:
             if wf.on.webhook is not None:
                 within = wf.on.webhook.within
                 armed.within = Path(interpolate(within, ctx)) if within else armed.watch_path
+                if armed.within is not None and not armed.within.is_absolute():  # SEC-85
+                    raise InterpolationError(
+                        f"webhook 'within' must be an absolute path, got '{armed.within}'"
+                    )
         except InterpolationError as exc:
             for k in kinds:
                 armed.triggers[k] = TriggerInfo(armed.name, k, "error", str(exc))
@@ -619,6 +624,11 @@ class TriggerManager:
                 fp = await asyncio.to_thread(fs.input_fingerprint, Path(input_path))
             record = self.store.record(armed.profile, armed.name, input_path) if fp else None
             reason = dedup_skip(record, fp, force=force or kind == "manual")
+            if reason is None and kind == "webhook" and input_path:  # SEC-82
+                busy = self._active_related(armed, input_path)
+                if busy is not None:
+                    self._skipped(armed, kind, input_path, "in_progress", busy)
+                    return FireResult(busy, "in_progress")
             if reason is not None:
                 assert record is not None
                 self._skipped(armed, kind, input_path, reason, record.run_id)
@@ -640,6 +650,18 @@ class TriggerManager:
             {"workflow": armed.name, "kind": kind, "input": input_path, "run_id": run_id},
         )
         return FireResult(run_id)
+
+    def _active_related(self, armed: Armed, input_path: str) -> str | None:
+        """SEC-82: the run id of an active run of this workflow whose input is a parent
+        or child folder of ``input_path``."""
+        here = Path(input_path)
+        for other, rec in self.store.records(armed.profile, armed.name).items():
+            if rec.run_state not in ACTIVE_STATES:
+                continue
+            there = Path(other)
+            if there != here and (here.is_relative_to(there) or there.is_relative_to(here)):
+                return rec.run_id
+        return None
 
     def remember_manual(self, profile: str, workflow: str, input_path: str, run_id: str) -> None:
         """TRIGGERS-21: a manual run records its input's fingerprint."""

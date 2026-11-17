@@ -50,6 +50,7 @@ FindingKind = Literal[
     "secret",
     "local_script",
     "auto_apply",
+    "tag_field",
 ]
 #: Library subcommands that delete files or library entries (``beets.command``).
 DESTRUCTIVE_LIBRARY_COMMANDS: frozenset[str] = frozenset({"remove"})
@@ -131,6 +132,7 @@ def _report(wf: Workflow) -> SafetyReport:
         else:
             words = []
         findings += _word_findings(step.id, words)
+        findings += _field_findings(step.id, run, params.get("cwd"))
         secrets = params.get("secrets")
         if isinstance(secrets, list):
             for name in cast(list[Any], secrets):
@@ -138,6 +140,40 @@ def _report(wf: Workflow) -> SafetyReport:
                     Finding(step_id=step.id, kind="secret", detail=f"exposes secret '{name}'")
                 )
     return SafetyReport(findings=findings)
+
+
+def _field_findings(step_id: str, run: Any, cwd: Any) -> list[Finding]:
+    """SEC-23: tag values in an argv item or ``cwd`` can act as options or leave the folder."""
+    out: list[Finding] = []
+    if isinstance(run, list):
+        items = [str(w) for w in cast(list[Any], run)]
+        for i, item in enumerate(items):
+            leading = i == 1  # the first argument: nothing before it stops it reading as an option
+            if (
+                item.startswith(("$", "%"))
+                and not item.startswith("$RIFFERR_")
+                and leading
+                and "--" not in items[:i]
+            ):
+                out.append(
+                    Finding(
+                        step_id=step_id,
+                        kind="tag_field",
+                        detail=(
+                            f"argument {item!r} starts with a tag field and could be read as an "
+                            "option; put '--' before it"
+                        ),
+                    )
+                )
+    if isinstance(cwd, str) and ("$" in cwd or "%" in cwd):
+        out.append(
+            Finding(
+                step_id=step_id,
+                kind="tag_field",
+                detail=f"cwd {cwd!r} contains a tag field: a tag value can point it elsewhere",
+            )
+        )
+    return out
 
 
 def _cleanup_findings(step_id: str, params: dict[str, Any]) -> list[Finding]:

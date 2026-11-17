@@ -30,6 +30,7 @@ def test_BACKEND_14_beets_cli_is_python_m_beets_with_the_query_last(beets_env: B
         "beets",
         "move",
         "-a",
+        "--",
         f"rifferr_run::^{RUN}$",
         "comp:1",
         "genre:Hip Hop",

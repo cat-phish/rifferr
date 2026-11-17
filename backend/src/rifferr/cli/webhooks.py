@@ -35,7 +35,7 @@ def add_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None
 
 def cmd_secret(args: argparse.Namespace) -> int:
     prog = f"rifferr webhook {args.action}"
-    if not re.match(NAME_PATTERN, args.name):
+    if not re.fullmatch(NAME_PATTERN, args.name):
         print(f"{prog}: invalid webhook name {args.name!r}", file=sys.stderr)
         return EXIT_USAGE
     try:

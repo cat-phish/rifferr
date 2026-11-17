@@ -91,6 +91,8 @@ class BeetsImportStep:
                 "in the library; it runs only in trusted workflows"
             )
         path = Path(params.path)
+        if path.is_symlink():  # SEC-81: a checked input folder swapped for a link
+            raise StepFailure(f"import folder {path} is a symbolic link; refusing to follow it")
         if not path.exists():
             raise StepFailure(f"import folder {path} does not exist")
         if not path.is_dir():

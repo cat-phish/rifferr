@@ -48,7 +48,7 @@ def confine(candidate: str, within: Path) -> Path:
     try:
         real = path.resolve(strict=True)
         root = within.resolve(strict=True)
-    except OSError:
+    except (OSError, ValueError):  # SEC-84: ValueError: embedded NUL
         raise OutsideError("input does not exist") from None
     if real.is_file():
         real = real.parent

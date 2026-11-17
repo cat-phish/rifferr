@@ -4936,6 +4936,19 @@
         "title": "WebhookSecret",
         "type": "object"
       },
+      "WebhookSecretRequest": {
+        "additionalProperties": false,
+        "description": "Optional body of the secret route (SEC-87).",
+        "properties": {
+          "replace": {
+            "default": false,
+            "title": "Replace",
+            "type": "boolean"
+          }
+        },
+        "title": "WebhookSecretRequest",
+        "type": "object"
+      },
       "WorkflowDetail": {
         "additionalProperties": false,
         "properties": {
@@ -8159,7 +8172,7 @@
     },
     "/api/profiles/{profile}/webhooks/{name}/secret": {
       "post": {
-        "description": "Create or replace a webhook's secret; the response is the only time it is shown.",
+        "description": "Create a webhook's secret, or replace it with ``{\"replace\": true}``; the response\nis the only time it is shown.",
         "operationId": "create_webhook_secret_api_profiles__profile__webhooks__name__secret_post",
         "parameters": [
           {
@@ -8181,6 +8194,18 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebhookSecretRequest",
+                "default": {
+                  "replace": false
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "content": {

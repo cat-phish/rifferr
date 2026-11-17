@@ -421,6 +421,13 @@ class TriggerStateOut(_Model):
     )
 
 
+class WebhookSecretRequest(_Model):
+    """Optional body of the secret route (SEC-87)."""
+
+    replace: bool = False
+    """Must be true to replace an existing secret (the old one stops working)."""
+
+
 class WebhookSecret(_Model):
     """A new webhook secret. It is shown only in this response (TRIGGERS-17)."""
 

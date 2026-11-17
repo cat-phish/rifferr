@@ -2,18 +2,22 @@
 
 from __future__ import annotations
 
+import logging
 import re
+from typing import Annotated
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Body, Response
 
 from rifferr.api.errors import ERROR_RESPONSES, ApiError
-from rifferr.api.models import TriggerStateOut, WebhookSecret
+from rifferr.api.models import TriggerStateOut, WebhookSecret, WebhookSecretRequest
 from rifferr.api.routes.workflows import get_profile
 from rifferr.api.state import State
 from rifferr.appdb import AppTriggers
 from rifferr.core.workflow.models import NAME_PATTERN
 from rifferr.triggers.secrets import new_secret
 
+NO_BODY = WebhookSecretRequest()
+log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/profiles/{profile}", tags=["triggers"])
 
 
@@ -60,12 +64,31 @@ async def list_triggers(profile: str, state: State) -> list[TriggerStateOut]:
     response_model=WebhookSecret,
     responses=ERROR_RESPONSES,
 )
-async def create_webhook_secret(profile: str, name: str, state: State) -> WebhookSecret:
-    """Create or replace a webhook's secret; the response is the only time it is shown."""
+async def create_webhook_secret(
+    profile: str,
+    name: str,
+    state: State,
+    response: Response,
+    body: Annotated[WebhookSecretRequest, Body()] = NO_BODY,
+) -> WebhookSecret:
+    """Create a webhook's secret, or replace it with ``{"replace": true}``; the response
+    is the only time it is shown."""
     get_profile(state, profile)
-    if not re.match(NAME_PATTERN, name):
+    if not re.fullmatch(NAME_PATTERN, name):  # SEC-86
         raise ApiError(400, "bad_request", f"invalid webhook name {name!r}")
-    secret = new_secret(AppTriggers(state.db), profile, name)
+    store = AppTriggers(state.db)
+    exists = store.webhook_hash(profile, name) is not None
+    if exists and not body.replace:  # SEC-87
+        raise ApiError(
+            409,
+            "conflict",
+            f"webhook '{name}' already has a secret; send {{\"replace\": true}} to replace it",
+        )
+    secret = new_secret(store, profile, name)
+    log.info(
+        "webhook secret %s: profile %s, name %s", "replaced" if exists else "created", profile, name
+    )
+    response.headers["Cache-Control"] = "no-store"
     return WebhookSecret(
         profile=profile, name=name, url_path=f"/hooks/{profile}/{name}", secret=secret
     )
