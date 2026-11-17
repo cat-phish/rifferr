@@ -17,8 +17,9 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from difflib import SequenceMatcher
 from typing import Annotated, Final, Literal
+from urllib.parse import urlsplit
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, JsonValue
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, JsonValue, field_validator
 
 from rifferr.core.duration import Duration
 
@@ -138,6 +139,13 @@ class CoverQuery(BaseModel):
         return hashlib.sha256("\x1f".join(parts).encode()).hexdigest()
 
 
+def web_url_or_none(value: str | None) -> str | None:
+    """SEC-44: a link from a provider is kept only when its scheme is http or https."""
+    if value is None:
+        return None
+    return value if urlsplit(value.strip()).scheme.lower() in ("http", "https") else None
+
+
 class CoverCandidate(BaseModel):
     """One image a provider offers (COVERS-SEARCH-3)."""
 
@@ -153,6 +161,11 @@ class CoverCandidate(BaseModel):
     height: int | None = None
     match_confidence: float = Field(ge=0, le=1)
     source_url: str | None = None
+
+    @field_validator("source_url")
+    @classmethod
+    def _web_link_only(cls, v: str | None) -> str | None:
+        return web_url_or_none(v)
 
     @classmethod
     def make(

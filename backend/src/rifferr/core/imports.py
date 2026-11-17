@@ -10,8 +10,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Final, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from rifferr.core.covers import web_url_or_none
 from rifferr.core.snapshot import AlbumSnapshot, FieldValue
 
 ImportDecisionKind = Literal["match", "duplicate"]
@@ -78,6 +79,11 @@ class ImportCandidate(BaseModel):
         default_factory=list[str], description="Files without a candidate track"
     )
     url: str | None = None
+
+    @field_validator("url")
+    @classmethod
+    def _web_link_only(cls, v: str | None) -> str | None:
+        return web_url_or_none(v)  # SEC-44
 
 
 class ImportQuestion(BaseModel):

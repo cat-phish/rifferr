@@ -11,12 +11,13 @@ import httpx
 import pytest
 
 from rifferr.api.app import ApiSettings
-from rifferr.api.security import SecurityConfig, secure
+from rifferr.api.security import SecurityConfig, Sessions, normalize_host, secure
+from rifferr.cli.serve import startup_lines
 from rifferr.core.covers import CoverCandidate
 from rifferr.core.imports import ImportCandidate
 from rifferr.profile_store import config_root, profile_dir
 from tests.api.conftest import Api, api  # noqa: F401  (fixture)
-from tests.api.test_security import PORT, app, client
+from tests.api.test_security import BASE, PORT, app, client
 
 TOKEN = "t" * 43
 COOKIE = f"rifferr_token_{PORT}"
@@ -44,6 +45,7 @@ async def test_SEC_42_cookie_value_is_not_the_bearer_token() -> None:
         assert r.status_code == 303
         value = r.headers["set-cookie"].split(";")[0].split("=", 1)[1]
         assert value != TOKEN
+        c.cookies.clear()  # only the Bearer header, not the jar's new cookie
         r = await c.get("/api/runs", headers={"authorization": f"Bearer {value}"})
         assert r.status_code == 401
 
@@ -59,12 +61,44 @@ async def test_SEC_42_cookie_survives_foreign_cookies() -> None:
 
 
 async def test_SEC_43_sign_in_link_works_once() -> None:
-    async with _client() as c:
-        first = await c.get(f"/auth/exchange?token={TOKEN}")
+    # The link `rifferr serve` prints carries a one-time code from the server's
+    # sessions, not the local token (see startup_lines).
+    config = SecurityConfig(port=PORT, token=TOKEN)
+    code = config.sessions.sign_in_code()
+    async with client(config) as c:
+        first = await c.get(f"/auth/exchange?token={code}")
         assert first.status_code == 303 and "set-cookie" in first.headers
-        second = await c.get(f"/auth/exchange?token={TOKEN}")
+        second = await c.get(f"/auth/exchange?token={code}")
         assert second.status_code == 403
-        r = await c.get("/api/runs", headers={"authorization": f"Bearer {TOKEN}"})
+        c.cookies.clear()
+        r = await c.get("/api/runs", headers={"authorization": f"Bearer {code}"})
+        assert r.status_code == 401
+    assert TOKEN not in "".join(
+        startup_lines(ApiSettings(port=PORT, token=TOKEN), tty=True, ui_port=PORT)
+    )
+
+
+async def test_SEC_43_sign_in_code_expires() -> None:
+    now = [0.0]
+    sessions = Sessions(code_ttl=60, clock=lambda: now[0])
+    code = sessions.sign_in_code()
+    now[0] = 61
+    async with client(SecurityConfig(port=PORT, token=TOKEN, sessions=sessions)) as c:
+        assert (await c.get(f"/auth/exchange?token={code}")).status_code == 403
+
+
+async def test_SEC_43_sign_in_link_route_needs_the_bearer_token() -> None:
+    async with _client() as c:
+        url = "/auth/sign-in-link"
+        assert (await c.post(url, json={}, headers={"origin": BASE})).status_code == 401
+        r = await c.post(url, json={}, headers={"authorization": f"Bearer {TOKEN}"})
+        assert r.status_code == 200 and r.headers["cache-control"] == "no-store"
+        path = r.json()["path"]
+        assert TOKEN not in path
+        assert (await c.get(path)).status_code == 303
+        session = c.cookies[COOKIE]  # a browser session can't mint codes
+        c.cookies.clear()
+        r = await c.post(url, json={}, headers={"origin": BASE, "cookie": f"{COOKIE}={session}"})
         assert r.status_code == 401
 
 
@@ -106,6 +140,40 @@ async def test_SEC_46_configured_host_is_accepted_and_others_refused() -> None:
         assert r.status_code == 200
         r = await c.get("/api/x", headers={"host": "other.lan", "authorization": f"Bearer {TOKEN}"})
         assert r.status_code == 400
+        r = await c.post(
+            "/api/x",
+            headers={
+                "host": "nas.lan",
+                "origin": "https://other.lan",
+                "content-type": "application/json",
+                "authorization": f"Bearer {TOKEN}",
+            },
+            content=b"{}",
+        )
+        assert r.status_code == 403
+        r = await c.get(f"/auth/exchange?token={TOKEN}", headers={"host": "nas.lan"})
+        assert r.status_code == 303 and "; Secure" in r.headers["set-cookie"]
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "",
+        "*",
+        "http://nas.lan",
+        "nas.lan/x",
+        "a@nas.lan",
+        "nas.lan:0",
+        "nas.lan:x",
+        "[::1",
+        "-x.lan",
+    ],
+)
+def test_SEC_46_allowed_hosts_are_validated(bad: str) -> None:
+    with pytest.raises(ValueError, match=r".+"):
+        normalize_host(bad)
+    assert normalize_host("NAS.lan:8443") == "nas.lan:8443"
+    assert normalize_host("[::1]:8765") == "[::1]:8765"
 
 
 def test_SEC_46_no_auth_refuses_extra_hosts() -> None:

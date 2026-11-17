@@ -40,7 +40,9 @@ from rifferr.api.routes import (
 from rifferr.api.security import (
     ASGIApp,
     SecurityConfig,
+    Sessions,
     generate_token,
+    normalize_host,
     remove_token_file,
     secure,
     write_token_file,
@@ -123,6 +125,13 @@ class ApiSettings:
     """Sends notifications (S-NOTIFY); default: Apprise. Tests pass a fake."""
     notify_sleep: Callable[[float], Awaitable[None]] | None = None
     """How rule notifications wait between retries; tests skip the wait."""
+    extra_hosts: tuple[str, ...] = ()
+    """Extra ``Host`` names to accept, e.g. a reverse proxy's (SEC-46). Default: none."""
+    sessions: Sessions = field(default_factory=Sessions)
+    """Browser sessions and one-time sign-in codes (SEC-42, -43)."""
+
+    def __post_init__(self) -> None:
+        self.extra_hosts = tuple(normalize_host(h) for h in self.extra_hosts)
 
     def security(self) -> SecurityConfig:
         dev_origins: tuple[str, ...] = ()
@@ -135,7 +144,9 @@ class ApiSettings:
             port=self.port,
             token=self.token,
             no_auth=self.no_auth,
+            extra_hosts=self.extra_hosts,
             dev_origins=dev_origins,
+            sessions=self.sessions,
             # SECURITY-3: webhooks are called by other programs, not browsers, and check
             # their own secrets (TRIGGERS-17). The Host allowlist still applies.
             exempt_prefixes=(HOOKS_PREFIX,),

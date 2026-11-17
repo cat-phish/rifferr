@@ -23,6 +23,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { ApiError, api, ok } from "../api/client";
 import type { CoverProvidersView, CoverQuery, CoverReview, RankedCandidate } from "../api/types";
+import { webUrl } from "../lib/webUrl";
 import { useEventStream } from "../hooks/useEventStream";
 import {
   FILTER_LABEL,
@@ -1024,8 +1025,13 @@ function CoverPreview(props: {
               {bytes !== null ? `, ${bytesLabel(bytes)}` : ""}
             </Text>
             {c.title && <Text size="sm">{c.title}</Text>}
-            {c.source_url && (
-              <Anchor href={c.source_url} target="_blank" rel="noopener noreferrer" size="sm">
+            {webUrl(c.source_url) && (
+              <Anchor
+                href={webUrl(c.source_url) ?? undefined}
+                target="_blank"
+                rel="noopener noreferrer"
+                size="sm"
+              >
                 source page
               </Anchor>
             )}

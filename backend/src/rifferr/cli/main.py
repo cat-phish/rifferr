@@ -36,6 +36,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("-v", "--verbose", action="store_true", help="more log output")
     sub = p.add_subparsers(dest="command", required=True, metavar="COMMAND")
     serve.add_parser(sub)
+    serve.add_sign_in_parser(sub)
     run.add_parser(sub)
     files.add_parsers(sub)
     profiles.add_parser(sub)

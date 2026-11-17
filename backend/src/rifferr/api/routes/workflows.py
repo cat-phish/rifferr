@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Query
 
@@ -19,7 +19,7 @@ from rifferr.api.models import (
     WorkflowSummary,
 )
 from rifferr.api.state import ServerState, State
-from rifferr.core.profile import Profile, ProfileError, ProfileLoadError
+from rifferr.core.profile import Profile, ProfileError, ProfileLoadError, env_backed_vars
 from rifferr.core.workflow import (
     WORKFLOW_SUFFIXES,
     Calls,
@@ -30,6 +30,8 @@ from rifferr.core.workflow import (
     safety_report,
     validate,
 )
+from rifferr.core.workflow.yamldoc import YamlSyntaxError
+from rifferr.core.workflow.yamldoc import parse as parse_yaml
 from rifferr.profile_store import WORKFLOWS_DIR, load_profile, profile_dir
 from rifferr.trust import WorkflowFileError, read_workflow_file
 from rifferr.workflow_calls import called_trust, read_calls
@@ -97,6 +99,24 @@ def find_workflow(state: ServerState, profile: str, name: str) -> Path:
     return matches[0]
 
 
+ENV_PLACEHOLDER = "(set by the profile)"
+
+
+def _env_backed(state: ServerState, profile: Profile) -> set[str]:
+    """SEC-47: vars filled from the environment are never echoed (they may hold secrets)."""
+    try:
+        doc = parse_yaml(
+            (profile_dir(state.config_root, profile.name) / "profile.yaml").read_text("utf-8"), ""
+        )
+        raw: Any = doc.plain()
+        vars_ = raw.get("vars") if isinstance(raw, dict) else None
+    except (OSError, YamlSyntaxError):
+        return set(profile.vars)  # cannot tell: hide all
+    if not isinstance(vars_, dict):
+        return set()
+    return env_backed_vars({str(k): str(v) for k, v in vars_.items()})
+
+
 def check(
     state: ServerState,
     profile: Profile,
@@ -123,12 +143,13 @@ def check(
     except WorkflowLoadError as exc:
         return Checked(name, path, text, sha, None, list(exc.errors), profile=pn)
     known = {**profile.vars, **run_vars}
+    hidden = _env_backed(state, profile)
     infos = [
         VarInfo(
             name=n,
             default=d.default,
             description=d.description,
-            profile_value=profile.vars.get(n),
+            profile_value=ENV_PLACEHOLDER if n in hidden else profile.vars.get(n),
         )
         for n, d in wf.vars.items()
     ]

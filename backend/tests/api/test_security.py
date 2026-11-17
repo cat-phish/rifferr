@@ -179,7 +179,7 @@ async def test_SECURITY_13_framing_and_referrer_headers_on_every_response(
     c: httpx.AsyncClient,
 ) -> None:
     for r in (await c.get("/x"), await c.get("/x", headers={"host": "evil"})):
-        assert r.headers["content-security-policy"] == "frame-ancestors 'none'"
+        assert "frame-ancestors 'none'" in r.headers["content-security-policy"]
         assert r.headers["x-frame-options"] == "DENY"
         assert r.headers["x-content-type-options"] == "nosniff"
         assert r.headers["referrer-policy"] == "no-referrer"
@@ -202,7 +202,9 @@ async def test_SECURITY_6_exchange_sets_strict_httponly_cookie_and_redirects(
     assert r.headers["location"] == "/"
     assert r.headers["cache-control"] == "no-store"
     cookie = r.headers["set-cookie"]
-    assert cookie.startswith(f"rifferr_token_{PORT}={token};")
+    assert cookie.startswith(f"rifferr_token_{PORT}=")
+    assert token not in cookie  # a session id, not the token (SEC-42)
+    assert "Secure" not in cookie  # plain-http loopback
     assert "HttpOnly" in cookie
     assert "SameSite=Strict" in cookie
     assert (await c.get("/api/runs")).status_code == 200  # cookie now in the jar

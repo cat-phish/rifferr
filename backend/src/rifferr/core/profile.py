@@ -302,6 +302,17 @@ def _semantic_errors(
     return errors
 
 
+def env_backed_vars(raw: Mapping[str, str]) -> set[str]:
+    """Names of profile vars whose value comes from the environment, directly or via other vars."""
+    refs = {n: set(re.findall(r"vars\.([A-Za-z0-9_]+)", v)) for n, v in raw.items()}
+    backed = {n for n, v in raw.items() if re.search(r"\benv\.", v)}
+    while True:
+        more = {n for n, r in refs.items() if r & backed} - backed
+        if not more:
+            return backed
+        backed |= more
+
+
 def resolve_vars(raw: Mapping[str, str], env: Mapping[str, str]) -> dict[str, str]:
     """Resolve ``{{ vars.x }}`` and ``{{ env.X }}`` inside profile vars (PROFILE-7)."""
     done: dict[str, str] = {}
