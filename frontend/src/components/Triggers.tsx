@@ -41,10 +41,11 @@ export function Triggers({ profile, workflow }: { profile: string; workflow: str
   const triggers = useTriggers(profile);
   const [secret, setSecret] = useState<WebhookSecret | null>(null);
   const create = useMutation({
-    mutationFn: async (name: string) =>
+    mutationFn: async ({ name, replace }: { name: string; replace: boolean }) =>
       ok(
         await api.POST("/api/profiles/{profile}/webhooks/{name}/secret", {
           params: { path: { profile, name } },
+          body: { replace },
         }),
       ),
     onSuccess: async (created) => {
@@ -96,7 +97,8 @@ export function Triggers({ profile, workflow }: { profile: string; workflow: str
                       variant="light"
                       loading={create.isPending}
                       onClick={() => {
-                        if (t.webhook_name) create.mutate(t.webhook_name);
+                        if (t.webhook_name)
+                          create.mutate({ name: t.webhook_name, replace: t.has_secret === true });
                       }}
                     >
                       {t.has_secret ? "Replace secret" : "Create secret"}

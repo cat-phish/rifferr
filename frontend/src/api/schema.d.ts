@@ -718,7 +718,8 @@ export interface paths {
         put?: never;
         /**
          * Create Webhook Secret
-         * @description Create or replace a webhook's secret; the response is the only time it is shown.
+         * @description Create a webhook's secret, or replace it with ``{"replace": true}``; the response
+         *     is the only time it is shown.
          */
         post: operations["create_webhook_secret_api_profiles__profile__webhooks__name__secret_post"];
         delete?: never;
@@ -2867,6 +2868,17 @@ export interface components {
             secret: string;
             /** Url Path */
             url_path: string;
+        };
+        /**
+         * WebhookSecretRequest
+         * @description Optional body of the secret route (SEC-87).
+         */
+        WebhookSecretRequest: {
+            /**
+             * Replace
+             * @default false
+             */
+            replace: boolean;
         };
         /** WorkflowDetail */
         WorkflowDetail: {
@@ -5187,7 +5199,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["WebhookSecretRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             201: {
