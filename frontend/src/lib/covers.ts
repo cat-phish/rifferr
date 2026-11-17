@@ -12,9 +12,17 @@ export interface ProviderRow {
 
 /** A candidate's image through the server, which only serves candidates it found or was
  * given (COVERS-SEARCH-20). Never the provider's own URL. */
-export function candidateImage(profile: string, id: string, thumb = true): string {
+export function candidateImage(
+  profile: string,
+  id: string,
+  thumb = true,
+  scope?: { reviewId?: string | null; albumId?: string | null },
+): string {
   const params = new URLSearchParams({ profile });
   if (thumb) params.set("thumb", "1");
+  // A local image is served only for the review or album whose folder holds it.
+  if (scope?.reviewId) params.set("review_id", scope.reviewId);
+  else if (scope?.albumId) params.set("album_id", scope.albumId);
   return `/api/covers/image/${encodeURIComponent(id)}?${params.toString()}`;
 }
 

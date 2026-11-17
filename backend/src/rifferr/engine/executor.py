@@ -658,6 +658,7 @@ class Engine:
                 trusted=run.trusted,
                 secrets=state.secrets,
                 on_secret=state.redactor.add,
+                redact=state.redactor.redact,
                 propose=lambda proposal, current, snapshots: self._propose(
                     state, spec, proposal, current, snapshots
                 ),
@@ -737,7 +738,7 @@ class Engine:
             data["error"] = state.redactor.redact(record.error)
         if refused:
             data["refused"] = True  # e.g. needs trust; lets clients give a hint (CLI-10)
-        self._emit(run, "run.step.finished", spec.id, data)
+        self._emit(run, "run.step.finished", spec.id, _redact(data, state.redactor))
         # A failure with no target ends the pass; under stop it ends the run (LANES-10).
         no_target = record.status == "failed" and record.error is not None
         stop_run = refused or (no_target and spec.on_error == "stop")

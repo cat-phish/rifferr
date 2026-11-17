@@ -232,6 +232,7 @@ class StepContext:
         trusted: bool = False,
         secrets: SecretAccess | None = None,
         on_secret: Callable[[Secret], None] | None = None,
+        redact: Callable[[str], str] | None = None,
         propose: Propose | None = None,
         profile_dir: Path | None = None,
         interpolate: Callable[[str], str] | None = None,
@@ -265,6 +266,7 @@ class StepContext:
         """Whether this run's workflow is trusted to run shell/python steps (F-SECURITY)."""
         self._secrets = secrets or NoSecrets()
         self._on_secret = on_secret
+        self._redact = redact or _unchanged
         self.step = step
         self.params = params
         self.backend = backend
@@ -312,6 +314,10 @@ class StepContext:
         if target is not None:
             data["target"] = target
         self._emit("run.step.log", data)
+
+    def redact(self, text: str) -> str:
+        """Mask this run's known secret values in ``text`` (for steps that cut text up)."""
+        return self._redact(text)
 
     def interpolate(self, value: str) -> str:
         """``{{ ... }}`` interpolation (C-WORKFLOW) with this step's context, for text a

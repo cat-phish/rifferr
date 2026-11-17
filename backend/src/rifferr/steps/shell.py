@@ -44,6 +44,7 @@ from rifferr.engine import StepContext, StepFailure, StepRefused, StepResult
 from rifferr.steps.process import run_process
 
 SECRET_ENV_PREFIX = "RIFFERR_SECRET_"
+SECRET_NAME = re.compile(r"(TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY|CREDENTIAL)", re.IGNORECASE)
 MAX_PROPOSAL = 16 * 1024 * 1024
 """Most stdout collected with ``emits: changes`` (SHELL-14)."""
 
@@ -213,8 +214,16 @@ def inherited_env(
     """Rifferr's environment without variables holding profile ``env:`` secrets, except
     the secrets named in ``keep`` (SHELL-4)."""
     listed = set(keep or [])
-    hidden = {var for name, var in ctx.secret_env_refs().items() if name not in listed}
-    return {k: v for k, v in environ.items() if k not in hidden}
+    refs = ctx.secret_env_refs()
+    kept = {var for name, var in refs.items() if name in listed}
+    hidden = {var for name, var in refs.items() if name not in listed}
+    # Other profiles' env: secrets are unknown here, so variables named like a credential
+    # are hidden too (SEC-104); list the secret under ``secrets:`` to pass one on.
+    return {
+        k: v
+        for k, v in environ.items()
+        if k not in hidden and (k in kept or not SECRET_NAME.search(k))
+    }
 
 
 def secret_env_name(name: str) -> str:

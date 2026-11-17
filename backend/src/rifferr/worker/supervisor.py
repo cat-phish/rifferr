@@ -48,6 +48,7 @@ from rifferr.worker.protocol import (
     WorkerCommand,
     WorkerMessage,
     encode,
+    printable,
 )
 
 log = logging.getLogger("rifferr.worker")
@@ -807,7 +808,7 @@ class WorkerSupervisor:
                 elif message.kind == "event" and message.event is not None:
                     self._persist(message.event)
                 elif message.kind == "error":
-                    log.warning("worker %s: %s", handle.profile, message.message)
+                    log.warning("worker %s: %s", handle.profile, printable(message.message))
                     if not handle.ready:
                         handle.start_error = message.message
         finally:
@@ -817,7 +818,7 @@ class WorkerSupervisor:
     async def _log_stderr(self, handle: _Handle) -> None:
         assert handle.proc.stderr is not None
         async for line in handle.proc.stderr:
-            log.info("%s", line.decode(errors="replace").rstrip())
+            log.info("%s", printable(line.decode(errors="replace").rstrip()) or "")
 
     async def _watchdog(self, handle: _Handle) -> None:
         """Kill a worker that stops sending heartbeats (WORKER-10)."""

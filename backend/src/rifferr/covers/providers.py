@@ -31,6 +31,9 @@ def _year(value: Any) -> int | None:
     return int(m.group(1)) if m else None
 
 
+_MBID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.I)
+
+
 class CoverArtArchive:
     """Front images by MusicBrainz release id, then release group id."""
 
@@ -45,8 +48,9 @@ class CoverArtArchive:
             ("release", query.mb_albumid),
             ("release-group", query.mb_releasegroupid),
         ):
-            if not mbid:
+            if not mbid or not _MBID.fullmatch(mbid):
                 continue
+            mbid = mbid.lower()
             data = await http.get_json(f"https://coverartarchive.org/{kind}/{mbid}")
             if not isinstance(data, dict):
                 continue

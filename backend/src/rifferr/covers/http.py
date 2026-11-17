@@ -7,6 +7,7 @@ other way.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
@@ -73,14 +74,25 @@ class CoverHttp:
         self._headers = {"User-Agent": user_agent(contact)}
 
     def check_url(self, url: str) -> None:
-        parts = urlsplit(url)
+        try:
+            parts = urlsplit(url)
+        except ValueError:
+            raise CoverHttpError("the URL can't be parsed") from None
         if parts.scheme != "https":
             raise CoverHttpError(f"only https is allowed: {parts.scheme or 'no'} scheme")
         if not parts.hostname or not host_allowed(parts.hostname, self.hosts):
             raise CoverHttpError(f"host {parts.hostname!r} isn't one this provider may use")
 
     async def get(self, url: str, params: Mapping[str, str] | None = None) -> Reply:
-        """GET with redirects checked hop by hop; the body is read up to ``max_bytes``."""
+        """GET with redirects checked hop by hop; the body is read up to ``max_bytes``.
+        ``timeout`` is also the limit for the whole call, every hop and the body included."""
+        try:
+            async with asyncio.timeout(self.timeout):
+                return await self._get(url, params)
+        except TimeoutError:
+            raise CoverHttpError(f"timed out after {self.timeout:g}s") from None
+
+    async def _get(self, url: str, params: Mapping[str, str] | None) -> Reply:
         current = url
         query: Mapping[str, str] | None = params
         for _ in range(MAX_REDIRECTS + 1):
@@ -92,6 +104,8 @@ class CoverHttp:
                 response = await self._client.send(request, stream=True)
             except httpx.TimeoutException:
                 raise CoverHttpError(f"timed out after {self.timeout:g}s") from None
+            except httpx.InvalidURL:
+                raise CoverHttpError("the URL can't be used") from None
             except httpx.HTTPError as exc:
                 raise CoverHttpError(f"request failed: {type(exc).__name__}") from None
             try:
@@ -99,7 +113,10 @@ class CoverHttp:
                     location = response.headers.get("location")
                     if not location:
                         raise CoverHttpError("redirect without a location")
-                    current = urljoin(str(response.url), location)
+                    try:
+                        current = urljoin(str(response.url), location)
+                    except ValueError:
+                        raise CoverHttpError("redirect to a URL that can't be parsed") from None
                     query = None
                     continue
                 return Reply(

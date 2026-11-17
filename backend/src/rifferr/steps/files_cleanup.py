@@ -116,7 +116,10 @@ class FilesCleanupStep:
             raise StepFailure(str(exc)) from None
         if trash is not None:
             self._purge(ctx, trash)
-        listing = build_plan(ctx, root, params.options())
+        try:
+            listing = build_plan(ctx, root, params.options())
+        except CleanupError as exc:
+            raise StepFailure(str(exc)) from None
         report(ctx, listing)
         outputs = counts(listing)
         if params.mode == "report":

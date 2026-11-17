@@ -75,7 +75,10 @@ def _glob_regex(pattern: str) -> re.Pattern[str]:
                 out, i = out + f"[{body}]", end + 1
         else:
             out, i = out + re.escape(c), i + 1
-    return re.compile(f"^{out}$", re.IGNORECASE)
+    try:
+        return re.compile(f"^{out}$", re.IGNORECASE)
+    except re.error as exc:
+        raise CleanupError(f"bad pattern {pattern!r}: {exc}") from None
 
 
 class Patterns:

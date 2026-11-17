@@ -48,5 +48,16 @@ class WorkerMessage(BaseModel):
     error_code: str | None = None
 
 
+def printable(text: str | None) -> str | None:
+    """``text`` with control characters (except tab) shown as ``\\xNN`` escapes, so worker
+    output cannot drive the operator's terminal or fake log lines."""
+    if text is None:
+        return None
+    return "".join(
+        c if c == "\t" or not (ord(c) < 0x20 or 0x7F <= ord(c) <= 0x9F) else f"\\x{ord(c):02x}"
+        for c in text
+    )
+
+
 def encode(message: WorkerCommand | WorkerMessage) -> bytes:
     return message.model_dump_json(exclude_none=True).encode() + b"\n"

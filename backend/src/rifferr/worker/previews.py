@@ -18,7 +18,14 @@ from dataclasses import dataclass, field
 from pydantic import JsonValue, ValidationError
 
 from rifferr.core.ids import new_ulid
-from rifferr.worker.protocol import HUNG_AFTER, MAX_MESSAGE, WorkerCommand, WorkerMessage, encode
+from rifferr.worker.protocol import (
+    HUNG_AFTER,
+    MAX_MESSAGE,
+    WorkerCommand,
+    WorkerMessage,
+    encode,
+    printable,
+)
 from rifferr.worker.supervisor import STOP_GRACE, WATCHDOG_INTERVAL, _kill_group  # pyright: ignore[reportPrivateUsage]
 
 log = logging.getLogger("rifferr.worker")
@@ -259,7 +266,9 @@ class PreviewSupervisor:
                         code = message.error_code or "failed"
                         self._settle(handle, req, PreviewFailed(code, message.message or code))
                 elif message.kind == "error":
-                    log.warning("read-only worker %s: %s", handle.profile, message.message)
+                    log.warning(
+                        "read-only worker %s: %s", handle.profile, printable(message.message)
+                    )
                     if not handle.ready.is_set():
                         handle.start_error = message.message
         finally:
@@ -269,7 +278,7 @@ class PreviewSupervisor:
     async def _log_stderr(self, handle: _Handle) -> None:
         assert handle.proc.stderr is not None
         async for line in handle.proc.stderr:
-            log.info("%s", line.decode(errors="replace").rstrip())
+            log.info("%s", printable(line.decode(errors="replace").rstrip()) or "")
 
     async def _watchdog(self, handle: _Handle) -> None:
         loop = asyncio.get_running_loop()

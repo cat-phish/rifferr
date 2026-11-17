@@ -132,9 +132,13 @@ class Redactor:
     def add(self, secret: Secret) -> None:
         """Also mask ``secret`` from now on (e.g. a secret resolved mid-run)."""
         value = secret.reveal()
-        if len(value) < MIN_REDACT_LENGTH or value in self._values:
+        # Multi-line values (PEM keys, JSON credentials) are also masked line by line,
+        # because output is logged one line at a time.
+        parts = [value, *(ln.strip() for ln in value.splitlines())]
+        new = {v for v in parts if len(v) >= MIN_REDACT_LENGTH} - self._values
+        if not new:
             return
-        self._values.add(value)
+        self._values |= new
         ordered = sorted(self._values, key=len, reverse=True)
         self._pattern = re.compile("|".join(map(re.escape, ordered)))
 
@@ -295,6 +299,16 @@ def _semantic_errors(
         resolve_vars(file.vars, env)
     except VarResolutionError as exc:
         errors.append(doc.error(("vars", exc.var), str(exc)))
+    env_targets = {r.target for r in file.secrets.values() if r.kind == "env"}
+    for var, value in file.vars.items():  # SEC-104: a var would hand the secret to every step
+        for used in sorted(set(re.findall(r"\benv\.([A-Za-z0-9_]+)", value)) & env_targets):
+            errors.append(
+                doc.error(
+                    ("vars", var),
+                    f"{var}: environment variable '{used}' holds a secret; "
+                    "list the secret under 'secrets:' in a step instead",
+                )
+            )
     for path, message in file.notify.checked(file.secrets):  # NOTIFY-1
         errors.append(doc.error(path, message))
     if file.timezone and timezone_exists and not timezone_exists(file.timezone):

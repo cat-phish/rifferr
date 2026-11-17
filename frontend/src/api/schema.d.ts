@@ -3410,6 +3410,10 @@ export interface operations {
                 profile: string;
                 /** @description The thumbnail, when the provider has one */
                 thumb?: boolean;
+                /** @description Review a local image belongs to */
+                review_id?: string | null;
+                /** @description Album a local image belongs to */
+                album_id?: string | null;
             };
             header?: never;
             path: {

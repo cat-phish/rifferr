@@ -30,6 +30,8 @@ from rifferr.core.covers import (
     sniff_image,
 )
 from rifferr.core.duration import parse_duration
+from rifferr.core.profile import Redactor
+from rifferr.core.profile import Secret as SecretValue
 from rifferr.covers.base import MATCH_KEY, CoverProvider
 from rifferr.covers.cache import CoverCache
 from rifferr.covers.http import CoverHttp, CoverHttpError
@@ -147,6 +149,7 @@ async def search(
         if provider is None:
             await report(ProviderStatus(name=name, state="failed", message="no such provider"))
             return
+        redactor = Redactor([])
         own: dict[str, JsonValue] = {**p.settings.get(name, {}), MATCH_KEY: match}
         if provider.needs:
             secret_name = own.get("secret")
@@ -157,6 +160,7 @@ async def search(
                 )
                 return
             own["token"] = token
+            redactor = Redactor([SecretValue(token)])
         cached = None if refresh or cache is None else cache.results(name, query_key)
         if cached is not None:
             for c in cached:
@@ -177,12 +181,14 @@ async def search(
             raise
         except CoverHttpError as exc:
             await report(
-                ProviderStatus(name=name, state="failed", count=len(mine), message=str(exc))
+                ProviderStatus(
+                    name=name, state="failed", count=len(mine), message=redactor.redact(str(exc))
+                )
             )
             return
         except Exception as exc:
-            log.warning("cover provider %s failed: %s", name, exc, exc_info=True)
-            message = f"{type(exc).__name__}: {exc}"
+            message = redactor.redact(f"{type(exc).__name__}: {exc}")
+            log.warning("cover provider %s failed: %s", name, message)
             await report(
                 ProviderStatus(name=name, state="failed", count=len(mine), message=message)
             )

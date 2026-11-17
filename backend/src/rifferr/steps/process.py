@@ -25,6 +25,7 @@ READER_GRACE = 1.0
 """How long to wait for output pipes to close after the process exits. A background
 child that keeps them open is not waited for."""
 MAX_LINE = 64 * 1024
+SECRET_TAIL = 4096  # longest secret still masked when a line is cut
 """Longer lines are split into several log events."""
 
 
@@ -126,13 +127,23 @@ async def _pump(
             break
         buffer += chunk
         *lines, buffer = buffer.split(b"\n")
-        while len(buffer) >= MAX_LINE:
-            lines.append(buffer[:MAX_LINE])
-            buffer = buffer[MAX_LINE:]
+        if len(buffer) >= MAX_LINE + SECRET_TAIL:
+            # Mask before cutting so a secret is never split across two log lines. The
+            # unmasked end may hold the start of a secret still being read: keep it back.
+            text = ctx.redact(buffer.decode(errors="replace"))
+            cut = (len(text) - SECRET_TAIL) // MAX_LINE * MAX_LINE
+            lines.extend(_pieces(text[:cut]))
+            buffer = text[cut:].encode()
         for line in lines:
-            ctx.log(_decode(line), stream=name, target=target)
+            for piece in _pieces(ctx.redact(_decode(line))) or [b""]:
+                ctx.log(_decode(piece), stream=name, target=target)
     if buffer:
-        ctx.log(_decode(buffer), stream=name, target=target)
+        for piece in _pieces(ctx.redact(buffer.decode(errors="replace"))):
+            ctx.log(_decode(piece), stream=name, target=target)
+
+
+def _pieces(text: str) -> list[bytes]:
+    return [text[i : i + MAX_LINE].encode() for i in range(0, len(text), MAX_LINE)]
 
 
 def _decode(line: bytes) -> str:

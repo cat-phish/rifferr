@@ -706,7 +706,7 @@ function PickerBody({
                 }}
               >
                 <Image
-                  src={candidateImage(profile, c.id)}
+                  src={candidateImage(profile, c.id, true, { reviewId: review?.id, albumId })}
                   alt={`${c.provider} cover, ${sizeLabel(c)}`}
                   h={140}
                   fit="contain"
@@ -793,6 +793,7 @@ function PickerBody({
       <CoverPreview
         key={preview?.id ?? "none"}
         profile={profile}
+        scope={{ reviewId: review?.id, albumId }}
         candidate={preview}
         disabled={busy}
         refused={preview ? refused[preview.id] : undefined}
@@ -949,6 +950,7 @@ function ProviderPanel(props: {
 /** The full-size image with its real dimensions and file size (COVER-PICKER-12). */
 function CoverPreview(props: {
   profile: string;
+  scope: { reviewId?: string | null; albumId?: string | null };
   candidate: RankedCandidate | null;
   disabled: boolean;
   refused: string | undefined;
@@ -962,15 +964,23 @@ function CoverPreview(props: {
   const [failed, setFailed] = useState<string | null>(null);
   const id = c?.id ?? null;
   const profile = props.profile;
+  const scopeReview = props.scope.reviewId;
+  const scopeAlbum = props.scope.albumId;
   useEffect(() => {
     if (id === null) return;
     let url: string | null = null;
     const life = { gone: false };
     void (async () => {
       try {
-        const r = await fetch(new URL(candidateImage(profile, id, false), window.location.origin), {
-          credentials: "same-origin",
-        });
+        const r = await fetch(
+          new URL(
+            candidateImage(profile, id, false, { reviewId: scopeReview, albumId: scopeAlbum }),
+            window.location.origin,
+          ),
+          {
+            credentials: "same-origin",
+          },
+        );
         if (!r.ok) {
           const body = (await r.json().catch(() => null)) as {
             error?: { message?: string };
@@ -992,7 +1002,7 @@ function CoverPreview(props: {
       life.gone = true;
       if (url !== null) URL.revokeObjectURL(url);
     };
-  }, [id, profile]);
+  }, [id, profile, scopeReview, scopeAlbum]);
 
   return (
     <Modal opened={c !== null} onClose={props.onClose} title="Cover preview" size="xl">

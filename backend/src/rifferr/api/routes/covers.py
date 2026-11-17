@@ -72,6 +72,8 @@ router = APIRouter(prefix="/api", tags=["covers"])
 
 DECIDER: Final = "ui"
 ART_TIMEOUT: Final = 30.0
+ART_FILE_FACTOR: Final = 4
+"""An album's art file may be this many times ``covers.max_bytes``."""
 IMAGE_HEADERS: Final = {
     "Content-Security-Policy": "default-src 'none'",
     "X-Content-Type-Options": "nosniff",
@@ -231,6 +233,13 @@ async def cancel_search(search_id: str, state: State) -> CoverSearchStarted:
 # -- images (COVERS-SEARCH-20, -22) ------------------------------------------------------
 
 
+def _read_capped(path: Path, limit: int) -> bytes | None:
+    """The file's bytes, or None when it's larger than ``limit`` (never reads more)."""
+    with path.open("rb") as f:
+        data = f.read(limit + 1)
+    return None if len(data) > limit else data
+
+
 def _image_response(data: bytes) -> Response:
     mime = mime_of(data)
     if mime is None:
@@ -248,6 +257,8 @@ async def cover_image(
     profile: str,
     state: State,
     thumb: Annotated[bool, Query(description="The thumbnail, when the provider has one")] = False,
+    review_id: Annotated[str | None, Query(description="Review a local image belongs to")] = None,
+    album_id: Annotated[str | None, Query(description="Album a local image belongs to")] = None,
 ) -> Response:
     """An image from the profile's art store (``key`` = sha256), or a candidate's image
     or thumbnail (``key`` = candidate id): only candidates Rifferr found itself."""
@@ -262,6 +273,18 @@ async def cover_image(
     if candidate is None:
         raise not_found(f"cover candidate {key}")
     use_thumb = thumb and candidate.thumb_url is not None
+    if candidate.path is not None and not use_thumb:
+        # A local image is served only for the album or review whose folder holds it.
+        folder: str | None = None
+        if review_id is not None:
+            review = _review(state, review_id)
+            if review.profile != p.name:
+                raise not_found(f"cover review {review_id}")
+            folder = review.query.folder
+        elif album_id is not None:
+            folder = (await _album_query(state, p.name, album_id)).query.folder
+        if not _in_folder(candidate, folder):
+            raise ApiError(400, "bad_request", "a local image must be in the album's folder")
     try:
         image = await download(
             candidate,
@@ -290,7 +313,7 @@ async def album_art(
 ) -> Response:
     """The album's current art file (COVERS-SEARCH-22), read through the read-only worker.
     Its ``ETag`` is the art's sha256, so an unchanged cover answers 304 (COVER-PICKER-16)."""
-    get_profile(state, profile)
+    limit = parse_size(get_profile(state, profile).covers.max_bytes) * ART_FILE_FACTOR
     result = await ask(
         state,
         profile,
@@ -306,9 +329,11 @@ async def album_art(
     if if_none_match is not None and etag in {t.strip() for t in if_none_match.split(",")}:
         return Response(status_code=304, headers={**IMAGE_HEADERS, "ETag": etag})
     try:
-        data = await asyncio.to_thread(Path(path).read_bytes)
+        data = await asyncio.to_thread(_read_capped, Path(path), limit)
     except OSError:
         raise not_found(f"art of album {album_id}") from None
+    if data is None:
+        raise ApiError(502, "bad_image", "the album's art file is too large to serve")
     if sniff_image(data[: 1 << 20]) is None and mime_of(data) is None:
         raise ApiError(502, "bad_image", "the album's art isn't a JPEG or PNG image")
     response = _image_response(data)

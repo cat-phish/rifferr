@@ -395,8 +395,69 @@ def _replacer(spec: ReplaceSpec) -> Callable[[str], str]:
     if spec.find is not None:
         find = spec.find
         return lambda text: text.replace(find, spec.with_)
-    pattern = re.compile(spec.regex or "", spec.re_flags())
-    return lambda text: pattern.sub(spec.with_, text)
+    source = spec.regex or ""
+    if _nested_quantifier(source):
+        raise _ActionError(
+            None, f"regex {source!r} nests unbounded repeats (e.g. (a+)+) and can run for ages"
+        )
+    pattern = re.compile(source, spec.re_flags())
+
+    def swap(text: str) -> str:
+        if len(text) > MAX_REGEX_INPUT:
+            raise _ActionError(None, f"a value is longer than {MAX_REGEX_INPUT} characters")
+        return pattern.sub(spec.with_, text)
+
+    return swap
+
+
+MAX_REGEX_INPUT = 10_000
+"""Longest text a script regex or file-name pattern is run on: ``re`` can't be
+interrupted, so the cost of a bad pattern is bounded by bounding the input."""
+
+
+def _nested_quantifier(pattern: str) -> bool:
+    """True when a group that holds an unbounded repeat is itself repeated more than once,
+    the classic catastrophic-backtracking shape. A heuristic: it misses other shapes
+    (e.g. overlapping alternatives) and is bounded by ``MAX_REGEX_INPUT`` instead."""
+    stack: list[bool] = []  # per open group: holds an unbounded repeat?
+    in_class = False
+    i, n = 0, len(pattern)
+    while i < n:
+        c = pattern[i]
+        i += 1
+        if c == "\\":
+            i += 1
+        elif in_class:
+            in_class = c != "]"
+        elif c == "[":
+            in_class = True
+            if pattern.startswith("^", i):
+                i += 1
+            if pattern.startswith("]", i):
+                i += 1
+        elif c == "(":
+            stack.append(False)
+        elif c == ")":
+            inner = stack.pop() if stack else False
+            m = _REPEAT.match(pattern, i)
+            if inner and m is not None and m[0] not in ("?", "{1}", "{0,1}", "{,1}"):
+                return True
+            if stack and (inner or (m is not None and _unbounded(m[0]))):
+                stack[-1] = True
+        elif stack and c in "+*":
+            stack[-1] = True
+        elif stack and c == "{":
+            m = _REPEAT.match(pattern, i - 1)
+            if m is not None and _unbounded(m[0]):
+                stack[-1] = True
+    return False
+
+
+_REPEAT = re.compile(r"[+*?]|\{\d*(?:,\d*)?\}")
+
+
+def _unbounded(token: str) -> bool:
+    return token in ("+", "*") or token.endswith(",}")
 
 
 def split_values(value: str | list[str], by: str, *, strip: bool) -> list[str]:
@@ -479,9 +540,13 @@ def _source_text(path: str, source: str) -> str:
 
 def match_filename(pattern: str, text: str) -> dict[str, str] | None:
     """Placeholder values when ``text`` matches ``pattern`` exactly (TAGSCRIPT-11)."""
+    if len(text) > MAX_REGEX_INPUT:
+        raise _ActionError(None, f"the file name is longer than {MAX_REGEX_INPUT} characters")
     regex = ""
     pos = 0
     for m in PLACEHOLDER.finditer(pattern):
+        if regex and pos == m.start():
+            raise _ActionError(None, f"{pattern!r}: placeholders need literal text between them")
         regex += re.escape(pattern[pos : m.start()])
         regex += f"(?P<{m['braced'] or m['bare']}>.+?)"
         pos = m.end()

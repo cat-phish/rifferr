@@ -73,10 +73,10 @@ async def test_COVERS_SEARCH_4_coverartarchive_front_images_by_release() -> None
 @respx.mock
 async def test_COVERS_SEARCH_4_coverartarchive_falls_back_to_the_release_group() -> None:
     respx.get(f"https://coverartarchive.org/release/{MBID}").respond(404)
-    group = respx.get("https://coverartarchive.org/release-group/rg-1").respond(
-        json=reply("caa-release.json")
-    )
-    q = Q.model_copy(update={"mb_releasegroupid": "rg-1"})
+    group = respx.get(
+        "https://coverartarchive.org/release-group/9f0d2b6e-5a3c-4c1e-8b7a-2d6e4f1a0c33"
+    ).respond(json=reply("caa-release.json"))
+    q = Q.model_copy(update={"mb_releasegroupid": "9f0d2b6e-5a3c-4c1e-8b7a-2d6e4f1a0c33"})
     assert len(await collect(CoverArtArchive(), q)) == 1
     assert group.called
     assert await collect(CoverArtArchive(), CoverQuery(artist="a", album="b")) == []

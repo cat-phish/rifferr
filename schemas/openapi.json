@@ -5754,6 +5754,42 @@
               "title": "Thumb",
               "type": "boolean"
             }
+          },
+          {
+            "description": "Review a local image belongs to",
+            "in": "query",
+            "name": "review_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Review a local image belongs to",
+              "title": "Review Id"
+            }
+          },
+          {
+            "description": "Album a local image belongs to",
+            "in": "query",
+            "name": "album_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Album a local image belongs to",
+              "title": "Album Id"
+            }
           }
         ],
         "responses": {
