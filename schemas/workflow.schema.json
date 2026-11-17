@@ -1427,7 +1427,8 @@
               "type": "string"
             }
           ],
-          "description": "Command as an argv list, or a string run by /bin/sh -c (needs shell: true)",
+          "code_text": true,
+          "description": "Command as an argv list, or a string run by /bin/sh -c (needs shell: true). A string may not hold run data ({{ run.input }}, run-supplied vars, {{ steps.* }}): read $RIFFERR_RUN_INPUT / $RIFFERR_VAR_<NAME> instead",
           "title": "Run"
         },
         "secrets": {

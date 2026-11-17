@@ -53,7 +53,10 @@ class ShellParams(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     run: list[str] | str = Field(
-        description="Command as an argv list, or a string run by /bin/sh -c (needs shell: true)"
+        description="Command as an argv list, or a string run by /bin/sh -c (needs shell: true). "
+        "A string may not hold run data ({{ run.input }}, run-supplied vars, {{ steps.* }}): "
+        "read $RIFFERR_RUN_INPUT / $RIFFERR_VAR_<NAME> instead",
+        json_schema_extra={"code_text": True},
     )
     shell: bool = Field(default=False, description="Run a string command through /bin/sh -c")
     per: Literal["run", "album", "item"] = "album"
@@ -276,7 +279,11 @@ def _render(
 
 
 def _fixed_env(ctx: StepContext, target: _Target) -> dict[str, str]:
-    env = {"RIFFERR_RUN_ID": ctx.run_id, "RIFFERR_PROFILE": ctx.profile}
+    env = {
+        "RIFFERR_RUN_ID": ctx.run_id,
+        "RIFFERR_PROFILE": ctx.profile,
+        "RIFFERR_RUN_INPUT": ctx.run_input,
+    }
     if target.album_dir is not None:
         env["RIFFERR_ALBUM_DIR"] = target.album_dir
     if target.item_path is not None:

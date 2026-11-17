@@ -32,13 +32,14 @@ from rifferr.core.files import BusyFolder, CleanupDecision
 from rifferr.core.ids import new_ulid
 from rifferr.core.imports import ImportDecision, ImportQuestion
 from rifferr.core.notify import Notification, SendResult
-from rifferr.core.profile import ProfileFile, Redactor, merged_vars
+from rifferr.core.profile import ProfileFile, Redactor, env_var_name, merged_vars
 from rifferr.core.review import GateAlbum, GateRequest, ReviewGate
 from rifferr.core.selection import Selection
 from rifferr.core.snapshot import label
 from rifferr.core.workflow import (
     CalledStep,
     Calls,
+    Expression,
     InterpolationContext,
     InterpolationError,
     RoundTripDoc,
@@ -49,6 +50,7 @@ from rifferr.core.workflow import (
     interpolate,
     validate,
 )
+from rifferr.core.workflow.interpolation import rewrite
 from rifferr.engine.changesets import (
     ChangeSetStore,
     InMemoryChangeSetStore,
@@ -138,6 +140,8 @@ class _RunState:
         self.redactor = redactor
         self.work_dir = work_dir
         self.secrets = secrets
+        self.run_supplied: frozenset[str] = frozenset()
+        """Names of the variables this run's caller set (SEC-21)."""
         self.cancel = asyncio.Event()
         self.holds: dict[str, list[str]] = {}
         """step id -> ChangeSet ids it proposed that wait for review (CHANGESET-7)."""
@@ -278,6 +282,7 @@ class Engine:
             },
         )
         self.runs[run.id] = run
+        run_supplied = frozenset(run_vars or {})
         self._state[run.id] = _RunState(
             run,
             wf,
@@ -290,6 +295,7 @@ class Engine:
             profile_settings,
             busy,
         )
+        self._state[run.id].run_supplied = run_supplied
         return run
 
     def cancel(self, run_id: str) -> None:
@@ -645,6 +651,7 @@ class Engine:
                 is_cancelled=state.cancel.is_set,
                 profile=run.profile,
                 vars=run.vars,
+                run_input=run.input,
                 work_dir=state.work_dir,
                 trusted=run.trusted,
                 secrets=state.secrets,
@@ -797,12 +804,13 @@ class Engine:
 
     def _prepare_params(self, state: _RunState, spec: StepSpec) -> BaseModel:
         ctx = self._interpolation_context(state)
+        step_type = self.registry.step_type(spec.uses)
+        assert step_type is not None
         try:
+            _refuse_run_data_in_code(step_type.params_model, spec.with_, state.run_supplied)
             values = _interpolate_values(spec.with_, ctx)
         except InterpolationError as exc:
             raise StepFailure(str(exc)) from exc
-        step_type = self.registry.step_type(spec.uses)
-        assert step_type is not None
         try:
             return step_type.params_model.model_validate(values)
         except PydanticValidationError as exc:
@@ -1026,6 +1034,44 @@ class Engine:
     def _finish(self, run: Run) -> None:
         run.finished_at = self.clock.now()
         self._emit(run, "run.finished", None, {"status": run.state.value})
+
+
+def _refuse_run_data_in_code(
+    model: type[BaseModel], with_: Mapping[str, Any], run_supplied: frozenset[str]
+) -> None:
+    """SEC-21: a string in a field marked ``code_text`` (a shell command) is code, so it
+    may not contain data that comes from outside the workflow: the run input, variables
+    the run's caller set, or step outputs. Those reach the process through its
+    environment (``RIFFERR_RUN_INPUT``, ``RIFFERR_VAR_<NAME>``)."""
+    for name, field in model.model_fields.items():
+        extra = cast(Any, field.json_schema_extra)
+        value: Any = with_.get(name)
+        if not isinstance(extra, dict) or not extra.get("code_text"):  # type: ignore[reportUnknownMemberType]
+            continue
+        if not isinstance(value, str):
+            continue
+
+        def check(expr: Expression, field_name: str = name) -> str:
+            root, *rest = expr.path
+            if root == "run" and rest == ["input"]:
+                raise StepFailure(
+                    f"{expr.text} can't be written into '{field_name}': it would be run as code. "
+                    "Use $RIFFERR_RUN_INPUT"
+                )
+            if root == "vars" and len(rest) == 1 and rest[0] in run_supplied:
+                raise StepFailure(
+                    f"{expr.text} was set for this run and can't be written into "
+                    f"'{field_name}': it would be run as code. "
+                    f"Use ${env_var_name(rest[0])}"
+                )
+            if root == "steps":
+                raise StepFailure(
+                    f"{expr.text} can't be written into '{field_name}': step outputs may hold "
+                    "data from outside the workflow and would be run as code"
+                )
+            return expr.text
+
+        rewrite(value, check)
 
 
 def _interpolate_values(value: Any, ctx: InterpolationContext) -> Any:

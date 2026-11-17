@@ -246,8 +246,11 @@ class StepContext:
         request_cleanup: RequestCleanup | None = None,
         hold_pass: HoldPass | None = None,
         request_cover: RequestCover | None = None,
+        run_input: str = "",
     ) -> None:
         self.run_id = run_id
+        self.run_input = run_input
+        """``{{ run.input }}``, for steps that pass it to a process in the environment."""
         self.profile = profile
         self.vars: Mapping[str, str] = dict(vars or {})
         self.work_dir = work_dir
