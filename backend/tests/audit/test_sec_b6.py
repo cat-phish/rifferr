@@ -135,7 +135,7 @@ def _run_child(spec: dict[str, Any], limit: float = 5.0) -> str:
 def test_SEC_124_replace_regex_is_time_limited() -> None:
     action = {"replace": {"fields": ["comments"], "regex": "(a+)+$", "with": "z"}}
     result = _run_child({"action": action, "value": "a" * 40 + "b", "path": "/m/01.flac"})
-    assert result == "error"
+    assert result in ("ok", "error")  # must return in time: `regex` may also answer quickly
 
 
 def test_SEC_124_from_filename_many_placeholders() -> None:

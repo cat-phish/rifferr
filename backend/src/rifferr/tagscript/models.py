@@ -12,6 +12,7 @@ from collections.abc import Mapping
 from pathlib import PurePosixPath
 from typing import Annotated, Any, Final, Literal, Self, cast
 
+import regex
 from pydantic import (
     BaseModel,
     BeforeValidator,
@@ -81,6 +82,10 @@ class ReplaceSpec(BaseModel):
                 compiled = re.compile(self.regex, self.re_flags())
                 compiled.sub(self.with_, "")  # bad group references in 'with'
             except re.error as exc:
+                raise ValueError(f"invalid regex: {exc}") from None
+            try:  # the evaluator runs it with the ``regex`` package (SEC-124)
+                regex.compile(self.regex, self.re_flags())
+            except regex.error as exc:
                 raise ValueError(f"invalid regex: {exc}") from None
         return self
 
