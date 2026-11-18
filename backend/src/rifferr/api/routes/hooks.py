@@ -58,7 +58,7 @@ async def webhook(
         )
     store = AppTriggers(state.db)
     if not verify(store, profile, name, credential(authorization)):
-        log.warning("webhook %s/%s: authentication failed", profile, name)
+        log.warning("webhook %r/%r: authentication failed", profile[:80], name[:80])  # SEC-83
         raise ApiError(401, "unauthenticated", "authentication required")
     media = (content_type or "").split(";", 1)[0].strip().lower()
     if media != "application/json":
@@ -66,7 +66,7 @@ async def webhook(
     raw = await _body(request)
     try:
         payload = json.loads(raw or b"null")
-    except (ValueError, UnicodeDecodeError):
+    except (ValueError, UnicodeDecodeError, RecursionError):
         raise ApiError(400, "bad_request", "the body is not valid JSON") from None
     if state.triggers is None:
         raise ApiError(404, "not_found", "no such webhook")

@@ -103,6 +103,8 @@ class Run:
     """ChangeSet ids the suspended run waits for (RUN-14)."""
     gates: list[str] = field(default_factory=list[str])
     """Review gate ids the suspended run waits for (RUN-14, S-REVIEW)."""
+    called_hashes: dict[str, str] = field(default_factory=dict[str, str])
+    """Called workflow file -> SHA-256 of the text the run uses (SUBWORKFLOW-15)."""
 
     def transition(self, to: RunState) -> None:
         if to not in _ALLOWED[self.state]:

@@ -84,6 +84,15 @@ class BackendCapabilities(BaseModel):
     import_decisions: bool = False
     """``import_folder`` can ask about albums (modes ``auto``/``interactive``), and
     ``import_decided``/``lookup`` answer them (F-IMPORT-UI)."""
+    files: bool = False
+    """``library_files``, ``library_dirs`` and ``importable`` answer which files and
+    folders the library owns or could import (S-FILES-CLEANUP FILES-CLEANUP-12, -17)."""
+    remove: bool = False
+    """``remove_album`` removes an album from the library (F-DASHBOARD DASHBOARD-7)."""
+    art: bool = False
+    """Albums carry ``art_sha256`` (``core.covers.ART_FIELD``), and ``apply`` sets or removes
+    an album's cover when a ChangeSet changes it (S-COVERS-SEARCH COVERS-SEARCH-16). The
+    image must be in the profile's art store; the old art is copied there first."""
 
     @staticmethod
     def display_name(field: str) -> str:
@@ -144,6 +153,11 @@ class LibraryBackend(Protocol):
     def query(self, selection: Selection) -> list[AlbumSnapshot]: ...
 
     def evaluate(self, template: str, target: ItemSnapshot | AlbumSnapshot) -> str: ...
+
+    def escape_template(self, text: str) -> str:
+        """``text`` made literal in a template: ``evaluate`` of the result gives back
+        ``text`` on any target (SEC-22)."""
+        ...
 
     def matches(self, condition: str, target: ItemSnapshot | AlbumSnapshot) -> bool: ...
 
@@ -233,6 +247,29 @@ class LibraryBackend(Protocol):
 
     def command_env(self) -> Mapping[str, str]:
         """Environment for CLI subprocess steps (e.g. ``BEETSDIR``)."""
+        ...
+
+    def library_files(self, paths: Sequence[Path]) -> set[Path]:
+        """Which of ``paths`` (absolute files) are items in the library (``files``)."""
+        ...
+
+    def library_dirs(self) -> list[Path]:
+        """Folders the library keeps its music in (beets: ``directory``) (``files``)."""
+        ...
+
+    def importable(self, paths: Sequence[Path]) -> set[Path]:
+        """Which of ``paths`` the backend could import as music (``files``): for beets,
+        files its tag library recognizes, even when they fail to read."""
+        ...
+
+    def remove_album(self, album_id: str, *, delete_files: bool) -> list[str]:
+        """Remove the album and its items from the library (``remove``, DASHBOARD-7).
+
+        With ``delete_files`` its files are deleted too, and folders left empty inside
+        the library folders are removed; returns the deleted files' paths. Raises
+        ``KeyError`` for an unknown album. Only the worker's import undo calls this,
+        after journaling the removal (DASHBOARD-8).
+        """
         ...
 
     def cli_command(self, subcommand: str, args: list[str], selection: Selection) -> list[str]:

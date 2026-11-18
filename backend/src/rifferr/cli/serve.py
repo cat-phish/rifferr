@@ -21,8 +21,21 @@ from types import FrameType
 import uvicorn
 
 from rifferr.api.app import DEFAULT_PORT, REPO_FRONTEND, VITE_PORT, ApiSettings, create_app
-from rifferr.api.security import EXCHANGE_PATH, BindRefusedError, check_bind, token_file_path
-from rifferr.cli.client import new_server_info, remove_server_file, write_server_file
+from rifferr.api.security import (
+    EXCHANGE_PATH,
+    SIGN_IN_LINK_PATH,
+    BindRefusedError,
+    check_bind,
+    normalize_host,
+    token_file_path,
+)
+from rifferr.cli.client import (
+    NoServerError,
+    connect,
+    new_server_info,
+    remove_server_file,
+    write_server_file,
+)
 
 log = logging.getLogger("rifferr.cli")
 
@@ -42,8 +55,29 @@ def add_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None
     p.add_argument(
         "--vite-port", type=int, default=VITE_PORT, help=f"Vite port (default: {VITE_PORT})"
     )
+    p.add_argument(
+        "--allowed-host",
+        action="append",
+        default=[],
+        type=_host_arg,
+        metavar="NAME[:PORT]",
+        help="also accept this Host, e.g. a reverse proxy's name; repeatable. The proxy "
+        "must pass Host and Origin through unchanged and should serve https",
+    )
     p.add_argument("--uds", type=Path, default=None, help=argparse.SUPPRESS)
     p.set_defaults(func=cmd_serve)
+
+
+def add_sign_in_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:  # pyright: ignore[reportPrivateUsage]
+    p = sub.add_parser("sign-in", help="print a one-time sign-in link for the running server")
+    p.set_defaults(func=cmd_sign_in)
+
+
+def _host_arg(value: str) -> str:
+    try:
+        return normalize_host(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from None
 
 
 class RedactTokens(logging.Filter):
@@ -64,17 +98,21 @@ def exchange_url(port: int, token: str) -> str:
     return f"http://127.0.0.1:{port}{EXCHANGE_PATH}?token={token}"
 
 
-def startup_lines(settings: ApiSettings, *, tty: bool, ui_port: int) -> list[str]:
-    """What ``serve`` prints. The token appears only on a terminal (CLI-3)."""
+def startup_lines(
+    settings: ApiSettings, *, tty: bool, ui_port: int, link: str | None = None
+) -> list[str]:
+    """What ``serve`` prints. A sign-in link appears only on a terminal (CLI-3), and it
+    carries a one-time code, never the local token (SEC-43)."""
     plain = f"http://127.0.0.1:{ui_port}/"
     if settings.no_auth:
         return [f"Rifferr is running at {plain} (no auth)"]
     if tty:
-        return [f"Rifferr is running. Open: {exchange_url(ui_port, settings.token)}"]
+        link = link or exchange_url(ui_port, settings.sessions.sign_in_code())
+        return [f"Rifferr is running. Open (works once): {link}"]
     return [
         f"Rifferr is running at {plain}",
-        f"To sign in, open {exchange_url(ui_port, '<token>')} with the token from "
-        f"{token_file_path(settings.port)}",
+        "To sign in, run `rifferr sign-in` for a one-time link "
+        f"(it uses the token in {token_file_path(settings.port)})",
     ]
 
 
@@ -134,8 +172,15 @@ def cmd_serve(args: argparse.Namespace) -> int:
         check_bind(args.host)
     except BindRefusedError as exc:
         return _fail(2, str(exc))
+    if args.no_auth and args.allowed_host:  # SEC-46: a proxied server keeps its auth
+        return _fail(2, "--allowed-host can't be used with --no-auth")
     settings = ApiSettings(
-        port=args.port, host=args.host, no_auth=args.no_auth, dev=args.dev, vite_port=args.vite_port
+        port=args.port,
+        host=args.host,
+        no_auth=args.no_auth,
+        dev=args.dev,
+        vite_port=args.vite_port,
+        extra_hosts=tuple(args.allowed_host),
     )
     try:
         sock = _bind(args)
@@ -157,10 +202,13 @@ def cmd_serve(args: argparse.Namespace) -> int:
         if not server.started:
             return
         write_server_file(info)
-        for line in startup_lines(settings, tty=sys.stdout.isatty(), ui_port=ui_port):
+        # One code for the printed link and the browser: once the browser has used it,
+        # the link in the scrollback is dead (SEC-43).
+        link = None if args.no_auth else exchange_url(ui_port, settings.sessions.sign_in_code())
+        for line in startup_lines(settings, tty=sys.stdout.isatty(), ui_port=ui_port, link=link):
             print(line, flush=True)
-        if not args.no_browser and not args.no_auth:
-            webbrowser.open(exchange_url(ui_port, settings.token))
+        if not args.no_browser and link is not None:
+            webbrowser.open(link)
         elif not args.no_browser:
             webbrowser.open(f"http://127.0.0.1:{ui_port}/")
 
@@ -202,3 +250,27 @@ def cmd_serve(args: argparse.Namespace) -> int:
         if args.uds is not None:
             args.uds.unlink(missing_ok=True)
     return 0 if server.started and not vite_failed else 1
+
+
+def cmd_sign_in(args: argparse.Namespace) -> int:
+    """``rifferr sign-in``: ask the running server for a one-time sign-in link (SEC-43)."""
+    try:
+        client = connect()
+    except NoServerError as exc:
+        print(f"rifferr sign-in: {exc}", file=sys.stderr)
+        return 3
+    try:
+        if client.info.no_auth:
+            print(f"http://127.0.0.1:{client.info.port}/ (no auth)")
+            return 0
+        r = client.post(SIGN_IN_LINK_PATH)
+        if r.status_code != 200:
+            print(f"rifferr sign-in: the server answered {r.status_code}", file=sys.stderr)
+            return 1
+        body = r.json()
+        minutes = int(body["expires_in"]) // 60
+        print(f"http://127.0.0.1:{client.info.port}{body['path']}")
+        print(f"(works once, for {minutes} minutes)", file=sys.stderr)
+        return 0
+    finally:
+        client.close()

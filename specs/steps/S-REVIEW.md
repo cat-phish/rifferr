@@ -101,6 +101,7 @@ and cover picks. The gate's content model is fixed.
 - The gate never writes tags; undo goes through the journal like any undo (C-JOURNAL).
 - Decisions are mutating API calls behind the F-SECURITY middleware (F-REVIEW-QUEUE).
 - `message` values are templates over the user's own tags, shown as text, never HTML.
+- `message` is a template field under WORKFLOW-14: run values come out literal.
 
 ## Non-goals
 - Per-album decisions and lanes (M2).

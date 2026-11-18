@@ -45,6 +45,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from rifferr.artstore import ArtStore, art_problem
 from rifferr.backends.base import (
     RUN_MARKER,
     BackendCapabilities,
@@ -70,6 +71,7 @@ from rifferr.core.changeset import (
     diff_effects,
     find_conflicts,
 )
+from rifferr.core.covers import ART_FIELD, SHA256
 from rifferr.core.imports import (
     FolderItem,
     ImportAction,
@@ -88,7 +90,12 @@ DEFAULT_CAPABILITIES = BackendCapabilities(
     command_env=True,
     cli=True,
     import_decisions=True,
+    files=True,
+    remove=True,
+    art=True,
 )
+#: Suffixes a FakeBackend treats as importable music (tests only; not engine policy).
+FAKE_IMPORTABLE = frozenset({".flac", ".mp3", ".ogg", ".opus", ".m4a", ".wav"})
 #: Default command-line tool of a FakeBackend: prints its arguments as JSON (BACKEND-14).
 ECHO_CLI = (sys.executable, "-c", "import json, sys; print(json.dumps(sys.argv[1:]))")
 #: Fields a ChangeSet can't touch (as in beets: ids, paths and bookkeeping).
@@ -164,8 +171,12 @@ class FakeBackend:
         read_only: frozenset[str] = READ_ONLY_FIELDS,
         field_types: Mapping[str, type] | None = None,
         cli: Sequence[str] = ECHO_CLI,
+        art_store: Path | None = None,
     ) -> None:
         self.capabilities = capabilities or DEFAULT_CAPABILITIES
+        self.art = ArtStore(art_store) if art_store is not None else None
+        """With a store, ``ART_FIELD`` changes need the image in it (COVERS-SEARCH-18);
+        without one any sha256 is accepted, as if every image were stored."""
         self.cli = list(cli)
         """argv prefix ``cli_command`` starts with; tests point it at their own script."""
         self._env = dict(env or {})
@@ -186,6 +197,13 @@ class FakeBackend:
         self._lookup_candidates: list[dict[str, Any]] = []
         self.lookup_calls: list[tuple[str, tuple[str, ...], str | None, str | None]] = []
         self.fail_lookup: str | None = None
+        self.music_dirs: list[Path] = []
+        """What ``library_dirs`` returns."""
+        self.importable_suffixes: frozenset[str] = FAKE_IMPORTABLE
+        self.removed: list[tuple[str, bool]] = []
+        """(album id, delete_files) per ``remove_album`` call."""
+        self.deleted: list[str] = []
+        """Paths ``remove_album`` would have deleted."""
         """Message ``lookup`` and ``import_decided`` fail with (network errors)."""
 
     # -- building ------------------------------------------------------------
@@ -226,9 +244,20 @@ class FakeBackend:
         self._albums.append(album)
         return _album_snapshot(album)
 
-    def remove_album(self, album_id: str) -> None:
-        """Drop an album, as ``beet remove`` would (tests for LANES-12)."""
+    def remove_album(self, album_id: str, *, delete_files: bool = False) -> list[str]:
+        """Drop an album, as ``beet remove`` would (LANES-12, DASHBOARD-7). With
+        ``delete_files`` the item paths are returned and recorded in ``deleted``; no
+        real file is touched."""
+        album = next((a for a in self._albums if a.id == album_id), None)
+        if album is None:
+            raise KeyError(album_id)
         self._albums = [a for a in self._albums if a.id != album_id]
+        self.removed.append((album_id, delete_files))
+        if not delete_files:
+            return []
+        paths = [item.path for item in album.items]
+        self.deleted.extend(paths)
+        return paths
 
     def add_import_fixture(
         self,
@@ -297,6 +326,9 @@ class FakeBackend:
         terms = parse_query(condition)
         return _matches_all(terms, _snapshot_env(target, None, self._stored_fields(target)))
 
+    def escape_template(self, text: str) -> str:
+        return _SPECIALS.sub(r"$\1", text)
+
     def evaluate(self, template: str, target: ItemSnapshot | AlbumSnapshot) -> str:
         self._need("templates")
         album_fields = self._album_fields_for(target)
@@ -319,7 +351,10 @@ class FakeBackend:
                 problems.append(ChangeProblem(target=t.target, field="", message="not found"))
                 continue
             for c in t.changes:
-                message = self._field_problem(c.field, c.op, c.new)
+                if c.field == ART_FIELD:
+                    message = self._art_problem(t.target.scope, c.op, c.new)
+                else:
+                    message = self._field_problem(c.field, c.op, c.new)
                 if message is not None:
                     problems.append(ChangeProblem(target=t.target, field=c.field, message=message))
         return problems
@@ -340,6 +375,8 @@ class FakeBackend:
             assert obj is not None
             for c in t.changes:
                 self._set(obj, c.field, c.new, delete=c.op == "delete")
+                if c.field == ART_FIELD:
+                    continue  # cover art stays on the album
                 if isinstance(obj, _Album) and self._inherits(c.field):
                     for item in obj.items:
                         self._set(item, c.field, c.new, delete=c.op == "delete")
@@ -548,6 +585,19 @@ class FakeBackend:
         self._need("command_env")
         return dict(self._env)
 
+    def library_files(self, paths: Sequence[Path]) -> set[Path]:
+        self._need("files")
+        known = {item.path for album in self._albums for item in album.items}
+        return {p for p in paths if str(p) in known}
+
+    def library_dirs(self) -> list[Path]:
+        self._need("files")
+        return list(self.music_dirs)
+
+    def importable(self, paths: Sequence[Path]) -> set[Path]:
+        self._need("files")
+        return {p for p in paths if p.suffix.lower() in self.importable_suffixes}
+
     # -- helpers -------------------------------------------------------------
 
     def _find(self, ref: TargetRef) -> _Album | _Item | None:
@@ -585,6 +635,17 @@ class FakeBackend:
             obj.fields.pop(name, None)
         else:
             obj.fields[name] = list(value) if isinstance(value, list) else value
+
+    def _art_problem(self, scope: str, op: str, value: FieldValue) -> str | None:
+        if not self.capabilities.art:
+            return "this library can't set cover art"
+        if self.art is not None:
+            return art_problem(scope, op, value, self.art)
+        if scope != "album":
+            return "cover art belongs to albums"
+        if op == "set" and not (isinstance(value, str) and SHA256.fullmatch(value)):
+            return "expects the image's sha256"
+        return None
 
     def _field_problem(self, name: str, op: str, value: FieldValue) -> str | None:
         if name in self.read_only:
@@ -742,17 +803,22 @@ def _numeric_match(term: _Term, value: float) -> bool:
 
 # -- templates ----------------------------------------------------------------
 
-_TEMPLATE = re.compile(r"\$\$|\$\{(?P<braced>[A-Za-z0-9_]+)\}|\$(?P<bare>[A-Za-z0-9_]+)")
+_TEMPLATE = re.compile(
+    r"\$(?P<escaped>[$%},])|\$\{(?P<braced>[A-Za-z0-9_]+)\}|\$(?P<bare>[A-Za-z0-9_]+)"
+)
 _FUNCTION = re.compile(r"%[A-Za-z0-9_]+\{")
+_SPECIALS = re.compile(r"([$%},])")
+"""Characters with a ``$`` escape, as in beets."""
+_SPECIALS_ESCAPED = re.compile(r"\$[$%},]")
 
 
 def render_template(template: str, env: Mapping[str, FieldValue]) -> str:
-    if _FUNCTION.search(template):
+    if _FUNCTION.search(_SPECIALS_ESCAPED.sub("", template)):
         raise TemplateError("FakeBackend doesn't support template functions (%func{...})")
 
     def sub(m: re.Match[str]) -> str:
-        if m.group(0) == "$$":
-            return "$"
+        if m["escaped"]:
+            return m["escaped"]
         name = m["braced"] or m["bare"]
         if name not in env:
             return m.group(0)

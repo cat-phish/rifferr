@@ -7,7 +7,7 @@ so dedup sees real job states. Watch tests use real file events in ``tmp_path``.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -95,6 +95,7 @@ async def env(tmp_path: Path) -> AsyncIterator[Env]:
         workflow: str | None = None,
         trigger: str = "manual",
         run_input: str | None = None,
+        called: Mapping[str, str] | None = None,
     ) -> str:
         job = db.submit(profile, {"source": source}, workflow=workflow, trigger=trigger)
         holder["env"].runs.append(Submitted(profile, workflow, trigger, run_input, job.run))

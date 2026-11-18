@@ -15,6 +15,8 @@ from dataclasses import dataclass, field
 from pathlib import PurePath
 from typing import Protocol
 
+import regex
+
 from rifferr.core.changeset import TargetRef, same_value
 from rifferr.core.snapshot import AlbumSnapshot, FieldValue, ItemSnapshot
 from rifferr.tagscript.models import (
@@ -395,8 +397,22 @@ def _replacer(spec: ReplaceSpec) -> Callable[[str], str]:
     if spec.find is not None:
         find = spec.find
         return lambda text: text.replace(find, spec.with_)
-    pattern = re.compile(spec.regex or "", spec.re_flags())
-    return lambda text: pattern.sub(spec.with_, text)
+    source = spec.regex or ""
+    pattern = regex.compile(source, spec.re_flags())
+
+    def swap(text: str) -> str:
+        try:
+            return pattern.sub(spec.with_, text, timeout=REGEX_TIMEOUT)
+        except TimeoutError:
+            raise _ActionError(
+                None, f"regex {source!r} took longer than {REGEX_TIMEOUT} s on a value"
+            ) from None
+
+    return swap
+
+
+REGEX_TIMEOUT = 0.5
+"""Seconds one script regex or file-name pattern may spend on one value (SEC-124)."""
 
 
 def split_values(value: str | list[str], by: str, *, strip: bool) -> list[str]:
@@ -479,14 +495,19 @@ def _source_text(path: str, source: str) -> str:
 
 def match_filename(pattern: str, text: str) -> dict[str, str] | None:
     """Placeholder values when ``text`` matches ``pattern`` exactly (TAGSCRIPT-11)."""
-    regex = ""
+    source = ""
     pos = 0
     for m in PLACEHOLDER.finditer(pattern):
-        regex += re.escape(pattern[pos : m.start()])
-        regex += f"(?P<{m['braced'] or m['bare']}>.+?)"
+        source += re.escape(pattern[pos : m.start()])
+        source += f"(?P<{m['braced'] or m['bare']}>.+?)"
         pos = m.end()
-    regex += re.escape(pattern[pos:])
-    found = re.fullmatch(regex, text, re.S)
+    source += re.escape(pattern[pos:])
+    try:
+        found = regex.fullmatch(source, text, regex.S, timeout=REGEX_TIMEOUT)
+    except TimeoutError:
+        raise _ActionError(
+            None, f"{pattern!r} took longer than {REGEX_TIMEOUT} s on a name"
+        ) from None
     return None if found is None else dict(found.groupdict())
 
 

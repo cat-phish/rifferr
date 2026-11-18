@@ -8,8 +8,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from rifferr.appdb import AppDB
+from rifferr.beets_config import inspect_config
 from rifferr.core.profile import Profile, ProfileError, ProfileLoadError
 from rifferr.core.workflow import (
+    Calls,
     SafetyReport,
     ValidationError,
     Workflow,
@@ -19,9 +21,16 @@ from rifferr.core.workflow import (
     validate,
 )
 from rifferr.engine import StepTypeRegistry
-from rifferr.profile_store import app_db_path, config_root, load_profile
+from rifferr.profile_store import (
+    WORKFLOWS_DIR,
+    app_db_path,
+    config_root,
+    load_profile,
+    profile_dir,
+)
 from rifferr.steps.registry import load_step_types
 from rifferr.trust import WorkflowFileError, read_workflow_file
+from rifferr.workflow_calls import called_trust, read_calls
 
 EXIT_OK, EXIT_INVALID, EXIT_USAGE = 0, 1, 2
 
@@ -34,9 +43,19 @@ def add_parsers(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> Non
     v.set_defaults(func=cmd_validate)
     t = sub.add_parser("trust", help="trust a workflow file's exact content")
     t.add_argument("file", type=Path)
-    t.add_argument("--profile", help="validate against this profile first")
+    t.add_argument(
+        "--profile",
+        help="validate against this profile and trust it there only (without it: every profile)",
+    )
     t.add_argument("--yes", action="store_true", help="don't ask for confirmation")
     t.set_defaults(func=cmd_trust)
+    c = sub.add_parser(
+        "trust-config",
+        help="trust a profile's beets config that runs code (pluginpath, inline, hook)",
+    )
+    c.add_argument("profile")
+    c.add_argument("--yes", action="store_true", help="don't ask for confirmation")
+    c.set_defaults(func=cmd_trust_config)
 
 
 @dataclass
@@ -46,10 +65,21 @@ class Checked:
     sha256: str
     workflow: Workflow | None
     errors: list[ValidationError]
+    calls: Calls | None = None
+    folder: Path | None = None
+    """Where called files are read from: the profile's workflows/ folder, else the file's."""
+
+    def where(self, e: ValidationError) -> Path:
+        """The file an error is in: the workflow, or a file it calls."""
+        if self.folder is not None and self.calls is not None and e.source in self.calls.files:
+            return self.folder / e.source
+        return self.path
 
 
 def check_file(path: Path, registry: StepTypeRegistry, profile: Profile | None) -> Checked:
-    """Read once, validate those bytes (no backend capabilities: never loads beets)."""
+    """Read once, validate those bytes (no backend capabilities: never loads beets).
+    Called workflows are read from the profile's workflows/ folder, or without a
+    profile from the file's own folder (S-SUBWORKFLOW)."""
     try:
         text, sha = read_workflow_file(path)
     except (OSError, WorkflowFileError) as exc:
@@ -60,7 +90,14 @@ def check_file(path: Path, registry: StepTypeRegistry, profile: Profile | None) 
     except WorkflowLoadError as exc:
         return Checked(path, text, sha, None, list(exc.errors))
     profile_vars = dict(profile.vars) if profile is not None else None
-    return Checked(path, text, sha, wf, validate(wf, registry, None, profile_vars, doc=doc))
+    folder = (
+        profile_dir(config_root(), profile.name) / WORKFLOWS_DIR
+        if profile is not None
+        else path.parent
+    )
+    calls = read_calls(folder, wf, doc, path)
+    errors = validate(wf, registry, None, profile_vars, doc=doc, calls=calls)
+    return Checked(path, text, sha, wf, errors, calls, folder)
 
 
 def format_error(path: Path, e: ValidationError) -> str:
@@ -73,7 +110,8 @@ def print_safety(path: Path, report: SafetyReport) -> None:
     if not report.findings:
         print(f"{path}: safety: no findings")
     for f in report.findings:
-        print(f"{path}: safety: [{f.step_id}] {f.kind}: {f.detail}")
+        origin = f" ({f.workflow})" if f.workflow else ""
+        print(f"{path}: safety: [{f.step_id}]{origin} {f.kind}: {f.detail}")
 
 
 def _registry() -> StepTypeRegistry:
@@ -104,13 +142,13 @@ def cmd_validate(args: argparse.Namespace) -> int:
     for path in args.files:
         c = check_file(path, registry, profile)
         for e in c.errors:
-            print(format_error(path, e))
+            print(format_error(c.where(e), e))
         if c.errors:
             status = EXIT_INVALID
         else:
             print(f"{path}: ok")
         if args.safety and c.workflow is not None:
-            print_safety(path, safety_report(c.workflow))
+            print_safety(path, safety_report(c.workflow, c.calls))
     return status
 
 
@@ -122,11 +160,70 @@ def cmd_trust(args: argparse.Namespace) -> int:
     c = check_file(path, _registry(), profile)
     if c.workflow is None or (profile is not None and c.errors):
         for e in c.errors:
-            print(format_error(path, e), file=sys.stderr)
+            print(format_error(c.where(e), e), file=sys.stderr)
         print("rifferr trust: not trusting an invalid workflow", file=sys.stderr)
         return EXIT_INVALID
+    db = AppDB(app_db_path())
+    try:
+        return _trust(args, c, db, profile.name if profile is not None else "")
+    finally:
+        db.close()
+
+
+def cmd_trust_config(args: argparse.Namespace) -> int:
+    """SEC-62: trust the exact beets config content (config + include files) in one profile."""
+    profile = _profile(args.profile, "trust-config")
+    if isinstance(profile, int):
+        return profile
+    assert profile is not None
+    try:
+        beetsdir = profile.require_beetsdir()
+    except ProfileError as exc:
+        print(f"rifferr trust-config: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+    report = inspect_config(Path(beetsdir))
+    print(f"beets config in {beetsdir}: sha256 {report.sha256}")
+    for f in report.files:
+        print(f"  file: {f}")
+    if not report.needs_trust:
+        print("it runs no code (no pluginpath, inline or hook): nothing to trust")
+        return EXIT_OK
+    for line in report.code_keys:
+        print(f"  runs code: {line}")
+    print(f"will be trusted in profile '{profile.name}'")
+    if not args.yes:
+        if not sys.stdin.isatty():
+            print(
+                "rifferr trust-config: no terminal to confirm on; pass --yes to trust",
+                file=sys.stderr,
+            )
+            return EXIT_USAGE
+        answer = input("Trust exactly this config? beets will then run the code it names. [y/N] ")
+        if answer.strip().lower() not in ("y", "yes"):
+            print("not trusted")
+            return EXIT_INVALID
+    db = AppDB(app_db_path())
+    try:
+        db.trust(report.sha256, str(Path(beetsdir) / "config.yaml"), "cli", profile.name)
+    finally:
+        db.close()
+    print("trusted")
+    return EXIT_OK
+
+
+def _trust(args: argparse.Namespace, c: Checked, db: AppDB, profile: str) -> int:
+    """Trust the file and every untrusted file it calls, each by its own hash
+    (SUBWORKFLOW-13), in ``profile``, or in every profile when it is "" (SEC-63)."""
+    path = c.path
+    assert c.workflow is not None
+    untrusted = [f for f in called_trust(db, c.calls, profile) if not f.trusted]
     print(f"{path}: sha256 {c.sha256}")
-    print_safety(path, safety_report(c.workflow))
+    folder = c.folder or path.parent
+    for f in untrusted:
+        print(f"{folder / f.path}: called, not trusted: sha256 {f.sha256}")
+    print_safety(path, safety_report(c.workflow, c.calls))
+    where = f"in profile '{profile}'" if profile else "in every profile (no --profile given)"
+    print(f"{path}: will be trusted {where}")
     if not args.yes:
         if not sys.stdin.isatty():
             print(
@@ -134,14 +231,16 @@ def cmd_trust(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return EXIT_USAGE
-        answer = input("Trust exactly this content? Steps like shell may then run it. [y/N] ")
+        what = (
+            "this content" if not untrusted else f"this content and {len(untrusted)} called file(s)"
+        )
+        answer = input(f"Trust exactly {what}? Steps like shell may then run it. [y/N] ")
         if answer.strip().lower() not in ("y", "yes"):
             print("not trusted")
             return EXIT_INVALID
-    db = AppDB(app_db_path())
-    try:
-        db.trust(c.sha256, str(path.resolve()), "cli")  # the bytes shown above (CLI-12)
-    finally:
-        db.close()
+    db.trust(c.sha256, str(path.resolve()), "cli", profile)  # the bytes shown above (CLI-12)
     print(f"trusted {path}")
+    for f in untrusted:
+        db.trust(f.sha256, str((folder / f.path).resolve()), "cli", profile)
+        print(f"trusted {folder / f.path}")
     return EXIT_OK

@@ -117,7 +117,9 @@ def test_CLI_2_stale_server_file_is_ignored_and_replaced(tmp_path: Path) -> None
 
 def test_CLI_3_token_printed_only_on_a_terminal() -> None:
     s = ApiSettings(port=8765, token="T0KEN")
-    assert any("T0KEN" in line for line in startup_lines(s, tty=True, ui_port=8765))
+    tty = startup_lines(s, tty=True, ui_port=8765)
+    assert any("/auth/exchange?token=" in line for line in tty)
+    assert not any("T0KEN" in line for line in tty)  # a one-time code instead (SEC-43)
     lines = startup_lines(s, tty=False, ui_port=8765)
     assert not any("T0KEN" in line for line in lines)
     assert any(str(token_file_path(8765)) in line for line in lines)
@@ -136,7 +138,8 @@ def test_CLI_3_serve_output_has_no_token_and_browser_gets_it(tmp_path: Path) -> 
         time.sleep(0.05)
     token = token_file_path(8765).read_text()
     assert s.stop() == 0
-    assert seen.read_text() == exchange_url(8765, token)
+    assert seen.read_text().startswith(exchange_url(8765, ""))
+    assert token not in seen.read_text()  # a one-time code, not the token (SEC-43)
     assert token not in s.stdout.decode() + s.stderr.decode()
     assert "Rifferr is running at http://127.0.0.1:8765/" in s.stdout.decode()
 
@@ -155,6 +158,25 @@ def test_CLI_4_access_log_redacts_the_token(server: Server) -> None:
     assert "/auth/exchange?token=[redacted]" in logs
     assert token not in logs
     assert "not-the-token" not in logs
+
+
+def test_SEC_43_sign_in_prints_a_one_time_link(
+    server: Server, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert cli("sign-in") == 0
+    link = capsys.readouterr().out.strip()
+    token = token_file_path(8765).read_text()
+    assert link.startswith(exchange_url(8765, ""))
+    assert token not in link
+    client = connect()
+    try:
+        path = link.removeprefix("http://127.0.0.1:8765")
+        first = client.http.get(path, follow_redirects=False, headers={"authorization": ""})
+        assert first.status_code == 303
+        assert token not in first.headers["set-cookie"]
+        assert client.http.get(path, follow_redirects=False).status_code == 403
+    finally:
+        client.close()
 
 
 def test_CLI_4_filter_redacts_args_and_message() -> None:

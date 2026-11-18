@@ -7,13 +7,21 @@ the gate's albums for ``on_reject: undo``.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
 from pydantic import JsonValue
 
-from rifferr.appdb import AppChangeSets, AppDB, AppImportDecisions, AppLanes, AppReviewGates
+from rifferr.appdb import (
+    AppChangeSets,
+    AppCleanupDecisions,
+    AppCoverReviews,
+    AppDB,
+    AppImportDecisions,
+    AppLanes,
+    AppReviewGates,
+)
 from rifferr.core.review import REJECTED_AT_REVIEW, ReviewGate
 from rifferr.engine.lanes import FINAL_LANE_STATES, lane_json
 
@@ -34,7 +42,9 @@ def gate_albums(gate: ReviewGate) -> list[str]:
     return [a.target.id for a in gate.albums]
 
 
-def reject_gate_lanes(db: AppDB, gate: ReviewGate, emit: EmitRun) -> RejectOutcome:
+def reject_gate_lanes(
+    db: AppDB, gate: ReviewGate, emit: EmitRun, *, albums: Sequence[str] | None = None
+) -> RejectOutcome:
     """End the gate's albums' lanes ``rejected`` and settle the run (LANES-11).
 
     Their proposed ChangeSets become rejected, and gates only they waited for are
@@ -52,7 +62,8 @@ def reject_gate_lanes(db: AppDB, gate: ReviewGate, emit: EmitRun) -> RejectOutco
     lanes = store.load(run_id)
     if not lanes:
         return RejectOutcome("finished" if _finish_whole(db, run_id, emit) else "not_waiting", [])
-    keys = [k for k in gate_albums(gate) if k in lanes and not lanes[k].final]
+    chosen = gate_albums(gate) if albums is None else list(albums)  # DASHBOARD-11
+    keys = [k for k in chosen if k in lanes and not lanes[k].final]
     rejected = store.set_state(run_id, keys, "rejected", only_from=("waiting", "active"))
     changesets = AppChangeSets(db)
     gates = AppReviewGates(db)
@@ -108,6 +119,8 @@ def _close_leftovers(db: AppDB, run_id: str, emit: EmitRun) -> None:
         emit("changeset.rejected", stored.changeset.step_id, {"changeset_id": stored.changeset.id})
     AppReviewGates(db).cancel_for_run(run_id)
     AppImportDecisions(db).cancel_for_run(run_id)
+    AppCleanupDecisions(db).cancel_for_run(run_id)
+    AppCoverReviews(db).cancel_for_run(run_id)
 
 
 def _finish_whole(db: AppDB, run_id: str, emit: EmitRun) -> bool:

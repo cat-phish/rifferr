@@ -80,6 +80,12 @@ def test_SECURITY_11_lists_commands_tools_secrets_and_scripts() -> None:
             "local_script",
             "./scripts/tidy.sh: trust covers the workflow text only, not this script's content",
         ),
+        (
+            "clean",
+            "tag_field",  # SEC-23: a tag value there can read as an option
+            "argument '$path' starts with a tag field and could be read as an option; "
+            "put '--' before it",
+        ),
         ("sh", "command", "sudo chown me $RIFFERR_ALBUM_DIR && /usr/bin/rm -rf x"),
         ("sh", "shell_string", "runs through /bin/sh -c"),
         ("sh", "destructive", "sudo"),

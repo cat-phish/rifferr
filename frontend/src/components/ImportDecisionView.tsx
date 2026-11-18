@@ -15,6 +15,7 @@ import { useState } from "react";
 import { api, ok } from "../api/client";
 import type { ImportCandidate, ImportDecision } from "../api/types";
 import { BEETS_DOCS } from "../lib/beetsDocs";
+import { webUrl } from "../lib/webUrl";
 import { time } from "../lib/format";
 
 type Action = "candidate" | "asis" | "skip" | "keep" | "remove" | "merge";
@@ -305,8 +306,13 @@ function Candidates({
                       .filter((v) => v !== null && v !== undefined && v !== "")
                       .join(" · ")}
                   </Text>
-                  {c.url && (
-                    <Anchor href={c.url} target="_blank" rel="noreferrer" size="xs">
+                  {webUrl(c.url) && (
+                    <Anchor
+                      href={webUrl(c.url) ?? undefined}
+                      target="_blank"
+                      rel="noreferrer"
+                      size="xs"
+                    >
                       open on {c.source}
                     </Anchor>
                   )}

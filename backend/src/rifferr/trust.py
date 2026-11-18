@@ -8,6 +8,7 @@ encodes back to exactly the hashed bytes.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Callable
 from pathlib import Path
 
 from rifferr.appdb import AppDB
@@ -32,8 +33,23 @@ def read_workflow_file(path: Path) -> tuple[str, str]:
     return text, workflow_hash(data)
 
 
-def trust_file(db: AppDB, path: Path, trusted_by: str) -> str:
-    """Trust the current content of ``path``. Only for an explicit user action."""
+def trust_file(db: AppDB, path: Path, trusted_by: str, profile: str | None = None) -> str:
+    """Trust the current content of ``path`` in ``profile`` (``None``: every profile).
+    Only for an explicit user action."""
     _, sha = read_workflow_file(path)
-    db.trust(sha, str(path), trusted_by)
+    db.trust(sha, str(path), trusted_by, profile)
     return sha
+
+
+def config_trust_checker(db_path: Path, profile: str) -> Callable[[str], bool]:
+    """SEC-62: ``sha256 -> trusted`` for a profile's beets config. Opens the app DB per
+    call, so a worker needs no open handle at start-up."""
+
+    def check(sha256: str) -> bool:
+        db = AppDB(db_path)
+        try:
+            return db.is_trusted(sha256, profile)
+        finally:
+            db.close()
+
+    return check

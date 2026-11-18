@@ -13,7 +13,8 @@
           },
           "minItems": 1,
           "title": "Values",
-          "type": "array"
+          "type": "array",
+          "x-rifferr-template": true
         }
       },
       "required": [
@@ -709,7 +710,8 @@
           },
           "minProperties": 1,
           "title": "Set",
-          "type": "object"
+          "type": "object",
+          "x-rifferr-template": true
         },
         "when": {
           "anyOf": [

@@ -14,7 +14,12 @@ _UNITS: Final = {"s": 1, "m": 60, "h": 3600}
 
 TriggerKind = Literal["manual", "watch", "schedule", "webhook"]
 SkipReason = Literal[
-    "in_progress", "already_run", "previously_failed", "previous_still_active", "loose_files"
+    "in_progress",
+    "already_run",
+    "previously_failed",
+    "previous_still_active",
+    "loose_files",
+    "undone",
 ]
 
 #: Run states that mean "this input is being handled" (TRIGGERS-19).
@@ -72,6 +77,9 @@ class DedupRecord:
     run_id: str
     run_state: str | None
     """The run's current state; ``None`` when the run record no longer exists."""
+    undone: bool = False
+    """The run's import was undone (F-DASHBOARD DASHBOARD-9): seen, never re-imported
+    by a trigger on its own."""
 
 
 def dedup_skip(
@@ -81,6 +89,8 @@ def dedup_skip(
     ``None`` if it may (TRIGGERS-19, -20)."""
     if force or current is None or record is None or record.fingerprint != current:
         return None
+    if record.undone:
+        return "undone"
     if record.run_state in ACTIVE_STATES:
         return "in_progress"
     if record.run_state == "succeeded":
@@ -88,6 +98,44 @@ def dedup_skip(
     if record.run_state in FAILED_STATES:
         return "previously_failed"
     return None
+
+
+InboxState = Literal[
+    "settling",
+    "waiting",
+    "running",
+    "waiting_review",
+    "imported",
+    "failed",
+    "changed",
+    "undone",
+    "outside",
+]
+
+
+def inbox_state(record: DedupRecord | None, current: str | None, *, settling: bool) -> InboxState:
+    """What the dashboard shows for one watched input (F-DASHBOARD DASHBOARD-1).
+
+    An active run wins (an import may move the files while it runs); then a change since
+    the recorded fingerprint, then the record's own outcome.
+    """
+    if settling:
+        return "settling"
+    if record is None or record.run_state is None:
+        return "waiting"
+    if record.run_state == "queued":
+        return "waiting"
+    if record.run_state == "running":
+        return "running"
+    if record.run_state == "waiting_review":
+        return "waiting_review"
+    if current != record.fingerprint:
+        return "changed"
+    if record.undone:
+        return "undone"
+    if record.run_state in FAILED_STATES:
+        return "failed"
+    return "imported"
 
 
 @dataclass
@@ -112,6 +160,10 @@ class SettleTracker:
 
     def pending(self) -> Sequence[str]:
         return sorted(self._last)
+
+    def last(self, name: str) -> float | None:
+        """When ``name`` last changed, while it is pending."""
+        return self._last.get(name)
 
     def due(self, now: float) -> list[str]:
         ready = sorted(n for n, t in self._last.items() if now - t >= self.settle)

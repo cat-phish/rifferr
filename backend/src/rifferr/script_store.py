@@ -13,7 +13,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from rifferr.profile_store import SCRIPTS_DIR
+from rifferr.profile_store import SCRIPTS_DIR, atomic_write
 from rifferr.tagscript.models import script_path_problem
 
 SUFFIXES = (".yaml", ".yml")
@@ -120,7 +120,5 @@ def save_script(profile_dir: Path, name: str, text: str, expected: str | None) -
         base.mkdir(parents=True, exist_ok=True)
         path = base / f"{name}.yaml"
     data = text.encode("utf-8")
-    tmp = path.with_name(f".{path.name}.tmp")
-    tmp.write_bytes(data)
-    os.replace(tmp, path)
+    atomic_write(path, data)
     return ScriptFile(name, path, text, sha256(data))

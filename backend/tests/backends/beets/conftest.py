@@ -49,10 +49,11 @@ class BeetsEnv:
         path.write_text(text + extra)
         return path
 
-    def backend(self, extra: str = "") -> BeetsBackend:
+    def backend(self, extra: str = "", *, art: bool = False) -> BeetsBackend:
         self.write_config(extra)
-        config.load(self.beetsdir)
-        return BeetsBackend(self.beetsdir.resolve())
+        config.load(self.beetsdir, lambda _sha: True)  # fixture plugins use pluginpath (SEC-62)
+        store = self.root / "art" if art else None
+        return BeetsBackend(self.beetsdir.resolve(), art_store=store)
 
     def inbox_album(self, fixture: str = "album-flac", name: str | None = None) -> Path:
         dest = self.inbox / (name or fixture)

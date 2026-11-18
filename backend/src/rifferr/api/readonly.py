@@ -29,6 +29,7 @@ STATUS: dict[str, int] = {
     "script_not_found": 404,
     "bad_request": 400,
     "bad_query": 400,
+    "not_found": 404,
 }
 
 

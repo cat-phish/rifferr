@@ -37,10 +37,10 @@ A row gets a link once its spec file exists. Build order: [docs/roadmap.md](../d
 | [S-BEETS-COMMAND](steps/S-BEETS-COMMAND.md) | `beets.command` step | 3 | M1 | Implemented |
 | [S-TAGSCRIPT](steps/S-TAGSCRIPT.md) | `tags.script` step and action set | 4 | M1 | Approved |
 | [S-REVIEW](steps/S-REVIEW.md) | `review` gate step | 3 | M1 | Approved |
-| S-NOTIFY | `notify` step | 2a, 3 | M2 | Planned |
-| S-FILES-CLEANUP | `files.cleanup` step | 3 | M2 | Planned |
-| S-SUBWORKFLOW | `workflow` (call another workflow) step | 3 | M2 | Planned |
-| S-COVERS-SEARCH | `covers.search` step and provider protocol | 6 | M3 | Planned |
+| [S-NOTIFY](steps/S-NOTIFY.md) | `notify` step and notification rules | 2a, 3 | M2 | Implemented |
+| [S-FILES-CLEANUP](steps/S-FILES-CLEANUP.md) | `files.cleanup` step | 3 | M2 | Implemented |
+| [S-SUBWORKFLOW](steps/S-SUBWORKFLOW.md) | `workflow` (call another workflow) step | 3 | M2 | Implemented |
+| S-COVERS-SEARCH | `covers.search` step and provider protocol | 6 | M3 | Implemented |
 | S-AI-TAG | `ai.tag` step | 7 | M4 | Planned |
 | [F-DEV-TOOLING](features/F-DEV-TOOLING.md) | Project skeleton, checks, CI, fixtures | 9, 10 | M0 | Implemented |
 | [F-SECURITY](features/F-SECURITY.md) | Host/Origin checks, local token, remote auth, workflow trust | 8 | M0 | Implemented |
@@ -53,7 +53,8 @@ A row gets a link once its spec file exists. Build order: [docs/roadmap.md](../d
 | [F-TRIGGERS](features/F-TRIGGERS.md) | watch, schedule, webhook triggers; dedup; concurrency | 2a | M2 | Implemented |
 | [F-IMPORT-UI](features/F-IMPORT-UI.md) | Import decisions (auto/interactive beets.import) in the review queue | 2a, 3, 8 | M2 | Implemented |
 | [F-READ-ORDER](features/F-READ-ORDER.md) | Request order for superseded read-only queries (B-054) | 8 | M2 | Implemented |
-| F-COVER-PICKER | Cover search UI | 6 | M3 | Planned |
+| [F-DASHBOARD](features/F-DASHBOARD.md) | Queue dashboard: inbox, runs in progress, review, recent imports with undo | 2a | M2 | Implemented |
+| F-COVER-PICKER | Cover search UI | 6 | M3 | Implemented |
 | F-AI-CHAT | Chat panel and tools | 7 | M4 | Planned |
 | F-PACKAGING | PyPI and Docker packaging | 8, 10 | M5 | Planned |
 

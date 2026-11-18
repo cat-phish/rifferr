@@ -1,0 +1,21 @@
+# Workflow for the dashboard e2e test (F-DASHBOARD DASHBOARD-17): a folder dropped into
+# the watched folder is imported (copied), then waits at a review gate. global-setup.ts
+# fills in the folder's path.
+name: dashboard-flow
+description: Import each new folder, then wait for review.
+on:
+  watch:
+    path: DASHBOARD_FOLDER
+    settle: 3s
+steps:
+  - id: import
+    uses: beets.import
+    with:
+      path: "{{ run.input }}"
+      set: { album: Dashboard Sessions }
+      options: { duplicate_action: keep }
+  - id: check
+    uses: review
+    with:
+      message: Check the import
+      show: [album]

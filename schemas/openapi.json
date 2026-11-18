@@ -21,6 +21,63 @@
         "title": "Accepted",
         "type": "object"
       },
+      "AlbumCoverBody": {
+        "additionalProperties": false,
+        "description": "Set an album's cover outside a run (COVER-PICKER-14). ``old_sha256`` is the art the\nuser saw; a different current one comes back as a conflict.",
+        "properties": {
+          "candidate_id": {
+            "title": "Candidate Id",
+            "type": "string"
+          },
+          "old_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Old Sha256"
+          }
+        },
+        "required": [
+          "candidate_id"
+        ],
+        "title": "AlbumCoverBody",
+        "type": "object"
+      },
+      "AlbumCoverQueued": {
+        "additionalProperties": false,
+        "properties": {
+          "changeset_id": {
+            "title": "Changeset Id",
+            "type": "string"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "queued_behind": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Queued Behind",
+            "type": "array"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "changeset_id",
+          "job_id",
+          "sha256"
+        ],
+        "title": "AlbumCoverQueued",
+        "type": "object"
+      },
       "AlbumSnapshot": {
         "additionalProperties": false,
         "description": "An album with its items in track order (disc, then track).",
@@ -83,6 +140,79 @@
           "fields"
         ],
         "title": "AlbumSnapshot",
+        "type": "object"
+      },
+      "BeetsConfigStatus": {
+        "additionalProperties": false,
+        "description": "SEC-62: what a profile's beets config runs, and whether the user trusted it.",
+        "properties": {
+          "code_keys": {
+            "description": "Keys that run code, e.g. `pluginpath`",
+            "items": {
+              "type": "string"
+            },
+            "title": "Code Keys",
+            "type": "array"
+          },
+          "files": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "needs_trust": {
+            "title": "Needs Trust",
+            "type": "boolean"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "trusted": {
+            "title": "Trusted",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "sha256",
+          "files",
+          "code_keys",
+          "needs_trust",
+          "trusted"
+        ],
+        "title": "BeetsConfigStatus",
+        "type": "object"
+      },
+      "CalledWorkflow": {
+        "additionalProperties": false,
+        "description": "A workflow file a workflow calls (S-SUBWORKFLOW), trusted on its own (SUBWORKFLOW-13).",
+        "properties": {
+          "path": {
+            "description": "Relative to the profile's workflows/ folder",
+            "title": "Path",
+            "type": "string"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "trusted": {
+            "title": "Trusted",
+            "type": "boolean"
+          },
+          "yaml": {
+            "title": "Yaml",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "sha256",
+          "trusted",
+          "yaml"
+        ],
+        "title": "CalledWorkflow",
         "type": "object"
       },
       "ChangeProblem": {
@@ -328,6 +458,813 @@
           "targets"
         ],
         "title": "CheckResult",
+        "type": "object"
+      },
+      "CleanupDecided": {
+        "additionalProperties": false,
+        "description": "``job_id`` is the worker job that cleans the folder (``delete``); ``None`` for\n``keep``, which needs no job.",
+        "properties": {
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          }
+        },
+        "title": "CleanupDecided",
+        "type": "object"
+      },
+      "CleanupDecision": {
+        "description": "A listing waiting for Delete or Keep in the review queue (FILES-CLEANUP-14).",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "deadline": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "decided_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided By"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/CleanupEntry"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "on_timeout": {
+            "default": "keep",
+            "enum": [
+              "delete",
+              "keep"
+            ],
+            "title": "On Timeout",
+            "type": "string"
+          },
+          "options": {
+            "$ref": "#/components/schemas/CleanupOptions"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "profile": {
+            "title": "Profile",
+            "type": "string"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "state": {
+            "default": "pending",
+            "enum": [
+              "pending",
+              "deleted",
+              "kept",
+              "cancelled"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "step_id": {
+            "title": "Step Id",
+            "type": "string"
+          },
+          "totals": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Totals",
+            "type": "object"
+          },
+          "truncated": {
+            "default": 0,
+            "title": "Truncated",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "profile",
+          "run_id",
+          "step_id",
+          "path",
+          "entries",
+          "options",
+          "created_at"
+        ],
+        "title": "CleanupDecision",
+        "type": "object"
+      },
+      "CleanupDecisionBody": {
+        "additionalProperties": false,
+        "description": "Answer a cleanup decision (FILES-CLEANUP-14): ``delete`` what was listed for\ndeletion, or ``keep`` everything.",
+        "properties": {
+          "decision": {
+            "enum": [
+              "delete",
+              "keep"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "title": "CleanupDecisionBody",
+        "type": "object"
+      },
+      "CleanupEntry": {
+        "properties": {
+          "cls": {
+            "enum": [
+              "delete",
+              "keep",
+              "in_library",
+              "busy",
+              "left",
+              "empty"
+            ],
+            "title": "Cls",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "file",
+              "dir",
+              "link"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "mtime_ns": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mtime Ns"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size"
+          }
+        },
+        "required": [
+          "path",
+          "kind",
+          "cls"
+        ],
+        "title": "CleanupEntry",
+        "type": "object"
+      },
+      "CleanupOptions": {
+        "description": "What the worker needs to clean again after the decision (FILES-CLEANUP-14).",
+        "properties": {
+          "allow_audio": {
+            "default": false,
+            "title": "Allow Audio",
+            "type": "boolean"
+          },
+          "delete": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Delete",
+            "type": "array"
+          },
+          "empty_dirs": {
+            "default": true,
+            "title": "Empty Dirs",
+            "type": "boolean"
+          },
+          "keep": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Keep",
+            "type": "array"
+          },
+          "remove_root": {
+            "default": false,
+            "title": "Remove Root",
+            "type": "boolean"
+          },
+          "trash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trash"
+          }
+        },
+        "title": "CleanupOptions",
+        "type": "object"
+      },
+      "CoverDecided": {
+        "additionalProperties": false,
+        "description": "``job_id`` is the worker job that sets the cover (``choose``); ``None`` otherwise.",
+        "properties": {
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sha256"
+          }
+        },
+        "title": "CoverDecided",
+        "type": "object"
+      },
+      "CoverDecisionBody": {
+        "additionalProperties": false,
+        "description": "Answer a cover review (COVERS-SEARCH-21). ``choose`` needs ``candidate_id``: one\nof the review's candidates, or one from a search started for it.",
+        "properties": {
+          "candidate_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Id"
+          },
+          "decision": {
+            "enum": [
+              "choose",
+              "skip",
+              "fail"
+            ],
+            "title": "Decision",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "title": "CoverDecisionBody",
+        "type": "object"
+      },
+      "CoverProviderOrder": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "weight": {
+            "maximum": 10.0,
+            "minimum": 0.0,
+            "title": "Weight",
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "enabled",
+          "weight"
+        ],
+        "title": "CoverProviderOrder",
+        "type": "object"
+      },
+      "CoverProvidersBody": {
+        "additionalProperties": false,
+        "properties": {
+          "profile_hash": {
+            "title": "Profile Hash",
+            "type": "string"
+          },
+          "providers": {
+            "description": "In the new order",
+            "items": {
+              "$ref": "#/components/schemas/CoverProviderOrder"
+            },
+            "title": "Providers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "providers",
+          "profile_hash"
+        ],
+        "title": "CoverProvidersBody",
+        "type": "object"
+      },
+      "CoverProvidersView": {
+        "additionalProperties": false,
+        "description": "The profile's cover providers as the picker edits them (COVER-PICKER-9, -10).",
+        "properties": {
+          "profile_hash": {
+            "description": "sha256 of profile.yaml as read",
+            "title": "Profile Hash",
+            "type": "string"
+          },
+          "providers": {
+            "description": "In the profile's order",
+            "items": {
+              "$ref": "#/components/schemas/CoverProviderOrder"
+            },
+            "title": "Providers",
+            "type": "array"
+          },
+          "registered": {
+            "description": "Every installed cover provider",
+            "items": {
+              "type": "string"
+            },
+            "title": "Registered",
+            "type": "array"
+          }
+        },
+        "required": [
+          "providers",
+          "registered",
+          "profile_hash"
+        ],
+        "title": "CoverProvidersView",
+        "type": "object"
+      },
+      "CoverQuery": {
+        "additionalProperties": false,
+        "description": "What to look for (COVERS-SEARCH-2).",
+        "properties": {
+          "album": {
+            "default": "",
+            "title": "Album",
+            "type": "string"
+          },
+          "artist": {
+            "default": "",
+            "title": "Artist",
+            "type": "string"
+          },
+          "barcode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Barcode"
+          },
+          "catalognum": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Catalognum"
+          },
+          "folder": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Folder"
+          },
+          "mb_albumid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mb Albumid"
+          },
+          "mb_releasegroupid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mb Releasegroupid"
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year"
+          }
+        },
+        "title": "CoverQuery",
+        "type": "object"
+      },
+      "CoverQueryAnswer": {
+        "additionalProperties": false,
+        "description": "An album's cover query from the default templates (COVER-PICKER-2). ``query.folder``\nis left out: the server looks it up itself.",
+        "properties": {
+          "art_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Art Sha256"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "query": {
+            "$ref": "#/components/schemas/CoverQuery"
+          }
+        },
+        "required": [
+          "query",
+          "label"
+        ],
+        "title": "CoverQueryAnswer",
+        "type": "object"
+      },
+      "CoverReview": {
+        "additionalProperties": false,
+        "description": "An album waiting for a person to pick its cover (COVERS-SEARCH-14).",
+        "properties": {
+          "album_id": {
+            "title": "Album Id",
+            "type": "string"
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/RankedCandidate"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "chosen": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The chosen image's sha256",
+            "title": "Chosen"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "decided_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided By"
+          },
+          "dropped": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            "title": "Dropped",
+            "type": "object"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "old_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Old Sha256"
+          },
+          "profile": {
+            "title": "Profile",
+            "type": "string"
+          },
+          "query": {
+            "$ref": "#/components/schemas/CoverQuery"
+          },
+          "reason": {
+            "default": "",
+            "description": "Why it waits, e.g. no candidate scored enough",
+            "title": "Reason",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "state": {
+            "default": "pending",
+            "enum": [
+              "pending",
+              "chosen",
+              "skipped",
+              "failed",
+              "cancelled"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "step_id": {
+            "title": "Step Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "profile",
+          "run_id",
+          "step_id",
+          "album_id",
+          "label",
+          "query",
+          "candidates",
+          "created_at"
+        ],
+        "title": "CoverReview",
+        "type": "object"
+      },
+      "CoverSearchBody": {
+        "additionalProperties": false,
+        "description": "Start a cover search (COVERS-SEARCH-19). ``query.folder`` is ignored: the\n``local`` provider only looks in the folder of the album under ``review_id``.",
+        "properties": {
+          "album_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The library album it is for, when there is no review (COVER-PICKER-14)",
+            "title": "Album Id"
+          },
+          "profile": {
+            "title": "Profile",
+            "type": "string"
+          },
+          "providers": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Default: the profile's",
+            "title": "Providers"
+          },
+          "query": {
+            "$ref": "#/components/schemas/CoverQuery"
+          },
+          "refresh": {
+            "default": false,
+            "description": "Ignore cached results",
+            "title": "Refresh",
+            "type": "boolean"
+          },
+          "review_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The cover review it is for",
+            "title": "Review Id"
+          }
+        },
+        "required": [
+          "profile",
+          "query"
+        ],
+        "title": "CoverSearchBody",
+        "type": "object"
+      },
+      "CoverSearchStarted": {
+        "additionalProperties": false,
+        "properties": {
+          "search_id": {
+            "title": "Search Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "search_id"
+        ],
+        "title": "CoverSearchStarted",
+        "type": "object"
+      },
+      "CoverUploadBody": {
+        "additionalProperties": false,
+        "description": "An image the user added, base64-encoded (COVER-PICKER-17). The profile is the\n``profile`` query parameter, so the size cap is known before the body is read.",
+        "properties": {
+          "data": {
+            "description": "The image file, base64",
+            "title": "Data",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "CoverUploadBody",
+        "type": "object"
+      },
+      "CoverUploaded": {
+        "additionalProperties": false,
+        "properties": {
+          "candidate": {
+            "$ref": "#/components/schemas/RankedCandidate"
+          }
+        },
+        "required": [
+          "candidate"
+        ],
+        "title": "CoverUploaded",
         "type": "object"
       },
       "CurrentTarget": {
@@ -805,6 +1742,22 @@
       "GateDecisionBody": {
         "additionalProperties": false,
         "properties": {
+          "albums": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Decide only these albums' lanes; the others keep waiting (DASHBOARD-11)",
+            "title": "Albums"
+          },
           "decision": {
             "enum": [
               "continue",
@@ -1380,6 +2333,204 @@
         "title": "ImportLookupBody",
         "type": "object"
       },
+      "ImportUndoBody": {
+        "additionalProperties": false,
+        "properties": {
+          "albums": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Album ids; all of the run's when absent",
+            "title": "Albums"
+          }
+        },
+        "title": "ImportUndoBody",
+        "type": "object"
+      },
+      "ImportedAlbum": {
+        "additionalProperties": false,
+        "properties": {
+          "deletes_files": {
+            "description": "Whether undo deletes its files (DASHBOARD-18)",
+            "title": "Deletes Files",
+            "type": "boolean"
+          },
+          "files_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The album's folder",
+            "title": "Files At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "items": {
+            "title": "Items",
+            "type": "integer"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why it can't be undone now",
+            "title": "Reason"
+          },
+          "undoable": {
+            "title": "Undoable",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "items",
+          "undoable",
+          "reason",
+          "deletes_files",
+          "files_at"
+        ],
+        "title": "ImportedAlbum",
+        "type": "object"
+      },
+      "InboxEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "changed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Last change, while settling",
+            "title": "Changed At"
+          },
+          "path": {
+            "description": "Relative to the watched folder",
+            "title": "Path",
+            "type": "string"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The input's last run",
+            "title": "Run Id"
+          },
+          "state": {
+            "enum": [
+              "settling",
+              "waiting",
+              "running",
+              "waiting_review",
+              "imported",
+              "failed",
+              "changed",
+              "undone",
+              "outside"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "state",
+          "changed_at",
+          "run_id"
+        ],
+        "title": "InboxEntry",
+        "type": "object"
+      },
+      "InboxFolder": {
+        "additionalProperties": false,
+        "description": "One watch trigger's folder and its inputs (DASHBOARD-1).",
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/InboxEntry"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "folder": {
+            "title": "Folder",
+            "type": "string"
+          },
+          "omitted": {
+            "description": "Inputs left out beyond the listing cap (DASHBOARD-2)",
+            "title": "Omitted",
+            "type": "integer"
+          },
+          "trigger_state": {
+            "enum": [
+              "armed",
+              "disabled",
+              "error"
+            ],
+            "title": "Trigger State",
+            "type": "string"
+          },
+          "workflow": {
+            "title": "Workflow",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workflow",
+          "folder",
+          "trigger_state",
+          "detail",
+          "entries",
+          "omitted"
+        ],
+        "title": "InboxFolder",
+        "type": "object"
+      },
       "ItemSnapshot": {
         "additionalProperties": false,
         "description": "One track. ``id`` is opaque and assigned by the backend.",
@@ -1469,13 +2620,15 @@
             "enum": [
               "changeset",
               "gate",
-              "import"
+              "import",
+              "cleanup",
+              "cover"
             ],
             "title": "Kind",
             "type": "string"
           },
           "ref": {
-            "description": "ChangeSet id, review gate id or import decision id",
+            "description": "ChangeSet id, review gate id, import decision id or cleanup decision id",
             "title": "Ref",
             "type": "string"
           }
@@ -1717,6 +2870,52 @@
           "state"
         ],
         "title": "ManualEdit",
+        "type": "object"
+      },
+      "NotifyTestBody": {
+        "additionalProperties": false,
+        "properties": {
+          "target": {
+            "description": "A target name from the profile's notify.targets",
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target"
+        ],
+        "title": "NotifyTestBody",
+        "type": "object"
+      },
+      "NotifyTestResult": {
+        "additionalProperties": false,
+        "description": "S-NOTIFY NOTIFY-14. ``error`` never contains the target's URL.",
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "sent": {
+            "title": "Sent",
+            "type": "boolean"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target",
+          "sent"
+        ],
+        "title": "NotifyTestResult",
         "type": "object"
       },
       "PreviewError": {
@@ -2182,12 +3381,32 @@
       },
       "QueueItem": {
         "additionalProperties": false,
-        "description": "One thing that waits for a decision (REVIEW-QUEUE-1). ``kind`` says which of\n``changeset`` / ``gate`` / ``import_decision`` is set (IMPORT-UI-7).",
+        "description": "One thing that waits for a decision (REVIEW-QUEUE-1). ``kind`` says which of\n``changeset`` / ``gate`` / ``import_decision`` / ``cleanup_decision`` /\n``cover_review`` is set (IMPORT-UI-7, FILES-CLEANUP-14, COVERS-SEARCH-21).",
         "properties": {
           "changeset": {
             "anyOf": [
               {
                 "$ref": "#/components/schemas/ChangeSet"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cleanup_decision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CleanupDecision"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cover_review": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CoverReview"
               },
               {
                 "type": "null"
@@ -2227,7 +3446,9 @@
             "enum": [
               "changeset",
               "gate",
-              "import"
+              "import",
+              "cleanup",
+              "cover"
             ],
             "title": "Kind",
             "type": "string"
@@ -2292,9 +3513,230 @@
         "title": "QueueItem",
         "type": "object"
       },
+      "RankedCandidate": {
+        "additionalProperties": false,
+        "properties": {
+          "filtered": {
+            "anyOf": [
+              {
+                "enum": [
+                  "small",
+                  "aspect"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the hard filters hide it, or null",
+            "title": "Filtered"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          },
+          "match_confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Match Confidence",
+            "type": "number"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "size_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The size part of the score (COVER-PICKER-8)",
+            "title": "Size Score"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "thumb_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumb Url"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "match_confidence",
+          "score"
+        ],
+        "title": "RankedCandidate",
+        "type": "object"
+      },
+      "RecentImport": {
+        "additionalProperties": false,
+        "description": "A run that imported albums still in the library (DASHBOARD-6).",
+        "properties": {
+          "albums": {
+            "items": {
+              "$ref": "#/components/schemas/ImportedAlbum"
+            },
+            "title": "Albums",
+            "type": "array"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "input": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "queued",
+              "running",
+              "waiting_review",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "workflow": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workflow"
+          }
+        },
+        "required": [
+          "run_id",
+          "workflow",
+          "input",
+          "state",
+          "finished_at",
+          "albums"
+        ],
+        "title": "RecentImport",
+        "type": "object"
+      },
       "ReviewGate": {
         "additionalProperties": false,
         "properties": {
+          "album_decisions": {
+            "additionalProperties": {
+              "enum": [
+                "continued",
+                "rejected"
+              ],
+              "type": "string"
+            },
+            "description": "Albums decided on their own while the gate is pending (DASHBOARD-11)",
+            "title": "Album Decisions",
+            "type": "object"
+          },
           "albums": {
             "items": {
               "$ref": "#/components/schemas/GateAlbum"
@@ -2502,6 +3944,14 @@
       "RunDetail": {
         "additionalProperties": false,
         "properties": {
+          "called_hashes": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Called workflow file -> hash of the text the run uses (SUBWORKFLOW-15)",
+            "title": "Called Hashes",
+            "type": "object"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -2661,6 +4111,14 @@
       "RunSummary": {
         "additionalProperties": false,
         "properties": {
+          "called_hashes": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Called workflow file -> hash of the text the run uses (SUBWORKFLOW-15)",
+            "title": "Called Hashes",
+            "type": "object"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -2809,6 +4267,18 @@
           "step_id": {
             "title": "Step Id",
             "type": "string"
+          },
+          "workflow": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The called file the step comes from (SUBWORKFLOW-14)",
+            "title": "Workflow"
           }
         },
         "required": [
@@ -2970,6 +4440,14 @@
       "StepState": {
         "additionalProperties": false,
         "properties": {
+          "call_path": {
+            "description": "Ids of the workflow calls this step runs inside (SUBWORKFLOW-6)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Call Path",
+            "type": "array"
+          },
           "error": {
             "anyOf": [
               {
@@ -3013,6 +4491,30 @@
           "uses": {
             "title": "Uses",
             "type": "string"
+          },
+          "workflow": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The called file the step comes from (SUBWORKFLOW-10)",
+            "title": "Workflow"
+          },
+          "workflow_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "That file's name",
+            "title": "Workflow Name"
           }
         },
         "required": [
@@ -3259,6 +4761,14 @@
       "TrustRequest": {
         "additionalProperties": false,
         "properties": {
+          "called": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Called file -> hash reviewed; every untrusted called file must be listed (SUBWORKFLOW-13)",
+            "title": "Called",
+            "type": "object"
+          },
           "sha256": {
             "description": "Hash of the content the user reviewed",
             "title": "Sha256",
@@ -3274,6 +4784,13 @@
       "TrustResult": {
         "additionalProperties": false,
         "properties": {
+          "called": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Called",
+            "type": "object"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -3299,6 +4816,13 @@
       "ValidateResult": {
         "additionalProperties": false,
         "properties": {
+          "called": {
+            "items": {
+              "$ref": "#/components/schemas/CalledWorkflow"
+            },
+            "title": "Called",
+            "type": "array"
+          },
           "errors": {
             "items": {
               "$ref": "#/components/schemas/WorkflowError"
@@ -3454,9 +4978,30 @@
         "title": "WebhookSecret",
         "type": "object"
       },
+      "WebhookSecretRequest": {
+        "additionalProperties": false,
+        "description": "Optional body of the secret route (SEC-87).",
+        "properties": {
+          "replace": {
+            "default": false,
+            "title": "Replace",
+            "type": "boolean"
+          }
+        },
+        "title": "WebhookSecretRequest",
+        "type": "object"
+      },
       "WorkflowDetail": {
         "additionalProperties": false,
         "properties": {
+          "called": {
+            "description": "Files it calls; 'trusted' is true only when they all are (SUBWORKFLOW-13)",
+            "items": {
+              "$ref": "#/components/schemas/CalledWorkflow"
+            },
+            "title": "Called",
+            "type": "array"
+          },
           "errors": {
             "items": {
               "$ref": "#/components/schemas/WorkflowError"
@@ -3614,6 +5159,131 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/albums/{album_id}/art": {
+      "get": {
+        "description": "The album's current art file (COVERS-SEARCH-22), read through the read-only worker.\nIts ``ETag`` is the art's sha256, so an unchanged cover answers 304 (COVER-PICKER-16).",
+        "operationId": "album_art_api_albums__album_id__art_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "album_id",
+            "required": true,
+            "schema": {
+              "title": "Album Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "if-none-match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-None-Match"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "A JPEG or PNG image"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
+          }
+        },
+        "summary": "Album Art",
+        "tags": [
+          "covers"
+        ]
+      }
+    },
     "/api/changesets/{changeset_id}": {
       "get": {
         "description": "A ChangeSet with its state, decisions and journal entries (REVIEW-QUEUE-2).",
@@ -3936,6 +5606,682 @@
         ]
       }
     },
+    "/api/cleanups/{decision_id}": {
+      "get": {
+        "description": "The full cleanup decision: the listing, folder and options (FILES-CLEANUP-14).",
+        "operationId": "get_cleanup_api_cleanups__decision_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "decision_id",
+            "required": true,
+            "schema": {
+              "title": "Decision Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CleanupDecision"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Get Cleanup",
+        "tags": [
+          "review"
+        ]
+      }
+    },
+    "/api/cleanups/{decision_id}/decision": {
+      "post": {
+        "description": "Answer a cleanup decision, once (FILES-CLEANUP-14). ``delete`` queues a worker job\nthat cleans the folder (its result arrives as ``job.finished`` and\n``cleanup.resolved``); ``keep`` deletes nothing and lets the run go on.",
+        "operationId": "decide_cleanup_api_cleanups__decision_id__decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "decision_id",
+            "required": true,
+            "schema": {
+              "title": "Decision Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CleanupDecisionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CleanupDecided"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Decide Cleanup",
+        "tags": [
+          "review"
+        ]
+      }
+    },
+    "/api/covers/image/{key}": {
+      "get": {
+        "description": "An image from the profile's art store (``key`` = sha256), or a candidate's image\nor thumbnail (``key`` = candidate id): only candidates Rifferr found itself.",
+        "operationId": "cover_image_api_covers_image__key__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The thumbnail, when the provider has one",
+            "in": "query",
+            "name": "thumb",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "The thumbnail, when the provider has one",
+              "title": "Thumb",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Review a local image belongs to",
+            "in": "query",
+            "name": "review_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Review a local image belongs to",
+              "title": "Review Id"
+            }
+          },
+          {
+            "description": "Album a local image belongs to",
+            "in": "query",
+            "name": "album_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Album a local image belongs to",
+              "title": "Album Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "A JPEG or PNG image"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Cover Image",
+        "tags": [
+          "covers"
+        ]
+      }
+    },
+    "/api/covers/reviews/{review_id}": {
+      "get": {
+        "operationId": "get_cover_review_api_covers_reviews__review_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "review_id",
+            "required": true,
+            "schema": {
+              "title": "Review Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoverReview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Get Cover Review",
+        "tags": [
+          "covers"
+        ]
+      }
+    },
+    "/api/covers/reviews/{review_id}/decision": {
+      "post": {
+        "description": "``choose`` downloads the candidate (it must be a JPEG or PNG passing the size\nfilters), keeps it in the art store and queues the job that sets it; ``skip`` lets\nthe album go on without a cover, ``fail`` fails it.",
+        "operationId": "decide_cover_api_covers_reviews__review_id__decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "review_id",
+            "required": true,
+            "schema": {
+              "title": "Review Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoverDecisionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoverDecided"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Decide Cover",
+        "tags": [
+          "covers"
+        ]
+      }
+    },
+    "/api/covers/search": {
+      "post": {
+        "description": "Ask the profile's cover providers (or ``providers``) at once; candidates, provider\nstates and the ranked result arrive as ``covers.candidate``, ``covers.provider`` and\n``covers.done`` events on the profile's stream.",
+        "operationId": "start_search_api_covers_search_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoverSearchBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoverSearchStarted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Start Search",
+        "tags": [
+          "covers"
+        ]
+      }
+    },
+    "/api/covers/search/{search_id}": {
+      "delete": {
+        "description": "Cancel a running search; its ``covers.done`` event says ``cancelled``.",
+        "operationId": "cancel_search_api_covers_search__search_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "search_id",
+            "required": true,
+            "schema": {
+              "title": "Search Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoverSearchStarted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Cancel Search",
+        "tags": [
+          "covers"
+        ]
+      }
+    },
+    "/api/covers/uploads": {
+      "post": {
+        "description": "Add an image of the user's own as a candidate of provider ``upload``. The body is\nJSON with the image base64-encoded; it may be at most the profile's\n``covers.max_bytes`` once decoded.",
+        "operationId": "upload_cover_api_covers_uploads_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoverUploadBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoverUploaded"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Upload Cover",
+        "tags": [
+          "covers"
+        ]
+      }
+    },
     "/api/events": {
       "get": {
         "description": "run.started / run.finished across all runs (API-9), plus the review-level and\n``changeset.*`` events of runs (REVIEW-QUEUE-10).",
@@ -4218,6 +6564,376 @@
           }
         },
         "summary": "Get Profiles",
+        "tags": [
+          "profiles"
+        ]
+      }
+    },
+    "/api/profiles/{profile}/albums/{album_id}/cover": {
+      "post": {
+        "description": "Download and check the candidate, keep it in the art store, and queue a manual\nChangeSet on the album's ``art_sha256`` (undoable from Recent edits).",
+        "operationId": "set_album_cover_api_profiles__profile__albums__album_id__cover_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "album_id",
+            "required": true,
+            "schema": {
+              "title": "Album Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlbumCoverBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlbumCoverQueued"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
+          }
+        },
+        "summary": "Set Album Cover",
+        "tags": [
+          "covers"
+        ]
+      }
+    },
+    "/api/profiles/{profile}/albums/{album_id}/cover-query": {
+      "get": {
+        "description": "The album's cover query from the backend templates ``covers.search`` uses by default,\nits label and its art's sha256. The folder is left out.",
+        "operationId": "album_cover_query_api_profiles__profile__albums__album_id__cover_query_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "album_id",
+            "required": true,
+            "schema": {
+              "title": "Album Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoverQueryAnswer"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
+          }
+        },
+        "summary": "Album Cover Query",
+        "tags": [
+          "covers"
+        ]
+      }
+    },
+    "/api/profiles/{profile}/beets-config": {
+      "get": {
+        "description": "The keys in the profile's beets config that run code, and its trust (SEC-62).",
+        "operationId": "get_beets_config_api_profiles__profile__beets_config_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeetsConfigStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Get Beets Config",
+        "tags": [
+          "profiles"
+        ]
+      }
+    },
+    "/api/profiles/{profile}/beets-config/trust": {
+      "post": {
+        "description": "Trust exactly the beets config content the user reviewed, in this profile (SEC-62).",
+        "operationId": "trust_beets_config_api_profiles__profile__beets_config_trust_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrustRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeetsConfigStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Trust Beets Config",
         "tags": [
           "profiles"
         ]
@@ -4516,6 +7232,162 @@
         ]
       }
     },
+    "/api/profiles/{profile}/covers": {
+      "get": {
+        "description": "The profile's cover providers in order (without their own settings), every\ninstalled provider, and the hash a save must send back.",
+        "operationId": "cover_providers_api_profiles__profile__covers_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoverProvidersView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Cover Providers",
+        "tags": [
+          "covers"
+        ]
+      }
+    },
+    "/api/profiles/{profile}/covers/providers": {
+      "put": {
+        "description": "Save the toggles, weights and order as ``covers.providers`` in ``profile.yaml``,\nkeeping the rest of the file. ``409 conflict`` when the file changed since it was read.",
+        "operationId": "save_providers_api_profiles__profile__covers_providers_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoverProvidersBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoverProvidersView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Save Providers",
+        "tags": [
+          "covers"
+        ]
+      }
+    },
     "/api/profiles/{profile}/events": {
       "get": {
         "description": "Events of the profile's work without a run: ``changeset.*`` of manual ChangeSets\nand ``job.finished`` (TAG-GRID-9). Replays after ``Last-Event-ID`` (API-8); without\nit the stream starts with new events, since the profile's history never ends.",
@@ -4582,6 +7454,192 @@
         "summary": "Profile Events",
         "tags": [
           "library"
+        ]
+      }
+    },
+    "/api/profiles/{profile}/imports": {
+      "get": {
+        "description": "The latest runs whose imported albums are still in the library (DASHBOARD-6).",
+        "operationId": "recent_imports_api_profiles__profile__imports_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RecentImport"
+                  },
+                  "title": "Response Recent Imports Api Profiles  Profile  Imports Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
+          }
+        },
+        "summary": "Recent Imports",
+        "tags": [
+          "dashboard"
+        ]
+      }
+    },
+    "/api/profiles/{profile}/inbox": {
+      "get": {
+        "description": "Each watch trigger's folder and its inputs with their state (DASHBOARD-1, -2).",
+        "operationId": "inbox_api_profiles__profile__inbox_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/InboxFolder"
+                  },
+                  "title": "Response Inbox Api Profiles  Profile  Inbox Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Inbox",
+        "tags": [
+          "dashboard"
         ]
       }
     },
@@ -4833,6 +7891,89 @@
         "summary": "Library",
         "tags": [
           "library"
+        ]
+      }
+    },
+    "/api/profiles/{profile}/notify/test": {
+      "post": {
+        "description": "Send a fixed test notification to one target (S-NOTIFY NOTIFY-14).",
+        "operationId": "notify_test_api_profiles__profile__notify_test_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotifyTestBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotifyTestResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Notify Test",
+        "tags": [
+          "profiles"
         ]
       }
     },
@@ -5265,7 +8406,7 @@
     },
     "/api/profiles/{profile}/webhooks/{name}/secret": {
       "post": {
-        "description": "Create or replace a webhook's secret; the response is the only time it is shown.",
+        "description": "Create a webhook's secret, or replace it with ``{\"replace\": true}``; the response\nis the only time it is shown.",
         "operationId": "create_webhook_secret_api_profiles__profile__webhooks__name__secret_post",
         "parameters": [
           {
@@ -5287,6 +8428,18 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebhookSecretRequest",
+                "default": {
+                  "replace": false
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "content": {
@@ -5347,7 +8500,7 @@
     },
     "/api/review": {
       "get": {
-        "description": "What waits for a decision, oldest first: run ChangeSets that are proposed or\nconflicted, pending review gates (REVIEW-QUEUE-1) and pending import decisions\n(IMPORT-UI-7).",
+        "description": "What waits for a decision, oldest first: run ChangeSets that are proposed or\nconflicted, pending review gates (REVIEW-QUEUE-1), pending import decisions\n(IMPORT-UI-7) and pending cleanup decisions (FILES-CLEANUP-14).",
         "operationId": "review_queue_api_review_get",
         "parameters": [
           {
@@ -5417,7 +8570,7 @@
     },
     "/api/reviews/{gate_id}/decision": {
       "post": {
-        "description": "Continue or reject a review gate (REVIEW-QUEUE-6, S-REVIEW REVIEW-6 .. -8).",
+        "description": "Continue or reject a review gate (REVIEW-QUEUE-6, S-REVIEW REVIEW-6 .. -8), or only\nsome of its albums (DASHBOARD-11).",
         "operationId": "decide_gate_api_reviews__gate_id__decision_post",
         "parameters": [
           {
@@ -5929,6 +9082,89 @@
         ]
       }
     },
+    "/api/runs/{run_id}/import-undo": {
+      "post": {
+        "description": "Queue the removal of the run's imported albums, after undoing its changes to\nthem (DASHBOARD-7). The report arrives as ``job.finished`` on the run's stream.",
+        "operationId": "import_undo_api_runs__run_id__import_undo_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportUndoBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobQueued"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Import Undo",
+        "tags": [
+          "dashboard"
+        ]
+      }
+    },
     "/api/runs/{run_id}/undo": {
       "post": {
         "description": "Queue the undo of the run's applied changes, newest first (REVIEW-QUEUE-8,\nJOURNAL-6). The result arrives as ``job.finished`` on the run's stream.",
@@ -6161,7 +9397,7 @@
     },
     "/api/workflows/{name}/trust": {
       "post": {
-        "description": "Trust exactly the content the user reviewed (API-14, SECURITY-12).",
+        "description": "Trust exactly the content the user reviewed (API-14, SECURITY-12), with the\ncalled files it lists, each by its own hash (SUBWORKFLOW-13).",
         "operationId": "trust_workflow_api_workflows__name__trust_post",
         "parameters": [
           {

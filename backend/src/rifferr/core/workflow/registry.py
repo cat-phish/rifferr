@@ -22,6 +22,8 @@ class StepTypeInfo:
     requires: BackendCapabilities
     force_review: bool = False
     """ChangeSets always wait for review; ``apply: auto`` is invalid (CHANGESET-6)."""
+    accepts_when: bool = True
+    """False: the step isn't about albums, and ``when:`` is invalid (FILES-CLEANUP-2)."""
 
 
 class StepRegistry(Protocol):

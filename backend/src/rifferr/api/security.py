@@ -8,14 +8,17 @@ with ``--no-auth``.
 
 from __future__ import annotations
 
+import hashlib
 import hmac
 import ipaddress
 import json
 import os
+import re
 import secrets
+import time
+from collections import OrderedDict
 from collections.abc import Awaitable, Callable, Iterable, MutableMapping
 from dataclasses import dataclass, field
-from http.cookies import CookieError, SimpleCookie
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs
@@ -27,11 +30,25 @@ Send = Callable[[Message], Awaitable[None]]
 ASGIApp = Callable[[Scope, Receive, Send], Awaitable[None]]
 
 EXCHANGE_PATH = "/auth/exchange"
+SIGN_IN_LINK_PATH = "/auth/sign-in-link"
 HEALTH_PATH = "/healthz"
 MUTATING = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 TOKEN_BYTES = 32
+FRAME_ANCESTORS = b"frame-ancestors 'none'"
+# SEC-45: the SPA is same-origin only; Mantine needs inline styles, previews use blob:/data:.
+CSP_DIRECTIVES: tuple[bytes, ...] = (
+    b"default-src 'self'",
+    b"script-src 'self'",
+    b"style-src 'self' 'unsafe-inline'",
+    b"img-src 'self' data: blob:",
+    b"connect-src 'self'",
+    b"object-src 'none'",
+    b"base-uri 'none'",
+    b"form-action 'self'",
+    FRAME_ANCESTORS,
+)
 SECURITY_HEADERS: tuple[tuple[bytes, bytes], ...] = (
-    (b"content-security-policy", b"frame-ancestors 'none'"),
+    (b"content-security-policy", b"; ".join(CSP_DIRECTIVES)),
     (b"x-frame-options", b"DENY"),
     (b"x-content-type-options", b"nosniff"),
     (b"referrer-policy", b"no-referrer"),
@@ -44,14 +61,101 @@ SIGNED_OUT_PAGE = b"""<!doctype html>
  padding: 0 1rem">
 <h1>Signed out</h1>
 <p>Open the sign-in link that <code>rifferr serve</code> printed in its terminal.</p>
-<p>Running Rifferr as a service? The token is in the token file named in the server's
-log; sign in at <code>/auth/exchange?token=&lt;token&gt;</code>.</p>
+<p>Link expired, or running Rifferr as a service? Run <code>rifferr sign-in</code> on the
+server for a new one-time sign-in link.</p>
 </body></html>
 """
 
 
 class BindRefusedError(Exception):
     """Refusing to listen on a non-loopback address without real auth (SECURITY-9)."""
+
+
+_HOST_NAME = re.compile(
+    r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*"
+)
+
+
+def normalize_host(value: str) -> str:
+    """An extra allowed ``Host`` (``name``, ``name:port``, ``[v6]:port``), lower-cased.
+
+    Only a plain host name or IP address with an optional port: no scheme, path,
+    wildcard or user info (SEC-46). Raises ``ValueError``.
+    """
+    host = value.strip().lower()
+    name, port = host, None
+    if host.startswith("["):
+        name, sep, rest = host[1:].partition("]")
+        if not sep or (rest and not rest.startswith(":")):
+            raise ValueError(f"not a host name: {value!r}")
+        port = rest[1:] if rest else None
+        try:
+            ipaddress.IPv6Address(name)
+        except ValueError:
+            raise ValueError(f"not a host name: {value!r}") from None
+    else:
+        if host.count(":") == 1:
+            name, port = host.split(":")
+        if not _HOST_NAME.fullmatch(name) or len(name) > 253:
+            raise ValueError(f"not a host name: {value!r}")
+    if port is not None and (not port.isdigit() or not 0 < int(port) < 65536):
+        raise ValueError(f"not a valid port in {value!r}")
+    return host
+
+
+class Sessions:
+    """Browser sessions and one-time sign-in codes, in server memory only (SEC-42, -43).
+
+    The cookie holds a session id, never the local token, so a leaked cookie is not a
+    bearer token and ends at restart. Sign-in links carry a code that works once and
+    for ``code_ttl`` seconds. Only SHA-256 digests are kept, so lookups don't compare
+    secrets byte by byte.
+    """
+
+    def __init__(
+        self,
+        *,
+        code_ttl: float = 15 * 60,
+        max_sessions: int = 256,
+        max_codes: int = 32,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self.code_ttl = code_ttl
+        self.max_sessions = max_sessions
+        self.max_codes = max_codes
+        self.clock = clock
+        self._codes: OrderedDict[bytes, float] = OrderedDict()
+        self._sessions: OrderedDict[bytes, None] = OrderedDict()
+
+    @staticmethod
+    def _digest(value: str) -> bytes:
+        return hashlib.sha256(value.encode()).digest()
+
+    @staticmethod
+    def _add(store: OrderedDict[bytes, Any], key: bytes, value: Any, cap: int) -> None:
+        store[key] = value
+        while len(store) > cap:
+            store.popitem(last=False)  # drop the oldest
+
+    def sign_in_code(self) -> str:
+        code = secrets.token_urlsafe(TOKEN_BYTES)
+        self._add(self._codes, self._digest(code), self.clock() + self.code_ttl, self.max_codes)
+        return code
+
+    def redeem(self, code: str | None) -> bool:
+        """True once for a live code; the code is gone afterwards."""
+        if not code:
+            return False
+        expires = self._codes.pop(self._digest(code), None)
+        return expires is not None and self.clock() < expires
+
+    def new_session(self) -> str:
+        sid = secrets.token_urlsafe(TOKEN_BYTES)
+        self._add(self._sessions, self._digest(sid), None, self.max_sessions)
+        return sid
+
+    def session_ok(self, sid: str | None) -> bool:
+        return bool(sid) and self._digest(sid or "") in self._sessions
 
 
 @dataclass(frozen=True)
@@ -70,6 +174,8 @@ class SecurityConfig:
     """Path prefixes whose routes authenticate requests themselves, instead of with the
     local token (webhooks with their own secrets, TRIGGERS-17). Still behind the Host
     allowlist."""
+    sessions: Sessions = field(default_factory=Sessions, compare=False)
+    """Browser sessions and sign-in codes (SEC-42, -43). Shared, mutable server state."""
 
     @property
     def cookie_name(self) -> str:
@@ -213,6 +319,11 @@ def _exempt(scope: Scope, config: SecurityConfig) -> bool:
     return any(path.startswith(p) for p in config.exempt_prefixes)
 
 
+def _api_path(scope: Scope) -> bool:
+    path: str = scope.get("path", "")
+    return path.startswith("/api/") or path == "/openapi.json"
+
+
 def _bearer(scope: Scope) -> str | None:
     auth = _header(scope, b"authorization")
     if auth and auth[:7].lower() == "bearer ":
@@ -220,17 +331,18 @@ def _bearer(scope: Scope) -> str | None:
     return None
 
 
-def _cookie(scope: Scope, name: str) -> str | None:
-    raw = _header(scope, b"cookie")
-    if not raw:
-        return None
-    jar: SimpleCookie = SimpleCookie()
-    try:
-        jar.load(raw)
-    except CookieError:
-        return None
-    morsel = jar.get(name)
-    return morsel.value if morsel is not None else None
+def _cookies(scope: Scope, name: str) -> list[str]:
+    """Every value sent for cookie ``name``, parsed by hand (SEC-42): one malformed or
+    duplicate cookie, e.g. set by another app on the same host name, must not hide ours."""
+    values: list[str] = []
+    for key, raw in scope.get("headers", []):
+        if key.lower() != b"cookie":
+            continue
+        for pair in raw.decode("latin-1").split(";"):
+            k, sep, v = pair.strip().partition("=")
+            if sep and k.strip() == name:
+                values.append(v.strip().strip('"'))
+    return values
 
 
 # -- middleware --------------------------------------------------------------------
@@ -250,12 +362,25 @@ class SecurityHeaders:
         async def wrapped(message: Message) -> None:
             if message["type"] == "http.response.start":
                 names = {k.lower() for k, _ in SECURITY_HEADERS}
+                given = message.get("headers", [])
+                # A route's own, stricter CSP (e.g. images, COVERS-SEARCH-20) is kept and
+                # gets frame-ancestors added; it can never drop the fixed headers.
+                csp = [v for k, v in given if k.lower() == b"content-security-policy"]
                 headers = [
                     (k, v)
-                    for k, v in message.get("headers", [])
+                    for k, v in given
                     if not k.lower().startswith(b"access-control-") and k.lower() not in names
                 ]
-                message["headers"] = [*headers, *SECURITY_HEADERS]
+                fixed = [
+                    (
+                        k,
+                        csp[0] + b"; " + FRAME_ANCESTORS
+                        if k == b"content-security-policy" and csp
+                        else v,
+                    )
+                    for k, v in SECURITY_HEADERS
+                ]
+                message["headers"] = [*headers, *fixed]
             await send(message)
 
         await self.app(scope, receive, wrapped)
@@ -296,6 +421,12 @@ class OriginCheck:
         if origin is not None and origin.lower() not in self.origins:
             await _respond(send, 403, "cross_origin", "cross-origin request refused")
             return
+        if scope["type"] == "http" and _api_path(scope):
+            # SEC-41: browsers label cross-site/same-site fetches; non-browser clients send none.
+            site = (_header(scope, b"sec-fetch-site") or "same-origin").lower()
+            if site not in ("same-origin", "none"):
+                await _respond(send, 403, "cross_origin", "cross-site request refused")
+                return
         mutating = scope["type"] == "http" and scope.get("method", "GET").upper() in MUTATING
         if mutating and origin is None:
             same_site = (_header(scope, b"sec-fetch-site") or "").lower() == "same-origin"
@@ -328,7 +459,7 @@ class JsonOnly:
 
 
 class TokenAuth:
-    """SECURITY-6, -7: local token via cookie or bearer; the token exchange route."""
+    """SECURITY-6, -7: session cookie or local token as bearer; the sign-in routes."""
 
     def __init__(self, app: ASGIApp, config: SecurityConfig) -> None:
         self.app = app
@@ -342,6 +473,9 @@ class TokenAuth:
         if scope["type"] == "http" and path == EXCHANGE_PATH:
             await self._exchange(scope, send)
             return
+        if scope["type"] == "http" and path == SIGN_IN_LINK_PATH:
+            await self._sign_in_link(scope, send)
+            return
         if (
             self.config.no_auth
             or path in self.config.public_paths
@@ -349,9 +483,7 @@ class TokenAuth:
         ):
             await self.app(scope, receive, send)
             return
-        if self.config.token_ok(_cookie(scope, self.config.cookie_name)) or self.config.token_ok(
-            _bearer(scope)
-        ):
+        if self._cookie_ok(scope) or self.config.token_ok(_bearer(scope)):
             await self.app(scope, receive, send)
             return
         if scope["type"] == "websocket":
@@ -362,20 +494,72 @@ class TokenAuth:
             return
         await _respond(send, 401, "unauthenticated", "authentication required")
 
+    def _cookie_ok(self, scope: Scope) -> bool:
+        """A session id we issued; the local token itself still counts (older cookies)."""
+        sessions = self.config.sessions
+        return any(
+            sessions.session_ok(v) or self.config.token_ok(v)
+            for v in _cookies(scope, self.config.cookie_name)
+        )
+
+    def _secure_cookie(self, scope: Scope) -> bool:
+        """``Secure`` over https and for proxy names (SEC-46), never on plain loopback,
+        where some browsers would drop it."""
+        host = (_header(scope, b"host") or "").lower()
+        extra = {h.lower() for h in self.config.extra_hosts}
+        return scope.get("scheme") in ("https", "wss") or host in extra
+
     async def _exchange(self, scope: Scope, send: Send) -> None:
         query = parse_qs(scope.get("query_string", b"").decode("latin-1"))
         token = (query.get("token") or [None])[0]
         headers: list[tuple[bytes, bytes]] = [(b"location", b"/"), (b"cache-control", b"no-store")]
         if not self.config.no_auth:
-            if not self.config.token_ok(token):
+            # SEC-43: a sign-in code works once. The local token is still accepted so the
+            # token file keeps working as a fallback, but it never goes into a cookie.
+            if not (self.config.sessions.redeem(token) or self.config.token_ok(token)):
                 await _respond(send, 403, "invalid_token", "invalid or expired token")
                 return
             cookie = (
-                f"{self.config.cookie_name}={self.config.token}; HttpOnly; SameSite=Strict; Path=/"
+                f"{self.config.cookie_name}={self.config.sessions.new_session()}; "
+                "HttpOnly; SameSite=Strict; Path=/"
             )
+            if self._secure_cookie(scope):
+                cookie += "; Secure"
             headers.append((b"set-cookie", cookie.encode()))
         await send({"type": "http.response.start", "status": 303, "headers": headers})
         await send({"type": "http.response.body", "body": b""})
+
+    async def _sign_in_link(self, scope: Scope, send: Send) -> None:
+        """``POST /auth/sign-in-link`` with the local token as Bearer: a new one-time
+        sign-in code for ``rifferr sign-in`` (SEC-43). A browser session can't mint one."""
+        if scope.get("method", "GET").upper() != "POST":
+            await _respond(send, 405, "method_not_allowed", "use POST")
+            return
+        if self.config.no_auth:
+            await _respond(send, 409, "no_auth", "the server runs without auth")
+            return
+        if not self.config.token_ok(_bearer(scope)):
+            await _respond(send, 401, "unauthenticated", "authentication required")
+            return
+        sessions = self.config.sessions
+        body = json.dumps(
+            {
+                "path": f"{EXCHANGE_PATH}?token={sessions.sign_in_code()}",
+                "expires_in": sessions.code_ttl,
+            }
+        ).encode()
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [
+                    (b"content-type", b"application/json"),
+                    (b"content-length", str(len(body)).encode()),
+                    (b"cache-control", b"no-store"),
+                ],
+            }
+        )
+        await send({"type": "http.response.body", "body": body})
 
 
 def secure(app: ASGIApp, config: SecurityConfig) -> ASGIApp:

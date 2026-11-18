@@ -82,12 +82,20 @@ function Review({ wf, profile }: { wf: WorkflowDetail; profile: string }) {
     setChanged(true);
     await queryClient.invalidateQueries({ queryKey: ["workflow", profile, wf.name] });
   };
+  // SUBWORKFLOW-13: each called file is trusted on its own, by the hash shown here.
+  const untrusted = (wf.called ?? []).filter((c) => !c.trusted);
   const trust = useMutation({
     mutationFn: async () =>
       ok(
         await api.POST("/api/workflows/{name}/trust", {
           params: { path: { name: wf.name }, query: { profile } },
-          body: { sha256: wf.sha256 },
+          body:
+            untrusted.length === 0
+              ? { sha256: wf.sha256 }
+              : {
+                  sha256: wf.sha256,
+                  called: Object.fromEntries(untrusted.map((c) => [c.path, c.sha256])),
+                },
         }),
       ),
     onSuccess: async () => {
@@ -114,6 +122,19 @@ function Review({ wf, profile }: { wf: WorkflowDetail; profile: string }) {
         <Text size="sm">
           Content hash: <Code>{wf.sha256}</Code>
         </Text>
+        {untrusted.map((c) => (
+          <Stack key={c.path} gap="xs" data-testid={`called-${c.path}`}>
+            <Title order={4}>Called workflow {c.path}</Title>
+            <Text size="sm">
+              This workflow calls it, and it isn&apos;t trusted yet. Trusting covers it too, by its
+              own hash.
+            </Text>
+            <Code block>{c.yaml}</Code>
+            <Text size="sm">
+              Content hash: <Code>{c.sha256}</Code>
+            </Text>
+          </Stack>
+        ))}
         <Title order={4}>Safety report</Title>
         {report.data !== undefined && <SafetyReport findings={report.data.safety} />}
         {(changed || stale) && (
@@ -131,7 +152,9 @@ function Review({ wf, profile }: { wf: WorkflowDetail; profile: string }) {
             loading={trust.isPending}
             disabled={report.data === undefined || stale}
           >
-            Trust this workflow
+            {untrusted.length === 0
+              ? "Trust this workflow"
+              : `Trust this workflow and ${String(untrusted.length)} called file${untrusted.length === 1 ? "" : "s"}`}
           </Button>
         </Group>
       </Stack>

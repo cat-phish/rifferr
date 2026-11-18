@@ -160,7 +160,7 @@ ChangeSet (CHANGESET-4), so the step proposes nothing and the run doesn't pause.
 - Values are data: they are never evaluated as beets templates when applied. Templates are evaluated by the proposing step (e.g. `tags.script`), and the result is the literal `new`.
 
 ## Non-goals
-- File operations (move, rename, delete) in ChangeSets. Moving files stays a `beets.command move` step (S-BEETS-COMMAND).
+- File operations (move, rename, delete) in ChangeSets. Moving files stays a `beets.command move` step (S-BEETS-COMMAND). An album's cover is the one file a ChangeSet changes, through the album field `art_sha256` (S-COVERS-SEARCH).
 - Per-album lanes (M2): until then `apply: review` suspends the whole run.
 - Editing a proposed value in review before accepting (F-REVIEW-QUEUE may add it as a manual ChangeSet).
 - Merging two pending ChangeSets that touch the same field (the second conflicts once the first applies).

@@ -15,6 +15,7 @@ from rifferr.backends.base import BackendCapabilities, TemplateError
 from rifferr.core.changeset import FieldName
 from rifferr.core.duration import Duration, parse_duration
 from rifferr.core.review import GateRequest
+from rifferr.core.workflow.template_fields import TEMPLATE_EXTRA
 from rifferr.engine import StepContext, StepResult
 from rifferr.engine.steps import GateOptions
 
@@ -27,6 +28,7 @@ class ReviewParams(BaseModel):
         description="Shown for each album: a beets template, e.g. "
         "'Check $albumartist - $album before the files move' "
         "(https://beets.readthedocs.io/en/stable/reference/pathformat.html)",
+        json_schema_extra=TEMPLATE_EXTRA,
     )
     show: list[FieldName] = Field(
         default_factory=list[str], description="Fields to show for each album"

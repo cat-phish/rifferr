@@ -7,14 +7,17 @@ runs the latter under uvicorn.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+import asyncio
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import Response
 from starlette.types import Scope
@@ -23,6 +26,8 @@ from rifferr import __version__
 from rifferr.api import errors
 from rifferr.api.models import Health
 from rifferr.api.routes import (
+    covers,
+    dashboard,
     hooks,
     library,
     profiles,
@@ -35,7 +40,9 @@ from rifferr.api.routes import (
 from rifferr.api.security import (
     ASGIApp,
     SecurityConfig,
+    Sessions,
     generate_token,
+    normalize_host,
     remove_token_file,
     secure,
     write_token_file,
@@ -43,7 +50,9 @@ from rifferr.api.security import (
 from rifferr.api.state import ServerState
 from rifferr.appdb import AppDB, SqliteEventSink
 from rifferr.engine import StepTypeRegistry
-from rifferr.profile_store import app_db_path, config_root
+from rifferr.notify import Notifier, default_notifier
+from rifferr.notify.service import NotificationService
+from rifferr.profile_store import app_db_path, config_root, load_profile
 from rifferr.steps.registry import load_step_types
 from rifferr.triggers import TriggerManager
 from rifferr.worker.previews import PreviewSupervisor
@@ -112,6 +121,17 @@ class ApiSettings:
     """Arm workflows' ``on:`` triggers (F-TRIGGERS)."""
     trigger_reconcile: float = 2.0
     """Seconds between checks for changed workflow files and trust (TRIGGERS-1)."""
+    notifier: Notifier | None = None
+    """Sends notifications (S-NOTIFY); default: Apprise. Tests pass a fake."""
+    notify_sleep: Callable[[float], Awaitable[None]] | None = None
+    """How rule notifications wait between retries; tests skip the wait."""
+    extra_hosts: tuple[str, ...] = ()
+    """Extra ``Host`` names to accept, e.g. a reverse proxy's (SEC-46). Default: none."""
+    sessions: Sessions = field(default_factory=Sessions)
+    """Browser sessions and one-time sign-in codes (SEC-42, -43)."""
+
+    def __post_init__(self) -> None:
+        self.extra_hosts = tuple(normalize_host(h) for h in self.extra_hosts)
 
     def security(self) -> SecurityConfig:
         dev_origins: tuple[str, ...] = ()
@@ -124,12 +144,31 @@ class ApiSettings:
             port=self.port,
             token=self.token,
             no_auth=self.no_auth,
+            extra_hosts=self.extra_hosts,
             dev_origins=dev_origins,
+            sessions=self.sessions,
             # SECURITY-3: webhooks are called by other programs, not browsers, and check
             # their own secrets (TRIGGERS-17). The Host allowlist still applies.
             exempt_prefixes=(HOOKS_PREFIX,),
             own_auth_prefixes=(HOOKS_PREFIX,),
         )
+
+
+def _add_schemas(app: FastAPI, models: Mapping[str, type[BaseModel]]) -> None:
+    """Put the models of routes that read their body themselves (to cap its size) into
+    the OpenAPI components, so their ``$ref`` request bodies resolve (API-10)."""
+    generate = app.openapi
+
+    def openapi() -> dict[str, Any]:
+        doc = generate()
+        found = doc.setdefault("components", {}).setdefault("schemas", {})
+        for name, model in models.items():
+            found.setdefault(
+                name, model.model_json_schema(ref_template="#/components/schemas/{model}")
+            )
+        return doc
+
+    app.openapi = openapi  # type: ignore[method-assign]
 
 
 def create_api(settings: ApiSettings | None = None) -> FastAPI:
@@ -149,6 +188,18 @@ def create_api(settings: ApiSettings | None = None) -> FastAPI:
             keepalive=settings.keepalive,
         )
         supervisor.subscribe(state.hub.publish)
+        root = state.config_root
+        notifications = NotificationService(
+            db,
+            load_profile=lambda name: load_profile(root, name),
+            notifier=settings.notifier or default_notifier(),
+            publish=state.hub.publish,
+            sleep=settings.notify_sleep or asyncio.sleep,
+        )
+        state.notifications = notifications
+        supervisor.subscribe(notifications.on_event)  # S-NOTIFY rules (NOTIFY-9)
+        supervisor.subscribe_problems(notifications.on_worker_problem)
+        await notifications.start()  # retries what a stopped server left pending
         supervisor.start()  # decides overdue review gates now and as deadlines pass
         app.state.rifferr = state
         if settings.triggers:
@@ -170,6 +221,8 @@ def create_api(settings: ApiSettings | None = None) -> FastAPI:
                 await state.triggers.stop()
             await previews.shutdown()
             await supervisor.shutdown()
+            await notifications.stop()
+            await state.covers.close()
             if settings.write_token and not settings.no_auth:
                 remove_token_file(settings.port)
             db.close()
@@ -191,6 +244,9 @@ def create_api(settings: ApiSettings | None = None) -> FastAPI:
     app.include_router(review.router)
     app.include_router(triggers.router)
     app.include_router(hooks.router)
+    app.include_router(dashboard.router)
+    app.include_router(covers.router)
+    _add_schemas(app, covers.RAW_BODY_SCHEMAS)
 
     @app.get("/healthz", response_model=Health, tags=["health"])
     async def healthz() -> Health:

@@ -23,9 +23,16 @@ from rifferr.api.models import (
 from rifferr.api.routes.workflows import check, error_out, find_workflow, get_profile
 from rifferr.api.state import ServerState, State
 from rifferr.appdb import AppJournal, AppLanes, Job
-from rifferr.core.workflow import WorkflowLoadError, load_workflow
+from rifferr.core.profile import merged_vars
+from rifferr.core.workflow import CalledStep, WorkflowLoadError, expand, load_workflow
+from rifferr.core.workflow.interpolation import (
+    InterpolationContext,
+    InterpolationError,
+    interpolate,
+)
 from rifferr.engine.lanes import counts
 from rifferr.engine.undo import run_entries
+from rifferr.workflow_calls import called_hashes, stored_calls
 
 router = APIRouter(prefix="/api", tags=["runs"])
 
@@ -33,6 +40,29 @@ SSE_RESPONSE: dict[int | str, dict[str, Any]] = {
     200: {"content": {"text/event-stream": {"schema": {"type": "string"}}}, "description": "SSE"}
 }
 TERMINAL = {"succeeded", "failed", "cancelled"}
+
+
+def _confine_manual_input(wf: Any, profile_vars: Any, value: str) -> None:
+    """SEC-07: when the workflow names a watch folder (or webhook ``within``), a manual
+    input must lie inside it or equal it."""
+    on = getattr(wf, "on", None)
+    if on is None:
+        return
+    raw = on.webhook.within if on.webhook is not None and on.webhook.within else None
+    if raw is None and on.watch is not None:
+        raw = on.watch.path
+    if raw is None:
+        return
+    try:
+        ctx = InterpolationContext(vars=merged_vars(profile_vars, wf.vars), profile={"name": ""})
+        root = Path(interpolate(raw, ctx)).resolve()
+    except (InterpolationError, OSError, ValueError):
+        return  # the trigger can't arm either; nothing to confine against
+    real = Path(value).resolve()
+    if real != root and not real.is_relative_to(root):
+        raise ApiError(
+            400, "input_outside_watch", f"input must be inside the workflow's folder {root}"
+        )
 
 
 @router.post("/runs", status_code=201, response_model=RunCreated, responses=ERROR_RESPONSES)
@@ -48,6 +78,8 @@ async def create_run(body: RunCreate, state: State) -> RunCreated:
         raise ApiError(422, "validation_failed", "the workflow has errors", details)
     if body.input is not None and not Path(body.input).is_absolute():
         raise ApiError(400, "bad_request", "input must be an absolute path")
+    if body.input is not None:
+        _confine_manual_input(c.workflow, profile.vars, body.input)  # SEC-07
     run_id = await state.supervisor.submit_run(
         body.profile,
         c.text,
@@ -56,6 +88,7 @@ async def create_run(body: RunCreate, state: State) -> RunCreated:
         workflow=body.workflow,
         trigger="manual",
         run_input=body.input,
+        called=c.calls.texts() if c.calls is not None else None,
     )
     if state.triggers is not None and body.input:  # TRIGGERS-21
         state.triggers.remember_manual(body.profile, body.workflow, body.input, run_id)
@@ -160,6 +193,7 @@ def summary(job: Job, lane_counts: dict[str, int] | None = None) -> RunSummary:
         finished_at=job.finished_at,
         trigger=cast(Any, job.trigger or "manual"),
         input=job.input,
+        called_hashes=called_hashes(job.payload),
         lane_counts=lane_counts or {},
     )
 
@@ -167,10 +201,21 @@ def summary(job: Job, lane_counts: dict[str, int] | None = None) -> RunSummary:
 def steps(state: ServerState, job: Job) -> list[StepState]:
     """Step list from the stored workflow text, statuses folded from events (API-6)."""
     try:
-        wf, _ = load_workflow(str(job.payload.get("source", "")), "<run>")
+        wf, doc = load_workflow(str(job.payload.get("source", "")), "<run>")
     except WorkflowLoadError:
         return []
-    out = {s.id: StepState(id=s.id, uses=s.uses, status="pending") for s in wf.steps}
+    wf = expand(wf, stored_calls(wf, doc, job.payload))
+    out = {
+        s.id: StepState(
+            id=s.id,
+            uses=s.uses,
+            status="pending",
+            call_path=list(s.call_path) if isinstance(s, CalledStep) else [],
+            workflow=s.workflow if isinstance(s, CalledStep) else None,
+            workflow_name=s.workflow_name if isinstance(s, CalledStep) else None,
+        )
+        for s in wf.steps
+    }
     for event in state.db.events_since(job.run, 0):
         step = out.get(event.step_id or "")
         if step is None:

@@ -20,7 +20,7 @@ import logging
 import os
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, tzinfo
+from datetime import UTC, datetime, timedelta, tzinfo
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
@@ -28,9 +28,20 @@ from pydantic import JsonValue
 
 from rifferr.appdb import AppDB, AppTriggers
 from rifferr.core.profile import Profile, ProfileError, ProfileLoadError, merged_vars
-from rifferr.core.triggers import SettleTracker, SkipReason, dedup_skip, parse_duration, top_level
+from rifferr.core.triggers import (
+    ACTIVE_STATES,
+    InboxState,
+    SettleTracker,
+    SkipReason,
+    dedup_skip,
+    inbox_state,
+    parse_duration,
+    top_level,
+)
 from rifferr.core.workflow import (
+    CALL_TYPE,
     WORKFLOW_SUFFIXES,
+    Calls,
     InterpolationContext,
     InterpolationError,
     Workflow,
@@ -49,7 +60,8 @@ from rifferr.profile_store import (
     profile_dir,
 )
 from rifferr.triggers import fs
-from rifferr.trust import WorkflowFileError, read_workflow_file
+from rifferr.trust import WorkflowFileError, read_workflow_file, workflow_hash
+from rifferr.workflow_calls import called_trust, read_calls
 
 log = logging.getLogger(__name__)
 
@@ -62,6 +74,15 @@ PATH_RETRY = 60.0
 WATCH_TICK_MS = 500
 
 
+def _calls_digest(sha: str, calls: Calls) -> str:
+    """One digest over the workflow and every file it calls, so any change re-arms."""
+    parts = [sha]
+    for path, f in sorted(calls.files.items()):
+        parts.append(f"{path}={workflow_hash(f.text) if f.text else 'unreadable'}")
+    parts.extend(str(e) for e in calls.errors)
+    return "calls:" + workflow_hash("\n".join(parts))
+
+
 class Submit(Protocol):
     async def __call__(
         self,
@@ -72,6 +93,7 @@ class Submit(Protocol):
         workflow: str | None = None,
         trigger: str = "manual",
         run_input: str | None = None,
+        called: Mapping[str, str] | None = None,
     ) -> str: ...
 
 
@@ -95,7 +117,11 @@ class Armed:
     name: str
     path: Path
     sha256: str
+    """The digest that decides re-arming: the file's hash, plus every called file's when
+    it calls any (SEC-61)."""
     text: str = ""
+    calls: Calls | None = None
+    """The files it calls, read with it; a fired run gets exactly these texts (SEC-61)."""
     workflow: Workflow | None = None
     error: str | None = None
     trusted: bool = False
@@ -107,6 +133,49 @@ class Armed:
     tasks: list[asyncio.Task[None]] = field(default_factory=list[asyncio.Task[None]])
     retry_at: float | None = None
     """Monotonic time to re-arm at (a missing watch path, TRIGGERS-3)."""
+    tracker: SettleTracker | None = None
+    """The watch trigger's settling candidates (the inbox, F-DASHBOARD DASHBOARD-1)."""
+
+
+#: Inputs listed per watched folder (DASHBOARD-2).
+INBOX_LIMIT = 200
+
+
+def _list_inputs(root: Path, limit: int) -> tuple[list[tuple[str, bool, str | None]], int] | None:
+    """``(name, inside the folder, fingerprint)`` of the first ``limit`` candidate inputs
+    and how many were left out; ``None`` if the folder can't be read. A symbolic link out
+    of the folder is not followed (DASHBOARD-2)."""
+    try:
+        real_root = root.resolve(strict=True)
+        names = sorted(e.name for e in root.iterdir() if e.is_dir())
+    except OSError:
+        return None
+    entries: list[tuple[str, bool, str | None]] = []
+    for name in names[:limit]:
+        path = root / name
+        if not path.resolve().is_relative_to(real_root):
+            entries.append((name, False, None))
+        else:
+            entries.append((name, True, fs.input_fingerprint(path)))
+    return entries, max(0, len(names) - limit)
+
+
+@dataclass(frozen=True)
+class InboxItem:
+    path: str
+    state: InboxState
+    changed_at: datetime | None
+    run_id: str | None
+
+
+@dataclass
+class InboxFolder:
+    workflow: str
+    folder: str
+    trigger_state: StateName
+    detail: str | None
+    entries: list[InboxItem] = field(default_factory=list[InboxItem])
+    omitted: int = 0
 
 
 @dataclass(frozen=True)
@@ -152,6 +221,7 @@ class TriggerManager:
         self._loop_task: asyncio.Task[None] | None = None
         self._fire_lock = asyncio.Lock()
         self._stopping = False
+        self._parsed: dict[tuple[str, str], tuple[str, Workflow | None]] = {}
 
     # -- lifecycle ---------------------------------------------------------------------
 
@@ -206,7 +276,14 @@ class TriggerManager:
                 ambiguous = len(paths) > 1
                 if ambiguous:
                     sha = "ambiguous:" + ",".join(p.name for p in paths)
-                trusted = not ambiguous and self.db.is_trusted(sha)
+                calls = None if ambiguous or not text else self._read_calls(key, path, sha, text)
+                trusted = (  # SEC-61, SUBWORKFLOW-13: the file and every file it calls
+                    not ambiguous
+                    and self.db.is_trusted(sha, profile_name)
+                    and all(c.trusted for c in called_trust(self.db, calls, profile_name))
+                )
+                if calls is not None:
+                    sha = _calls_digest(sha, calls)
                 old = self.armed.get(key)
                 retry_at = old.retry_at if old is not None else None
                 due = retry_at is not None and self.monotonic() >= retry_at
@@ -214,13 +291,32 @@ class TriggerManager:
                     continue
                 if old is not None:
                     await self._disarm(old)
-                armed = Armed(profile_name, name, path, sha, text, trusted=trusted)
+                armed = Armed(profile_name, name, path, sha, text, calls, trusted=trusted)
                 if ambiguous:
                     armed.error = f"'{name}' matches {', '.join(p.name for p in paths)}"
                 self.armed[key] = armed
                 await self._arm(armed)
         for key in [k for k in self.armed if k not in seen]:
             await self._disarm(self.armed.pop(key))
+        for key in [k for k in self._parsed if k not in seen]:
+            del self._parsed[key]
+
+    def _read_calls(self, key: tuple[str, str], path: Path, sha: str, text: str) -> Calls | None:
+        """The files the workflow calls, read now (SEC-61); ``None`` when it calls none.
+        The workflow is parsed once per content."""
+        cached = self._parsed.get(key)
+        if cached is not None and cached[0] == sha:
+            wf = cached[1]
+        else:
+            try:
+                wf, _ = load_workflow(text, str(path))
+            except WorkflowLoadError:
+                wf = None  # _arm reports it
+            self._parsed[key] = (sha, wf)
+        if wf is None or not any(s.uses == CALL_TYPE for s in wf.steps):
+            return None
+        folder = profile_dir(self.config_root, key[0]) / WORKFLOWS_DIR
+        return read_calls(folder, wf, None, path)
 
     async def _arm(self, armed: Armed) -> None:
         if armed.error is None and not armed.text:
@@ -231,7 +327,7 @@ class TriggerManager:
             try:
                 profile = load_profile(self.config_root, armed.profile, self.env)
                 wf, doc = load_workflow(armed.text, str(armed.path))
-                errors = validate(wf, self.registry, None, profile.vars, doc=doc)
+                errors = validate(wf, self.registry, None, profile.vars, doc=doc, calls=armed.calls)
                 if errors:
                     armed.error = "; ".join(str(e) for e in errors[:3])
             except WorkflowLoadError as exc:
@@ -268,6 +364,10 @@ class TriggerManager:
             if wf.on.webhook is not None:
                 within = wf.on.webhook.within
                 armed.within = Path(interpolate(within, ctx)) if within else armed.watch_path
+                if armed.within is not None and not armed.within.is_absolute():  # SEC-85
+                    raise InterpolationError(
+                        f"webhook 'within' must be an absolute path, got '{armed.within}'"
+                    )
         except InterpolationError as exc:
             for k in kinds:
                 armed.triggers[k] = TriggerInfo(armed.name, k, "error", str(exc))
@@ -313,9 +413,10 @@ class TriggerManager:
         polling = spec.poll is not None or self.env.get(FORCE_POLLING_ENV) == "1"
         poll_ms = int(parse_duration(spec.poll) * 1000) if spec.poll else 30_000
         tracker = SettleTracker(parse_duration(spec.settle))
+        armed.tracker = tracker
         now = self.monotonic()
         for entry in sorted(path.iterdir()):  # TRIGGERS-11: start-up scan
-            if entry.is_dir():
+            if entry.is_dir() and fs.is_inside_entry(path, entry.name):
                 tracker.touch(entry.name, now)
         ready = asyncio.Event()
         armed.tasks.append(
@@ -367,12 +468,21 @@ class TriggerManager:
                     if top == rel and not (root / top).is_dir():
                         loose_since = now  # TRIGGERS-8: a loose file in the watch folder
                         continue
+                    if not fs.is_inside_entry(root, top):
+                        continue  # SEC-01: a link out of the watch folder is never fired on
                     tracker.touch(top, now)
+                    if not pending:  # started settling (DASHBOARD-15)
+                        self._inbox_changed(armed, root / top)
                 for name in tracker.due(now):
                     folder = root / name
+                    if not fs.is_inside_entry(root, name):
+                        self._skipped(armed, "watch", str(folder), "outside", None)
+                        continue
                     if not folder.is_dir() or not await asyncio.to_thread(fs.has_files, folder):
+                        self._inbox_changed(armed, folder)
                         continue  # TRIGGERS-9: gone or empty
                     await self.fire(armed, "watch", str(folder))
+                    self._inbox_changed(armed, folder)
                 if loose_since is not None and now - loose_since >= tracker.settle:
                     loose_since = None
                     self._emit(
@@ -483,16 +593,42 @@ class TriggerManager:
 
     # -- firing ------------------------------------------------------------------------
 
+    def _called(self, armed: Armed) -> dict[str, str] | None:
+        """The called files' texts read and checked when it was armed: the run keeps
+        these (SUBWORKFLOW-12, SEC-61)."""
+        return armed.calls.texts() if armed.calls is not None else None
+
+    def _fire_problem(self, armed: Armed) -> str | None:
+        """Why ``armed`` must not submit a run now (SEC-61): it is in error, or it or a
+        file it calls is not trusted in its profile."""
+        if armed.error is not None:
+            return armed.error
+        texts = [armed.text, *(self._called(armed) or {}).values()]
+        if not armed.trusted or not all(
+            self.db.is_trusted(workflow_hash(t), armed.profile) for t in texts
+        ):
+            return "untrusted: the workflow or a file it calls is not trusted; not run"
+        return None
+
     async def fire(
         self, armed: Armed, kind: FireKind, input_path: str, *, force: bool = False
     ) -> FireResult:
         """Deduplicate and submit one run (TRIGGERS-19 .. -24)."""
+        problem = self._fire_problem(armed)
+        if problem is not None:  # SEC-61: never submit a run that would be untrusted
+            self._emit_error(armed, None if kind == "manual" else kind, problem)
+            return FireResult(None)
         async with self._fire_lock:  # one decision at a time per server
             fp = None
             if input_path:
                 fp = await asyncio.to_thread(fs.input_fingerprint, Path(input_path))
             record = self.store.record(armed.profile, armed.name, input_path) if fp else None
             reason = dedup_skip(record, fp, force=force or kind == "manual")
+            if reason is None and kind == "webhook" and input_path:  # SEC-82
+                busy = self._active_related(armed, input_path)
+                if busy is not None:
+                    self._skipped(armed, kind, input_path, "in_progress", busy)
+                    return FireResult(busy, "in_progress")
             if reason is not None:
                 assert record is not None
                 self._skipped(armed, kind, input_path, reason, record.run_id)
@@ -504,6 +640,7 @@ class TriggerManager:
                 workflow=armed.name,
                 trigger=kind,
                 run_input=input_path or None,
+                called=self._called(armed),
             )
             if fp is not None:
                 self.store.remember(armed.profile, armed.name, input_path, fp, run_id)
@@ -513,6 +650,18 @@ class TriggerManager:
             {"workflow": armed.name, "kind": kind, "input": input_path, "run_id": run_id},
         )
         return FireResult(run_id)
+
+    def _active_related(self, armed: Armed, input_path: str) -> str | None:
+        """SEC-82: the run id of an active run of this workflow whose input is a parent
+        or child folder of ``input_path``."""
+        here = Path(input_path)
+        for other, rec in self.store.records(armed.profile, armed.name).items():
+            if rec.run_state not in ACTIVE_STATES:
+                continue
+            there = Path(other)
+            if there != here and (here.is_relative_to(there) or there.is_relative_to(here)):
+                return rec.run_id
+        return None
 
     def remember_manual(self, profile: str, workflow: str, input_path: str, run_id: str) -> None:
         """TRIGGERS-21: a manual run records its input's fingerprint."""
@@ -543,6 +692,37 @@ class TriggerManager:
         if run_id is not None:
             data["run_id"] = run_id
         self._emit(armed.profile, "trigger.skipped", data)
+
+    def _inbox_changed(self, armed: Armed, path: Path) -> None:
+        self._emit(armed.profile, "inbox.changed", {"workflow": armed.name, "path": str(path)})
+
+    async def inbox(self, profile: str, *, limit: int = INBOX_LIMIT) -> list[InboxFolder]:
+        """Each watch trigger's folder and its candidate inputs (DASHBOARD-1, -2). The
+        folders are read off the event loop; the app DB on it."""
+        out: list[InboxFolder] = []
+        mono, wall = self.monotonic(), self.now()
+        for (p, _), armed in sorted(self.armed.items()):
+            info = armed.triggers.get("watch")
+            if p != profile or info is None or armed.watch_path is None:
+                continue
+            folder = InboxFolder(armed.name, str(armed.watch_path), info.state, info.detail)
+            out.append(folder)
+            listed = await asyncio.to_thread(_list_inputs, armed.watch_path, limit)
+            if listed is None:
+                continue
+            entries, folder.omitted = listed
+            records = self.store.records(profile, armed.name)
+            for name, inside, current in entries:
+                record = records.get(str(armed.watch_path / name))
+                if not inside:
+                    folder.entries.append(InboxItem(name, "outside", None, None))
+                    continue
+                last = armed.tracker.last(name) if armed.tracker is not None else None
+                changed = wall - timedelta(seconds=mono - last) if last is not None else None
+                state = inbox_state(record, current, settling=last is not None)
+                run_id = record.run_id if record is not None else None
+                folder.entries.append(InboxItem(name, state, changed, run_id))
+        return out
 
     def _emit_error(self, armed: Armed, kind: Kind | None, message: str) -> None:
         self._emit(

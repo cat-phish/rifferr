@@ -6,6 +6,7 @@ Uses only the LibraryBackend protocol: whatever library the profile's backend is
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 from typing import Literal, Self
 
@@ -13,7 +14,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from rifferr.backends.base import BackendCapabilities, ImportOutcome
 from rifferr.core.duration import Duration, parse_duration
-from rifferr.engine import StepContext, StepFailure, StepResult
+from rifferr.core.workflow.safety import DESTRUCTIVE_DUPLICATE_ACTIONS
+from rifferr.engine import StepContext, StepFailure, StepRefused, StepResult
 from rifferr.engine.steps import ImportOptions
 
 
@@ -82,11 +84,24 @@ class BeetsImportStep:
     async def run(self, ctx: StepContext) -> StepResult:
         params = ctx.params
         assert isinstance(params, BeetsImportParams)
+        action = params.options.duplicate_action
+        if action in DESTRUCTIVE_DUPLICATE_ACTIONS and not ctx.trusted:  # SEC-08
+            raise StepRefused(
+                f"beets.import with duplicate_action: {action} can remove an album already "
+                "in the library; it runs only in trusted workflows"
+            )
         path = Path(params.path)
+        if path.is_symlink():  # SEC-81: a checked input folder swapped for a link
+            raise StepFailure(f"import folder {path} is a symbolic link; refusing to follow it")
         if not path.exists():
             raise StepFailure(f"import folder {path} does not exist")
         if not path.is_dir():
             raise StepFailure(f"import path {path} is not a folder")
+        escaping = await asyncio.to_thread(_escaping_links, path)
+        if escaping:
+            raise StepFailure(
+                f"import folder {path} holds a symbolic link that leaves it: {escaping}"
+            )
         if params.mode != "quiet" and not ctx.backend.capabilities.import_decisions:
             raise StepFailure(
                 f"this profile's backend can't ask about imports; mode '{params.mode}' "
@@ -125,6 +140,24 @@ class BeetsImportStep:
                 "decisions": len(result.questions),
             }
         )
+
+
+def _escaping_links(folder: Path) -> str | None:
+    """SEC-02: the first symbolic link under ``folder`` (links are not followed while
+    looking) whose target is not inside the real folder, or ``None``."""
+    real = folder.resolve()
+    for root, dirs, names in os.walk(folder, followlinks=False):
+        dirs.sort()
+        for name in sorted(dirs + names):
+            link = Path(root, name)
+            if link.is_symlink():
+                try:
+                    inside = link.resolve().is_relative_to(real)
+                except (OSError, RuntimeError):
+                    inside = False
+                if not inside:
+                    return str(link.relative_to(folder))
+    return None
 
 
 def _log_decision(ctx: StepContext, decision: ImportOutcome) -> None:

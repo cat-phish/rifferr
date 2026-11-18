@@ -1,0 +1,15 @@
+# Workflow for the workflow-call e2e test (S-SUBWORKFLOW): it calls call-shared.yaml,
+# which is trusted on its own, by its own hash, from the same review.
+name: call-flow
+description: Call a shared workflow, then a step of its own.
+steps:
+  - id: greet
+    uses: workflow
+    with:
+      workflow: call-shared.yaml
+      vars: { who: e2e }
+  - id: done
+    uses: shell
+    with:
+      per: run
+      run: [echo, done]

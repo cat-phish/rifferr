@@ -1,0 +1,13 @@
+{
+  "images": [
+    {"approved": true, "back": false, "front": true, "id": 1111, "types": ["Front"],
+     "image": "http://coverartarchive.org/release/11111111-2222-3333-4444-555555555555/1111.jpg",
+     "thumbnails": {"250": "http://coverartarchive.org/release/11111111-2222-3333-4444-555555555555/1111-250.jpg",
+                    "500": "http://coverartarchive.org/release/11111111-2222-3333-4444-555555555555/1111-500.jpg",
+                    "1200": "http://coverartarchive.org/release/11111111-2222-3333-4444-555555555555/1111-1200.jpg"}},
+    {"approved": true, "back": true, "front": false, "id": 2222, "types": ["Back"],
+     "image": "http://coverartarchive.org/release/11111111-2222-3333-4444-555555555555/2222.jpg",
+     "thumbnails": {}}
+  ],
+  "release": "https://musicbrainz.org/release/11111111-2222-3333-4444-555555555555"
+}

@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Query
 
 from rifferr.api.errors import ERROR_RESPONSES, ApiError, not_found
 from rifferr.api.models import (
+    CalledWorkflow,
     SafetyFinding,
     TrustRequest,
     TrustResult,
@@ -18,9 +19,10 @@ from rifferr.api.models import (
     WorkflowSummary,
 )
 from rifferr.api.state import ServerState, State
-from rifferr.core.profile import Profile, ProfileError, ProfileLoadError
+from rifferr.core.profile import Profile, ProfileError, ProfileLoadError, env_backed_vars
 from rifferr.core.workflow import (
     WORKFLOW_SUFFIXES,
+    Calls,
     ValidationError,
     Workflow,
     WorkflowLoadError,
@@ -28,8 +30,11 @@ from rifferr.core.workflow import (
     safety_report,
     validate,
 )
+from rifferr.core.workflow.yamldoc import YamlSyntaxError
+from rifferr.core.workflow.yamldoc import parse as parse_yaml
 from rifferr.profile_store import WORKFLOWS_DIR, load_profile, profile_dir
 from rifferr.trust import WorkflowFileError, read_workflow_file
+from rifferr.workflow_calls import called_trust, read_calls
 
 router = APIRouter(prefix="/api/workflows", tags=["workflows"])
 
@@ -44,6 +49,22 @@ class Checked:
     errors: list[ValidationError]
     vars: list[VarInfo] = field(default_factory=list[VarInfo])
     missing_vars: list[str] = field(default_factory=list[str])
+    calls: Calls | None = None
+    """The files it calls, read with it (S-SUBWORKFLOW)."""
+    profile: str = ""
+    """The profile it was read from: trust is per profile (SEC-63)."""
+
+    def called(self, state: ServerState) -> list[CalledWorkflow]:
+        return [
+            CalledWorkflow(path=c.path, sha256=c.sha256, trusted=c.trusted, yaml=c.text)
+            for c in called_trust(state.db, self.calls, self.profile)
+        ]
+
+    def trusted(self, state: ServerState) -> bool:
+        """The run would be trusted: this file and every file it calls (SUBWORKFLOW-13)."""
+        if not self.sha256 or not state.db.is_trusted(self.sha256, self.profile):
+            return False
+        return all(c.trusted for c in called_trust(state.db, self.calls, self.profile))
 
 
 def get_profile(state: ServerState, name: str) -> Profile:
@@ -78,6 +99,24 @@ def find_workflow(state: ServerState, profile: str, name: str) -> Path:
     return matches[0]
 
 
+ENV_PLACEHOLDER = "(set by the profile)"
+
+
+def _env_backed(state: ServerState, profile: Profile) -> set[str]:
+    """SEC-47: vars filled from the environment are never echoed (they may hold secrets)."""
+    try:
+        doc = parse_yaml(
+            (profile_dir(state.config_root, profile.name) / "profile.yaml").read_text("utf-8"), ""
+        )
+        raw: Any = doc.plain()
+        vars_ = raw.get("vars") if isinstance(raw, dict) else None
+    except (OSError, YamlSyntaxError):
+        return set(profile.vars)  # cannot tell: hide all
+    if not isinstance(vars_, dict):
+        return set()
+    return env_backed_vars({str(k): str(v) for k, v in vars_.items()})
+
+
 def check(
     state: ServerState,
     profile: Profile,
@@ -92,29 +131,36 @@ def check(
     Unless ``for_start``, vars that are supplied at start (no default, not set by the
     profile) are reported as ``missing_vars`` instead of errors (API-16).
     """
+    pn = profile.name
     try:
         text, sha = read_workflow_file(path)
     except WorkflowFileError as exc:
-        return Checked(name, path, "", "", None, [ValidationError(str(path), "", str(exc))])
+        return Checked(
+            name, path, "", "", None, [ValidationError(str(path), "", str(exc))], profile=pn
+        )
     try:
         wf, doc = load_workflow(text, str(path))
     except WorkflowLoadError as exc:
-        return Checked(name, path, text, sha, None, list(exc.errors))
+        return Checked(name, path, text, sha, None, list(exc.errors), profile=pn)
     known = {**profile.vars, **run_vars}
+    hidden = _env_backed(state, profile)
     infos = [
         VarInfo(
             name=n,
             default=d.default,
             description=d.description,
-            profile_value=profile.vars.get(n),
+            profile_value=ENV_PLACEHOLDER if n in hidden else profile.vars.get(n),
         )
         for n, d in wf.vars.items()
     ]
     missing = [n for n, d in wf.vars.items() if d.default is None and n not in known]
     if not for_start:
         known |= dict.fromkeys(missing, "")  # placeholders: supplied at start
-    errors = validate(wf, state.registry, None, known, doc=doc)
-    return Checked(name, path, text, sha, wf, errors, infos, [] if for_start else missing)
+    calls = read_calls(profile_dir(state.config_root, profile.name) / WORKFLOWS_DIR, wf, doc, path)
+    errors = validate(wf, state.registry, None, known, doc=doc, calls=calls)
+    return Checked(
+        name, path, text, sha, wf, errors, infos, [] if for_start else missing, calls, pn
+    )
 
 
 def error_out(errors: list[ValidationError]) -> list[WorkflowError]:
@@ -136,7 +182,7 @@ async def list_workflows(profile: Annotated[str, Query()], state: State) -> list
                     path=str(path),
                     sha256=c.sha256,
                     valid=not c.errors and len(paths) == 1,
-                    trusted=bool(c.sha256) and state.db.is_trusted(c.sha256),
+                    trusted=c.trusted(state),
                     vars=c.vars,
                     missing_vars=c.missing_vars,
                 )
@@ -153,11 +199,12 @@ async def get_workflow(name: str, profile: Annotated[str, Query()], state: State
         path=str(c.path),
         sha256=c.sha256,
         valid=not c.errors,
-        trusted=bool(c.sha256) and state.db.is_trusted(c.sha256),
+        trusted=c.trusted(state),
         yaml=c.text,
         errors=error_out(c.errors),
         vars=c.vars,
         missing_vars=c.missing_vars,
+        called=c.called(state),
     )
 
 
@@ -168,13 +215,17 @@ async def validate_workflow(
     """Validation errors plus the static safety report (API-4, SECURITY-11)."""
     p = get_profile(state, profile)
     c = check(state, p, name, find_workflow(state, profile, name), {})
-    findings = safety_report(c.workflow).findings if c.workflow is not None else []
+    findings = safety_report(c.workflow, c.calls).findings if c.workflow is not None else []
     return ValidateResult(
         valid=not c.errors,
         errors=error_out(c.errors),
-        safety=[SafetyFinding(step_id=f.step_id, kind=f.kind, detail=f.detail) for f in findings],
+        safety=[
+            SafetyFinding(step_id=f.step_id, kind=f.kind, detail=f.detail, workflow=f.workflow)
+            for f in findings
+        ],
         sha256=c.sha256,
-        trusted=bool(c.sha256) and state.db.is_trusted(c.sha256),
+        trusted=c.trusted(state),
+        called=c.called(state),
     )
 
 
@@ -185,18 +236,34 @@ async def trust_workflow(
     profile: Annotated[str, Query()],
     state: State,
 ) -> TrustResult:
-    """Trust exactly the content the user reviewed (API-14, SECURITY-12)."""
-    get_profile(state, profile)
+    """Trust exactly the content the user reviewed (API-14, SECURITY-12), with the
+    called files it lists, each by its own hash (SUBWORKFLOW-13)."""
+    p = get_profile(state, profile)
     path = find_workflow(state, profile, name)
-    try:
-        _, sha = read_workflow_file(path)
-    except WorkflowFileError as exc:
-        raise ApiError(422, "validation_failed", str(exc)) from None
-    if sha != body.sha256:
+    c = check(state, p, name, path, {})
+    if not c.sha256 or c.errors:  # SEC-64: the same rule as `rifferr trust --profile`
+        raise ApiError(422, "validation_failed", "; ".join(str(e) for e in c.errors))
+    if c.sha256 != body.sha256:
         raise ApiError(
             409, "hash_mismatch", "the workflow changed since it was reviewed; review it again"
         )
-    state.db.trust(sha, str(path), "ui")
+    called = {f.path: f for f in called_trust(state.db, c.calls, profile)}
+    for f in called.values():
+        if not f.trusted and body.called.get(f.path) != f.sha256:
+            raise ApiError(
+                409,
+                "hash_mismatch",
+                f"called workflow '{f.path}' changed or wasn't reviewed; review it again",
+            )
+    for rel, sha in body.called.items():
+        if rel not in called or called[rel].sha256 != sha:
+            raise ApiError(
+                409, "hash_mismatch", f"called workflow '{rel}' changed since it was reviewed"
+            )
+    workflows = profile_dir(state.config_root, profile) / WORKFLOWS_DIR
+    state.db.trust(c.sha256, str(path), "ui", profile)  # SEC-63: in this profile only
+    for rel, sha in body.called.items():
+        state.db.trust(sha, str(workflows / rel), "ui", profile)
     if state.triggers is not None:  # TRIGGERS-2: arm now, not at the next check
         await state.triggers.reconcile()
-    return TrustResult(name=name, sha256=sha)
+    return TrustResult(name=name, sha256=c.sha256, called=dict(body.called))

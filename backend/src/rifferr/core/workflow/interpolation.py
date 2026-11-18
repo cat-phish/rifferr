@@ -19,7 +19,7 @@ PROFILE_FIELDS: Final = ("name",)
 
 _OPEN = "{{"
 _EXPR = re.compile(
-    r"\{\{\s*(?:(?P<literal>'\{\{')|(?P<path>[A-Za-z_][A-Za-z0-9_-]*(?:\.[A-Za-z0-9_-]+)*))\s*\}\}"
+    r"\{\{\s*(?:(?P<literal>'\{\{')|(?P<path>[A-Za-z_][A-Za-z0-9_-]*(?:\.[A-Za-z0-9_/-]+)*))\s*\}\}"
 )
 
 Scalar = str | int | float | bool
@@ -127,6 +127,27 @@ def substitute(value: str, resolve: Callable[[tuple[str, ...]], str]) -> str:
         pos = tok.end
     out.append(value[pos:])
     return "".join(out)
+
+
+def rewrite(value: str, replace: Callable[[Expression], str]) -> str:
+    """Replace every ``{{ path }}`` in ``value`` with ``replace(expr)``, keeping
+    ``{{ '{{' }}`` literals as they are (used to expand workflow calls, S-SUBWORKFLOW)."""
+    tokens = _scan(value)
+    if not tokens:
+        return value
+    out: list[str] = []
+    pos = 0
+    for tok in tokens:
+        out.append(value[pos : tok.start])
+        out.append(value[tok.start : tok.end] if isinstance(tok, _Literal) else replace(tok))
+        pos = tok.end
+    out.append(value[pos:])
+    return "".join(out)
+
+
+def escape(value: str) -> str:
+    """``value`` as literal text inside an interpolated string."""
+    return value.replace(_OPEN, "{{ '{{' }}")
 
 
 def interpolate(value: str, ctx: InterpolationContext) -> str:

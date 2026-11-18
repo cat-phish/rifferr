@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
 import math
 import os
 from typing import Any
 
 from beets.library import Album, Item
 
+from rifferr.core.covers import ART_FIELD
 from rifferr.core.snapshot import AlbumSnapshot, FieldValue, ItemSnapshot
 
 ALBUM_PREFIX = "album-"
@@ -42,12 +44,50 @@ def field_value(value: Any) -> FieldValue:
     return str(value)
 
 
-def _fields(obj: Item | Album) -> dict[str, FieldValue]:
-    return {k: field_value(obj.get(k)) for k in obj.keys(computed=False) if k not in _SKIP}
+_ART_HASHES: dict[tuple[str, int, int], str] = {}
+
+
+def art_file(album: Album) -> str | None:
+    """The album's art file, when ``artpath`` names one that exists."""
+    raw = album.get("artpath")
+    if not raw:
+        return None
+    path = os.fsdecode(raw)
+    return path if os.path.isfile(path) else None
+
+
+def art_sha256(album: Album) -> str | None:
+    """sha256 of the album's art file (``ART_FIELD``), cached by path, size and time."""
+    path = art_file(album)
+    if path is None:
+        return None
+    st = os.stat(path)
+    key = (path, st.st_size, st.st_mtime_ns)
+    found = _ART_HASHES.get(key)
+    if found is None:
+        h = hashlib.sha256()
+        with open(path, "rb") as f:
+            while chunk := f.read(1 << 20):
+                h.update(chunk)
+        found = h.hexdigest()
+        if len(_ART_HASHES) > 10_000:
+            _ART_HASHES.clear()
+        _ART_HASHES[key] = found
+    return found
+
+
+def stored_fields(obj: Item | Album) -> dict[str, FieldValue]:
+    fields = {k: field_value(obj.get(k)) for k in obj.keys(computed=False) if k not in _SKIP}
+    if isinstance(obj, Album):
+        fields.pop(ART_FIELD, None)
+        sha = art_sha256(obj)
+        if sha is not None:
+            fields[ART_FIELD] = sha
+    return fields
 
 
 def item_snapshot(item: Item) -> ItemSnapshot:
-    return ItemSnapshot(id=item_id(item), path=os.fsdecode(item.path), fields=_fields(item))
+    return ItemSnapshot(id=item_id(item), path=os.fsdecode(item.path), fields=stored_fields(item))
 
 
 def _track_key(item: Item) -> tuple[int, int]:
@@ -63,6 +103,6 @@ def album_snapshot(album: Album, items: list[Item] | None = None) -> AlbumSnapsh
     return AlbumSnapshot(
         id=album_id(album),
         path=path,
-        fields=_fields(album),
+        fields=stored_fields(album),
         items=[item_snapshot(i) for i in chosen],
     )

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import timedelta
 from pathlib import Path
@@ -12,8 +12,11 @@ from pydantic import BaseModel, JsonValue
 
 from rifferr.backends.base import BackendCapabilities, LibraryBackend
 from rifferr.core.changeset import ChangeSet, ChangeSetProposal, TargetRef
+from rifferr.core.covers import CoverQuery, RankedCandidate
+from rifferr.core.files import BusyFolder, CleanupChoice, CleanupEntry, CleanupOptions
 from rifferr.core.imports import ImportQuestion, TimeoutAction
-from rifferr.core.profile import Secret
+from rifferr.core.notify import Notification, SendResult
+from rifferr.core.profile import ProfileFile, Secret
 from rifferr.core.review import GateDecision, GateRequest, OnReject
 from rifferr.core.selection import Scope, Selection
 from rifferr.core.snapshot import AlbumSnapshot
@@ -70,6 +73,12 @@ class StepType(Protocol):
     Optional attribute ``force_review: bool`` (default False): the step's ChangeSets
     always wait for review, and ``apply: auto`` is a validation error (CHANGESET-6).
 
+    Optional attribute ``default_apply`` (``"auto"`` or ``"review"``, default ``"review"``):
+    the ``apply`` policy when the workflow doesn't set one (CHANGESET-6).
+
+    Optional attribute ``accepts_when: bool`` (default True): False for steps that
+    aren't about albums; ``when:`` is then a validation error.
+
     Optional attribute ``run_level``: ``True``, or a function of the step's raw ``with:``
     mapping returning a bool (default False). A run-level step runs once per pass even
     before any lane exists, e.g. an import or a ``per: run`` command (C-LANES LANES-6).
@@ -111,6 +120,59 @@ class ImportOptions:
     on_timeout: TimeoutAction = "skip"
 
 
+class NotifyTargets(Protocol):
+    """A profile's notification targets (S-NOTIFY): the worker provides them."""
+
+    @property
+    def base_url(self) -> str | None: ...
+
+    def names(self) -> list[str]: ...
+
+    async def send(self, target: str, n: Notification) -> SendResult:
+        """Send with the profile's retries; never raises for a failed send."""
+        ...
+
+
+#: The engine's side of ``ctx.notify``: targets (None = all), notification -> results.
+SendNotification = Callable[[list[str] | None, Notification], Awaitable[list[SendResult]]]
+
+
+@dataclass(frozen=True)
+class CleanupRequest:
+    """A listing to leave in the review queue before deleting (FILES-CLEANUP-14)."""
+
+    path: str
+    entries: list[CleanupEntry]
+    totals: Mapping[str, int]
+    options: CleanupOptions
+    truncated: int = 0
+    timeout: timedelta | None = None
+    on_timeout: CleanupChoice = "keep"
+
+
+@dataclass(frozen=True)
+class CoverRequest:
+    """An album waiting for a person to pick its cover (COVERS-SEARCH-14)."""
+
+    album_id: str
+    label: str
+    query: CoverQuery
+    candidates: list[RankedCandidate]
+    dropped: Mapping[str, Mapping[str, int]] = field(default_factory=dict[str, Mapping[str, int]])
+    old_sha256: str | None = None
+    reason: str = ""
+
+
+#: The engine's side of ``ctx.request_cover``: request -> review id.
+RequestCover = Callable[[CoverRequest], str]
+
+
+#: The engine's side of ``ctx.request_cleanup``: request -> decision id.
+RequestCleanup = Callable[[CleanupRequest], str]
+#: The engine's side of ``ctx.hold_pass``: kind, ref, label for a pass without lanes.
+HoldPass = Callable[[str, str, str], None]
+
+
 #: The engine's side of ``ctx.request_import``: question, options -> decision id.
 RequestImport = Callable[[ImportQuestion, ImportOptions], str]
 #: The engine's side of ``ctx.hold``: key, kind, ref, label.
@@ -129,6 +191,22 @@ def _no_gate(requests: list[GateRequest], options: GateOptions, s: SnapshotIndex
 
 def _no_import(question: ImportQuestion, options: ImportOptions) -> str:
     raise StepFailure("this run can't ask for import decisions")
+
+
+async def _no_notify(targets: list[str] | None, n: Notification) -> list[SendResult]:
+    raise StepFailure("this profile has no notification targets (notify.targets)")
+
+
+def _no_cleanup(request: CleanupRequest) -> str:
+    raise StepFailure("this run can't leave cleanup decisions")
+
+
+def _no_cover(request: CoverRequest) -> str:
+    raise StepFailure("this run can't leave cover reviews")
+
+
+def _no_hold_pass(kind: str, ref: str, label: str) -> None:
+    raise RuntimeError("this context can't hold passes")
 
 
 def _unchanged(value: str) -> str:
@@ -154,24 +232,41 @@ class StepContext:
         trusted: bool = False,
         secrets: SecretAccess | None = None,
         on_secret: Callable[[Secret], None] | None = None,
+        redact: Callable[[str], str] | None = None,
         propose: Propose | None = None,
         profile_dir: Path | None = None,
         interpolate: Callable[[str], str] | None = None,
+        interpolate_template: Callable[[str], str] | None = None,
         open_gate: OpenGate | None = None,
         on_hold: OnHold | None = None,
         request_import: RequestImport | None = None,
+        notify: SendNotification | None = None,
+        notify_targets: Iterable[str] = (),
+        base_url: str | None = None,
+        profile_settings: ProfileFile | None = None,
+        busy_folders: Callable[[], list[BusyFolder]] | None = None,
+        request_cleanup: RequestCleanup | None = None,
+        hold_pass: HoldPass | None = None,
+        request_cover: RequestCover | None = None,
+        run_input: str = "",
     ) -> None:
         self.run_id = run_id
+        self.run_input = run_input
+        """``{{ run.input }}``, for steps that pass it to a process in the environment."""
         self.profile = profile
         self.vars: Mapping[str, str] = dict(vars or {})
         self.work_dir = work_dir
         self.profile_dir = profile_dir
         """The profile's folder (``scripts/``, ``rules/`` ... live under it), if known."""
         self._interpolate: Callable[[str], str] = interpolate or _unchanged
+        self._interpolate_template: Callable[[str], str] = (
+            interpolate_template or interpolate or _unchanged
+        )
         self.trusted = trusted
         """Whether this run's workflow is trusted to run shell/python steps (F-SECURITY)."""
         self._secrets = secrets or NoSecrets()
         self._on_secret = on_secret
+        self._redact = redact or _unchanged
         self.step = step
         self.params = params
         self.backend = backend
@@ -183,6 +278,17 @@ class StepContext:
         self._open_gate = open_gate or _no_gate
         self._on_hold = on_hold or _no_hold
         self._request_import = request_import or _no_import
+        self._notify = notify or _no_notify
+        self.notify_targets: list[str] = list(notify_targets)
+        """The profile's notification target names (S-NOTIFY NOTIFY-1)."""
+        self.base_url = base_url
+        self.profile_settings = profile_settings
+        """The run's profile settings (``profile.yaml``), when the worker knows them."""
+        self._busy_folders: Callable[[], list[BusyFolder]] = busy_folders or list[BusyFolder]
+        self._request_cleanup = request_cleanup or _no_cleanup
+        self._hold_pass = hold_pass or _no_hold_pass
+        self._request_cover = request_cover or _no_cover
+        """The profile's ``notify.base_url``, for links in notifications (NOTIFY-6)."""
         self._snapshots = SnapshotIndex()
         self.proposed: list[ChangeSet] = []
         """Every ChangeSet this step proposed so far, in order (after no-op dropping)."""
@@ -209,10 +315,19 @@ class StepContext:
             data["target"] = target
         self._emit("run.step.log", data)
 
+    def redact(self, text: str) -> str:
+        """Mask this run's known secret values in ``text`` (for steps that cut text up)."""
+        return self._redact(text)
+
     def interpolate(self, value: str) -> str:
         """``{{ ... }}`` interpolation (C-WORKFLOW) with this step's context, for text a
         step reads itself (e.g. a script file). Raises ``StepFailure`` on a bad expression."""
         return self._interpolate(value)
+
+    def interpolate_template(self, value: str) -> str:
+        """Like ``interpolate``, for text the backend then evaluates as a template:
+        values from outside the workflow come out escaped, so they stay literal (SEC-22)."""
+        return self._interpolate_template(value)
 
     def secret(self, name: str) -> Secret:
         """Resolve a profile secret by name. Its value is masked in this run's events."""
@@ -279,6 +394,34 @@ class StepContext:
         """
         return self._request_import(question, options or ImportOptions())
 
+    def busy_folders(self) -> list[BusyFolder]:
+        """Folders other work still needs: pending import decisions of this profile and
+        the inputs of its other queued, running or waiting runs (FILES-CLEANUP-7)."""
+        return self._busy_folders()
+
+    def hold_pass(self, kind: str, ref: str, label: str) -> None:
+        """Hold every lane of this pass on ``ref`` (C-LANES LANES-16, run-level steps). A
+        pass without lanes waits in a new lane named by ``label``."""
+        self._hold_pass(kind, ref, label)
+
+    def request_cleanup(self, request: CleanupRequest) -> str:
+        """Leave a cleanup listing in the review queue and hold the pass until it is
+        decided (FILES-CLEANUP-14). Returns the decision id."""
+        return self._request_cleanup(request)
+
+    def request_cover(self, request: CoverRequest) -> str:
+        """Leave an album in the review queue to pick its cover; only that album's lane
+        waits (COVERS-SEARCH-14). Returns the review id."""
+        return self._request_cover(request)
+
+    async def notify(
+        self, notification: Notification, targets: list[str] | None = None
+    ) -> list[SendResult]:
+        """Send to the profile's targets (``None``: all) with its retries (S-NOTIFY).
+        The engine emits ``notify.sent`` / ``notify.failed`` per target; a failed send
+        is a result, not an exception."""
+        return await self._notify(targets, notification)
+
 
 def _no_hold(key: str, kind: str, ref: str, label: str | None) -> None:
     raise RuntimeError("this context can't hold lanes")
@@ -322,6 +465,7 @@ class StepTypeRegistry:
             params_model=t.params_model,
             requires=t.requires,
             force_review=bool(getattr(t, "force_review", False)),
+            accepts_when=bool(getattr(t, "accepts_when", True)),
         )
 
     def names(self) -> list[str]:

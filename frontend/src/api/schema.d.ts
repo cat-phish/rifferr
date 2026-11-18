@@ -4,6 +4,27 @@
  */
 
 export interface paths {
+    "/api/albums/{album_id}/art": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Album Art
+         * @description The album's current art file (COVERS-SEARCH-22), read through the read-only worker.
+         *     Its ``ETag`` is the art's sha256, so an unchanged cover answers 304 (COVER-PICKER-16).
+         */
+        get: operations["album_art_api_albums__album_id__art_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/changesets/{changeset_id}": {
         parameters: {
             query?: never;
@@ -79,6 +100,172 @@ export interface paths {
          * @description Propose a conflicted ChangeSet again on the current values (REVIEW-QUEUE-5).
          */
         post: operations["repropose_api_changesets__changeset_id__repropose_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cleanups/{decision_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Cleanup
+         * @description The full cleanup decision: the listing, folder and options (FILES-CLEANUP-14).
+         */
+        get: operations["get_cleanup_api_cleanups__decision_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cleanups/{decision_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decide Cleanup
+         * @description Answer a cleanup decision, once (FILES-CLEANUP-14). ``delete`` queues a worker job
+         *     that cleans the folder (its result arrives as ``job.finished`` and
+         *     ``cleanup.resolved``); ``keep`` deletes nothing and lets the run go on.
+         */
+        post: operations["decide_cleanup_api_cleanups__decision_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/covers/image/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Cover Image
+         * @description An image from the profile's art store (``key`` = sha256), or a candidate's image
+         *     or thumbnail (``key`` = candidate id): only candidates Rifferr found itself.
+         */
+        get: operations["cover_image_api_covers_image__key__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/covers/reviews/{review_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Cover Review */
+        get: operations["get_cover_review_api_covers_reviews__review_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/covers/reviews/{review_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decide Cover
+         * @description ``choose`` downloads the candidate (it must be a JPEG or PNG passing the size
+         *     filters), keeps it in the art store and queues the job that sets it; ``skip`` lets
+         *     the album go on without a cover, ``fail`` fails it.
+         */
+        post: operations["decide_cover_api_covers_reviews__review_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/covers/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Search
+         * @description Ask the profile's cover providers (or ``providers``) at once; candidates, provider
+         *     states and the ranked result arrive as ``covers.candidate``, ``covers.provider`` and
+         *     ``covers.done`` events on the profile's stream.
+         */
+        post: operations["start_search_api_covers_search_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/covers/search/{search_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Cancel Search
+         * @description Cancel a running search; its ``covers.done`` event says ``cancelled``.
+         */
+        delete: operations["cancel_search_api_covers_search__search_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/covers/uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Cover
+         * @description Add an image of the user's own as a candidate of provider ``upload``. The body is
+         *     JSON with the image base64-encoded; it may be at most the profile's
+         *     ``covers.max_bytes`` once decoded.
+         */
+        post: operations["upload_cover_api_covers_uploads_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -187,6 +374,88 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/profiles/{profile}/albums/{album_id}/cover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set Album Cover
+         * @description Download and check the candidate, keep it in the art store, and queue a manual
+         *     ChangeSet on the album's ``art_sha256`` (undoable from Recent edits).
+         */
+        post: operations["set_album_cover_api_profiles__profile__albums__album_id__cover_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profiles/{profile}/albums/{album_id}/cover-query": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Album Cover Query
+         * @description The album's cover query from the backend templates ``covers.search`` uses by default,
+         *     its label and its art's sha256. The folder is left out.
+         */
+        get: operations["album_cover_query_api_profiles__profile__albums__album_id__cover_query_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profiles/{profile}/beets-config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Beets Config
+         * @description The keys in the profile's beets config that run code, and its trust (SEC-62).
+         */
+        get: operations["get_beets_config_api_profiles__profile__beets_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profiles/{profile}/beets-config/trust": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Trust Beets Config
+         * @description Trust exactly the beets config content the user reviewed, in this profile (SEC-62).
+         */
+        post: operations["trust_beets_config_api_profiles__profile__beets_config_trust_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/profiles/{profile}/changes": {
         parameters: {
             query?: never;
@@ -233,6 +502,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/profiles/{profile}/covers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Cover Providers
+         * @description The profile's cover providers in order (without their own settings), every
+         *     installed provider, and the hash a save must send back.
+         */
+        get: operations["cover_providers_api_profiles__profile__covers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profiles/{profile}/covers/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save Providers
+         * @description Save the toggles, weights and order as ``covers.providers`` in ``profile.yaml``,
+         *     keeping the rest of the file. ``409 conflict`` when the file changed since it was read.
+         */
+        put: operations["save_providers_api_profiles__profile__covers_providers_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/profiles/{profile}/events": {
         parameters: {
             query?: never;
@@ -247,6 +558,46 @@ export interface paths {
          *     it the stream starts with new events, since the profile's history never ends.
          */
         get: operations["profile_events_api_profiles__profile__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profiles/{profile}/imports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Recent Imports
+         * @description The latest runs whose imported albums are still in the library (DASHBOARD-6).
+         */
+        get: operations["recent_imports_api_profiles__profile__imports_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profiles/{profile}/inbox": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Inbox
+         * @description Each watch trigger's folder and its inputs with their state (DASHBOARD-1, -2).
+         */
+        get: operations["inbox_api_profiles__profile__inbox_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -290,6 +641,26 @@ export interface paths {
         get: operations["library_api_profiles__profile__library_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profiles/{profile}/notify/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Notify Test
+         * @description Send a fixed test notification to one target (S-NOTIFY NOTIFY-14).
+         */
+        post: operations["notify_test_api_profiles__profile__notify_test_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -387,7 +758,8 @@ export interface paths {
         put?: never;
         /**
          * Create Webhook Secret
-         * @description Create or replace a webhook's secret; the response is the only time it is shown.
+         * @description Create a webhook's secret, or replace it with ``{"replace": true}``; the response
+         *     is the only time it is shown.
          */
         post: operations["create_webhook_secret_api_profiles__profile__webhooks__name__secret_post"];
         delete?: never;
@@ -406,8 +778,8 @@ export interface paths {
         /**
          * Review Queue
          * @description What waits for a decision, oldest first: run ChangeSets that are proposed or
-         *     conflicted, pending review gates (REVIEW-QUEUE-1) and pending import decisions
-         *     (IMPORT-UI-7).
+         *     conflicted, pending review gates (REVIEW-QUEUE-1), pending import decisions
+         *     (IMPORT-UI-7) and pending cleanup decisions (FILES-CLEANUP-14).
          */
         get: operations["review_queue_api_review_get"];
         put?: never;
@@ -429,7 +801,8 @@ export interface paths {
         put?: never;
         /**
          * Decide Gate
-         * @description Continue or reject a review gate (REVIEW-QUEUE-6, S-REVIEW REVIEW-6 .. -8).
+         * @description Continue or reject a review gate (REVIEW-QUEUE-6, S-REVIEW REVIEW-6 .. -8), or only
+         *     some of its albums (DASHBOARD-11).
          */
         post: operations["decide_gate_api_reviews__gate_id__decision_post"];
         delete?: never;
@@ -534,6 +907,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs/{run_id}/import-undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Undo
+         * @description Queue the removal of the run's imported albums, after undoing its changes to
+         *     them (DASHBOARD-7). The report arrives as ``job.finished`` on the run's stream.
+         */
+        post: operations["import_undo_api_runs__run_id__import_undo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs/{run_id}/undo": {
         parameters: {
             query?: never;
@@ -600,7 +994,8 @@ export interface paths {
         put?: never;
         /**
          * Trust Workflow
-         * @description Trust exactly the content the user reviewed (API-14, SECURITY-12).
+         * @description Trust exactly the content the user reviewed (API-14, SECURITY-12), with the
+         *     called files it lists, each by its own hash (SUBWORKFLOW-13).
          */
         post: operations["trust_workflow_api_workflows__name__trust_post"];
         delete?: never;
@@ -679,6 +1074,28 @@ export interface components {
             status: "cancel_requested";
         };
         /**
+         * AlbumCoverBody
+         * @description Set an album's cover outside a run (COVER-PICKER-14). ``old_sha256`` is the art the
+         *     user saw; a different current one comes back as a conflict.
+         */
+        AlbumCoverBody: {
+            /** Candidate Id */
+            candidate_id: string;
+            /** Old Sha256 */
+            old_sha256?: string | null;
+        };
+        /** AlbumCoverQueued */
+        AlbumCoverQueued: {
+            /** Changeset Id */
+            changeset_id: string;
+            /** Job Id */
+            job_id: string;
+            /** Queued Behind */
+            queued_behind?: string[];
+            /** Sha256 */
+            sha256: string;
+        };
+        /**
          * AlbumSnapshot
          * @description An album with its items in track order (disc, then track).
          */
@@ -693,6 +1110,42 @@ export interface components {
             items?: components["schemas"]["ItemSnapshot"][];
             /** Path */
             path: string | null;
+        };
+        /**
+         * BeetsConfigStatus
+         * @description SEC-62: what a profile's beets config runs, and whether the user trusted it.
+         */
+        BeetsConfigStatus: {
+            /**
+             * Code Keys
+             * @description Keys that run code, e.g. `pluginpath`
+             */
+            code_keys: string[];
+            /** Files */
+            files: string[];
+            /** Needs Trust */
+            needs_trust: boolean;
+            /** Sha256 */
+            sha256: string;
+            /** Trusted */
+            trusted: boolean;
+        };
+        /**
+         * CalledWorkflow
+         * @description A workflow file a workflow calls (S-SUBWORKFLOW), trusted on its own (SUBWORKFLOW-13).
+         */
+        CalledWorkflow: {
+            /**
+             * Path
+             * @description Relative to the profile's workflows/ folder
+             */
+            path: string;
+            /** Sha256 */
+            sha256: string;
+            /** Trusted */
+            trusted: boolean;
+            /** Yaml */
+            yaml: string;
         };
         /**
          * ChangeProblem
@@ -792,6 +1245,345 @@ export interface components {
             problems: components["schemas"]["ChangeProblem"][];
             /** Targets */
             targets: components["schemas"]["ManualChange"][];
+        };
+        /**
+         * CleanupDecided
+         * @description ``job_id`` is the worker job that cleans the folder (``delete``); ``None`` for
+         *     ``keep``, which needs no job.
+         */
+        CleanupDecided: {
+            /** Job Id */
+            job_id?: string | null;
+        };
+        /**
+         * CleanupDecision
+         * @description A listing waiting for Delete or Keep in the review queue (FILES-CLEANUP-14).
+         */
+        CleanupDecision: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Deadline */
+            deadline?: string | null;
+            /** Decided At */
+            decided_at?: string | null;
+            /** Decided By */
+            decided_by?: string | null;
+            /** Entries */
+            entries: components["schemas"]["CleanupEntry"][];
+            /** Id */
+            id: string;
+            /** Note */
+            note?: string | null;
+            /**
+             * On Timeout
+             * @default keep
+             * @enum {string}
+             */
+            on_timeout: "delete" | "keep";
+            options: components["schemas"]["CleanupOptions"];
+            /** Path */
+            path: string;
+            /** Profile */
+            profile: string;
+            /** Result */
+            result?: {
+                [key: string]: number;
+            } | null;
+            /** Run Id */
+            run_id: string;
+            /**
+             * State
+             * @default pending
+             * @enum {string}
+             */
+            state: "pending" | "deleted" | "kept" | "cancelled";
+            /** Step Id */
+            step_id: string;
+            /** Totals */
+            totals?: {
+                [key: string]: number;
+            };
+            /**
+             * Truncated
+             * @default 0
+             */
+            truncated: number;
+        };
+        /**
+         * CleanupDecisionBody
+         * @description Answer a cleanup decision (FILES-CLEANUP-14): ``delete`` what was listed for
+         *     deletion, or ``keep`` everything.
+         */
+        CleanupDecisionBody: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "delete" | "keep";
+            /** Note */
+            note?: string | null;
+        };
+        /** CleanupEntry */
+        CleanupEntry: {
+            /**
+             * Cls
+             * @enum {string}
+             */
+            cls: "delete" | "keep" | "in_library" | "busy" | "left" | "empty";
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "file" | "dir" | "link";
+            /** Mtime Ns */
+            mtime_ns?: number | null;
+            /** Path */
+            path: string;
+            /** Reason */
+            reason?: string | null;
+            /** Size */
+            size?: number | null;
+        };
+        /**
+         * CleanupOptions
+         * @description What the worker needs to clean again after the decision (FILES-CLEANUP-14).
+         */
+        CleanupOptions: {
+            /**
+             * Allow Audio
+             * @default false
+             */
+            allow_audio: boolean;
+            /** Delete */
+            delete?: string[];
+            /**
+             * Empty Dirs
+             * @default true
+             */
+            empty_dirs: boolean;
+            /** Keep */
+            keep?: string[];
+            /**
+             * Remove Root
+             * @default false
+             */
+            remove_root: boolean;
+            /** Trash */
+            trash?: string | null;
+        };
+        /**
+         * CoverDecided
+         * @description ``job_id`` is the worker job that sets the cover (``choose``); ``None`` otherwise.
+         */
+        CoverDecided: {
+            /** Job Id */
+            job_id?: string | null;
+            /** Sha256 */
+            sha256?: string | null;
+        };
+        /**
+         * CoverDecisionBody
+         * @description Answer a cover review (COVERS-SEARCH-21). ``choose`` needs ``candidate_id``: one
+         *     of the review's candidates, or one from a search started for it.
+         */
+        CoverDecisionBody: {
+            /** Candidate Id */
+            candidate_id?: string | null;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "choose" | "skip" | "fail";
+        };
+        /** CoverProviderOrder */
+        CoverProviderOrder: {
+            /** Enabled */
+            enabled: boolean;
+            /** Name */
+            name: string;
+            /** Weight */
+            weight: number;
+        };
+        /** CoverProvidersBody */
+        CoverProvidersBody: {
+            /** Profile Hash */
+            profile_hash: string;
+            /**
+             * Providers
+             * @description In the new order
+             */
+            providers: components["schemas"]["CoverProviderOrder"][];
+        };
+        /**
+         * CoverProvidersView
+         * @description The profile's cover providers as the picker edits them (COVER-PICKER-9, -10).
+         */
+        CoverProvidersView: {
+            /**
+             * Profile Hash
+             * @description sha256 of profile.yaml as read
+             */
+            profile_hash: string;
+            /**
+             * Providers
+             * @description In the profile's order
+             */
+            providers: components["schemas"]["CoverProviderOrder"][];
+            /**
+             * Registered
+             * @description Every installed cover provider
+             */
+            registered: string[];
+        };
+        /**
+         * CoverQuery
+         * @description What to look for (COVERS-SEARCH-2).
+         */
+        CoverQuery: {
+            /**
+             * Album
+             * @default
+             */
+            album: string;
+            /**
+             * Artist
+             * @default
+             */
+            artist: string;
+            /** Barcode */
+            barcode?: string | null;
+            /** Catalognum */
+            catalognum?: string | null;
+            /** Folder */
+            folder?: string | null;
+            /** Mb Albumid */
+            mb_albumid?: string | null;
+            /** Mb Releasegroupid */
+            mb_releasegroupid?: string | null;
+            /** Year */
+            year?: number | null;
+        };
+        /**
+         * CoverQueryAnswer
+         * @description An album's cover query from the default templates (COVER-PICKER-2). ``query.folder``
+         *     is left out: the server looks it up itself.
+         */
+        CoverQueryAnswer: {
+            /** Art Sha256 */
+            art_sha256?: string | null;
+            /** Label */
+            label: string;
+            query: components["schemas"]["CoverQuery"];
+        };
+        /**
+         * CoverReview
+         * @description An album waiting for a person to pick its cover (COVERS-SEARCH-14).
+         */
+        CoverReview: {
+            /** Album Id */
+            album_id: string;
+            /** Candidates */
+            candidates: components["schemas"]["RankedCandidate"][];
+            /**
+             * Chosen
+             * @description The chosen image's sha256
+             */
+            chosen?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Decided At */
+            decided_at?: string | null;
+            /** Decided By */
+            decided_by?: string | null;
+            /** Dropped */
+            dropped?: {
+                [key: string]: {
+                    [key: string]: number;
+                };
+            };
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Old Sha256 */
+            old_sha256?: string | null;
+            /** Profile */
+            profile: string;
+            query: components["schemas"]["CoverQuery"];
+            /**
+             * Reason
+             * @description Why it waits, e.g. no candidate scored enough
+             * @default
+             */
+            reason: string;
+            /** Run Id */
+            run_id: string;
+            /**
+             * State
+             * @default pending
+             * @enum {string}
+             */
+            state: "pending" | "chosen" | "skipped" | "failed" | "cancelled";
+            /** Step Id */
+            step_id: string;
+        };
+        /**
+         * CoverSearchBody
+         * @description Start a cover search (COVERS-SEARCH-19). ``query.folder`` is ignored: the
+         *     ``local`` provider only looks in the folder of the album under ``review_id``.
+         */
+        CoverSearchBody: {
+            /**
+             * Album Id
+             * @description The library album it is for, when there is no review (COVER-PICKER-14)
+             */
+            album_id?: string | null;
+            /** Profile */
+            profile: string;
+            /**
+             * Providers
+             * @description Default: the profile's
+             */
+            providers?: string[] | null;
+            query: components["schemas"]["CoverQuery"];
+            /**
+             * Refresh
+             * @description Ignore cached results
+             * @default false
+             */
+            refresh: boolean;
+            /**
+             * Review Id
+             * @description The cover review it is for
+             */
+            review_id?: string | null;
+        };
+        /** CoverSearchStarted */
+        CoverSearchStarted: {
+            /** Search Id */
+            search_id: string;
+        };
+        /**
+         * CoverUploadBody
+         * @description An image the user added, base64-encoded (COVER-PICKER-17). The profile is the
+         *     ``profile`` query parameter, so the size cap is known before the body is read.
+         */
+        CoverUploadBody: {
+            /**
+             * Data
+             * @description The image file, base64
+             */
+            data: string;
+        };
+        /** CoverUploaded */
+        CoverUploaded: {
+            candidate: components["schemas"]["RankedCandidate"];
         };
         /**
          * CurrentTarget
@@ -941,6 +1733,11 @@ export interface components {
         };
         /** GateDecisionBody */
         GateDecisionBody: {
+            /**
+             * Albums
+             * @description Decide only these albums' lanes; the others keep waiting (DASHBOARD-11)
+             */
+            albums?: string[] | null;
             /**
              * Decision
              * @enum {string}
@@ -1146,6 +1943,87 @@ export interface components {
             /** Ids */
             ids?: string[];
         };
+        /** ImportUndoBody */
+        ImportUndoBody: {
+            /**
+             * Albums
+             * @description Album ids; all of the run's when absent
+             */
+            albums?: string[] | null;
+        };
+        /** ImportedAlbum */
+        ImportedAlbum: {
+            /**
+             * Deletes Files
+             * @description Whether undo deletes its files (DASHBOARD-18)
+             */
+            deletes_files: boolean;
+            /**
+             * Files At
+             * @description The album's folder
+             */
+            files_at: string | null;
+            /** Id */
+            id: string;
+            /** Items */
+            items: number;
+            /** Label */
+            label: string;
+            /**
+             * Reason
+             * @description Why it can't be undone now
+             */
+            reason: string | null;
+            /** Undoable */
+            undoable: boolean;
+        };
+        /** InboxEntry */
+        InboxEntry: {
+            /**
+             * Changed At
+             * @description Last change, while settling
+             */
+            changed_at: string | null;
+            /**
+             * Path
+             * @description Relative to the watched folder
+             */
+            path: string;
+            /**
+             * Run Id
+             * @description The input's last run
+             */
+            run_id: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "settling" | "waiting" | "running" | "waiting_review" | "imported" | "failed" | "changed" | "undone" | "outside";
+        };
+        /**
+         * InboxFolder
+         * @description One watch trigger's folder and its inputs (DASHBOARD-1).
+         */
+        InboxFolder: {
+            /** Detail */
+            detail: string | null;
+            /** Entries */
+            entries: components["schemas"]["InboxEntry"][];
+            /** Folder */
+            folder: string;
+            /**
+             * Omitted
+             * @description Inputs left out beyond the listing cap (DASHBOARD-2)
+             */
+            omitted: number;
+            /**
+             * Trigger State
+             * @enum {string}
+             */
+            trigger_state: "armed" | "disabled" | "error";
+            /** Workflow */
+            workflow: string;
+        };
         /**
          * ItemSnapshot
          * @description One track. ``id`` is opaque and assigned by the backend.
@@ -1177,10 +2055,10 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "changeset" | "gate" | "import";
+            kind: "changeset" | "gate" | "import" | "cleanup" | "cover";
             /**
              * Ref
-             * @description ChangeSet id, review gate id or import decision id
+             * @description ChangeSet id, review gate id, import decision id or cleanup decision id
              */
             ref: string;
         };
@@ -1286,6 +2164,26 @@ export interface components {
              * @description Journal entry of the undo, once undone
              */
             undo_journal_id?: string | null;
+        };
+        /** NotifyTestBody */
+        NotifyTestBody: {
+            /**
+             * Target
+             * @description A target name from the profile's notify.targets
+             */
+            target: string;
+        };
+        /**
+         * NotifyTestResult
+         * @description S-NOTIFY NOTIFY-14. ``error`` never contains the target's URL.
+         */
+        NotifyTestResult: {
+            /** Error */
+            error?: string | null;
+            /** Sent */
+            sent: boolean;
+            /** Target */
+            target: string;
         };
         /** PreviewError */
         PreviewError: {
@@ -1448,10 +2346,13 @@ export interface components {
         /**
          * QueueItem
          * @description One thing that waits for a decision (REVIEW-QUEUE-1). ``kind`` says which of
-         *     ``changeset`` / ``gate`` / ``import_decision`` is set (IMPORT-UI-7).
+         *     ``changeset`` / ``gate`` / ``import_decision`` / ``cleanup_decision`` /
+         *     ``cover_review`` is set (IMPORT-UI-7, FILES-CLEANUP-14, COVERS-SEARCH-21).
          */
         QueueItem: {
             changeset?: components["schemas"]["ChangeSet"] | null;
+            cleanup_decision?: components["schemas"]["CleanupDecision"] | null;
+            cover_review?: components["schemas"]["CoverReview"] | null;
             /**
              * Created At
              * Format: date-time
@@ -1465,7 +2366,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "changeset" | "gate" | "import";
+            kind: "changeset" | "gate" | "import" | "cleanup" | "cover";
             /** Profile */
             profile: string;
             /** Run Id */
@@ -1477,8 +2378,71 @@ export interface components {
             /** Workflow */
             workflow?: string | null;
         };
+        /** RankedCandidate */
+        RankedCandidate: {
+            /**
+             * Filtered
+             * @description Why the hard filters hide it, or null
+             */
+            filtered?: ("small" | "aspect") | null;
+            /** Height */
+            height?: number | null;
+            /** Id */
+            id: string;
+            /** Image Url */
+            image_url?: string | null;
+            /** Match Confidence */
+            match_confidence: number;
+            /** Path */
+            path?: string | null;
+            /** Provider */
+            provider: string;
+            /** Score */
+            score: number;
+            /**
+             * Size Score
+             * @description The size part of the score (COVER-PICKER-8)
+             */
+            size_score?: number | null;
+            /** Source Url */
+            source_url?: string | null;
+            /** Thumb Url */
+            thumb_url?: string | null;
+            /** Title */
+            title?: string | null;
+            /** Width */
+            width?: number | null;
+        };
+        /**
+         * RecentImport
+         * @description A run that imported albums still in the library (DASHBOARD-6).
+         */
+        RecentImport: {
+            /** Albums */
+            albums: components["schemas"]["ImportedAlbum"][];
+            /** Finished At */
+            finished_at: string | null;
+            /** Input */
+            input: string | null;
+            /** Run Id */
+            run_id: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "running" | "waiting_review" | "succeeded" | "failed" | "cancelled";
+            /** Workflow */
+            workflow: string | null;
+        };
         /** ReviewGate */
         ReviewGate: {
+            /**
+             * Album Decisions
+             * @description Albums decided on their own while the gate is pending (DASHBOARD-11)
+             */
+            album_decisions?: {
+                [key: string]: "continued" | "rejected";
+            };
             /** Albums */
             albums: components["schemas"]["GateAlbum"][];
             /**
@@ -1557,6 +2521,13 @@ export interface components {
         /** RunDetail */
         RunDetail: {
             /**
+             * Called Hashes
+             * @description Called workflow file -> hash of the text the run uses (SUBWORKFLOW-15)
+             */
+            called_hashes?: {
+                [key: string]: string;
+            };
+            /**
              * Created At
              * Format: date-time
              */
@@ -1618,6 +2589,13 @@ export interface components {
         /** RunSummary */
         RunSummary: {
             /**
+             * Called Hashes
+             * @description Called workflow file -> hash of the text the run uses (SUBWORKFLOW-15)
+             */
+            called_hashes?: {
+                [key: string]: string;
+            };
+            /**
              * Created At
              * Format: date-time
              */
@@ -1671,6 +2649,11 @@ export interface components {
             kind: string;
             /** Step Id */
             step_id: string;
+            /**
+             * Workflow
+             * @description The called file the step comes from (SUBWORKFLOW-14)
+             */
+            workflow?: string | null;
         };
         /** ScriptDetail */
         ScriptDetail: {
@@ -1729,6 +2712,11 @@ export interface components {
         };
         /** StepState */
         StepState: {
+            /**
+             * Call Path
+             * @description Ids of the workflow calls this step runs inside (SUBWORKFLOW-6)
+             */
+            call_path?: string[];
             /** Error */
             error?: string | null;
             /** Id */
@@ -1750,6 +2738,16 @@ export interface components {
             status: "pending" | "running" | "succeeded" | "failed" | "skipped" | "cancelled";
             /** Uses */
             uses: string;
+            /**
+             * Workflow
+             * @description The called file the step comes from (SUBWORKFLOW-10)
+             */
+            workflow?: string | null;
+            /**
+             * Workflow Name
+             * @description That file's name
+             */
+            workflow_name?: string | null;
         };
         /** TargetChange */
         TargetChange: {
@@ -1845,6 +2843,13 @@ export interface components {
         /** TrustRequest */
         TrustRequest: {
             /**
+             * Called
+             * @description Called file -> hash reviewed; every untrusted called file must be listed (SUBWORKFLOW-13)
+             */
+            called?: {
+                [key: string]: string;
+            };
+            /**
              * Sha256
              * @description Hash of the content the user reviewed
              */
@@ -1852,6 +2857,10 @@ export interface components {
         };
         /** TrustResult */
         TrustResult: {
+            /** Called */
+            called?: {
+                [key: string]: string;
+            };
             /** Name */
             name: string;
             /** Sha256 */
@@ -1865,6 +2874,8 @@ export interface components {
         };
         /** ValidateResult */
         ValidateResult: {
+            /** Called */
+            called?: components["schemas"]["CalledWorkflow"][];
             /** Errors */
             errors: components["schemas"]["WorkflowError"][];
             /** Safety */
@@ -1917,8 +2928,24 @@ export interface components {
             /** Url Path */
             url_path: string;
         };
+        /**
+         * WebhookSecretRequest
+         * @description Optional body of the secret route (SEC-87).
+         */
+        WebhookSecretRequest: {
+            /**
+             * Replace
+             * @default false
+             */
+            replace: boolean;
+        };
         /** WorkflowDetail */
         WorkflowDetail: {
+            /**
+             * Called
+             * @description Files it calls; 'trusted' is true only when they all are (SUBWORKFLOW-13)
+             */
+            called?: components["schemas"]["CalledWorkflow"][];
             /** Errors */
             errors: components["schemas"]["WorkflowError"][];
             /**
@@ -1981,6 +3008,87 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    album_art_api_albums__album_id__art_get: {
+        parameters: {
+            query: {
+                profile: string;
+            };
+            header?: {
+                "if-none-match"?: string | null;
+            };
+            path: {
+                album_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A JPEG or PNG image */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                    "image/png": string;
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Gateway Timeout */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     get_changeset_api_changesets__changeset_id__get: {
         parameters: {
             query?: never;
@@ -2195,6 +3303,493 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobQueued"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_cleanup_api_cleanups__decision_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                decision_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CleanupDecision"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    decide_cleanup_api_cleanups__decision_id__decision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                decision_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CleanupDecisionBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CleanupDecided"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    cover_image_api_covers_image__key__get: {
+        parameters: {
+            query: {
+                profile: string;
+                /** @description The thumbnail, when the provider has one */
+                thumb?: boolean;
+                /** @description Review a local image belongs to */
+                review_id?: string | null;
+                /** @description Album a local image belongs to */
+                album_id?: string | null;
+            };
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A JPEG or PNG image */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                    "image/png": string;
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_cover_review_api_covers_reviews__review_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                review_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoverReview"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    decide_cover_api_covers_reviews__review_id__decision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                review_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoverDecisionBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoverDecided"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    start_search_api_covers_search_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoverSearchBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoverSearchStarted"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    cancel_search_api_covers_search__search_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                search_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoverSearchStarted"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    upload_cover_api_covers_uploads_post: {
+        parameters: {
+            query: {
+                profile: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoverUploadBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoverUploaded"];
                 };
             };
             /** @description Bad Request */
@@ -2457,6 +4052,284 @@ export interface operations {
             };
         };
     };
+    set_album_cover_api_profiles__profile__albums__album_id__cover_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile: string;
+                album_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlbumCoverBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlbumCoverQueued"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Gateway Timeout */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    album_cover_query_api_profiles__profile__albums__album_id__cover_query_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile: string;
+                album_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoverQueryAnswer"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Gateway Timeout */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_beets_config_api_profiles__profile__beets_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BeetsConfigStatus"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    trust_beets_config_api_profiles__profile__beets_config_trust_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TrustRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BeetsConfigStatus"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     recent_changes_api_profiles__profile__changes_get: {
         parameters: {
             query?: {
@@ -2677,6 +4550,126 @@ export interface operations {
             };
         };
     };
+    cover_providers_api_profiles__profile__covers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoverProvidersView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    save_providers_api_profiles__profile__covers_providers_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoverProvidersBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoverProvidersView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     profile_events_api_profiles__profile__events_get: {
         parameters: {
             query?: never;
@@ -2715,6 +4708,142 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recent_imports_api_profiles__profile__imports_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                profile: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecentImport"][];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Gateway Timeout */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    inbox_api_profiles__profile__inbox_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InboxFolder"][];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
         };
@@ -2854,6 +4983,68 @@ export interface operations {
             };
             /** @description Gateway Timeout */
             504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    notify_test_api_profiles__profile__notify_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotifyTestBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotifyTestResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3191,7 +5382,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["WebhookSecretRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             201: {
@@ -3642,6 +5837,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_undo_api_runs__run_id__import_undo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportUndoBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobQueued"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
         };

@@ -11,8 +11,11 @@ then raise ``CapabilityError`` instead (checked by ``test_BACKEND_2_...``).
 
 from __future__ import annotations
 
+import hashlib
+import shutil
 from collections.abc import Mapping
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, ClassVar
 
 import pytest
@@ -32,6 +35,7 @@ from rifferr.core.changeset import (
     TargetChange,
     TargetRef,
 )
+from rifferr.core.covers import ART_FIELD
 from rifferr.core.selection import Selection
 from rifferr.core.snapshot import AlbumSnapshot
 
@@ -96,6 +100,9 @@ def album_names(albums: list[AlbumSnapshot]) -> set[str]:
     return {str(a.fields["album"]) for a in albums}
 
 
+FIXTURE_FLAC = Path(__file__).parents[1] / "fixtures" / "audio" / "album-flac" / "01 First.flac"
+
+
 class BackendContract:
     """Subclass, set ``capabilities_under_test`` if needed, implement ``make_backend``."""
 
@@ -135,6 +142,7 @@ class BackendContract:
         calls: dict[str, Any] = {
             "query": lambda: backend.query(Selection()),
             "command_env": backend.command_env,
+            "files": lambda: backend.library_dirs(),
             "import_": lambda: backend.import_folder(tmp_path, "quiet", None),
             "apply": lambda: backend.apply(
                 changeset((TargetRef(scope="item", id="x"), [FieldChange(field="t", new="x")]))
@@ -285,6 +293,38 @@ class BackendContract:
 
     # -- environment ---------------------------------------------------------
 
+    # -- files (S-FILES-CLEANUP FILES-CLEANUP-12, -17) ---------------------------
+
+    def test_FILES_CLEANUP_12_library_files_finds_item_paths(
+        self, backend: LibraryBackend, tmp_path: Path
+    ) -> None:
+        self.need(backend, "files")
+        self.need(backend, "query")
+        album = backend.query(Selection())[0]
+        item_path = Path(album.items[0].path)
+        other = tmp_path / "stray.flac"
+        assert backend.library_files([item_path, other]) == {item_path}
+        assert backend.library_files([]) == set()
+
+    def test_FILES_CLEANUP_12_library_dirs_are_absolute(self, backend: LibraryBackend) -> None:
+        self.need(backend, "files")
+        assert all(d.is_absolute() for d in backend.library_dirs())
+
+    def test_FILES_CLEANUP_17_importable_recognizes_music(
+        self, backend: LibraryBackend, tmp_path: Path
+    ) -> None:
+        self.need(backend, "files")
+        flac = tmp_path / "01 First.flac"
+        shutil.copy(FIXTURE_FLAC, flac)
+        broken = tmp_path / "broken.flac"
+        broken.write_bytes(b"not really flac")
+        nfo = tmp_path / "album.nfo"
+        nfo.write_text("release info")
+        found = backend.importable([flac, broken, nfo])
+        assert flac in found
+        assert broken in found  # a damaged music file is still protected
+        assert nfo not in found
+
     def test_BACKEND_1_command_env_is_string_mapping(self, backend: LibraryBackend) -> None:
         self.need(backend, "command_env")
         env = backend.command_env()
@@ -292,6 +332,39 @@ class BackendContract:
         assert all(isinstance(k, str) and isinstance(v, str) for k, v in env.items())
 
     # -- ChangeSets (C-CHANGESET) ---------------------------------------------
+
+    # -- cover art (S-COVERS-SEARCH) ------------------------------------------------
+
+    def store_image(self, backend: LibraryBackend, data: bytes) -> str:
+        """Put an image where the backend takes art from; returns its sha256."""
+        store = getattr(backend, "art", None)
+        if store is not None:
+            return store.put(data)[0]
+        return hashlib.sha256(data).hexdigest()
+
+    def test_COVERS_SEARCH_18_art_is_set_kept_on_the_album_and_removed(
+        self, backend: LibraryBackend
+    ) -> None:
+        self.need(backend, "art")
+        self.need(backend, "apply")
+        album = self.by_album(backend, "First EP")
+        ref = TargetRef(scope="album", id=album.id)
+        sha = self.store_image(backend, b"\xff\xd8\xff\xe0 contract image")
+        result = backend.apply(changeset((ref, [FieldChange(field=ART_FIELD, new=sha)])))
+        assert result.applied
+        assert [(e.target, e.after) for e in result.effects] == [(ref, sha)]
+        now = self.by_album(backend, "First EP")
+        assert now.fields[ART_FIELD] == sha
+        assert all(ART_FIELD not in i.fields for i in now.items)
+        conflict = backend.apply(
+            changeset((ref, [FieldChange(field=ART_FIELD, op="delete", old="0" * 64)]))
+        )
+        assert not conflict.applied
+        removed = backend.apply(
+            changeset((ref, [FieldChange(field=ART_FIELD, op="delete", old=sha)]))
+        )
+        assert removed.applied
+        assert ART_FIELD not in self.by_album(backend, "First EP").fields
 
     def test_CHANGESET_10_album_change_is_stored_and_carried_to_items(
         self, backend: LibraryBackend

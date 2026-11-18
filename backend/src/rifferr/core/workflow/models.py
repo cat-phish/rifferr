@@ -118,4 +118,9 @@ class Workflow(_Strict):
         description="Default {{ run.input }} for runs whose trigger gives none (schedule, manual).",
     )
     on: Triggers | None = None
+    outputs: dict[str, str] = Field(
+        default_factory=dict[str, str],
+        description="When this workflow is called (uses: workflow): the call step's outputs, "
+        "each a '{{ steps.<id>.<key> }}' expression over this workflow's steps.",
+    )
     steps: Annotated[list[StepSpec], Field(min_length=1)]

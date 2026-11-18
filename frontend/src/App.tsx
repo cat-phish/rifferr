@@ -4,6 +4,7 @@ import { Link, Route, Routes, useLocation } from "react-router";
 import { auth } from "./api/auth";
 import { useProfile, withProfile } from "./hooks/useProfile";
 import { useAppEvents, useReviewQueue } from "./hooks/useReviewQueue";
+import { DashboardPage } from "./pages/DashboardPage";
 import { LibraryPage } from "./pages/LibraryPage";
 import { ReviewPage } from "./pages/ReviewPage";
 import { RunPage } from "./pages/RunPage";
@@ -14,15 +15,15 @@ import { SignedOut } from "./pages/SignedOut";
 import { WorkflowPage } from "./pages/WorkflowPage";
 import { WorkflowsPage } from "./pages/WorkflowsPage";
 
-/** Routes (F-UI-SHELL Interfaces). `/` is Runs until the M2 dashboard takes it (F-REVIEW-QUEUE
- * open question 2). */
+/** Routes (F-UI-SHELL Interfaces). `/` is the queue dashboard (F-DASHBOARD DASHBOARD-14);
+ * `/runs` stays the runs list. */
 export function App() {
   const signedOut = useSyncExternalStore(auth.subscribe, auth.isSignedOut);
   if (signedOut) return <SignedOut />;
   return (
     <Shell>
       <Routes>
-        <Route path="/" element={<RunsPage />} />
+        <Route path="/" element={<DashboardPage />} />
         <Route path="/runs" element={<RunsPage />} />
         <Route path="/runs/:id" element={<RunPage />} />
         <Route path="/workflows" element={<WorkflowsPage />} />
@@ -44,7 +45,8 @@ function Shell({ children }: { children: React.ReactNode }) {
   useAppEvents();
   const waiting = queue.data?.length ?? 0;
   const nav: { label: string; to: string; active: boolean; count?: number }[] = [
-    { label: "Runs", to: "/runs", active: pathname === "/" || pathname.startsWith("/runs") },
+    { label: "Dashboard", to: "/", active: pathname === "/" },
+    { label: "Runs", to: "/runs", active: pathname.startsWith("/runs") },
     {
       label: "Review",
       to: "/review",

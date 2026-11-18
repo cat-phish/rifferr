@@ -15,6 +15,9 @@ from typing import Annotated, Any, Final, Literal
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, PositiveInt
 from pydantic_core import PydanticCustomError
 
+from rifferr.core.covers import CoverSettings
+from rifferr.core.duration import Duration
+from rifferr.core.notify import NotifySettings
 from rifferr.core.workflow import VarDecl, substitute
 from rifferr.core.workflow.errors import ValidationError
 from rifferr.core.workflow.interpolation import InterpolationError
@@ -129,9 +132,13 @@ class Redactor:
     def add(self, secret: Secret) -> None:
         """Also mask ``secret`` from now on (e.g. a secret resolved mid-run)."""
         value = secret.reveal()
-        if len(value) < MIN_REDACT_LENGTH or value in self._values:
+        # Multi-line values (PEM keys, JSON credentials) are also masked line by line,
+        # because output is logged one line at a time.
+        parts = [value, *(ln.strip() for ln in value.splitlines())]
+        new = {v for v in parts if len(v) >= MIN_REDACT_LENGTH} - self._values
+        if not new:
             return
-        self._values.add(value)
+        self._values |= new
         ordered = sorted(self._values, key=len, reverse=True)
         self._pattern = re.compile("|".join(map(re.escape, ordered)))
 
@@ -184,6 +191,17 @@ class GridColumns(BaseModel):
     item: list[str] | None = Field(default=None, description="Field names, in order")
 
 
+class FilesSettings(BaseModel):
+    """``files.cleanup`` trash handling (S-FILES-CLEANUP FILES-CLEANUP-16)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    trash_keep: Duration | None = Field(
+        default=None,
+        description="Delete trashed run folders older than this, e.g. 30d; unset: keep",
+    )
+
+
 class UiSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -204,6 +222,9 @@ class ProfileFile(BaseModel):
     worker: WorkerSettings = Field(default_factory=WorkerSettings)
     changes: ChangeSettings = Field(default_factory=ChangeSettings)
     ui: UiSettings = Field(default_factory=UiSettings)
+    notify: NotifySettings = Field(default_factory=NotifySettings)
+    files: FilesSettings = Field(default_factory=FilesSettings)
+    covers: CoverSettings = Field(default_factory=CoverSettings)
     vars: dict[VarName, Annotated[str, Field(strict=True)]] = Field(default_factory=dict[str, str])
     secrets: dict[str, SecretRefField] = Field(default_factory=dict[str, SecretRef])
     timezone: str | None = Field(default=None, description="IANA time zone; default: system")
@@ -256,6 +277,9 @@ def parse_profile(
         worker=file.worker,
         changes=file.changes,
         ui=file.ui,
+        notify=file.notify,
+        files=file.files,
+        covers=file.covers,
         vars=resolve_vars(file.vars, env),
         secrets=file.secrets,
         timezone=file.timezone,
@@ -275,9 +299,32 @@ def _semantic_errors(
         resolve_vars(file.vars, env)
     except VarResolutionError as exc:
         errors.append(doc.error(("vars", exc.var), str(exc)))
+    env_targets = {r.target for r in file.secrets.values() if r.kind == "env"}
+    for var, value in file.vars.items():  # SEC-104: a var would hand the secret to every step
+        for used in sorted(set(re.findall(r"\benv\.([A-Za-z0-9_]+)", value)) & env_targets):
+            errors.append(
+                doc.error(
+                    ("vars", var),
+                    f"{var}: environment variable '{used}' holds a secret; "
+                    "list the secret under 'secrets:' in a step instead",
+                )
+            )
+    for path, message in file.notify.checked(file.secrets):  # NOTIFY-1
+        errors.append(doc.error(path, message))
     if file.timezone and timezone_exists and not timezone_exists(file.timezone):
         errors.append(doc.error(("timezone",), f"unknown time zone {file.timezone!r}"))
     return errors
+
+
+def env_backed_vars(raw: Mapping[str, str]) -> set[str]:
+    """Names of profile vars whose value comes from the environment, directly or via other vars."""
+    refs = {n: set(re.findall(r"vars\.([A-Za-z0-9_]+)", v)) for n, v in raw.items()}
+    backed = {n for n, v in raw.items() if re.search(r"\benv\.", v)}
+    while True:
+        more = {n for n, r in refs.items() if r & backed} - backed
+        if not more:
+            return backed
+        backed |= more
 
 
 def resolve_vars(raw: Mapping[str, str], env: Mapping[str, str]) -> dict[str, str]:

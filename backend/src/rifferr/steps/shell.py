@@ -39,10 +39,12 @@ from rifferr.core.changeset import (
 )
 from rifferr.core.profile import env_var_name
 from rifferr.core.snapshot import AlbumSnapshot, ItemSnapshot
+from rifferr.core.workflow.template_fields import TEMPLATE_EXTRA
 from rifferr.engine import StepContext, StepFailure, StepRefused, StepResult
 from rifferr.steps.process import run_process
 
 SECRET_ENV_PREFIX = "RIFFERR_SECRET_"
+SECRET_NAME = re.compile(r"(TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY|CREDENTIAL)", re.IGNORECASE)
 MAX_PROPOSAL = 16 * 1024 * 1024
 """Most stdout collected with ``emits: changes`` (SHELL-14)."""
 
@@ -53,13 +55,22 @@ class ShellParams(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     run: list[str] | str = Field(
-        description="Command as an argv list, or a string run by /bin/sh -c (needs shell: true)"
+        description="Command as an argv list, or a string run by /bin/sh -c (needs shell: true). "
+        "A string may not hold run data ({{ run.input }}, run-supplied vars, {{ steps.* }}): "
+        "read $RIFFERR_RUN_INPUT / $RIFFERR_VAR_<NAME> instead",
+        json_schema_extra={"code_text": True, **TEMPLATE_EXTRA},
     )
     shell: bool = Field(default=False, description="Run a string command through /bin/sh -c")
     per: Literal["run", "album", "item"] = "album"
     timeout: PositiveInt = Field(default=600, description="Seconds before the command is stopped")
-    cwd: str | None = Field(default=None, description="Working directory (templated)")
-    env: dict[str, str] = Field(default_factory=dict[str, str], description="Extra variables")
+    cwd: str | None = Field(
+        default=None, description="Working directory (templated)", json_schema_extra=TEMPLATE_EXTRA
+    )
+    env: dict[str, str] = Field(
+        default_factory=dict[str, str],
+        description="Extra variables (values templated)",
+        json_schema_extra=TEMPLATE_EXTRA,
+    )
     secrets: list[str] = Field(
         default_factory=list[str],
         description="Profile secrets to expose as RIFFERR_SECRET_<NAME>",
@@ -203,8 +214,16 @@ def inherited_env(
     """Rifferr's environment without variables holding profile ``env:`` secrets, except
     the secrets named in ``keep`` (SHELL-4)."""
     listed = set(keep or [])
-    hidden = {var for name, var in ctx.secret_env_refs().items() if name not in listed}
-    return {k: v for k, v in environ.items() if k not in hidden}
+    refs = ctx.secret_env_refs()
+    kept = {var for name, var in refs.items() if name in listed}
+    hidden = {var for name, var in refs.items() if name not in listed}
+    # Other profiles' env: secrets are unknown here, so variables named like a credential
+    # are hidden too (SEC-104); list the secret under ``secrets:`` to pass one on.
+    return {
+        k: v
+        for k, v in environ.items()
+        if k not in hidden and (k in kept or not SECRET_NAME.search(k))
+    }
 
 
 def secret_env_name(name: str) -> str:
@@ -276,7 +295,11 @@ def _render(
 
 
 def _fixed_env(ctx: StepContext, target: _Target) -> dict[str, str]:
-    env = {"RIFFERR_RUN_ID": ctx.run_id, "RIFFERR_PROFILE": ctx.profile}
+    env = {
+        "RIFFERR_RUN_ID": ctx.run_id,
+        "RIFFERR_PROFILE": ctx.profile,
+        "RIFFERR_RUN_INPUT": ctx.run_input,
+    }
     if target.album_dir is not None:
         env["RIFFERR_ALBUM_DIR"] = target.album_dir
     if target.item_path is not None:

@@ -97,7 +97,7 @@ def test_CHANGESET_10_from_profile_reads_write_tags(beets_env: BeetsEnv, tmp_pat
             "changes": ChangeSettings(write_tags=False),
         }
     )
-    assert from_profile(profile).write_tags is False
+    assert from_profile(profile, config_trusted=lambda _sha: True).write_tags is False
 
 
 def test_CHANGESET_10_failed_file_write_keeps_the_db_change_and_is_reported(

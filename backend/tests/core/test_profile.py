@@ -225,3 +225,16 @@ def test_PROFILE_8_profile_without_beetsdir_requires_it_for_library_access() -> 
 def test_PROFILE_8_require_beetsdir_returns_path() -> None:
     p = parse_profile("beets: {beetsdir: /b}\n", "profile.yaml", name="main", root=ROOT, env={})
     assert p.require_beetsdir() == Path("/b")
+
+
+def test_PROFILE_2_covers_section_is_loaded() -> None:
+    """Regression (found by F-COVER-PICKER): ``covers`` was validated but not kept."""
+    p = parse_profile(
+        "covers:\n  max_bytes: 1KB\n  providers: [{name: deezer, weight: 3}]\n",
+        "profile.yaml",
+        name="main",
+        root=ROOT,
+        env={},
+    )
+    assert p.covers.max_bytes == "1KB"
+    assert [(x.name, x.weight) for x in p.covers.providers] == [("deezer", 3)]

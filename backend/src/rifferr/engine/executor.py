@@ -13,6 +13,7 @@ import hashlib
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from functools import partial
 from pathlib import Path, PurePath
 from typing import Any, Protocol, cast
 
@@ -27,22 +28,31 @@ from rifferr.core.changeset import (
     JournalEntry,
     TargetRef,
 )
+from rifferr.core.covers import CoverReview
+from rifferr.core.files import BusyFolder, CleanupDecision
 from rifferr.core.ids import new_ulid
 from rifferr.core.imports import ImportDecision, ImportQuestion
-from rifferr.core.profile import Redactor, merged_vars
+from rifferr.core.notify import Notification, SendResult
+from rifferr.core.profile import ProfileFile, Redactor, env_var_name, merged_vars
 from rifferr.core.review import GateAlbum, GateRequest, ReviewGate
 from rifferr.core.selection import Selection
 from rifferr.core.snapshot import label
 from rifferr.core.workflow import (
+    CalledStep,
+    Calls,
+    Expression,
     InterpolationContext,
     InterpolationError,
     RoundTripDoc,
     StepSpec,
     ValidationError,
     Workflow,
+    expand,
     interpolate,
     validate,
 )
+from rifferr.core.workflow.interpolation import rewrite, substitute
+from rifferr.core.workflow.template_fields import interpolate_fields
 from rifferr.engine.changesets import (
     ChangeSetStore,
     InMemoryChangeSetStore,
@@ -53,6 +63,8 @@ from rifferr.engine.changesets import (
     new_changeset,
     proposed_event,
 )
+from rifferr.engine.cleanup import CleanupDecisionStore, InMemoryCleanupStore
+from rifferr.engine.covers import CoverReviewStore, InMemoryCoverStore
 from rifferr.engine.events import Event, EventSink
 from rifferr.engine.imports import ImportDecisionStore, InMemoryImportStore
 from rifferr.engine.journal import InMemoryJournal, Journal
@@ -67,9 +79,12 @@ from rifferr.engine.lanes import (
 from rifferr.engine.review import GateStore, InMemoryGateStore, conflicted_for, fold_changes
 from rifferr.engine.run import PassRecord, Run, RunState, Scalar, StepRecord
 from rifferr.engine.steps import (
+    CleanupRequest,
+    CoverRequest,
     GateOptions,
     ImportOptions,
     NoSecrets,
+    NotifyTargets,
     SecretAccess,
     StepContext,
     StepFailure,
@@ -113,14 +128,22 @@ class _RunState:
         work_dir: Path | None,
         secrets: SecretAccess,
         profile_dir: Path | None = None,
+        notify: NotifyTargets | None = None,
+        profile_settings: ProfileFile | None = None,
+        busy: Callable[[], list[BusyFolder]] | None = None,
     ) -> None:
         self.run = run
+        self.notify = notify
+        self.profile_settings = profile_settings
+        self.busy = busy
         self.profile_dir = profile_dir
         self.workflow = wf
         self.backend = backend
         self.redactor = redactor
         self.work_dir = work_dir
         self.secrets = secrets
+        self.run_supplied: frozenset[str] = frozenset()
+        """Names of the variables this run's caller set (SEC-21)."""
         self.cancel = asyncio.Event()
         self.holds: dict[str, list[str]] = {}
         """step id -> ChangeSet ids it proposed that wait for review (CHANGESET-7)."""
@@ -154,8 +177,12 @@ class Engine:
         gates: GateStore | None = None,
         lanes: LaneStore | None = None,
         imports: ImportDecisionStore | None = None,
+        cleanups: CleanupDecisionStore | None = None,
+        covers: CoverReviewStore | None = None,
     ) -> None:
         self.registry = registry
+        self.covers: CoverReviewStore = covers or InMemoryCoverStore()
+        self.cleanups: CleanupDecisionStore = cleanups or InMemoryCleanupStore()
         self.imports: ImportDecisionStore = imports or InMemoryImportStore()
         self.lanes: LaneStore = lanes or InMemoryLaneStore()
         self.sink = sink
@@ -197,6 +224,10 @@ class Engine:
         secrets: SecretAccess | None = None,
         last_seq: int = 0,
         profile_dir: Path | None = None,
+        notify: NotifyTargets | None = None,
+        profile_settings: ProfileFile | None = None,
+        busy: Callable[[], list[BusyFolder]] | None = None,
+        calls: Calls | None = None,
     ) -> Run:
         """Validate and create a queued run (RUN-10, RUN-11).
 
@@ -204,13 +235,28 @@ class Engine:
         ``work_dir``: default working directory for steps without a target (the profile dir).
         ``last_seq``: events already stored for this run (a resumed run, RUN-14).
         ``profile_dir``: the profile's folder, for steps that read files from it.
+        ``notify``: the profile's notification targets (S-NOTIFY), for ``ctx.notify``.
+        ``profile_settings``: ``profile.yaml`` as loaded, for ``ctx.profile_settings``.
+        ``busy``: folders other work still needs (FILES-CLEANUP-7), for ``ctx.busy_folders``.
+        ``calls``: the workflow files ``wf`` calls, as stored with the job; the run's
+        steps are ``wf`` with every call expanded (S-SUBWORKFLOW).
         ``run_input`` / ``trigger``: ``{{ run.input }}`` / ``{{ run.trigger }}``
         (TRIGGERS-5, -6); without an input the workflow's ``input`` is used.
         """
         supplied = {**profile_vars, **(run_vars or {})}
-        errors = validate(wf, self.registry, backend.capabilities, supplied, doc=doc)
+        errors = validate(
+            wf,
+            self.registry,
+            backend.capabilities,
+            supplied,
+            doc=doc,
+            notify_targets=notify.names() if notify is not None else [],
+            calls=calls,
+        )
         if errors:
             raise RunValidationError(errors)
+        if calls is not None:
+            wf = expand(wf, calls)
         resolved_vars = merged_vars(supplied, wf.vars)
         if not run_input and wf.input is not None:
             ctx = InterpolationContext(vars=resolved_vars, profile={"name": profile_name})
@@ -232,8 +278,13 @@ class Engine:
             input=run_input or "",
             trigger=trigger,
             last_seq=last_seq,
+            called_hashes={
+                p: hashlib.sha256(t.encode()).hexdigest()
+                for p, t in (calls.texts() if calls is not None else {}).items()
+            },
         )
         self.runs[run.id] = run
+        run_supplied = frozenset(run_vars or {})
         self._state[run.id] = _RunState(
             run,
             wf,
@@ -242,7 +293,11 @@ class Engine:
             work_dir,
             secrets or NoSecrets(),
             profile_dir,
+            notify,
+            profile_settings,
+            busy,
         )
+        self._state[run.id].run_supplied = run_supplied
         return run
 
     def cancel(self, run_id: str) -> None:
@@ -459,11 +514,79 @@ class Engine:
     def _hold(
         self, state: _RunState, key: str, kind: str, ref: str, label: str | None = None
     ) -> None:
-        if kind not in ("changeset", "gate", "import"):
+        if kind not in ("changeset", "gate", "import", "cleanup", "cover"):
             raise ValueError(f"unknown hold kind {kind!r}")
         state.lane_holds.setdefault(key, []).append(Hold(cast(Any, kind), ref))
         if label is not None:
             state.lane_labels[key] = label
+
+    def _hold_pass(self, state: _RunState, kind: str, ref: str, label: str) -> None:
+        """LANES-16: every lane of the pass waits on ``ref``; without lanes, a new one."""
+        lanes = [lane for lane in state.pass_lanes if not lane.final]
+        if not lanes:
+            self._hold(state, f"pending:{kind}:{ref}", kind, ref, label)
+            return
+        for lane in lanes:
+            self._hold(state, lane.key, kind, ref)
+
+    def _request_cleanup(self, state: _RunState, spec: StepSpec, request: CleanupRequest) -> str:
+        run = state.run
+        now = self.clock.now()
+        decision = CleanupDecision(
+            id=new_ulid(),
+            profile=run.profile,
+            run_id=run.id,
+            step_id=spec.id,
+            path=request.path,
+            entries=list(request.entries),
+            truncated=request.truncated,
+            totals=dict(request.totals),
+            options=request.options,
+            created_at=now,
+            deadline=now + request.timeout if request.timeout is not None else None,
+            on_timeout=request.on_timeout,
+        )
+        self.cleanups.add(decision)
+        label = f"cleanup of {PurePath(request.path).name or request.path}"
+        self._hold_pass(state, "cleanup", decision.id, label)
+        data: dict[str, JsonValue] = {
+            "decision_id": decision.id,
+            "path": decision.path,
+            "totals": cast(dict[str, JsonValue], dict(decision.totals)),
+        }
+        if decision.deadline is not None:
+            data["deadline"] = decision.deadline.isoformat()
+        self._emit(run, "cleanup.requested", spec.id, _redact(data, state.redactor))
+        return decision.id
+
+    def _request_cover(self, state: _RunState, spec: StepSpec, request: CoverRequest) -> str:
+        """COVERS-SEARCH-14: store the review and hold only that album's lane."""
+        run = state.run
+        review = CoverReview(
+            id=new_ulid(),
+            profile=run.profile,
+            run_id=run.id,
+            step_id=spec.id,
+            album_id=request.album_id,
+            label=request.label,
+            query=request.query,
+            candidates=list(request.candidates),
+            dropped={k: dict(v) for k, v in request.dropped.items()},
+            old_sha256=request.old_sha256,
+            reason=request.reason,
+            created_at=self.clock.now(),
+        )
+        self.covers.add(review)
+        self._hold(state, review.album_id, "cover", review.id)
+        data: dict[str, JsonValue] = {
+            "review_id": review.id,
+            "album_id": review.album_id,
+            "label": review.label,
+            "candidates": len(review.candidates),
+            "reason": review.reason,
+        }
+        self._emit(run, "cover.requested", spec.id, data)
+        return review.id
 
     def rename_lane(self, run_id: str, old: str, new: str) -> None:
         """LANES-14: a ``pending:`` lane becomes its album's lane once it is imported."""
@@ -504,21 +627,19 @@ class Engine:
         record.status = "running"
         record.error = None
         record.started_at = self.clock.now()
-        self._emit(
-            run,
-            "run.step.started",
-            spec.id,
-            {"uses": spec.uses, "pass": number, "lanes": len(pass_lanes)},
-        )
-        album_ids = tuple(lane.key for lane in pass_lanes if not lane.pending)
-        selection = Selection(
-            query=spec.when or "",
-            run_id=run.id,
-            album_ids=album_ids if state.lanes else None,
-        )
+        started: dict[str, JsonValue] = {
+            "uses": spec.uses,
+            "pass": number,
+            "lanes": len(pass_lanes),
+        }
+        if isinstance(spec, CalledStep):  # SUBWORKFLOW-6
+            started["call_path"] = list(spec.call_path)
+            started["workflow"] = spec.workflow
+        self._emit(run, "run.step.started", spec.id, started)
         ctx: StepContext | None = None
         refused = False
         try:
+            selection = self._selection(state, spec, pass_lanes)
             params = self._prepare_params(state, spec)
             step_type = self.registry.step_type(spec.uses)
             assert step_type is not None, "validated before the run was created"
@@ -532,15 +653,18 @@ class Engine:
                 is_cancelled=state.cancel.is_set,
                 profile=run.profile,
                 vars=run.vars,
+                run_input=run.input,
                 work_dir=state.work_dir,
                 trusted=run.trusted,
                 secrets=state.secrets,
                 on_secret=state.redactor.add,
+                redact=state.redactor.redact,
                 propose=lambda proposal, current, snapshots: self._propose(
                     state, spec, proposal, current, snapshots
                 ),
                 profile_dir=state.profile_dir,
                 interpolate=lambda value: self._interpolate_text(state, value),
+                interpolate_template=lambda value: self._interpolate_template_text(state, value),
                 open_gate=lambda requests, options, snapshots: self._open_gate(
                     state, spec, requests, options, snapshots
                 ),
@@ -548,6 +672,18 @@ class Engine:
                 request_import=lambda question, options: self._request_import(
                     state, spec, question, options
                 ),
+                notify=(
+                    (lambda targets, n: self._notify(state, spec.id, targets, n))
+                    if state.notify is not None
+                    else None
+                ),
+                notify_targets=state.notify.names() if state.notify is not None else (),
+                base_url=state.notify.base_url if state.notify is not None else None,
+                profile_settings=state.profile_settings,
+                busy_folders=state.busy,
+                request_cleanup=lambda request: self._request_cleanup(state, spec, request),
+                request_cover=lambda request: self._request_cover(state, spec, request),
+                hold_pass=lambda kind, ref, label: self._hold_pass(state, kind, ref, label),
             )
             result = await self._run_cancellable(state, step_type.run(ctx))
             if state.cancel.is_set():
@@ -602,11 +738,27 @@ class Engine:
             data["error"] = state.redactor.redact(record.error)
         if refused:
             data["refused"] = True  # e.g. needs trust; lets clients give a hint (CLI-10)
-        self._emit(run, "run.step.finished", spec.id, data)
+        self._emit(run, "run.step.finished", spec.id, _redact(data, state.redactor))
         # A failure with no target ends the pass; under stop it ends the run (LANES-10).
         no_target = record.status == "failed" and record.error is not None
         stop_run = refused or (no_target and spec.on_error == "stop")
         return _PassResult(stop_run=stop_run, failed_albums=failed_albums)
+
+    def _selection(self, state: _RunState, spec: StepSpec, pass_lanes: list[Lane]) -> Selection:
+        """The step's albums: this pass's lanes, narrowed by the ``when`` of every call
+        around a called step (SUBWORKFLOW-7)."""
+        run = state.run
+        album_ids: tuple[str, ...] | None = None
+        if state.lanes:
+            album_ids = tuple(lane.key for lane in pass_lanes if not lane.pending)
+        narrow = spec.narrow if isinstance(spec, CalledStep) else ()
+        for when in narrow:
+            query = self._interpolate_text(state, when)
+            matching = state.backend.query(
+                Selection(query=query, run_id=run.id, album_ids=album_ids)
+            )
+            album_ids = tuple(a.id for a in matching)
+        return Selection(query=spec.when or "", run_id=run.id, album_ids=album_ids)
 
     async def _run_cancellable(self, state: _RunState, coro: Any) -> Any:
         task: asyncio.Task[Any] = asyncio.ensure_future(coro)
@@ -654,14 +806,45 @@ class Engine:
         except InterpolationError as exc:
             raise StepFailure(str(exc)) from exc
 
-    def _prepare_params(self, state: _RunState, spec: StepSpec) -> BaseModel:
-        ctx = self._interpolation_context(state)
+    def _interpolate_template(self, state: _RunState, ctx: InterpolationContext, value: str) -> str:
+        """``{{ }}`` for text the backend then evaluates as a template (SEC-22): values
+        from outside the workflow (run fields, run-supplied vars, step outputs) are
+        escaped so the backend reads them as literal text. Workflow and profile values
+        stay templates."""
+        escape = state.backend.escape_template
+
+        def resolve(path: tuple[str, ...]) -> str:
+            text = ctx.resolve(path)
+            root, *rest = path
+            outside = root in ("run", "steps") or (
+                root == "vars" and len(rest) == 1 and rest[0] in state.run_supplied
+            )
+            return escape(text) if outside else text
+
+        return substitute(value, resolve)
+
+    def _interpolate_template_text(self, state: _RunState, value: str) -> str:
         try:
-            values = _interpolate_values(spec.with_, ctx)
+            return self._interpolate_template(state, self._interpolation_context(state), value)
         except InterpolationError as exc:
             raise StepFailure(str(exc)) from exc
+
+    def _prepare_params(self, state: _RunState, spec: StepSpec) -> BaseModel:
+        ctx = self._interpolation_context(state)
         step_type = self.registry.step_type(spec.uses)
         assert step_type is not None
+        try:
+            _refuse_run_data_in_code(step_type.params_model, spec.with_, state.run_supplied)
+            plain = partial(interpolate, ctx=ctx)
+            # SEC-22: a run-level step evaluates no templates, so its values stay as is.
+            template = (
+                plain
+                if is_run_level(step_type, spec.with_)
+                else partial(self._interpolate_template, state, ctx)
+            )
+            values = interpolate_fields(step_type.params_model, spec.with_, plain, template)
+        except InterpolationError as exc:
+            raise StepFailure(str(exc)) from exc
         try:
             return step_type.params_model.model_validate(values)
         except PydanticValidationError as exc:
@@ -714,7 +897,7 @@ class Engine:
         for cs in changesets:
             self.changesets.add(cs)
             emit("changeset.proposed", proposed_event(cs))
-            if spec.apply == "auto" and not force_review:
+            if apply_policy(spec, step_type) == "auto" and not force_review:
                 outcome = apply_changeset(
                     cs,
                     backend=state.backend,
@@ -820,6 +1003,26 @@ class Engine:
         self._emit(run, "import.requested", spec.id, _redact(data, state.redactor))
         return decision.id
 
+    async def _notify(
+        self, state: _RunState, step_id: str, targets: list[str] | None, n: Notification
+    ) -> list[SendResult]:
+        """``ctx.notify`` (S-NOTIFY NOTIFY-4, -12): send to each target at once and emit
+        the outcome of each."""
+        assert state.notify is not None
+        names = state.notify.names() if targets is None else list(dict.fromkeys(targets))
+        unknown = [t for t in names if t not in state.notify.names()]
+        if unknown:
+            raise StepFailure(f"unknown notification target(s): {', '.join(unknown)}")
+        results = await asyncio.gather(*(state.notify.send(t, n) for t in names))
+        for result in results:
+            data: dict[str, JsonValue] = {"target": result.target, "source": "step"}
+            if result.ok:
+                self._emit(state.run, "notify.sent", step_id, data)
+            else:
+                data["error"] = state.redactor.redact(result.error or "")
+                self._emit(state.run, "notify.failed", step_id, data)
+        return list(results)
+
     def _change_emitter(
         self, state: _RunState, step_id: str
     ) -> Callable[[str, dict[str, JsonValue]], None]:
@@ -867,15 +1070,42 @@ class Engine:
         self._emit(run, "run.finished", None, {"status": run.state.value})
 
 
-def _interpolate_values(value: Any, ctx: InterpolationContext) -> Any:
-    if isinstance(value, str):
-        return interpolate(value, ctx)
-    if isinstance(value, dict):
-        items = cast(dict[str, Any], value).items()
-        return {k: _interpolate_values(v, ctx) for k, v in items}
-    if isinstance(value, list):
-        return [_interpolate_values(v, ctx) for v in cast(list[Any], value)]
-    return value
+def _refuse_run_data_in_code(
+    model: type[BaseModel], with_: Mapping[str, Any], run_supplied: frozenset[str]
+) -> None:
+    """SEC-21: a string in a field marked ``code_text`` (a shell command) is code, so it
+    may not contain data that comes from outside the workflow: the run input, variables
+    the run's caller set, or step outputs. Those reach the process through its
+    environment (``RIFFERR_RUN_INPUT``, ``RIFFERR_VAR_<NAME>``)."""
+    for name, field in model.model_fields.items():
+        extra = cast(Any, field.json_schema_extra)
+        value: Any = with_.get(name)
+        if not isinstance(extra, dict) or not extra.get("code_text"):  # type: ignore[reportUnknownMemberType]
+            continue
+        if not isinstance(value, str):
+            continue
+
+        def check(expr: Expression, field_name: str = name) -> str:
+            root, *rest = expr.path
+            if root == "run" and rest == ["input"]:
+                raise StepFailure(
+                    f"{expr.text} can't be written into '{field_name}': it would be run as code. "
+                    "Use $RIFFERR_RUN_INPUT"
+                )
+            if root == "vars" and len(rest) == 1 and rest[0] in run_supplied:
+                raise StepFailure(
+                    f"{expr.text} was set for this run and can't be written into "
+                    f"'{field_name}': it would be run as code. "
+                    f"Use ${env_var_name(rest[0])}"
+                )
+            if root == "steps":
+                raise StepFailure(
+                    f"{expr.text} can't be written into '{field_name}': step outputs may hold "
+                    "data from outside the workflow and would be run as code"
+                )
+            return expr.text
+
+        rewrite(value, check)
 
 
 def _redact(value: Any, redactor: Redactor) -> Any:
@@ -890,3 +1120,11 @@ def _redact(value: Any, redactor: Redactor) -> Any:
 
 
 __all__ = ["Clock", "Engine", "RunValidationError", "Scalar", "SystemClock"]
+
+
+def apply_policy(spec: StepSpec, step_type: object) -> str:
+    """The step's ``apply``, or its type's ``default_apply`` when the workflow doesn't
+    say (CHANGESET-6; ``covers.search`` defaults to ``auto``, COVERS-SEARCH-15)."""
+    if "apply" in spec.model_fields_set:
+        return spec.apply
+    return str(getattr(step_type, "default_apply", spec.apply))

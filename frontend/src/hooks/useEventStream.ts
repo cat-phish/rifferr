@@ -8,6 +8,9 @@ export interface StreamOptions<T> {
   closeOn?: string;
   /** Event types to listen for; SSE messages with an ``event:`` name need explicit listeners. */
   types: readonly string[];
+  /** Called each time the stream (re)connects: a stream without ``Last-Event-ID`` starts
+   * with new events, so work whose events it must see starts after this. */
+  onOpen?: () => void;
 }
 
 /**
@@ -36,6 +39,9 @@ export function useEventStream<T>(url: string | null, options: StreamOptions<T>)
       }
     };
     for (const type of typesKey.split(",")) source.addEventListener(type, handler);
+    source.onopen = () => {
+      if (!closed) opts.current.onOpen?.();
+    };
     source.onerror = () => {
       // A closed stream with no reconnect usually means 401: check once.
       if (source.readyState === EventSource.CLOSED) {

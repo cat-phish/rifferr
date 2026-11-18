@@ -182,6 +182,213 @@
               "type": "string"
             },
             "uses": {
+              "const": "covers.search",
+              "title": "Uses"
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Backend condition (a beets query).",
+              "title": "When"
+            },
+            "with": {
+              "$ref": "#/$defs/With_covers_search"
+            }
+          },
+          "required": [
+            "id",
+            "uses"
+          ],
+          "title": "Step: covers.search",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One entry of ``steps:`` (WORKFLOW-2, WORKFLOW-3).",
+          "properties": {
+            "apply": {
+              "default": "review",
+              "description": "Whether this step's ChangeSets apply automatically or wait for review. Ignored by steps that don't produce ChangeSets.",
+              "enum": [
+                "auto",
+                "review"
+              ],
+              "title": "Apply",
+              "type": "string"
+            },
+            "id": {
+              "pattern": "^[a-z][a-z0-9_-]*$",
+              "title": "Id",
+              "type": "string"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Name"
+            },
+            "on_error": {
+              "default": "stop",
+              "enum": [
+                "stop",
+                "skip",
+                "continue"
+              ],
+              "title": "On Error",
+              "type": "string"
+            },
+            "uses": {
+              "const": "files.cleanup",
+              "title": "Uses"
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Backend condition (a beets query).",
+              "title": "When"
+            },
+            "with": {
+              "$ref": "#/$defs/With_files_cleanup"
+            }
+          },
+          "required": [
+            "id",
+            "uses"
+          ],
+          "title": "Step: files.cleanup",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One entry of ``steps:`` (WORKFLOW-2, WORKFLOW-3).",
+          "properties": {
+            "apply": {
+              "default": "review",
+              "description": "Whether this step's ChangeSets apply automatically or wait for review. Ignored by steps that don't produce ChangeSets.",
+              "enum": [
+                "auto",
+                "review"
+              ],
+              "title": "Apply",
+              "type": "string"
+            },
+            "id": {
+              "pattern": "^[a-z][a-z0-9_-]*$",
+              "title": "Id",
+              "type": "string"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Name"
+            },
+            "on_error": {
+              "default": "stop",
+              "enum": [
+                "stop",
+                "skip",
+                "continue"
+              ],
+              "title": "On Error",
+              "type": "string"
+            },
+            "uses": {
+              "const": "notify",
+              "title": "Uses"
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Backend condition (a beets query).",
+              "title": "When"
+            },
+            "with": {
+              "$ref": "#/$defs/With_notify"
+            }
+          },
+          "required": [
+            "id",
+            "uses"
+          ],
+          "title": "Step: notify",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One entry of ``steps:`` (WORKFLOW-2, WORKFLOW-3).",
+          "properties": {
+            "apply": {
+              "default": "review",
+              "description": "Whether this step's ChangeSets apply automatically or wait for review. Ignored by steps that don't produce ChangeSets.",
+              "enum": [
+                "auto",
+                "review"
+              ],
+              "title": "Apply",
+              "type": "string"
+            },
+            "id": {
+              "pattern": "^[a-z][a-z0-9_-]*$",
+              "title": "Id",
+              "type": "string"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Name"
+            },
+            "on_error": {
+              "default": "stop",
+              "enum": [
+                "stop",
+                "skip",
+                "continue"
+              ],
+              "title": "On Error",
+              "type": "string"
+            },
+            "uses": {
               "const": "review",
               "title": "Uses"
             },
@@ -345,6 +552,75 @@
             "uses"
           ],
           "title": "Step: tags.script",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One entry of ``steps:`` (WORKFLOW-2, WORKFLOW-3).",
+          "properties": {
+            "apply": {
+              "default": "review",
+              "description": "Whether this step's ChangeSets apply automatically or wait for review. Ignored by steps that don't produce ChangeSets.",
+              "enum": [
+                "auto",
+                "review"
+              ],
+              "title": "Apply",
+              "type": "string"
+            },
+            "id": {
+              "pattern": "^[a-z][a-z0-9_-]*$",
+              "title": "Id",
+              "type": "string"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Name"
+            },
+            "on_error": {
+              "default": "stop",
+              "enum": [
+                "stop",
+                "skip",
+                "continue"
+              ],
+              "title": "On Error",
+              "type": "string"
+            },
+            "uses": {
+              "const": "workflow",
+              "title": "Uses"
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Backend condition (a beets query).",
+              "title": "When"
+            },
+            "with": {
+              "$ref": "#/$defs/With_workflow"
+            }
+          },
+          "required": [
+            "id",
+            "uses"
+          ],
+          "title": "Step: workflow",
           "type": "object"
         }
       ],
@@ -736,6 +1012,298 @@
       "title": "ImporterOptions",
       "type": "object"
     },
+    "With_covers_search": {
+      "additionalProperties": false,
+      "properties": {
+        "choose": {
+          "default": "auto",
+          "description": "auto: take the best cover; review: always ask",
+          "enum": [
+            "auto",
+            "review"
+          ],
+          "title": "Choose",
+          "type": "string"
+        },
+        "local_counts": {
+          "default": true,
+          "description": "With only_missing: an image in the album folder counts as art",
+          "title": "Local Counts",
+          "type": "boolean"
+        },
+        "max_tries": {
+          "default": 3,
+          "description": "Images auto downloads at most",
+          "maximum": 20,
+          "minimum": 1,
+          "title": "Max Tries",
+          "type": "integer"
+        },
+        "min_score": {
+          "default": 0.6,
+          "description": "Lowest score auto may take",
+          "minimum": 0,
+          "title": "Min Score",
+          "type": "number"
+        },
+        "on_none": {
+          "default": "review",
+          "description": "When auto finds no cover good enough",
+          "enum": [
+            "review",
+            "skip",
+            "fail"
+          ],
+          "title": "On None",
+          "type": "string"
+        },
+        "only_missing": {
+          "default": true,
+          "description": "Skip albums that already have art",
+          "title": "Only Missing",
+          "type": "boolean"
+        },
+        "providers": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Providers to ask, in order (default: the profile's)",
+          "title": "Providers"
+        },
+        "query": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Backend templates for the query fields (beets: $albumartist ...)",
+          "propertyNames": {
+            "enum": [
+              "artist",
+              "album",
+              "year",
+              "catalognum",
+              "barcode",
+              "mb_albumid",
+              "mb_releasegroupid"
+            ]
+          },
+          "title": "Query",
+          "type": "object",
+          "x-rifferr-template": true
+        },
+        "refresh": {
+          "default": false,
+          "description": "Ignore cached search results",
+          "title": "Refresh",
+          "type": "boolean"
+        }
+      },
+      "title": "CoversSearchParams",
+      "type": "object"
+    },
+    "With_files_cleanup": {
+      "additionalProperties": false,
+      "properties": {
+        "allow_audio": {
+          "default": false,
+          "description": "Let delete patterns match music the backend could import",
+          "title": "Allow Audio",
+          "type": "boolean"
+        },
+        "delete": {
+          "description": "Files to delete. Glob patterns on paths relative to path; without '/' they match a file name at any depth (*.nfo), with '/' the relative path (Scans/*.jpg); ** spans folders; no case",
+          "items": {
+            "type": "string"
+          },
+          "title": "Delete",
+          "type": "array"
+        },
+        "empty_dirs": {
+          "default": true,
+          "description": "Remove folders left empty",
+          "title": "Empty Dirs",
+          "type": "boolean"
+        },
+        "keep": {
+          "description": "Files never deleted, checked first (globs)",
+          "items": {
+            "type": "string"
+          },
+          "title": "Keep",
+          "type": "array"
+        },
+        "mode": {
+          "default": "report",
+          "description": "report: list only; delete: delete what delete names",
+          "enum": [
+            "report",
+            "delete"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "on_timeout": {
+          "anyOf": [
+            {
+              "enum": [
+                "keep",
+                "delete"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The decision once timeout passes (default keep)",
+          "title": "On Timeout"
+        },
+        "path": {
+          "description": "The folder to clean, e.g. {{ run.input }}",
+          "title": "Path",
+          "type": "string"
+        },
+        "remove_root": {
+          "default": false,
+          "description": "Also remove path when it ends empty",
+          "title": "Remove Root",
+          "type": "boolean"
+        },
+        "review": {
+          "default": false,
+          "description": "Ask in the review queue before deleting (delete mode)",
+          "title": "Review",
+          "type": "boolean"
+        },
+        "timeout": {
+          "anyOf": [
+            {
+              "description": "A duration: whole numbers with d, h, m or s, e.g. 30m, 12h, 3d, 1d12h",
+              "pattern": "^(\\d+[dhms])+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "With review: decide automatically after this long",
+          "title": "Timeout"
+        },
+        "trash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Move files to this folder instead of deleting them",
+          "title": "Trash"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "CleanupParams",
+      "type": "object"
+    },
+    "With_notify": {
+      "additionalProperties": false,
+      "properties": {
+        "body": {
+          "description": "Message. With per: album, a beets template, e.g. '$albumartist - $album' (https://beets.readthedocs.io/en/stable/reference/pathformat.html)",
+          "title": "Body",
+          "type": "string",
+          "x-rifferr-template": true
+        },
+        "link": {
+          "default": "run",
+          "description": "Link to the run page, the run's review queue, or none",
+          "enum": [
+            "run",
+            "review",
+            "none"
+          ],
+          "title": "Link",
+          "type": "string"
+        },
+        "per": {
+          "default": "run",
+          "description": "run: one message per pass; album: one per album",
+          "enum": [
+            "run",
+            "album"
+          ],
+          "title": "Per",
+          "type": "string"
+        },
+        "required": {
+          "default": false,
+          "description": "Fail the step when a target can't be reached",
+          "title": "Required",
+          "type": "boolean"
+        },
+        "skip_empty": {
+          "default": false,
+          "description": "per: run: send nothing when no album matches when:",
+          "title": "Skip Empty",
+          "type": "boolean"
+        },
+        "targets": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Notification targets from the profile's notify.targets; default: all",
+          "title": "Targets",
+          "x-rifferr-ref": "notify-target"
+        },
+        "title": {
+          "description": "Title. With per: album, a beets template",
+          "title": "Title",
+          "type": "string",
+          "x-rifferr-template": true
+        },
+        "type": {
+          "default": "info",
+          "description": "info, success, warning or failure",
+          "enum": [
+            "info",
+            "success",
+            "warning",
+            "failure"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "body"
+      ],
+      "title": "NotifyParams",
+      "type": "object"
+    },
     "With_review": {
       "additionalProperties": false,
       "properties": {
@@ -750,7 +1318,8 @@
           ],
           "default": null,
           "description": "Shown for each album: a beets template, e.g. 'Check $albumartist - $album before the files move' (https://beets.readthedocs.io/en/stable/reference/pathformat.html)",
-          "title": "Message"
+          "title": "Message",
+          "x-rifferr-template": true
         },
         "on_reject": {
           "default": "stop",
@@ -820,7 +1389,8 @@
           ],
           "default": null,
           "description": "Working directory (templated)",
-          "title": "Cwd"
+          "title": "Cwd",
+          "x-rifferr-template": true
         },
         "emits": {
           "default": "none",
@@ -836,9 +1406,10 @@
           "additionalProperties": {
             "type": "string"
           },
-          "description": "Extra variables",
+          "description": "Extra variables (values templated)",
           "title": "Env",
-          "type": "object"
+          "type": "object",
+          "x-rifferr-template": true
         },
         "per": {
           "default": "album",
@@ -862,8 +1433,10 @@
               "type": "string"
             }
           ],
-          "description": "Command as an argv list, or a string run by /bin/sh -c (needs shell: true)",
-          "title": "Run"
+          "code_text": true,
+          "description": "Command as an argv list, or a string run by /bin/sh -c (needs shell: true). A string may not hold run data ({{ run.input }}, run-supplied vars, {{ steps.* }}): read $RIFFERR_RUN_INPUT / $RIFFERR_VAR_<NAME> instead",
+          "title": "Run",
+          "x-rifferr-template": true
         },
         "secrets": {
           "description": "Profile secrets to expose as RIFFERR_SECRET_<NAME>",
@@ -1007,7 +1580,8 @@
           },
           "minItems": 1,
           "title": "Values",
-          "type": "array"
+          "type": "array",
+          "x-rifferr-template": true
         }
       },
       "required": [
@@ -1703,7 +2277,8 @@
           },
           "minProperties": 1,
           "title": "Set",
-          "type": "object"
+          "type": "object",
+          "x-rifferr-template": true
         },
         "when": {
           "anyOf": [
@@ -1817,6 +2392,43 @@
       ],
       "title": "SplitSpec",
       "type": "object"
+    },
+    "With_workflow": {
+      "additionalProperties": false,
+      "description": "``with:`` of a ``uses: workflow`` step (SUBWORKFLOW-1, -2).",
+      "properties": {
+        "vars": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          },
+          "description": "Values for the called workflow's declared vars",
+          "title": "Vars",
+          "type": "object"
+        },
+        "workflow": {
+          "description": "Workflow file, relative to the profile's workflows/ folder",
+          "title": "Workflow",
+          "type": "string"
+        }
+      },
+      "required": [
+        "workflow"
+      ],
+      "title": "WorkflowCallParams",
+      "type": "object"
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1863,6 +2475,14 @@
         }
       ],
       "default": null
+    },
+    "outputs": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "When this workflow is called (uses: workflow): the call step's outputs, each a '{{ steps.<id>.<key> }}' expression over this workflow's steps.",
+      "title": "Outputs",
+      "type": "object"
     },
     "steps": {
       "items": {

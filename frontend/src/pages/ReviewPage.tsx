@@ -14,13 +14,16 @@ import {
   Title,
 } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { api, ok } from "../api/client";
+import { CoverPicker } from "../components/CoverPicker";
+import { CleanupDecisionView } from "../components/CleanupDecisionView";
 import { ImportDecisionView } from "../components/ImportDecisionView";
 import type { GateAlbum, QueueItem, ReviewGate } from "../api/types";
 import { useProfile, withProfile } from "../hooks/useProfile";
 import { useReviewQueue } from "../hooks/useReviewQueue";
+import { BULK_ACTIONS, bulkKind, decideAll, type BulkFailure, type BulkKind } from "../lib/bulk";
 import { time } from "../lib/format";
 import {
   count,
@@ -35,8 +38,22 @@ import {
   type RunGroup,
 } from "../lib/review";
 
-/** The review queue: ChangeSets, review gates and import decisions that wait for a decision, grouped by
- * run (F-REVIEW-QUEUE). Updates come from ``/api/events`` via the app shell. */
+interface Selection {
+  selected: Map<string, QueueItem>;
+  kind: BulkKind | null;
+  toggle: (item: QueueItem) => void;
+}
+
+/** Items picked to decide together (F-DASHBOARD DASHBOARD-13). */
+const SelectionContext = createContext<Selection>({
+  selected: new Map(),
+  kind: null,
+  toggle: () => undefined,
+});
+
+/** The review queue: ChangeSets, review gates, import and cleanup decisions that wait for a decision, grouped by
+ * run (F-REVIEW-QUEUE). Updates come from ``/api/events`` via the app shell. Several items
+ * of one kind can be decided together (F-DASHBOARD DASHBOARD-13). */
 export function ReviewPage() {
   const { profile } = useProfile();
   const [params] = useSearchParams();
@@ -45,6 +62,33 @@ export function ReviewPage() {
   const queue = useReviewQueue(profile);
   const items = (queue.data ?? []).filter((i) => runFilter === null || i.run_id === runFilter);
   const groups = groupByRun(items);
+  const queryClient = useQueryClient();
+  const [picked, setPicked] = useState<Map<string, QueueItem>>(new Map());
+  const [failures, setFailures] = useState<BulkFailure[]>([]);
+  // Items decided elsewhere drop out of the selection.
+  const selected = new Map([...picked].filter(([id]) => items.some((i) => i.id === id)));
+  const first = selected.values().next();
+  const kind = first.done ? null : bulkKind(first.value);
+  const selection: Selection = {
+    selected,
+    kind,
+    toggle: (item) => {
+      setPicked((old) => {
+        const next = new Map(old);
+        if (next.has(item.id)) next.delete(item.id);
+        else next.set(item.id, item);
+        return next;
+      });
+    },
+  };
+  const bulk = useMutation({
+    mutationFn: async (action: string) => decideAll([...selected.values()], action),
+    onSuccess: (failed) => {
+      setFailures(failed);
+      setPicked(new Map());
+    },
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: ["review"] }),
+  });
 
   // Deep link (REVIEW-QUEUE-16): scroll to the item once it's on the page.
   const focusShown = focus !== null && items.some((i) => i.id === focus);
@@ -69,6 +113,57 @@ export function ReviewPage() {
         )}
       </Group>
       {queue.error && <Alert color="red">{queue.error.message}</Alert>}
+      {kind !== null && (
+        <Card withBorder padding="xs" data-testid="bulk-bar">
+          <Group justify="space-between">
+            <Text size="sm">{count(selected.size, "item")} selected</Text>
+            <Group gap="xs">
+              {BULK_ACTIONS[kind].map((a) => (
+                <Button
+                  key={a.value}
+                  size="xs"
+                  color={a.danger ? "red" : undefined}
+                  variant={a.danger ? "light" : "filled"}
+                  loading={bulk.isPending && bulk.variables === a.value}
+                  disabled={bulk.isPending}
+                  onClick={() => {
+                    bulk.mutate(a.value);
+                  }}
+                >
+                  {a.label} selected
+                </Button>
+              ))}
+              <Button
+                size="xs"
+                variant="default"
+                disabled={bulk.isPending}
+                onClick={() => {
+                  setPicked(new Map());
+                }}
+              >
+                Clear
+              </Button>
+            </Group>
+          </Group>
+        </Card>
+      )}
+      {failures.length > 0 && (
+        <Alert
+          color="red"
+          data-testid="bulk-failures"
+          withCloseButton
+          onClose={() => {
+            setFailures([]);
+          }}
+        >
+          {count(failures.length, "item")} could not be decided:
+          {failures.map((f) => (
+            <Text key={f.id} size="sm">
+              {f.id}: {f.message}
+            </Text>
+          ))}
+        </Alert>
+      )}
       {queue.data !== undefined && items.length === 0 && (
         <Text c="dimmed" data-testid="queue-empty">
           Nothing waits for review.
@@ -79,9 +174,11 @@ export function ReviewPage() {
           That item no longer waits for review.
         </Alert>
       )}
-      {groups.map((g) => (
-        <RunCard key={g.runId} group={g} focus={focus} />
-      ))}
+      <SelectionContext.Provider value={selection}>
+        {groups.map((g) => (
+          <RunCard key={g.runId} group={g} focus={focus} />
+        ))}
+      </SelectionContext.Provider>
     </Stack>
   );
 }
@@ -164,6 +261,41 @@ function RunCard({ group, focus }: { group: RunGroup; focus: string | null }) {
             >
               <ImportDecisionView decision={item.import_decision} />
             </ItemCard>
+          ) : item.kind === "cleanup" && item.cleanup_decision ? (
+            <ItemCard
+              key={item.id}
+              item={item}
+              focused={focus === item.id}
+              title={
+                <Group gap="xs">
+                  <Text fw={500}>Folder cleanup</Text>
+                  <Text size="sm" c="dimmed">
+                    step {item.step_id}
+                  </Text>
+                </Group>
+              }
+            >
+              <CleanupDecisionView decision={item.cleanup_decision} />
+            </ItemCard>
+          ) : item.kind === "cover" && item.cover_review ? (
+            <ItemCard
+              key={item.id}
+              item={item}
+              focused={focus === item.id}
+              title={
+                <Group gap="xs">
+                  <Text fw={500}>Cover choice</Text>
+                  <Text size="sm" c="dimmed">
+                    step {item.step_id}
+                  </Text>
+                </Group>
+              }
+            >
+              <CoverPicker
+                profile={item.cover_review.profile}
+                mode={{ kind: "review", review: item.cover_review }}
+              />
+            </ItemCard>
           ) : (
             <ChangeSetCard key={item.id} item={item} focused={focus === item.id} />
           ),
@@ -217,6 +349,8 @@ function ItemCard({
   title: React.ReactNode;
   children: React.ReactNode;
 }) {
+  const selection = useContext(SelectionContext);
+  const kind = bulkKind(item);
   return (
     <Card
       withBorder
@@ -229,7 +363,20 @@ function ItemCard({
     >
       <Stack gap="xs">
         <Group justify="space-between">
-          {title}
+          <Group gap="xs">
+            {kind !== null && (
+              <Checkbox
+                aria-label="Select"
+                data-testid="select-item"
+                checked={selection.selected.has(item.id)}
+                disabled={selection.kind !== null && selection.kind !== kind}
+                onChange={() => {
+                  selection.toggle(item);
+                }}
+              />
+            )}
+            {title}
+          </Group>
           <Text size="xs" c="dimmed">
             {time(item.created_at)}
           </Text>
@@ -490,6 +637,24 @@ function GateCard({
       ),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["review"] }),
   });
+  // One album at a time (F-DASHBOARD DASHBOARD-11, -12); only on gates of several albums.
+  const perAlbum = useMutation({
+    mutationFn: async (v: { decision: "continue" | "reject"; album: string }) =>
+      ok(
+        await api.POST("/api/reviews/{gate_id}/decision", {
+          params: { path: { gate_id: gate.id } },
+          body: {
+            decision: v.decision,
+            note: note.trim() === "" ? null : note.trim(),
+            albums: [v.album],
+          },
+        }),
+      ),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["review"] }),
+  });
+  const decided = perAlbum.data?.album_decisions ?? gate.album_decisions ?? {};
+  const several = gate.albums.length > 1;
+  const undecided = gate.albums.filter((a) => !(a.target.id in decided)).length;
   const onTimeout = gate.on_timeout ?? "reject";
   return (
     <ItemCard
@@ -509,9 +674,50 @@ function GateCard({
           If nobody decides by {time(gate.deadline)}, it will {onTimeout} automatically.
         </Text>
       )}
-      {gate.albums.map((album) => (
-        <GateAlbumView key={targetKey(album.target)} album={album} />
-      ))}
+      {gate.albums.map((album) => {
+        const verdict = decided[album.target.id];
+        return (
+          <Stack key={targetKey(album.target)} gap={4}>
+            <GateAlbumView album={album} />
+            {several && verdict !== undefined && (
+              <Badge
+                size="sm"
+                variant="light"
+                color={verdict === "continued" ? "green" : "red"}
+                data-testid="album-decided"
+              >
+                {verdict}
+              </Badge>
+            )}
+            {several && verdict === undefined && !decide.isSuccess && (
+              <Group gap="xs" data-testid="album-actions">
+                <Button
+                  size="compact-xs"
+                  variant="light"
+                  disabled={perAlbum.isPending || decide.isPending}
+                  onClick={() => {
+                    perAlbum.mutate({ decision: "continue", album: album.target.id });
+                  }}
+                >
+                  Continue this album
+                </Button>
+                <Button
+                  size="compact-xs"
+                  variant="subtle"
+                  color="red"
+                  disabled={perAlbum.isPending || decide.isPending}
+                  onClick={() => {
+                    perAlbum.mutate({ decision: "reject", album: album.target.id });
+                  }}
+                >
+                  Reject this album
+                </Button>
+              </Group>
+            )}
+          </Stack>
+        );
+      })}
+      {perAlbum.error && <Alert color="red">{perAlbum.error.message}</Alert>}
       {decide.error && <Alert color="red">{decide.error.message}</Alert>}
       {decide.isSuccess ? (
         <Text size="sm" c="dimmed" data-testid="decision-sent">
@@ -541,7 +747,7 @@ function GateCard({
                   decide.mutate("continue");
                 }}
               >
-                Continue
+                {several && undecided < gate.albums.length ? "Continue the rest" : "Continue"}
               </Button>
               <Button
                 size="xs"
@@ -553,7 +759,7 @@ function GateCard({
                   decide.mutate("reject");
                 }}
               >
-                Reject
+                {several && undecided < gate.albums.length ? "Reject the rest" : "Reject"}
               </Button>
             </Group>
           </Group>

@@ -27,11 +27,13 @@ M1 additions (API-18) are specified in [S-TAGSCRIPT](../steps/S-TAGSCRIPT.md) (a
 - API-11: Errors MUST use one envelope `{error: {code, message, details?}}` with stable `code` strings, including the rejections of the F-SECURITY middleware. M0 codes: `host_not_allowed`, `cross_origin`, `unsupported_media_type`, `unauthenticated`, `invalid_token`, `not_found`, `invalid_workflow_name`, `ambiguous_workflow_name`, `validation_failed`, `hash_mismatch`, `bad_request`.
 - API-12: All routes MUST sit behind the F-SECURITY middleware stack.
 - API-13: The built frontend MUST be served from `/` by the same server, from a configurable directory (default `frontend/dist`); without a build, `/` MUST show a short page saying how to build it. With a build, `GET` paths outside `/api`, `/auth`, `/healthz` and `/openapi.json` that match no file MUST get `index.html`, so client-side routes survive a reload (added for F-UI-SHELL). In `--dev` mode the Vite dev server serves the UI and proxies `/api`, `/auth` and `/healthz` to the backend, and the backend MUST additionally accept the Vite origin (`http://localhost:<vite port>`, `http://127.0.0.1:<vite port>`) in the Origin check. Only with `--dev`; Host, JSON and auth checks are unchanged (author approved this dev-only exception 2026-11-11).
-- API-14: `POST /api/workflows/{name}/trust?profile=` with `{sha256}` MUST trust that exact content (SECURITY-12, the UI's confirm after showing the safety report). If the file's current hash differs, it MUST return `409 hash_mismatch` and trust nothing.
+- API-14: `POST /api/workflows/{name}/trust?profile=` with `{sha256}` MUST trust that exact content (SECURITY-12, the UI's confirm after showing the safety report). If the file's current hash differs, it MUST return `409 hash_mismatch` and trust nothing. The route trusts in the request's profile only, and MUST refuse (422 `validation_failed`) a workflow that fails validation, as `rifferr trust --profile` does.
 - API-15: `create_app(settings)` MUST open the app DB and apply migrations, create the `WorkerSupervisor`, generate the local token and write the token file at startup, and on shutdown stop the workers (WORKER-8) and remove the token file.
 - API-16: `GET /api/workflows` and `GET /api/workflows/{name}` MUST include the workflow's declared vars (`name`, `default`, `description`, `profile_value`) and, as `missing_vars`, the vars without a default that the profile doesn't set. Missing vars MUST NOT make a workflow invalid (they are supplied at start); every other validation error still does. `POST /api/runs` still fails with `422 validation_failed` if they are missing from the request (added for F-UI-SHELL).
 - API-17: `POST /api/runs` MAY carry `sha256`; if the workflow file's current hash differs, the server MUST return `409 hash_mismatch` and queue nothing (added for F-UI-SHELL).
 - API-18: `GET /api/profiles/{profile}/scripts` lists script files (name, hash, valid, errors); `GET …/scripts/{name}` returns text and hash; `PUT …/scripts/{name}` `{text, sha256?}` saves, with `409 hash_mismatch` if `sha256` is given and differs from the file on disk. Names follow the workflow stem rules (API-3) and stay inside `scripts/` (added for S-TAGSCRIPT).
+- API-19: `GET /api/profiles/{p}/beets-config` MUST report whether the profile's beets config runs code: the keys found, the SHA-256 (BEETS-IMPORT-18) and whether it is trusted. `POST /api/profiles/{p}/beets-config/trust` with `{sha256}` MUST trust exactly that hash for the profile, answering `409 hash_mismatch` and trusting nothing if the config changed (SECURITY-12, -14).
+- API-20: `VarInfo.profile_value` MUST be `"(set by the profile)"` for a profile var that uses `{{ env.* }}`, directly or through another var.
 
 ## Interfaces
 ```
@@ -101,6 +103,8 @@ Step types cannot add routes in M0. Event `data` shapes are owned by the emittin
 - ~~Event retention?~~ Resolved 2026-11-11 (author): forever in M0; pruning → B-021.
 - ~~Workflow addressing?~~ Resolved 2026-11-11 (author): file stem (API-3).
 - ~~Dev proxy direction?~~ Resolved 2026-11-11 (author): Vite proxies to the backend, with a dev-only allowed origin (API-13).
+- (2026-11-18, audit SEC-41..47) `/api/events` is still global across profiles (API-9, REVIEW-QUEUE-10). It needs a per-profile filter before any multi-user or LAN mode (tied to SECURITY-9 real auth).
+- (2026-11-18, audit SEC-62) The UI has no button for the beets-config trust routes yet.
 
 ## Tasks
 - [x] app DB + migrations (and security middleware on the error envelope)

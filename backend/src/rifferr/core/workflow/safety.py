@@ -12,6 +12,7 @@ from typing import Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict
 
+from rifferr.core.workflow.calls import CalledStep, Calls, expand
 from rifferr.core.workflow.models import Workflow
 
 NETWORK_TOOLS: frozenset[str] = frozenset(
@@ -49,12 +50,14 @@ FindingKind = Literal[
     "secret",
     "local_script",
     "auto_apply",
+    "tag_field",
 ]
 #: Library subcommands that delete files or library entries (``beets.command``).
 DESTRUCTIVE_LIBRARY_COMMANDS: frozenset[str] = frozenset({"remove"})
-#: Step types that only propose ChangeSets; with ``apply: auto`` they change tags
-#: without review, which the report lists as information (TAGSCRIPT-18).
-PROPOSING_STEPS: frozenset[str] = frozenset({"tags.script"})
+#: ``beets.import`` duplicate actions that remove or replace an album already in the
+#: library (SEC-08).
+DESTRUCTIVE_DUPLICATE_ACTIONS: frozenset[str] = frozenset({"remove", "merge", "upgrade"})
+VARIABLE_PROGRAM_WARNING = "program comes from a variable: trust does not cover what it runs"
 
 
 class Finding(BaseModel):
@@ -63,6 +66,8 @@ class Finding(BaseModel):
     step_id: str
     kind: FindingKind
     detail: str
+    workflow: str | None = None
+    """The called file the step comes from (SUBWORKFLOW-14); None for the workflow's own."""
 
 
 class SafetyReport(BaseModel):
@@ -74,10 +79,25 @@ class SafetyReport(BaseModel):
         return [f for f in self.findings if f.kind == kind]
 
 
-def safety_report(wf: Workflow) -> SafetyReport:
+def safety_report(wf: Workflow, calls: Calls | None = None) -> SafetyReport:
+    """``calls``: the files ``wf`` calls; their steps are reported too, by expanded step id
+    and file (SUBWORKFLOW-14)."""
+    if calls is not None:
+        wf = expand(wf, calls)
+    report = _report(wf)
+    files = {s.id: s.workflow for s in wf.steps if isinstance(s, CalledStep)}
+    return SafetyReport(
+        findings=[
+            f.model_copy(update={"workflow": files[f.step_id]}) if f.step_id in files else f
+            for f in report.findings
+        ]
+    )
+
+
+def _report(wf: Workflow) -> SafetyReport:
     findings: list[Finding] = []
     for step in wf.steps:
-        if step.uses in PROPOSING_STEPS and step.apply == "auto":
+        if step.apply == "auto":  # TAGSCRIPT-18; any step that proposes ChangeSets (SEC-65)
             findings.append(
                 Finding(
                     step_id=step.id,
@@ -87,6 +107,12 @@ def safety_report(wf: Workflow) -> SafetyReport:
             )
         if step.uses == "beets.command":
             findings += _library_command_findings(step.id, step.with_)
+            continue
+        if step.uses == "files.cleanup":
+            findings += _cleanup_findings(step.id, step.with_)
+            continue
+        if step.uses == "beets.import":
+            findings += _import_findings(step.id, step.with_)
             continue
         if step.uses != "shell":
             continue
@@ -106,6 +132,7 @@ def safety_report(wf: Workflow) -> SafetyReport:
         else:
             words = []
         findings += _word_findings(step.id, words)
+        findings += _field_findings(step.id, run, params.get("cwd"))
         secrets = params.get("secrets")
         if isinstance(secrets, list):
             for name in cast(list[Any], secrets):
@@ -113,6 +140,91 @@ def safety_report(wf: Workflow) -> SafetyReport:
                     Finding(step_id=step.id, kind="secret", detail=f"exposes secret '{name}'")
                 )
     return SafetyReport(findings=findings)
+
+
+def _field_findings(step_id: str, run: Any, cwd: Any) -> list[Finding]:
+    """SEC-23: tag values in an argv item or ``cwd`` can act as options or leave the folder."""
+    out: list[Finding] = []
+    if isinstance(run, list):
+        items = [str(w) for w in cast(list[Any], run)]
+        for i, item in enumerate(items):
+            leading = i == 1  # the first argument: nothing before it stops it reading as an option
+            if (
+                item.startswith(("$", "%"))
+                and not item.startswith("$RIFFERR_")
+                and leading
+                and "--" not in items[:i]
+            ):
+                out.append(
+                    Finding(
+                        step_id=step_id,
+                        kind="tag_field",
+                        detail=(
+                            f"argument {item!r} starts with a tag field and could be read as an "
+                            "option; put '--' before it"
+                        ),
+                    )
+                )
+    if isinstance(cwd, str) and ("$" in cwd or "%" in cwd):
+        out.append(
+            Finding(
+                step_id=step_id,
+                kind="tag_field",
+                detail=f"cwd {cwd!r} contains a tag field: a tag value can point it elsewhere",
+            )
+        )
+    return out
+
+
+def _cleanup_findings(step_id: str, params: dict[str, Any]) -> list[Finding]:
+    """A ``files.cleanup`` step in delete mode removes files (FILES-CLEANUP-13, -17)."""
+    if params.get("mode") != "delete":
+        return []
+    patterns = params.get("delete")
+    names = [str(p) for p in cast(list[Any], patterns)] if isinstance(patterns, list) else []
+    parts = [f"deletes in {params.get('path', '?')}: {', '.join(names) or 'empty folders only'}"]
+    trash = params.get("trash")
+    if isinstance(trash, str):
+        parts.append(f"moved to trash {trash}")
+    if params.get("review") is True:
+        parts.append("asks in the review queue first")
+    if params.get("allow_audio") is True:
+        parts.append("allow_audio: may delete music the library could import")
+    return [Finding(step_id=step_id, kind="destructive", detail="; ".join(parts))]
+
+
+def _import_findings(step_id: str, params: dict[str, Any]) -> list[Finding]:
+    """A ``beets.import`` step's options that move files or replace library albums
+    outside ChangeSets (SEC-65). Options left to the user's beets config are not listed."""
+    raw = params.get("options")
+    options = cast(dict[str, Any], raw) if isinstance(raw, dict) else {}
+    path = params.get("path", "?")
+    out: list[Finding] = []
+    if options.get("move") is True:
+        out.append(
+            Finding(
+                step_id=step_id,
+                kind="destructive",
+                detail=f"moves the files in {path} into the library (move: true)",
+            )
+        )
+    if options.get("write") is True:
+        out.append(
+            Finding(
+                step_id=step_id, kind="destructive", detail="writes tags into the imported files"
+            )
+        )
+    action = options.get("duplicate_action")
+    if action in DESTRUCTIVE_DUPLICATE_ACTIONS:
+        out.append(
+            Finding(
+                step_id=step_id,
+                kind="destructive",
+                detail=f"duplicate_action: {action}: may remove an album already in the "
+                "library; needs a trusted workflow",
+            )
+        )
+    return out
 
 
 def _library_command_findings(step_id: str, params: dict[str, Any]) -> list[Finding]:
@@ -150,11 +262,40 @@ def _program_positions(words: list[str]) -> set[int]:
     return positions
 
 
-def _word_findings(step_id: str, words: list[str]) -> list[Finding]:
+def _word_findings(
+    step_id: str, words: list[str], seen: set[tuple[str, str]] | None = None
+) -> list[Finding]:
     out: list[Finding] = []
-    seen: set[tuple[str, str]] = set()
+    seen = set[tuple[str, str]]() if seen is None else seen
     programs = _program_positions(words)
     for index, word in enumerate(words):
+        templated = "$" in word or "{{" in word
+        if index in programs and templated and ("local_script", word) not in seen:
+            seen.add(("local_script", word))
+            out.append(
+                Finding(
+                    step_id=step_id,
+                    kind="local_script",
+                    detail=f"{word}: {VARIABLE_PROGRAM_WARNING}",
+                )
+            )
+        if (
+            index in programs
+            and os.path.basename(word) in INTERPRETERS
+            and index + 2 < len(words)
+            and words[index + 1] == "-c"
+        ):
+            # SEC-65: the code an interpreter gets as a string is scanned too
+            if ("shell_string", word) not in seen:
+                seen.add(("shell_string", word))
+                out.append(
+                    Finding(
+                        step_id=step_id,
+                        kind="shell_string",
+                        detail=f"runs code given as a string: {os.path.basename(word)} -c",
+                    )
+                )
+            out += _word_findings(step_id, _split(words[index + 2]), seen)
         name = os.path.basename(word)
         for kind, tools in (("network_tool", NETWORK_TOOLS), ("destructive", DESTRUCTIVE_TOOLS)):
             if name in tools and (kind, name) not in seen:

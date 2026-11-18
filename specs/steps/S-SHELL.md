@@ -20,9 +20,9 @@ C-CHANGESET amendments listed below.
 - SHELL-1: `with.run` MUST accept an argv list (preferred) or, only when `shell: true`, a single string run through `/bin/sh -c`. A string without `shell: true` MUST be a validation error.
 - SHELL-2: Each argv element MUST have `{{ }}` interpolated at step start (C-WORKFLOW) and beets template syntax (`$path`, `%if{…}`) evaluated per target through `backend.evaluate`; templates MUST NOT be expanded into extra argv elements (no word splitting).
 - SHELL-3: `per` MUST accept `run` (once), `album` (once per selected album) or `item` (once per selected item), default `album`. Targets run one at a time, in selection order (parallelism arrives with lanes, M2). With `per: run` there is no target, so beets templates are not evaluated. `per: run` makes the step `run_level` (C-LANES LANES-6): it runs once per pass, also before any lane exists; `per: album`/`item` run only over the pass's lanes.
-- SHELL-4: The process environment MUST include `RIFFERR_RUN_ID`, `RIFFERR_PROFILE`, `RIFFERR_ALBUM_DIR` (for `per: album|item`), `RIFFERR_ITEM_PATH` (for `per: item`), every profile/workflow var as `RIFFERR_VAR_<NAME>` (upper-cased, non-alphanumerics → `_`), plus `backend.command_env()`. Profile secrets MUST NOT be added to the environment unless the step lists them in `with.secrets`; environment variables inherited from Rifferr's own environment that hold a profile `env:` secret MUST be removed unless listed.
+- SHELL-4: The process environment MUST include `RIFFERR_RUN_ID`, `RIFFERR_PROFILE`, `RIFFERR_ALBUM_DIR` (for `per: album|item`), `RIFFERR_ITEM_PATH` (for `per: item`), every profile/workflow var as `RIFFERR_VAR_<NAME>` (upper-cased, non-alphanumerics → `_`), plus `backend.command_env()`. Profile secrets MUST NOT be added to the environment unless the step lists them in `with.secrets`; environment variables inherited from Rifferr's own environment that hold a profile `env:` secret MUST be removed unless listed. Child environments MUST also drop variables whose name contains `TOKEN`, `SECRET`, `PASSWORD`, `PASSWD`, `API_KEY` or `CREDENTIAL`, unless that variable is the target of a secret listed in `secrets:` (other profiles' `env:` secrets are not known to the step).
 - SHELL-5: stdin MUST receive the JSON snapshot of the current album (`per: album`), item (`per: item`) or `{"albums": [...]}` (`per: run`), matching the published snapshot schema (C-BACKEND).
-- SHELL-6: stdout and stderr MUST stream line by line into `run.step.log` events tagged with stream name and target id, with secret redaction applied (PROFILE-5).
+- SHELL-6: stdout and stderr MUST stream line by line into `run.step.log` events tagged with stream name and target id, with secret redaction applied (PROFILE-5). Lines are masked before any cut at the line limit.
 - SHELL-7: `timeout` (seconds, default 600) MUST terminate the process group with SIGTERM, then SIGKILL after 5 seconds, and count as a failure.
 - SHELL-8: A non-zero exit code MUST count as a failure for that target and be handled by the step's `on_error` (RUN-5).
 - SHELL-9: Cancellation (RUN-8) MUST terminate the process group the same way as a timeout.
@@ -36,6 +36,7 @@ C-CHANGESET amendments listed below.
 - SHELL-17: Output that isn't valid JSON, doesn't match the proposal schema, or has problems reported by `backend.check` (CHANGESET-2) MUST fail the target (handled by `on_error`, RUN-5), with a message naming the first problem and its JSON path, and nothing from that invocation is proposed.
 - SHELL-18: A valid proposal MUST go through `ctx.propose` (source `step` / `shell`). `old` values the script omits are filled from the snapshot it got on stdin (SHELL-5), so a value changed by someone else in between shows up as a conflict at apply time. The step's `apply` policy then applies (CHANGESET-6, -7).
 - SHELL-19: For each target, the step MUST log one summary line: the number of ChangeSets and field changes proposed, or "no changes".
+- SHELL-20: An argv item that starts with a tag field (`$album`) SHOULD follow `--`, so a tag value can't read as an option. The static safety report MUST emit a `tag_field` finding for such an item and for a `cwd` containing a field.
 
 ### C-CHANGESET amendments this update needs (approved with it; folded into C-CHANGESET)
 - CHANGESET-3 (amend): `ChangeSetProposal` MUST accept either `targets` or the short form `changes`. `ctx.propose(proposal, current=TargetRef | None)` resolves the short form to `current`, and rejects it without one. The published schema allows both forms, exclusively.
@@ -125,6 +126,7 @@ None beyond parameters; users extend behavior with their own scripts.
 - Secrets only reach the process when named in `with.secrets`, and are redacted from its output.
 - Runs inside the container in Docker mode; can only see mounted paths.
 - With `emits: changes` a script can only propose. Its ChangeSets go through the engine and journal like any other, and can't reach albums outside its scope (SHELL-16).
+- `run` argv, `cwd` and `env` values are template fields under WORKFLOW-14: run values come out literal.
 
 ## Non-goals
 - Proposing file moves or renames (C-CHANGESET non-goal).

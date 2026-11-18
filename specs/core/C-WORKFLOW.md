@@ -23,6 +23,7 @@ spec; this spec only defines the envelope.
 - WORKFLOW-11: Loading and re-saving a workflow through the API MUST preserve comments, key order and quoting (ruamel.yaml round-trip).
 - WORKFLOW-12: The JSON Schema for workflow files MUST be generated from the Pydantic models into `schemas/workflow.schema.json`, including each registered step type's `with:` schema under a `uses` discriminator.
 - WORKFLOW-13: The `on:` block MUST be parsed and validated (trigger names `watch`, `schedule`, `webhook`) but not acted on in M0. F-TRIGGERS (M2) acts on it and defines its fields.
+- WORKFLOW-14: In a step parameter the backend evaluates as a template (marked `x-rifferr-template` in the published schema), values from outside the workflow (`run.*`, `steps.*`, vars set for the run) MUST be inserted escaped (`LibraryBackend.escape_template`) and come out literal. Workflow defaults and profile vars are inserted raw and stay templates. A run-level step (`per: run`) evaluates no templates and gets raw values.
 
 ## Interfaces
 ```python
@@ -106,6 +107,7 @@ Step types supply their own `with:` model. Interpolation roots and syntax are fi
 - ~~File extension and discovery?~~ Resolved 2026-11-11 (author): `*.yaml` and `*.yml`; default location `<profile>/workflows/`. Discovery itself belongs to F-API / F-CLI.
 - ~~`apply` on steps that never produce ChangeSets?~~ Resolved 2026-11-11 (author): allowed and ignored; no error, no warning.
 - Dependency ruamel.yaml (MIT) approved 2026-11-11 (author).
+- (2026-11-18, audit SEC-22) Should a profile var be able to opt out of being a template (or a workflow var opt in)? Today a var is raw unless supplied for the run.
 
 ## Tasks
 - [x] models + loader with line/column errors

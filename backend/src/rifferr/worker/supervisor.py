@@ -13,7 +13,7 @@ import logging
 import os
 import signal
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Literal, cast
@@ -22,26 +22,33 @@ from pydantic import JsonValue, ValidationError
 
 from rifferr.appdb import (
     AppChangeSets,
+    AppCleanupDecisions,
+    AppCoverReviews,
     AppDB,
     AppImportDecisions,
     AppJournal,
+    AppLanes,
     AppReviewGates,
+    GateAlbumsError,
     GateResolvedError,
     Job,
 )
 from rifferr.core.changeset import ChangeSet
+from rifferr.core.covers import CoverChoice
+from rifferr.core.files import CleanupChoice
 from rifferr.core.imports import ImportAction
 from rifferr.core.review import GateDecision
 from rifferr.engine.events import Event, EventSink, profile_stream
 from rifferr.engine.undo import run_entries, undoable
 from rifferr.trust import workflow_hash
-from rifferr.worker.gates import cancel_lanes, reject_gate_lanes
+from rifferr.worker.gates import cancel_lanes, reject_gate_lanes, settle
 from rifferr.worker.protocol import (
     HUNG_AFTER,
     MAX_MESSAGE,
     WorkerCommand,
     WorkerMessage,
     encode,
+    printable,
 )
 
 log = logging.getLogger("rifferr.worker")
@@ -54,6 +61,9 @@ GATE_CHECK_INTERVAL = 60.0
 
 Command = Callable[[str], list[str]]
 Listener = Callable[[Event], None]
+ProblemListener = Callable[[str, str, str | None], None]
+"""profile, reason (``worker_crashed`` / ``worker_hung`` / ``worker_failed_to_start``),
+error text."""
 ExitReason = Literal["worker_crashed", "worker_hung", "worker_failed_to_start", "server_shutdown"]
 
 
@@ -91,6 +101,7 @@ class WorkerSupervisor:
         self.watchdog_interval = watchdog_interval
         self._workers: dict[str, _Handle] = {}
         self._listeners: list[Listener] = []
+        self._problem_listeners: list[ProblemListener] = []
         self._shutting_down = False
         self._lock = asyncio.Lock()
         self.gate_check_interval = gate_check_interval
@@ -116,6 +127,11 @@ class WorkerSupervisor:
         """Called with each worker event after it has been persisted (WORKER-4)."""
         self._listeners.append(listener)
 
+    def subscribe_problems(self, listener: ProblemListener) -> None:
+        """Called when a worker crashes, hangs or can't start; not for idle exits or a
+        server shutdown (S-NOTIFY ``worker.problem``)."""
+        self._problem_listeners.append(listener)
+
     async def submit_run(
         self,
         profile: str,
@@ -126,8 +142,14 @@ class WorkerSupervisor:
         workflow: str | None = None,
         trigger: str = "manual",
         run_input: str | None = None,
+        called: Mapping[str, str] | None = None,
     ) -> str:
         """Queue a run and make sure the profile's worker is up. Returns the run id.
+
+        ``called``: text of every workflow file the workflow calls, by path relative to
+        the profile's workflows/ folder (S-SUBWORKFLOW). They are stored with the job,
+        and the run is trusted only when the caller and every one of them is
+        (SUBWORKFLOW-12, -13).
 
         ``trigger`` / ``run_input`` become ``{{ run.trigger }}`` / ``{{ run.input }}``
         (F-TRIGGERS TRIGGERS-5); without an input the workflow's ``input`` applies.
@@ -138,14 +160,23 @@ class WorkerSupervisor:
         """
         if self._shutting_down:
             raise RuntimeError("server is shutting down")
+        digest = workflow_hash(source)
+        called_hashes = {path: workflow_hash(text) for path, text in (called or {}).items()}
+        stored: list[JsonValue] = [
+            {"path": path, "source": text, "sha256": called_hashes[path]}
+            for path, text in sorted((called or {}).items())
+        ]
+        hashes = [digest, *called_hashes.values()]
         payload: dict[str, JsonValue] = {
             "source": source,
             "source_name": source_name,
             "vars": dict(run_vars or {}),
-            "trusted": self.db.is_trusted(digest := workflow_hash(source)),
+            "trusted": all(self.db.is_trusted(h, profile) for h in hashes),
             "trigger": trigger,
             "input": run_input or "",
         }
+        if stored:
+            payload["called"] = stored
         job = self.db.submit(
             profile,
             payload,
@@ -250,6 +281,32 @@ class WorkerSupervisor:
         await self._wake(profile)
         return job.id
 
+    async def import_undo(
+        self, run_id: str, *, albums: list[str] | None = None, by: str | None = None
+    ) -> str:
+        """Queue the undo of a run's import (F-DASHBOARD DASHBOARD-7) as a worker job.
+
+        Raises ``KeyError`` for an unknown run and ``ValueError`` while it is queued or
+        running, or when ``albums`` is given but empty.
+        """
+        if self._shutting_down:
+            raise RuntimeError("server is shutting down")
+        job = self.db.job_for_run(run_id)
+        if job is None:
+            raise KeyError(run_id)
+        if job.state in ("queued", "running"):
+            raise ValueError(f"run {run_id} is {job.state}; undo its import once it has stopped")
+        if albums is not None and not albums:
+            raise ValueError("no albums to remove")
+        payload: dict[str, JsonValue] = {
+            "run_id": run_id,
+            "albums": list[JsonValue](albums) if albums is not None else None,
+            "by": by,
+        }
+        undo = self.db.submit_job(job.profile, "import_undo", payload, run_id)
+        await self._wake(job.profile)
+        return undo.id
+
     async def apply_manual(
         self, profile: str, changesets: list[ChangeSet], *, by: str | None = None
     ) -> tuple[str, list[str]]:
@@ -284,14 +341,18 @@ class WorkerSupervisor:
         *,
         by: str | None = None,
         note: str | None = None,
+        albums: list[str] | None = None,
     ) -> None:
-        """Decide a pending review gate, exactly once (REVIEW-6 .. -8).
+        """Decide a pending review gate, exactly once per album (REVIEW-6 .. -8).
 
         ``continue`` needs no worker job: the run is queued to resume once nothing else
         holds it (REVIEW-12). ``reject`` ends the run here (``on_reject: stop``) or
-        queues a worker job that undoes the run's changes first (``undo``). Raises
-        ``KeyError`` for an unknown gate, ``GateResolvedError`` when it was already
-        decided or cancelled, and ``ValueError`` while its run isn't waiting yet.
+        queues a worker job that undoes the run's changes first (``undo``). With
+        ``albums`` only those albums' lanes are decided; the gate stays pending until
+        every album is (DASHBOARD-11). Raises ``KeyError`` for an unknown gate,
+        ``GateResolvedError`` when it was already decided or cancelled, ``GateAlbumsError``
+        for albums that aren't undecided albums of the gate, and ``ValueError`` while
+        its run isn't waiting yet.
         """
         if self._shutting_down:
             raise RuntimeError("server is shutting down")
@@ -305,29 +366,56 @@ class WorkerSupervisor:
         if job is None or job.state != "waiting_review":
             state = job.state if job is not None else "missing"
             raise ValueError(f"run {gate.run_id} is {state}; the gate can't be decided yet")
-        decided = gates.decide(
-            gate_id, "continued" if decision == "continue" else "rejected", by=by, note=note
+        undecided = gate.undecided()
+        targets = list(dict.fromkeys(albums)) if albums is not None else undecided
+        if albums is not None:
+            wrong = [a for a in targets if a not in undecided]
+            if wrong:
+                raise GateAlbumsError(f"not undecided albums of gate {gate_id}: {', '.join(wrong)}")
+            if set(targets) != set(undecided) and not AppLanes(self.db).load(gate.run_id):
+                raise GateAlbumsError("this run has no lanes; decide the whole gate")
+        final = set(targets) == set(undecided)
+        verdict: Literal["continued", "rejected"] = (
+            "continued" if decision == "continue" else "rejected"
         )
+        if albums is not None or gate.album_decisions:
+            gates.decide_albums(gate_id, targets, verdict)
         data: dict[str, JsonValue] = {
             "gate_id": gate_id,
             "decision": decision,
             "decided_by": by,
-            "decided_at": decided.decided_at.isoformat() if decided.decided_at else None,
+            "albums": list[JsonValue](targets),
         }
         if note is not None:
             data["note"] = note
-        self._emit_run(gate.run_id, "review.resolved", gate.step_id, data)
+        if final:
+            decided = gates.decide(gate_id, verdict, by=by, note=note)
+            data["decided_at"] = decided.decided_at.isoformat() if decided.decided_at else None
+            self._emit_run(gate.run_id, "review.resolved", gate.step_id, data)
+        else:
+            decided = gates.get(gate_id) or gate
+            self._emit_run(gate.run_id, "review.decided", gate.step_id, data)
         if decision == "continue":
+            if not final:
+                AppLanes(self.db).drop_hold(gate.run_id, targets, gate_id)
             if self.db.requeue_if_released(gate.run_id):
                 await self._wake(gate.profile)
         elif gate.on_reject == "undo":
-            payload: dict[str, JsonValue] = {"gate_id": gate_id, "run_id": gate.run_id, "by": by}
+            payload: dict[str, JsonValue] = {
+                "gate_id": gate_id,
+                "run_id": gate.run_id,
+                "by": by,
+                "albums": list[JsonValue](targets),
+            }
             self.db.submit_job(gate.profile, "review_reject", payload, gate.run_id)
             await self._wake(gate.profile)
         else:
             run_id = gate.run_id
             outcome = reject_gate_lanes(
-                self.db, decided, lambda t, step, d: self._emit_run(run_id, t, step, d)
+                self.db,
+                decided,
+                lambda t, step, d: self._emit_run(run_id, t, step, d),
+                albums=targets,
             )
             if outcome.settled == "requeued":  # another lane was released meanwhile
                 await self._wake(gate.profile)
@@ -425,6 +513,141 @@ class WorkerSupervisor:
             decided.append(decision.id)
         return decided
 
+    # -- cleanup decisions (S-FILES-CLEANUP) -----------------------------------------
+
+    async def decide_cleanup(
+        self,
+        decision_id: str,
+        decision: CleanupChoice,
+        *,
+        by: str | None = None,
+        note: str | None = None,
+    ) -> str | None:
+        """Answer a cleanup decision (FILES-CLEANUP-14). ``delete`` queues the worker job
+        that cleans the folder and returns its id; ``keep`` deletes nothing and lets the
+        held lanes go on at once (returns ``None``). Raises ``KeyError`` (unknown),
+        ``CleanupResolvedError`` (decided already), ``CleanupBusyError`` (a job holds
+        it) or ``ValueError`` while its run isn't waiting yet."""
+        if self._shutting_down:
+            raise RuntimeError("server is shutting down")
+        store = AppCleanupDecisions(self.db)
+        found = store.get(decision_id)
+        if found is None:
+            raise KeyError(decision_id)
+        job = self.db.job_for_run(found.run_id)
+        if found.state == "pending" and (job is None or job.state != "waiting_review"):
+            state = job.state if job is not None else "missing"
+            raise ValueError(f"run {found.run_id} is {state}; the cleanup can't be decided yet")
+        claimed = store.claim(decision_id, "pending-job")
+        if decision == "delete":
+            payload: dict[str, JsonValue] = {"decision_id": decision_id, "by": by, "note": note}
+            queued = self.db.submit_job(claimed.profile, "cleanup_apply", payload, claimed.run_id)
+            store.set_claim(decision_id, queued.id)
+            await self._wake(claimed.profile)
+            return queued.id
+        claimed.state = "kept"
+        claimed.decided_by = by
+        claimed.decided_at = self._clock()
+        claimed.note = note
+        store.release(claimed)
+        run_id = claimed.run_id
+        data: dict[str, JsonValue] = {
+            "decision_id": decision_id,
+            "decision": "keep",
+            "decided_by": by,
+        }
+        if note is not None:
+            data["note"] = note
+        self._emit_run(run_id, "cleanup.resolved", claimed.step_id, data)
+        AppLanes(self.db).resolve_hold(run_id, decision_id)
+        if settle(self.db, run_id, lambda t, step, d: self._emit_run(run_id, t, step, d)) == (
+            "requeued"
+        ):
+            await self._wake(claimed.profile)
+        return None
+
+    # -- cover reviews (S-COVERS-SEARCH) ---------------------------------------------
+
+    async def decide_cover(
+        self,
+        review_id: str,
+        decision: CoverChoice,
+        *,
+        sha256: str | None = None,
+        rationale: str | None = None,
+        by: str | None = None,
+    ) -> str | None:
+        """Answer a cover review (COVERS-SEARCH-21). ``choose`` queues the worker job that
+        sets the image ``sha256`` (already in the art store) and returns its id; ``skip``
+        lets the album go on without a cover and ``fail`` fails its lane (``None``).
+        Raises ``KeyError`` (unknown), ``CoverResolvedError`` (decided already),
+        ``CoverBusyError`` (a job holds it) or ``ValueError`` while its run isn't
+        waiting yet."""
+        if self._shutting_down:
+            raise RuntimeError("server is shutting down")
+        store = AppCoverReviews(self.db)
+        found = store.get(review_id)
+        if found is None:
+            raise KeyError(review_id)
+        job = self.db.job_for_run(found.run_id)
+        if found.state == "pending" and (job is None or job.state != "waiting_review"):
+            state = job.state if job is not None else "missing"
+            raise ValueError(f"run {found.run_id} is {state}; the cover can't be decided yet")
+        if decision == "choose" and not sha256:
+            raise ValueError("choose needs the chosen image")
+        claimed = store.claim(review_id, "pending-job")
+        if decision == "choose":
+            payload: dict[str, JsonValue] = {
+                "review_id": review_id,
+                "sha256": sha256,
+                "rationale": rationale,
+                "by": by,
+            }
+            queued = self.db.submit_job(claimed.profile, "cover_apply", payload, claimed.run_id)
+            store.set_claim(review_id, queued.id)
+            await self._wake(claimed.profile)
+            return queued.id
+        run_id = claimed.run_id
+        claimed.state = "skipped" if decision == "skip" else "failed"
+        claimed.decided_by = by
+        claimed.decided_at = self._clock()
+        store.release(claimed)
+        lanes = AppLanes(self.db)
+        if decision == "fail":
+            moved = lanes.set_state(run_id, [claimed.album_id], "failed", only_from=("waiting",))
+            for key in moved:
+                data = {"key": key, "state": "failed", "reason": "no cover (review)"}
+                self._emit_run(run_id, "lane.finished", claimed.step_id, dict(data))
+        self._emit_run(
+            run_id,
+            "cover.resolved",
+            claimed.step_id,
+            {
+                "review_id": review_id,
+                "album_id": claimed.album_id,
+                "decision": decision,
+                "decided_by": by,
+            },
+        )
+        lanes.resolve_hold(run_id, review_id)
+        if settle(self.db, run_id, lambda t, step, d: self._emit_run(run_id, t, step, d)) == (
+            "requeued"
+        ):
+            await self._wake(claimed.profile)
+        return None
+
+    async def decide_overdue_cleanups(self) -> list[str]:
+        """Answer every overdue cleanup decision with its ``on_timeout``."""
+        decided: list[str] = []
+        for decision in AppCleanupDecisions(self.db).overdue(self._clock()):
+            try:
+                await self.decide_cleanup(decision.id, decision.on_timeout, by="timeout")
+            except (ValueError, KeyError) as exc:
+                log.info("cleanup decision %s: timeout skipped: %s", decision.id, exc)
+                continue
+            decided.append(decision.id)
+        return decided
+
     def start(self) -> None:
         """Start background work: the review-gate deadline timer (REVIEW-9)."""
         if self._gate_timer is None:
@@ -440,10 +663,15 @@ class WorkerSupervisor:
                 await self.decide_overdue_imports()
             except Exception:
                 log.exception("checking import decision deadlines failed")
+            try:
+                await self.decide_overdue_cleanups()
+            except Exception:
+                log.exception("checking cleanup decision deadlines failed")
             wait = self.gate_check_interval
             for upcoming in (
                 AppReviewGates(self.db).next_deadline(),
                 AppImportDecisions(self.db).next_deadline(),
+                AppCleanupDecisions(self.db).next_deadline(),
             ):
                 if upcoming is not None:
                     wait = max(0.0, min(wait, (upcoming - self._clock()).total_seconds()))
@@ -472,6 +700,8 @@ class WorkerSupervisor:
             cancel_lanes(self.db, run_id, lambda t, step, d: self._emit_run(run_id, t, step, d))
             AppReviewGates(self.db).cancel_for_run(run_id)  # REVIEW-10
             AppImportDecisions(self.db).cancel_for_run(run_id)  # IMPORT-UI-14
+            AppCleanupDecisions(self.db).cancel_for_run(run_id)  # FILES-CLEANUP-14
+            AppCoverReviews(self.db).cancel_for_run(run_id)  # COVERS-SEARCH-14
             seq = self.db.last_seq(run_id) + 1
             self._persist(self._event(run_id, seq, "run.finished", {"status": "cancelled"}))
             return
@@ -578,7 +808,7 @@ class WorkerSupervisor:
                 elif message.kind == "event" and message.event is not None:
                     self._persist(message.event)
                 elif message.kind == "error":
-                    log.warning("worker %s: %s", handle.profile, message.message)
+                    log.warning("worker %s: %s", handle.profile, printable(message.message))
                     if not handle.ready:
                         handle.start_error = message.message
         finally:
@@ -588,7 +818,7 @@ class WorkerSupervisor:
     async def _log_stderr(self, handle: _Handle) -> None:
         assert handle.proc.stderr is not None
         async for line in handle.proc.stderr:
-            log.info("%s", line.decode(errors="replace").rstrip())
+            log.info("%s", printable(line.decode(errors="replace").rstrip()) or "")
 
     async def _watchdog(self, handle: _Handle) -> None:
         """Kill a worker that stops sending heartbeats (WORKER-10)."""
@@ -631,6 +861,13 @@ class WorkerSupervisor:
             del self._workers[handle.profile]
         if code not in (0, None) or handle.kill_reason:
             log.warning("worker %s exited (%s, status %s)", handle.profile, reason, code)
+        problem = not handle.ready or handle.kill_reason == "worker_hung" or code not in (0, None)
+        if problem and not self._shutting_down and reason != "server_shutdown":
+            for problem_listener in self._problem_listeners:
+                try:
+                    problem_listener(handle.profile, reason, error)
+                except Exception:
+                    log.exception("worker problem listener failed")
         if handle.ready and not self._shutting_down and self.db.jobs(handle.profile, "queued"):
             await self._wake(handle.profile)  # e.g. idle exit raced with a new request
         current = asyncio.current_task()
@@ -664,7 +901,7 @@ class WorkerSupervisor:
             return
         if event.type == "run.started":
             self.db.mark_started(event.run_id)
-        elif event.type in ("review.requested", "import.requested"):
+        elif event.type in ("review.requested", "import.requested", "cleanup.requested"):
             self._gates_changed.set()  # a new deadline may be the next one
         for listener in self._listeners:
             listener(event)

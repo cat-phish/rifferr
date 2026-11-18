@@ -25,6 +25,8 @@ from pydantic import JsonValue, ValidationError
 from rifferr.appdb import (
     HOLDING_CHANGESETS,
     AppChangeSets,
+    AppCleanupDecisions,
+    AppCoverReviews,
     AppDB,
     AppImportDecisions,
     AppJournal,
@@ -35,10 +37,11 @@ from rifferr.appdb import (
 )
 from rifferr.backends.base import CapabilityError, LibraryBackend
 from rifferr.backends.loader import load_backend
-from rifferr.core.changeset import ChangeSet
+from rifferr.core.changeset import ChangeSet, ChangeSource, FieldChange, TargetChange, TargetRef
+from rifferr.core.covers import ART_FIELD
 from rifferr.core.ids import new_ulid
 from rifferr.core.imports import ImportAction, ImportApplyError, merge_candidates
-from rifferr.core.profile import Profile, Redactor
+from rifferr.core.profile import Profile, ProfileError, ProfileLoadError, Redactor
 from rifferr.core.review import ReviewGate
 from rifferr.core.selection import Selection
 from rifferr.core.snapshot import label
@@ -66,11 +69,18 @@ from rifferr.engine.changesets import (
 from rifferr.engine.events import profile_stream
 from rifferr.engine.lanes import lane_json
 from rifferr.engine.recovery import recover_pending
+from rifferr.engine.steps import NotifyTargets
 from rifferr.engine.undo import UndoContext, UndoError, undo_entry, undo_run
+from rifferr.notify import ProfileTargets, default_notifier
 from rifferr.profile_store import app_db_path, config_root, load_profile
+from rifferr.steps.cleanup_plan import CleanupError
+from rifferr.steps.files_cleanup import apply_reviewed, outcome_counts
 from rifferr.steps.registry import load_step_types
+from rifferr.worker.cleanup import busy_folders
 from rifferr.worker.gates import gate_albums, reject_gate_lanes, settle
+from rifferr.worker.import_undo import recover_removals, undo_import
 from rifferr.worker.protocol import HEARTBEAT_INTERVAL, WorkerCommand, WorkerMessage, encode
+from rifferr.workflow_calls import stored_calls
 
 log = logging.getLogger("rifferr.worker")
 
@@ -138,6 +148,7 @@ class Worker:
         secrets: SecretAccess | None = None,
         idle_timeout: float | None = None,
         cancel_grace: float = 5.0,
+        notify: NotifyTargets | None = None,
     ) -> None:
         self.profile = profile
         self.db = db
@@ -145,6 +156,8 @@ class Worker:
         self.backend = backend
         self.send = send
         self.secrets = secrets
+        self.notify = notify
+        """The profile's notification targets for ``notify`` steps (S-NOTIFY)."""
         self.idle_timeout = idle_timeout
         self.cancel_grace = cancel_grace
         self._engine: Engine | None = None
@@ -155,6 +168,8 @@ class Worker:
         self.gates = AppReviewGates(db)
         self.lanes = AppLanes(db)
         self.imports = AppImportDecisions(db)
+        self.cleanups = AppCleanupDecisions(db)
+        self.covers = AppCoverReviews(db)
 
     async def serve(self, commands: Commands) -> None:
         """Run jobs until stopped, the server goes away, or idle too long (WORKER-7)."""
@@ -245,6 +260,24 @@ class Worker:
         for entry in settled:
             note = " (uncertain: needs review)" if entry.uncertain else ""
             log.warning("recovered journal entry %s: %s%s", entry.id, entry.state, note)
+        if self.backend.capabilities.remove:
+            try:
+                for removal in recover_removals(self.db, self.backend, self.profile.name):
+                    log.warning("settled interrupted album removal %s", removal)
+            except Exception:
+                log.exception("album removal recovery failed")
+
+    def _current_settings(self) -> Profile:
+        """``profile.yaml`` as it is now, so a run uses settings saved since the worker
+        started, such as cover weights (F-COVER-PICKER open question 2). Falls back to
+        the profile the worker started with when the file can't be read."""
+        try:
+            return load_profile(self.profile.root.parent.parent, self.profile.name)
+        except (ProfileError, ProfileLoadError, OSError) as exc:
+            log.warning(
+                "profile %s: using the settings loaded at start: %s", self.profile.name, exc
+            )
+            return self.profile
 
     def _next_seq(self, run_id: str) -> int:
         return max(self.db.last_seq(run_id), self._sent.get(run_id, 0)) + 1
@@ -271,6 +304,15 @@ class Worker:
         if job.kind == "import_lookup":
             self._lookup_import(job)
             return
+        if job.kind == "cleanup_apply":
+            self._apply_cleanup(job)
+            return
+        if job.kind == "import_undo":
+            self._undo_import(job)
+            return
+        if job.kind == "cover_apply":
+            self._apply_cover(job)
+            return
         payload = job.payload
         source = str(payload.get("source", ""))
         source_name = str(payload.get("source_name", "<workflow>"))
@@ -288,6 +330,8 @@ class Worker:
             gates=self.gates,
             lanes=self.lanes,
             imports=self.imports,
+            cleanups=self.cleanups,
+            covers=self.covers,
         )
         try:
             wf, doc = load_workflow(source, source_name)
@@ -306,6 +350,10 @@ class Worker:
                 work_dir=self.profile.root,
                 profile_dir=self.profile.root,
                 secrets=self.secrets,
+                notify=self.notify,
+                profile_settings=self._current_settings(),
+                busy=lambda: busy_folders(self.db, self.profile.name, job.run),
+                calls=stored_calls(wf, doc, payload),
                 last_seq=self._next_seq(job.run) - 1 if resume_after else 0,
             )
             if resume_after is not None:
@@ -327,6 +375,8 @@ class Worker:
             else:
                 self.db.finish(job.run, run.state.value)  # type: ignore[arg-type]
                 self.imports.cancel_for_run(job.run)  # nothing waits on a finished run
+                self.cleanups.cancel_for_run(job.run)
+                self.covers.cancel_for_run(job.run)
         except Exception as exc:  # an engine bug: still end the run cleanly
             log.exception("run %s crashed", run.id)
             self.db.finish(job.run, "failed", f"{type(exc).__name__}: {exc}")
@@ -488,6 +538,139 @@ class Worker:
             lambda type, step, d: self._changeset_emitter(decision.run_id, step)(type, d),
         )
 
+    def _apply_cleanup(self, job: Job) -> None:
+        """Clean a folder a person (or the timeout) chose Delete for (FILES-CLEANUP-14)."""
+        payload = job.payload
+        decision_id = str(payload.get("decision_id"))
+        decision = self.cleanups.get(decision_id)
+        if decision is None:
+            self._finish_job(job, "failed", f"no cleanup decision {decision_id}")
+            return
+        emit = self._changeset_emitter(decision.run_id, decision.step_id)
+        by, note = payload.get("by"), payload.get("note")
+        try:
+            outcome = apply_reviewed(
+                decision,
+                self.backend,
+                busy_folders(self.db, self.profile.name, decision.run_id),
+                decision.run_id,
+            )
+        except Exception as exc:  # the folder isn't safe any more: nothing was removed
+            message = str(exc) if isinstance(exc, CleanupError) else f"{type(exc).__name__}: {exc}"
+            emit(
+                "run.step.log",
+                {"stream": "error", "line": f"cleanup of {decision.path}: {message}"},
+            )
+            result: dict[str, int] = {"failed": 1}
+        else:
+            for stream, line in outcome.lines:
+                emit("run.step.log", {"stream": stream, "line": line})
+            result = {k: int(v) for k, v in outcome_counts(outcome).items()}
+        decision.state = "deleted"
+        decision.decided_by = by if isinstance(by, str) else None
+        decision.decided_at = datetime.now(UTC)
+        decision.note = note if isinstance(note, str) else None
+        decision.result = result
+        self.cleanups.release(decision)
+        emit(
+            "cleanup.resolved",
+            {
+                "decision_id": decision.id,
+                "decision": "delete",
+                "decided_by": decision.decided_by,
+                "result": cast(dict[str, JsonValue], dict(result)),
+            },
+        )
+        # FILES-CLEANUP-14: the held lanes go on as after keep; failures are in the log
+        # and the decision's result.
+        self.lanes.resolve_hold(decision.run_id, decision.id)
+        self._finish_job(job, "succeeded", result=cast(dict[str, JsonValue], dict(result)))
+        settle(
+            self.db,
+            decision.run_id,
+            lambda type, step, d: self._changeset_emitter(decision.run_id, step)(type, d),
+        )
+
+    def _apply_cover(self, job: Job) -> None:
+        """Set the cover a person chose (COVERS-SEARCH-21): a ChangeSet on the album's
+        ``art_sha256``, applied through the journal at once (the choice was the review),
+        then the album's lane goes on."""
+        payload = job.payload
+        review_id = str(payload.get("review_id"))
+        review = self.covers.get(review_id)
+        if review is None:
+            self._finish_job(job, "failed", f"no cover review {review_id}")
+            return
+        sha = str(payload.get("sha256"))
+        by = payload.get("by")
+        emit = self._changeset_emitter(review.run_id, review.step_id)
+        ref = TargetRef(scope="album", id=review.album_id)
+        try:
+            (album,) = self.backend.query(Selection(ids=(review.album_id,)))
+            old = album.fields.get(ART_FIELD)
+            rationale = payload.get("rationale")
+            cs = ChangeSet(
+                id=new_ulid(),
+                profile=review.profile,
+                run_id=review.run_id,
+                step_id=review.step_id,
+                source=ChangeSource(kind="step", name="covers.search"),
+                rationale=rationale if isinstance(rationale, str) else None,
+                created_at=datetime.now(UTC),
+                targets=[
+                    TargetChange(
+                        target=ref,
+                        changes=[FieldChange(field=ART_FIELD, old=old, new=sha)],
+                    )
+                ],
+            )
+            self.changesets.add(cs)
+            emit("changeset.proposed", proposed_event(cs))
+            outcome = apply_changeset(
+                cs,
+                backend=self.backend,
+                journal=self.journal,
+                store=self.changesets,
+                new_id=new_ulid,
+                now=lambda: datetime.now(UTC),
+                emit=emit,
+                resolved_by=by if isinstance(by, str) else None,
+            )
+        except Exception as exc:  # the album is gone, or the library refused: still waiting
+            log.warning("cover review %s: applying failed: %s", review_id, exc)
+            self.covers.set_claim(review_id, None)
+            message = f"{type(exc).__name__}: {exc}"
+            emit("run.step.log", {"stream": "error", "line": f"{review.label}: cover: {message}"})
+            self._finish_job(job, "failed", message)
+            return
+        if outcome.state != "applied":
+            self.covers.set_claim(review_id, None)
+            self._finish_job(job, "failed", f"the cover change was {outcome.state}")
+            return
+        review.state = "chosen"
+        review.chosen = sha
+        review.decided_by = by if isinstance(by, str) else None
+        review.decided_at = datetime.now(UTC)
+        self.covers.release(review)
+        emit(
+            "cover.resolved",
+            {
+                "review_id": review.id,
+                "album_id": review.album_id,
+                "decision": "choose",
+                "decided_by": review.decided_by,
+                "sha256": sha,
+                "changeset_id": cs.id,
+            },
+        )
+        self.lanes.resolve_hold(review.run_id, review.id)
+        self._finish_job(job, "succeeded", result={"changeset_id": cs.id, "sha256": sha})
+        settle(
+            self.db,
+            review.run_id,
+            lambda type, step, d: self._changeset_emitter(review.run_id, step)(type, d),
+        )
+
     def _lookup_import(self, job: Job) -> None:
         """Look a decision's folder up again and add what it finds (IMPORT-UI-9)."""
         payload = job.payload
@@ -620,6 +803,40 @@ class Worker:
         error = f"undo stopped at journal entry {stopped}" if stopped else None
         self._finish_job(job, "failed" if stopped else "succeeded", error, result)
 
+    # -- import undo (F-DASHBOARD DASHBOARD-7 .. -9) --------------------------------
+
+    def _undo_import(self, job: Job) -> None:
+        payload = job.payload
+        by = payload.get("by")
+        run_id = payload.get("run_id")
+        albums = payload.get("albums")
+        ctx = UndoContext(
+            backend=self.backend,
+            journal=self.journal,
+            store=self.changesets,
+            new_id=new_ulid,
+            now=lambda: datetime.now(UTC),
+            emitter_for=self._changeset_emitter,
+            by=by if isinstance(by, str) else None,
+        )
+        try:
+            if not isinstance(run_id, str):
+                raise ValueError("an import undo job needs run_id")
+            wanted = [str(a) for a in albums] if isinstance(albums, list) else None
+            result, error = undo_import(
+                self.db,
+                self.backend,
+                ctx,
+                profile=self.profile.name,
+                run_id=run_id,
+                albums=wanted,
+            )
+        except Exception as exc:
+            log.warning("import undo failed: %s", exc)
+            self._finish_job(job, "failed", f"{type(exc).__name__}: {exc}")
+            return
+        self._finish_job(job, "failed" if error else "succeeded", error, result)
+
     # -- manual edits (TAG-GRID-8) ------------------------------------------------
 
     def _apply_manual(self, job: Job) -> None:
@@ -706,7 +923,9 @@ class Worker:
             by=by if isinstance(by, str) else None,
         )
         result: dict[str, JsonValue] = {}
-        targets = self._gate_targets(run_id, gate)
+        chosen = job.payload.get("albums")
+        albums = [str(a) for a in chosen] if isinstance(chosen, list) else None
+        targets = self._gate_targets(run_id, gate, albums)
         try:
             outcome = undo_run(run_id, ctx, targets=targets)
             result = outcome.as_json()
@@ -740,16 +959,19 @@ class Worker:
             self._changeset_emitter(run_id, step)(type, data)
 
         if gate is not None:
-            reject_gate_lanes(self.db, gate, emit)
+            reject_gate_lanes(self.db, gate, emit, albums=albums)
         stopped_at = result.get("stopped_at") if isinstance(result, dict) else None
         error = f"undo stopped at journal entry {stopped_at}" if stopped_at else None
         self.db.finish_job(job.id, "failed" if error else "succeeded", error, result)
 
-    def _gate_targets(self, run_id: str, gate: ReviewGate | None) -> set[str] | None:
-        """The gate's albums and their items, when the run has lanes (LANES-11)."""
+    def _gate_targets(
+        self, run_id: str, gate: ReviewGate | None, chosen: list[str] | None = None
+    ) -> set[str] | None:
+        """The gate's albums (or ``chosen`` of them, DASHBOARD-11) and their items, when
+        the run has lanes (LANES-11)."""
         if gate is None or not self.lanes.load(run_id):
             return None
-        albums = gate_albums(gate)
+        albums = gate_albums(gate) if chosen is None else chosen
         targets = set(albums)
         try:
             for album in self.backend.query(Selection(run_id=run_id, album_ids=tuple(albums))):
@@ -958,6 +1180,7 @@ def main(
             channel.send,
             secrets=secrets,
             idle_timeout=profile.worker.idle_timeout,
+            notify=ProfileTargets(profile.notify, secrets, default_notifier()),
         )
         await worker.serve(queue)
 

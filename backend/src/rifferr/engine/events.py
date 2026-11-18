@@ -36,6 +36,15 @@ ENGINE_EVENTS = frozenset(
         "lane.finished",
         # F-TAG-GRID: a job without a run finished (profile stream)
         "job.finished",
+        # S-FILES-CLEANUP (FILES-CLEANUP-14)
+        "cleanup.requested",
+        "cleanup.resolved",
+        # S-COVERS-SEARCH (COVERS-SEARCH-14, -21)
+        "cover.requested",
+        "cover.resolved",
+        # S-NOTIFY (NOTIFY-4)
+        "notify.sent",
+        "notify.failed",
     }
 )
 

@@ -20,6 +20,7 @@ from beets import dbcore
 from beets.library import Album, Item, Library
 from beets.library.queries import parse_query_parts
 
+from rifferr.artstore import ArtStore
 from rifferr.backends.base import (
     RUN_MARKER,
     BackendCapabilities,
@@ -44,6 +45,7 @@ from rifferr.backends.beets.importer import (
 )
 from rifferr.backends.beets.snapshots import album_snapshot, field_value, parse_id
 from rifferr.backends.coerce import coerce_value
+from rifferr.beets_config import ConfigTrusted
 from rifferr.core.changeset import ApplyResult, ChangeProblem, ChangeSet, same_value
 from rifferr.core.ids import new_ulid
 from rifferr.core.imports import ImportAction, ImportApplyError, ImportQuestion
@@ -60,22 +62,37 @@ CAPABILITIES = BackendCapabilities(
     command_env=True,
     cli=True,
     import_decisions=True,
+    files=True,
+    remove=True,
+    art=True,
 )
 
 
 READ_ONLY_CAPABILITIES = CAPABILITIES.model_copy(
-    update={"import_": False, "apply": False, "cli": False, "import_decisions": False}
+    update={
+        "import_": False,
+        "apply": False,
+        "cli": False,
+        "import_decisions": False,
+        "remove": False,
+        "art": False,
+    }
 )
 
 
-def from_profile(profile: Profile, *, read_only: bool = False) -> BeetsBackend:
+def from_profile(
+    profile: Profile, *, read_only: bool = False, config_trusted: ConfigTrusted | None = None
+) -> BeetsBackend:
     """``rifferr.backends`` entry point (BEETS-IMPORT-15, BACKEND-13)."""
     beetsdir = profile.require_beetsdir()
-    config.load(beetsdir)
+    config.load(beetsdir, config_trusted, profile.name)
+    from rifferr.profile_store import art_store_path
+
     return BeetsBackend(
         Path(beetsdir).expanduser().resolve(),
         write_tags=profile.changes.write_tags,
         read_only=read_only,
+        art_store=art_store_path(profile.name),
     )
 
 
@@ -88,6 +105,7 @@ class _QueryOnlyLibrary(Library):
         return conn
 
 
+_PATH_CHUNK = 500
 _TEMPLATE_SPECIALS = re.compile(r"([$%},])")
 
 
@@ -98,7 +116,14 @@ def escape_template(value: str) -> str:
 
 
 class BeetsBackend:
-    def __init__(self, beetsdir: Path, *, write_tags: bool = True, read_only: bool = False) -> None:
+    def __init__(
+        self,
+        beetsdir: Path,
+        *,
+        write_tags: bool = True,
+        read_only: bool = False,
+        art_store: Path | None = None,
+    ) -> None:
         if config.loaded_beetsdir() != beetsdir:
             raise RuntimeError(f"call config.load({beetsdir}) first")
         self.beetsdir = beetsdir
@@ -106,7 +131,10 @@ class BeetsBackend:
         """Write changed tags to files after applying (profile ``changes.write_tags``)."""
         self.read_only = read_only
         """Opened read-only (BACKEND-13): no apply or import, and SQLite refuses writes."""
-        self.capabilities = READ_ONLY_CAPABILITIES if read_only else CAPABILITIES
+        self.art = ArtStore(art_store) if art_store is not None else None
+        """Where cover images live by sha256 (COVERS-SEARCH-16); ``None``: no art."""
+        caps = READ_ONLY_CAPABILITIES if read_only else CAPABILITIES
+        self.capabilities = caps if self.art else caps.model_copy(update={"art": False})
 
     @contextlib.contextmanager
     def library(self) -> Iterator[Library]:
@@ -163,6 +191,9 @@ class BeetsBackend:
             query, _ = _parse(_split(condition), type(obj))
             return bool(query.match(obj))
 
+    def escape_template(self, text: str) -> str:
+        return escape_template(text)
+
     def evaluate(self, template: str, target: ItemSnapshot | AlbumSnapshot) -> str:
         """On the target's values, over the stored object (BACKEND-10)."""
         with self.library() as lib:
@@ -193,6 +224,65 @@ class BeetsBackend:
     def command_env(self) -> Mapping[str, str]:
         return {"BEETSDIR": str(self.beetsdir)}
 
+    def library_files(self, paths: Sequence[Path]) -> set[Path]:
+        """Items are matched by their stored path (beets keeps it as normalized bytes)."""
+        wanted = {os.fsencode(os.path.normpath(os.path.abspath(p))): Path(p) for p in paths}
+        found: set[Path] = set()
+        keys = list(wanted)
+        with self.library() as lib:
+            for start in range(0, len(keys), _PATH_CHUNK):
+                chunk = keys[start : start + _PATH_CHUNK]
+                marks = ",".join("?" for _ in chunk)
+                with lib.transaction() as tx:
+                    rows = tx.query(f"SELECT path FROM items WHERE path IN ({marks})", chunk)
+                for row in rows:
+                    value = row[0]
+                    raw = value if isinstance(value, bytes) else os.fsencode(str(value))
+                    if raw in wanted:
+                        found.add(wanted[raw])
+            # SEC-06: stored paths aren't resolved; match the rest by real path (a linked
+            # parent folder), and protect album art too.
+            rest = {k: v for k, v in wanted.items() if v not in found}
+            if rest:
+                by_name: dict[bytes, list[Path]] = {}
+                for k, v in rest.items():
+                    by_name.setdefault(os.path.basename(k), []).append(v)
+                with lib.transaction() as tx:
+                    rows = tx.query("SELECT path FROM items UNION SELECT artpath FROM albums")
+                for row in rows:
+                    value = row[0]
+                    if not value:
+                        continue
+                    raw = value if isinstance(value, bytes) else os.fsencode(str(value))
+                    cands = by_name.get(os.path.basename(raw))
+                    if not cands:
+                        continue
+                    real = os.path.realpath(raw)
+                    for v in cands:
+                        if os.fsencode(os.path.realpath(v)) == os.fsencode(real):
+                            found.add(v)
+        return found
+
+    def library_dirs(self) -> list[Path]:
+        _, directory = config.library_paths()
+        return [directory.expanduser().resolve()]
+
+    def importable(self, paths: Sequence[Path]) -> set[Path]:
+        """As beets' importer decides (``read_item``): files ``mediafile`` recognizes as
+        music, including ones that fail to read for another reason."""
+        import mediafile
+
+        out: set[Path] = set()
+        for path in paths:
+            try:
+                mediafile.MediaFile(str(path))
+            except mediafile.FileTypeError:
+                continue
+            except Exception:  # unreadable or damaged, but a music type: protect it
+                pass
+            out.add(Path(path))
+        return out
+
     def cli_command(self, subcommand: str, args: list[str], selection: Selection) -> list[str]:
         """``python -m beets`` from this Python: the same beets and plugins (BACKEND-14).
 
@@ -201,22 +291,34 @@ class BeetsBackend:
         """
         self._writable(f"run beet {subcommand}")
         query = _split(selection.query) if selection.query else []
+        terms: list[str] = []
         if selection.run_id is not None:
-            query.insert(0, _run_term(selection.run_id))
+            terms.append(_run_term(selection.run_id))
         if selection.album_ids is not None:  # this pass's lanes only (LANES-3)
             numbers = sorted(_album_numbers(selection.album_ids))
             if not numbers:
                 raise ValueError("the selection has no albums")
             # Album commands (-a) query the album's own id; item commands its album_id.
-            field = "id" if {"-a", "--album"} & set(args) else "album_id"
-            query.insert(1 if selection.run_id is not None else 0, _ids_term(field, numbers))
-        if not query:
+            terms.append(_ids_term("id" if _album_mode(args) else "album_id", numbers))
+        # beets splits the query into OR groups at parts ending in ","; every group
+        # must carry the run terms or it matches the whole library (BEETS-COMMAND-4).
+        grouped: list[str] = [] if query else list(terms)
+        if not query and not terms:
             raise ValueError("an empty selection would run on the whole library")
-        return [sys.executable, "-m", "beets", subcommand, *args, *query]
+        start = True
+        for part in query:
+            if start:
+                grouped += terms
+                start = False
+            grouped.append(part)
+            if part.endswith(","):
+                start = True
+        # "--": a query part starting with "-" is a query, never a beet option.
+        return [sys.executable, "-m", "beets", subcommand, *args, "--", *grouped]
 
     def check(self, changes: ChangeSet) -> list[ChangeProblem]:
         with self.library() as lib:
-            return changes_apply.check(lib, changes)
+            return changes_apply.check(lib, changes, self.art)
 
     def _writable(self, what: str) -> None:
         if self.read_only:
@@ -225,10 +327,25 @@ class BeetsBackend:
     def apply(self, changes: ChangeSet) -> ApplyResult:
         self._writable("apply changes")
         with self.library() as lib:
-            problems = changes_apply.check(lib, changes)
+            problems = changes_apply.check(lib, changes, self.art)
             if problems:
                 raise ChangeSetRejected(problems)
-            return changes_apply.apply(lib, changes, write_tags=self.write_tags)
+            return changes_apply.apply(lib, changes, write_tags=self.write_tags, art=self.art)
+
+    def remove_album(self, album_id: str, *, delete_files: bool) -> list[str]:
+        """beets' ``Album.remove``: with ``delete`` it deletes the files and art and
+        prunes emptied folders up to the library directory."""
+        self._writable("remove albums")
+        kind, number = parse_id(album_id)
+        if kind != "album":
+            raise KeyError(album_id)
+        with self.library() as lib:
+            album = lib.get_album(number)
+            if album is None:
+                raise KeyError(album_id)
+            paths = [os.fsdecode(item.path) for item in album.items()]
+            album.remove(delete=delete_files, with_items=True)
+        return paths if delete_files else []
 
     # -- import ----------------------------------------------------------------
 
@@ -407,6 +524,16 @@ def _split(query: str) -> list[str]:
         return shlex.split(query)  # beets' own query string rule
     except ValueError as exc:
         raise QueryError(f"invalid query {query!r}: {exc}") from exc
+
+
+def _album_mode(args: list[str]) -> bool:
+    """``-a``/``--album``, also inside a short-flag cluster such as ``-ay``."""
+    for arg in args:
+        if arg == "--":
+            break
+        if arg == "--album" or (re.fullmatch(r"-[A-Za-z]+", arg) and "a" in arg):
+            return True
+    return False
 
 
 def _run_term(run_id: str) -> str:

@@ -6,12 +6,14 @@ readme = "../README.md"
 license = "AGPL-3.0-or-later"
 requires-python = ">=3.12"
 dependencies = [
+    "apprise>=2.2,<3",
     "beets>=2.14,<2.15",
     "cronsim>=2.8",
     "fastapi>=0.162,<1",
     "httpx>=0.28,<1",
     "keyring>=25,<26",
     "pydantic>=2.10,<3",
+    "regex>=2026.11.15",
     "ruamel-yaml>=0.18,<0.20",
     "uvicorn>=0.54,<1",
     "watchfiles>=1.3",
@@ -42,6 +44,16 @@ shell = "rifferr.steps.shell:ShellStep"
 "tags.script" = "rifferr.steps.tagscript:TagScriptStep"
 review = "rifferr.steps.review:ReviewStep"
 "beets.command" = "rifferr.steps.beets_command:BeetsCommandStep"
+notify = "rifferr.steps.notify:NotifyStep"
+"files.cleanup" = "rifferr.steps.files_cleanup:FilesCleanupStep"
+workflow = "rifferr.steps.workflow_call:WorkflowCallStep"
+"covers.search" = "rifferr.steps.covers_search:CoversSearchStep"
+
+[project.entry-points."rifferr.cover_providers"]
+coverartarchive = "rifferr.covers.providers:CoverArtArchive"
+itunes = "rifferr.covers.providers:ITunes"
+deezer = "rifferr.covers.providers:Deezer"
+local = "rifferr.covers.providers:LocalFiles"
 
 [project.entry-points."rifferr.backends"]
 beets = "rifferr.backends.beets:from_profile"

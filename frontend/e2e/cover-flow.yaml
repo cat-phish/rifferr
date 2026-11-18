@@ -1,0 +1,19 @@
+# Workflow for the cover picker e2e test (F-COVER-PICKER): import an album, then always
+# ask for its cover in the review queue.
+name: cover-flow
+description: Import, then choose the cover in review.
+vars:
+  inbox:
+    description: Folder with an album to import
+steps:
+  - id: import
+    uses: beets.import
+    with:
+      path: "{{ vars.inbox }}"
+      set: { album: Cover Review }
+      options: { duplicate_action: keep }
+  - id: art
+    uses: covers.search
+    with:
+      choose: review
+      local_counts: false

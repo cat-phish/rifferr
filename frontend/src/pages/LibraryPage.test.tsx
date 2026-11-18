@@ -469,3 +469,90 @@ test("TAG_GRID_14 values are shown as text, never as HTML", async () => {
   expect(cell).toHaveTextContent("<b>bold</b><img src=x onerror=alert(1)>");
   expect(cell.querySelector("b, img")).toBeNull();
 });
+
+test("COVER_PICKER_16 the album grid shows art thumbnails in an Art column", async () => {
+  setup({ library: () => page(2001, { art_sha256: "ab".repeat(32) }) });
+  renderApp("/library?profile=main");
+  await screen.findAllByTestId("grid-row");
+  expect(screen.getByRole("columnheader", { name: /Art/ })).toBeInTheDocument();
+  const art = within(rowOf("album:a1")).getByTestId("art-cell");
+  expect(art.querySelector("img")?.getAttribute("src")).toBe(
+    `/api/albums/a1/art?profile=main&v=${"ab".repeat(8)}`,
+  );
+  expect(art.querySelector("img")?.getAttribute("loading")).toBe("lazy");
+});
+
+test("COVER_PICKER_2 COVER_PICKER_3 COVER_PICKER_14 change cover searches for the album and sets it as a manual edit", async () => {
+  const api = mockApi({
+    "GET /api/profiles": () => profiles(),
+    "GET /api/profiles/main/library": () => page(2001, { art_sha256: "ab".repeat(32) }),
+    "GET /api/profiles/main/changes": () => [],
+    "GET /api/profiles/main/albums/a1/cover-query": () => ({
+      query: { artist: "Band", album: "Live", year: 2001 },
+      label: "Band - Live",
+      art_sha256: "ab".repeat(32),
+    }),
+    "GET /api/profiles/main/covers": () => ({
+      providers: [{ name: "deezer", enabled: true, weight: 1 }],
+      registered: ["deezer"],
+      profile_hash: "h1",
+    }),
+    "POST /api/covers/search": () => ({ status: 202, body: { search_id: "s1" } }),
+    "POST /api/profiles/main/albums/a1/cover": () => ({
+      status: 202,
+      body: { changeset_id: "cs9", job_id: "j9", sha256: "cd".repeat(32), queued_behind: [] },
+    }),
+  });
+  renderApp("/library?profile=main");
+  await screen.findAllByTestId("grid-row");
+  fireEvent.click(screen.getByRole("button", { name: "Change cover of Live" }));
+  const picker = await screen.findByTestId("cover-picker");
+  expect(within(picker).getByLabelText("Album")).toHaveValue("Live");
+  expect(within(picker).getByTestId("current-art")).toBeInTheDocument();
+  const streams = FakeEventSource.instances.filter((s) => s.url === STREAM);
+  act(() => {
+    for (const s of streams) s.open();
+  });
+  await waitFor(() => {
+    expect(calls(api.calls, "POST", "/api/covers/search")).toHaveLength(1);
+  });
+  expect(calls(api.calls, "POST", "/api/covers/search")[0]?.body).toMatchObject({
+    album_id: "a1",
+    review_id: null,
+    providers: ["deezer"],
+  });
+  const candidate = {
+    id: "c1",
+    provider: "deezer",
+    image_url: "https://e-cdns-images.dzcdn.net/c1.jpg",
+    width: 1000,
+    height: 1000,
+    match_confidence: 1,
+    score: 1,
+    size_score: 1,
+    filtered: null,
+  };
+  act(() => {
+    for (const s of streams)
+      s.emit("covers.done", {
+        type: "covers.done",
+        data: { search_id: "s1", ranked: [candidate], hidden: [], dropped: {} },
+      });
+  });
+  const card = await within(picker).findByTestId("cover-candidate");
+  fireEvent.click(within(card).getByRole("button", { name: "Use this cover" }));
+  await waitFor(() => {
+    expect(calls(api.calls, "POST", "/api/profiles/main/albums/a1/cover")).toHaveLength(1);
+  });
+  expect(calls(api.calls, "POST", "/api/profiles/main/albums/a1/cover")[0]?.body).toEqual({
+    candidate_id: "c1",
+    old_sha256: "ab".repeat(32),
+  });
+  act(() => {
+    for (const s of streams) {
+      s.emit("changeset.applied", { type: "changeset.applied", data: { changeset_id: "cs9" } });
+      s.emit("job.finished", { type: "job.finished", data: { job_id: "j9", state: "succeeded" } });
+    }
+  });
+  expect(await within(picker).findByTestId("decision-sent")).toHaveTextContent("Cover set");
+});

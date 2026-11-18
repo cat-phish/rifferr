@@ -12,6 +12,7 @@ from collections.abc import Mapping
 from pathlib import PurePosixPath
 from typing import Annotated, Any, Final, Literal, Self, cast
 
+import regex
 from pydantic import (
     BaseModel,
     BeforeValidator,
@@ -24,6 +25,7 @@ from pydantic import (
 )
 
 from rifferr.core.changeset import FieldName
+from rifferr.core.workflow.template_fields import TEMPLATE_EXTRA
 
 ActionScope = Literal["album", "item"]
 Idempotence = Literal["warn", "fail", "off"]
@@ -80,6 +82,10 @@ class ReplaceSpec(BaseModel):
                 compiled = re.compile(self.regex, self.re_flags())
                 compiled.sub(self.with_, "")  # bad group references in 'with'
             except re.error as exc:
+                raise ValueError(f"invalid regex: {exc}") from None
+            try:  # the evaluator runs it with the ``regex`` package (SEC-124)
+                regex.compile(self.regex, self.re_flags())
+            except regex.error as exc:
                 raise ValueError(f"invalid regex: {exc}") from None
         return self
 
@@ -141,7 +147,7 @@ class AppendSpec(BaseModel):
     model_config = _SPEC
 
     field: FieldName
-    values: Annotated[list[str], Field(min_length=1)]
+    values: Annotated[list[str], Field(min_length=1, json_schema_extra=TEMPLATE_EXTRA)]
 
 
 def placeholder_names(pattern: str) -> list[str]:
@@ -160,7 +166,7 @@ SetValue = Annotated[bool, Field(strict=True)] | int | float | str | list[str]
 
 
 class SetAction(ActionBase):
-    set: Annotated[dict[FieldName, SetValue], Field(min_length=1)]
+    set: Annotated[dict[FieldName, SetValue], Field(min_length=1, json_schema_extra=TEMPLATE_EXTRA)]
 
 
 class CopyAction(ActionBase):

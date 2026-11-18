@@ -18,8 +18,11 @@ from typing import Any, Literal
 from pydantic import BaseModel, JsonValue
 
 from rifferr.core.changeset import ApplyResult, ChangeSet, ChangeSetState, JournalEntry
+from rifferr.core.covers import CoverReview
+from rifferr.core.files import CleanupDecision
 from rifferr.core.ids import new_ulid
 from rifferr.core.imports import ImportDecision, ImportDecisionState
+from rifferr.core.notify import Notification, QueueRef
 from rifferr.core.review import GateState, ReviewGate
 from rifferr.core.triggers import DedupRecord
 from rifferr.engine.changesets import StoredChangeSet
@@ -42,6 +45,9 @@ JobKind = Literal[
     "repropose",
     "import_decision",
     "import_lookup",
+    "cleanup_apply",
+    "import_undo",
+    "cover_apply",
 ]
 
 #: ChangeSet states that still hold a suspended run (CHANGESET-7).
@@ -402,21 +408,30 @@ class AppDB:
 
     # -- trust (F-SECURITY) ----------------------------------------------------
 
-    def trust(self, sha256: str, path_hint: str, trusted_by: str) -> None:
-        """Record an explicit user decision to trust this exact content (SECURITY-12)."""
+    def trust(
+        self, sha256: str, path_hint: str, trusted_by: str, profile: str | None = None
+    ) -> None:
+        """Record an explicit user decision to trust this exact content (SECURITY-12) in
+        ``profile``; ``None`` or "" trusts it in every profile (SEC-63: only ``rifferr
+        trust`` without ``--profile``, which says so)."""
         self._conn.execute(
-            "INSERT INTO trusted_files (sha256, path_hint, trusted_at, trusted_by)"
-            " VALUES (?, ?, ?, ?) ON CONFLICT (sha256) DO UPDATE SET"
+            "INSERT INTO trusted_files (sha256, profile, path_hint, trusted_at, trusted_by)"
+            " VALUES (?, ?, ?, ?, ?) ON CONFLICT (sha256, profile) DO UPDATE SET"
             " path_hint = excluded.path_hint, trusted_at = excluded.trusted_at,"
             " trusted_by = excluded.trusted_by",
-            (sha256, path_hint, _now(), trusted_by),
+            (sha256, profile or "", path_hint, _now(), trusted_by),
         )
 
-    def is_trusted(self, sha256: str) -> bool:
-        row = self._conn.execute(
-            "SELECT 1 FROM trusted_files WHERE sha256 = ?", (sha256,)
-        ).fetchone()
-        return row is not None
+    def is_trusted(self, sha256: str, profile: str | None = None) -> bool:
+        """Whether this content is trusted in ``profile``: trusted there or in every
+        profile (SEC-63); "" asks for every-profile trust only. Every trust *decision*
+        passes a profile; ``None`` only asks whether any trust row exists for the content."""
+        if profile is None:
+            sql, args = "SELECT 1 FROM trusted_files WHERE sha256 = ?", (sha256,)
+        else:
+            sql = "SELECT 1 FROM trusted_files WHERE sha256 = ? AND profile IN ('', ?)"
+            args = (sha256, profile)
+        return self._conn.execute(sql, args).fetchone() is not None
 
     # -- events ----------------------------------------------------------------
 
@@ -668,6 +683,10 @@ class GateResolvedError(ValueError):
         super().__init__(f"review gate {gate_id} is already {state}")
 
 
+class GateAlbumsError(ValueError):
+    """Albums named in a gate decision that can't be decided on their own (DASHBOARD-11)."""
+
+
 class AppReviewGates:
     """``GateStore`` backed by the ``review_gates`` table (S-REVIEW)."""
 
@@ -748,6 +767,36 @@ class AppReviewGates:
             raise GateResolvedError(gate_id, gate.state)
         return gate
 
+    def decide_albums(
+        self, gate_id: str, albums: Iterable[str], state: Literal["continued", "rejected"]
+    ) -> ReviewGate:
+        """Record a decision for some of a pending gate's albums (DASHBOARD-11). Raises
+        ``KeyError`` for an unknown gate, ``GateResolvedError`` when it isn't pending,
+        and ``ValueError`` for an album that isn't the gate's or was already decided."""
+        with self._conn:
+            self._conn.execute("BEGIN IMMEDIATE")
+            row = self._conn.execute(
+                "SELECT * FROM review_gates WHERE id = ?", (gate_id,)
+            ).fetchone()
+            if row is None:
+                raise KeyError(gate_id)
+            gate = self._gate(row)
+            if gate.state != "pending":
+                raise GateResolvedError(gate_id, gate.state)
+            decisions = dict(gate.album_decisions)
+            known = {a.target.id for a in gate.albums}
+            for album in albums:
+                if album not in known:
+                    raise ValueError(f"album {album} is not at gate {gate_id}")
+                if album in decisions:
+                    raise ValueError(f"album {album} is already {decisions[album]}")
+                decisions[album] = state
+            self._conn.execute(
+                "UPDATE review_gates SET album_decisions = ? WHERE id = ?",
+                (json.dumps(decisions), gate_id),
+            )
+        return gate.model_copy(update={"album_decisions": decisions})
+
     def cancel(self, gate_id: str) -> bool:
         """Cancel one pending gate (its albums' lanes ended another way)."""
         cur = self._conn.execute(
@@ -775,6 +824,7 @@ class AppReviewGates:
                 "decided_at": datetime.fromisoformat(decided) if decided else None,
                 "decided_by": row["decided_by"],
                 "note": row["note"],
+                "album_decisions": json.loads(row["album_decisions"] or "{}"),
             }
         )
 
@@ -923,6 +973,220 @@ class AppImportDecisions:
         return cancelled
 
 
+class AppCoverReviews:
+    """``CoverReviewStore`` backed by the ``cover_reviews`` table (COVERS-SEARCH-14)."""
+
+    def __init__(self, db: AppDB) -> None:
+        self.db = db
+
+    @property
+    def _conn(self) -> sqlite3.Connection:
+        return self.db._conn  # pyright: ignore[reportPrivateUsage]
+
+    def add(self, review: CoverReview) -> None:
+        self._conn.execute(
+            "INSERT INTO cover_reviews (id, profile, run_id, step_id, album_id, state, body,"
+            " created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                review.id,
+                review.profile,
+                review.run_id,
+                review.step_id,
+                review.album_id,
+                review.state,
+                review.model_dump_json(),
+                review.created_at.isoformat(),
+            ),
+        )
+
+    def get(self, review_id: str) -> CoverReview | None:
+        row = self._conn.execute(
+            "SELECT body FROM cover_reviews WHERE id = ?", (review_id,)
+        ).fetchone()
+        return CoverReview.model_validate_json(row["body"]) if row else None
+
+    def pending(self, profile: str | None = None, run_id: str | None = None) -> list[CoverReview]:
+        """Pending reviews, oldest first."""
+        sql, args = "SELECT body FROM cover_reviews WHERE state = 'pending'", list[Any]()
+        if profile is not None:
+            sql, args = sql + " AND profile = ?", [*args, profile]
+        if run_id is not None:
+            sql, args = sql + " AND run_id = ?", [*args, run_id]
+        rows = self._conn.execute(sql + " ORDER BY created_at, id", args).fetchall()
+        return [CoverReview.model_validate_json(r["body"]) for r in rows]
+
+    def claim(self, review_id: str, job: str) -> CoverReview:
+        """Reserve a pending review for one decision. Raises ``KeyError`` (unknown),
+        ``CoverResolvedError`` (not pending) or ``CoverBusyError`` (claimed)."""
+        cur = self._conn.execute(
+            "UPDATE cover_reviews SET claim = ? WHERE id = ? AND state = 'pending'"
+            " AND claim IS NULL",
+            (job, review_id),
+        )
+        review = self.get(review_id)
+        if review is None:
+            raise KeyError(review_id)
+        if cur.rowcount != 1:
+            if review.state != "pending":
+                raise CoverResolvedError(review_id, review.state)
+            raise CoverBusyError(review_id)
+        return review
+
+    def set_claim(self, review_id: str, job: str | None) -> None:
+        self._conn.execute("UPDATE cover_reviews SET claim = ? WHERE id = ?", (job, review_id))
+
+    def release(self, review: CoverReview) -> None:
+        """Save ``review`` and drop the claim."""
+        self._conn.execute(
+            "UPDATE cover_reviews SET state = ?, body = ?, claim = NULL WHERE id = ?",
+            (review.state, review.model_dump_json(), review.id),
+        )
+
+    def cancel_for_run(self, run_id: str) -> list[str]:
+        """Cancel the run's pending reviews (a cancelled or finished run). Returns ids."""
+        cancelled: list[str] = []
+        for review in self.pending(run_id=run_id):
+            review.state = "cancelled"
+            self.release(review)
+            cancelled.append(review.id)
+        return cancelled
+
+
+class CoverResolvedError(ValueError):
+    """The cover review isn't pending any more (COVERS-SEARCH-21: decided once)."""
+
+    def __init__(self, review_id: str, state: str) -> None:
+        super().__init__(f"cover review {review_id} is already {state}")
+        self.review_id = review_id
+        self.state = state
+
+
+class CoverBusyError(ValueError):
+    """A job is applying a choice for this review right now."""
+
+    def __init__(self, review_id: str) -> None:
+        super().__init__(f"cover review {review_id} is being decided; try again shortly")
+        self.review_id = review_id
+
+
+class CleanupResolvedError(ValueError):
+    """The cleanup decision isn't pending any more (FILES-CLEANUP-14: decided once)."""
+
+    def __init__(self, decision_id: str, state: str) -> None:
+        super().__init__(f"cleanup decision {decision_id} is already {state}")
+        self.decision_id = decision_id
+        self.state = state
+
+
+class CleanupBusyError(ValueError):
+    """A job is cleaning the folder of this decision right now."""
+
+    def __init__(self, decision_id: str) -> None:
+        super().__init__(f"cleanup decision {decision_id} is being applied; try again shortly")
+        self.decision_id = decision_id
+
+
+class AppCleanupDecisions:
+    """``CleanupDecisionStore`` backed by the ``cleanup_decisions`` table
+    (S-FILES-CLEANUP FILES-CLEANUP-14)."""
+
+    def __init__(self, db: AppDB) -> None:
+        self.db = db
+
+    @property
+    def _conn(self) -> sqlite3.Connection:
+        return self.db._conn  # pyright: ignore[reportPrivateUsage]
+
+    def add(self, decision: CleanupDecision) -> None:
+        self._conn.execute(
+            "INSERT INTO cleanup_decisions (id, profile, run_id, step_id, state, body,"
+            " created_at, deadline) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                decision.id,
+                decision.profile,
+                decision.run_id,
+                decision.step_id,
+                decision.state,
+                decision.model_dump_json(),
+                decision.created_at.isoformat(),
+                _utc(decision.deadline) if decision.deadline is not None else None,
+            ),
+        )
+
+    def get(self, decision_id: str) -> CleanupDecision | None:
+        row = self._conn.execute(
+            "SELECT body FROM cleanup_decisions WHERE id = ?", (decision_id,)
+        ).fetchone()
+        return CleanupDecision.model_validate_json(row["body"]) if row else None
+
+    def pending(
+        self, profile: str | None = None, run_id: str | None = None
+    ) -> list[CleanupDecision]:
+        """Pending decisions, oldest first."""
+        sql, args = "SELECT body FROM cleanup_decisions WHERE state = 'pending'", list[Any]()
+        if profile is not None:
+            sql, args = sql + " AND profile = ?", [*args, profile]
+        if run_id is not None:
+            sql, args = sql + " AND run_id = ?", [*args, run_id]
+        rows = self._conn.execute(sql + " ORDER BY created_at, id", args).fetchall()
+        return [CleanupDecision.model_validate_json(r["body"]) for r in rows]
+
+    def overdue(self, now: datetime) -> list[CleanupDecision]:
+        """Pending, unclaimed decisions whose deadline passed."""
+        rows = self._conn.execute(
+            "SELECT body FROM cleanup_decisions WHERE state = 'pending' AND claim IS NULL"
+            " AND deadline IS NOT NULL AND deadline <= ? ORDER BY deadline, id",
+            (_utc(now),),
+        ).fetchall()
+        return [CleanupDecision.model_validate_json(r["body"]) for r in rows]
+
+    def next_deadline(self) -> datetime | None:
+        row = self._conn.execute(
+            "SELECT MIN(deadline) FROM cleanup_decisions WHERE state = 'pending'"
+            " AND deadline IS NOT NULL"
+        ).fetchone()
+        return datetime.fromisoformat(row[0]) if row and row[0] else None
+
+    def claim(self, decision_id: str, job: str) -> CleanupDecision:
+        """Reserve a pending decision for one job. Raises ``KeyError`` (unknown),
+        ``CleanupResolvedError`` (not pending) or ``CleanupBusyError`` (claimed)."""
+        cur = self._conn.execute(
+            "UPDATE cleanup_decisions SET claim = ? WHERE id = ? AND state = 'pending'"
+            " AND claim IS NULL",
+            (job, decision_id),
+        )
+        decision = self.get(decision_id)
+        if decision is None:
+            raise KeyError(decision_id)
+        if cur.rowcount != 1:
+            if decision.state != "pending":
+                raise CleanupResolvedError(decision_id, decision.state)
+            raise CleanupBusyError(decision_id)
+        return decision
+
+    def set_claim(self, decision_id: str, job: str) -> None:
+        self._conn.execute(
+            "UPDATE cleanup_decisions SET claim = ? WHERE id = ? AND claim IS NOT NULL",
+            (job, decision_id),
+        )
+
+    def release(self, decision: CleanupDecision) -> None:
+        """Save ``decision`` and drop the claim."""
+        self._conn.execute(
+            "UPDATE cleanup_decisions SET state = ?, body = ?, claim = NULL WHERE id = ?",
+            (decision.state, decision.model_dump_json(), decision.id),
+        )
+
+    def cancel_for_run(self, run_id: str) -> list[str]:
+        """Cancel the run's pending decisions (a cancelled or finished run). Returns ids."""
+        cancelled: list[str] = []
+        for decision in self.pending(run_id=run_id):
+            decision.state = "cancelled"
+            self.release(decision)
+            cancelled.append(decision.id)
+        return cancelled
+
+
 class AppJournal:
     """``Journal`` backed by the app DB's ``journal`` table (JOURNAL-8)."""
 
@@ -1033,14 +1297,47 @@ class AppTriggers:
     def record(self, profile: str, workflow: str, input_path: str) -> DedupRecord | None:
         """The last run for this input of ``workflow``, with that run's current state."""
         row = self._conn.execute(
-            "SELECT t.fingerprint, t.run_id, j.state FROM trigger_inputs t"
+            "SELECT t.fingerprint, t.run_id, t.undone_at, j.state FROM trigger_inputs t"
             " LEFT JOIN jobs j ON j.run_id = t.run_id AND j.kind = 'run'"
             " WHERE t.profile = ? AND t.workflow = ? AND t.input_path = ?",
             (profile, workflow, input_path),
         ).fetchone()
         if row is None:
             return None
-        return DedupRecord(row["fingerprint"], row["run_id"], row["state"])
+        return DedupRecord(
+            row["fingerprint"], row["run_id"], row["state"], row["undone_at"] is not None
+        )
+
+    def records(self, profile: str, workflow: str) -> dict[str, DedupRecord]:
+        """Every input of ``workflow`` with its last run (the inbox, DASHBOARD-1)."""
+        rows = self._conn.execute(
+            "SELECT t.input_path, t.fingerprint, t.run_id, t.undone_at, j.state"
+            " FROM trigger_inputs t"
+            " LEFT JOIN jobs j ON j.run_id = t.run_id AND j.kind = 'run'"
+            " WHERE t.profile = ? AND t.workflow = ?",
+            (profile, workflow),
+        ).fetchall()
+        return {
+            r["input_path"]: DedupRecord(
+                r["fingerprint"], r["run_id"], r["state"], r["undone_at"] is not None
+            )
+            for r in rows
+        }
+
+    def run_input(self, run_id: str) -> tuple[str, str] | None:
+        """``(input_path, fingerprint)`` recorded when ``run_id`` started, while it is
+        still the input's last run (DASHBOARD-18)."""
+        row = self._conn.execute(
+            "SELECT input_path, fingerprint FROM trigger_inputs WHERE run_id = ?", (run_id,)
+        ).fetchone()
+        return (row["input_path"], row["fingerprint"]) if row else None
+
+    def mark_undone(self, run_id: str) -> bool:
+        """The run's import was undone (DASHBOARD-9); the record stays."""
+        cur = self._conn.execute(
+            "UPDATE trigger_inputs SET undone_at = ? WHERE run_id = ?", (_now(), run_id)
+        )
+        return cur.rowcount > 0
 
     def remember(
         self, profile: str, workflow: str, input_path: str, fingerprint: str, run_id: str
@@ -1050,7 +1347,7 @@ class AppTriggers:
             " updated_at) VALUES (?, ?, ?, ?, ?, ?)"
             " ON CONFLICT (profile, workflow, input_path) DO UPDATE SET"
             " fingerprint = excluded.fingerprint, run_id = excluded.run_id,"
-            " updated_at = excluded.updated_at",
+            " updated_at = excluded.updated_at, undone_at = NULL",
             (profile, workflow, input_path, fingerprint, run_id, _now()),
         )
 
@@ -1149,6 +1446,28 @@ class AppLanes:
                     ),
                 )
 
+    def drop_hold(self, run_id: str, keys: Iterable[str], ref: str) -> list[str]:
+        """Remove the hold ``ref`` from waiting lanes ``keys`` (a gate continued for those
+        albums only, DASHBOARD-11). Returns the keys it was removed from."""
+        dropped: list[str] = []
+        with self._conn:
+            self._conn.execute("BEGIN IMMEDIATE")
+            for key in keys:
+                row = self._conn.execute(
+                    "SELECT holds FROM run_lanes WHERE run_id = ? AND key = ?"
+                    " AND state = 'waiting'",
+                    (run_id, key),
+                ).fetchone()
+                if row is None:
+                    continue
+                holds = [h for h in json.loads(row["holds"]) if _hold(h).ref != ref]
+                self._conn.execute(
+                    "UPDATE run_lanes SET holds = ?, updated_at = ? WHERE run_id = ? AND key = ?",
+                    (json.dumps(holds), _now(), run_id, key),
+                )
+                dropped.append(key)
+        return dropped
+
     def rename(self, run_id: str, old: str, new: str, label: str | None = None) -> None:
         """LANES-14: keep position, holds and history; optionally a new label."""
         self._conn.execute(
@@ -1221,6 +1540,153 @@ def _lane(row: sqlite3.Row) -> Lane:
     )
 
 
+NotificationState = Literal["pending", "sent", "failed"]
+
+
+class StoredNotification(BaseModel):
+    """A rule notification to one target (S-NOTIFY NOTIFY-9, -15)."""
+
+    id: str
+    profile: str
+    run_id: str | None
+    event: str
+    dedup_key: str
+    target: str
+    state: NotificationState
+    attempts: int = 0
+    message: Notification
+    items: list[QueueRef] = []
+    remind_after: int | None = None
+    """Seconds between reminders (``review.needed`` only); None: no reminders."""
+    remind_limit: int = 0
+    reminders: int = 0
+    reminding: bool = False
+    parent: str | None = None
+    created_at: datetime
+    sent_at: datetime | None = None
+    last_reminded_at: datetime | None = None
+    error: str | None = None
+
+
+class AppNotifications:
+    """The ``notifications`` table: rule notifications recorded before they are sent."""
+
+    def __init__(self, db: AppDB) -> None:
+        self.db = db
+
+    @property
+    def _conn(self) -> sqlite3.Connection:
+        return self.db._conn  # pyright: ignore[reportPrivateUsage]
+
+    def add(
+        self,
+        *,
+        profile: str,
+        run_id: str | None,
+        event: str,
+        dedup_key: str,
+        target: str,
+        message: Notification,
+        items: Iterable[QueueRef] = (),
+        remind_after: int | None = None,
+        remind_limit: int = 0,
+        parent: str | None = None,
+        now: datetime | None = None,
+    ) -> StoredNotification | None:
+        """Record a notification as ``pending``; ``None`` if this transition was already
+        recorded for this target (NOTIFY-9)."""
+        row = self._conn.execute(
+            "INSERT OR IGNORE INTO notifications (id, profile, run_id, event, dedup_key, target,"
+            " state, message, items, remind_after, remind_limit, reminding, parent, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?) RETURNING *",
+            (
+                new_ulid(),
+                profile,
+                run_id,
+                event,
+                dedup_key,
+                target,
+                message.model_dump_json(),
+                json.dumps([i.model_dump(mode="json") for i in items]),
+                remind_after,
+                remind_limit,
+                int(remind_after is not None),
+                parent,
+                _utc(now) if now is not None else _now(),
+            ),
+        ).fetchone()
+        return _notification(row) if row else None
+
+    def get(self, notification_id: str) -> StoredNotification | None:
+        row = self._conn.execute(
+            "SELECT * FROM notifications WHERE id = ?", (notification_id,)
+        ).fetchone()
+        return _notification(row) if row else None
+
+    def attempt(self, notification_id: str, attempts: int) -> None:
+        self._conn.execute(
+            "UPDATE notifications SET attempts = ? WHERE id = ?", (attempts, notification_id)
+        )
+
+    def finish(
+        self, notification_id: str, ok: bool, error: str | None, now: datetime | None = None
+    ) -> None:
+        when = _utc(now) if now is not None else _now()
+        self._conn.execute(
+            "UPDATE notifications SET state = ?, error = ?, sent_at = ?,"
+            " reminding = CASE WHEN ? THEN reminding ELSE 0 END,"
+            " last_reminded_at = ? WHERE id = ?",
+            ("sent" if ok else "failed", error, when, int(ok), when, notification_id),
+        )
+
+    def pending(self) -> list[StoredNotification]:
+        rows = self._conn.execute(
+            "SELECT * FROM notifications WHERE state = 'pending' ORDER BY created_at, id"
+        ).fetchall()
+        return [_notification(r) for r in rows]
+
+    def reminding(self) -> list[StoredNotification]:
+        """Sent ``review.needed`` notifications that may still need reminders (NOTIFY-15)."""
+        rows = self._conn.execute(
+            "SELECT * FROM notifications WHERE reminding = 1 AND state = 'sent'"
+            " ORDER BY created_at, id"
+        ).fetchall()
+        return [_notification(r) for r in rows]
+
+    def reminded(self, notification_id: str, now: datetime) -> None:
+        self._conn.execute(
+            "UPDATE notifications SET reminders = reminders + 1, last_reminded_at = ?,"
+            " reminding = CASE WHEN reminders + 1 >= remind_limit THEN 0 ELSE 1 END"
+            " WHERE id = ?",
+            (_utc(now), notification_id),
+        )
+
+    def stop_reminding(self, notification_id: str) -> None:
+        self._conn.execute(
+            "UPDATE notifications SET reminding = 0 WHERE id = ?", (notification_id,)
+        )
+
+    def for_run(self, run_id: str) -> list[StoredNotification]:
+        rows = self._conn.execute(
+            "SELECT * FROM notifications WHERE run_id = ? ORDER BY created_at, id", (run_id,)
+        ).fetchall()
+        return [_notification(r) for r in rows]
+
+    def for_profile(self, profile: str) -> list[StoredNotification]:
+        rows = self._conn.execute(
+            "SELECT * FROM notifications WHERE profile = ? ORDER BY created_at, id", (profile,)
+        ).fetchall()
+        return [_notification(r) for r in rows]
+
+
+def _notification(row: sqlite3.Row) -> StoredNotification:
+    data = dict(row)
+    data["message"] = json.loads(data["message"])
+    data["items"] = json.loads(data["items"])
+    data["reminding"] = bool(data["reminding"])
+    return StoredNotification.model_validate(data)
+
+
 class SqliteEventSink:
     """``EventSink`` backed by the app DB (RUN-7: persisted before fan-out)."""
 
@@ -1239,3 +1705,93 @@ def _job(row: sqlite3.Row) -> Job:
     data["payload"] = json.loads(data["payload"])
     data["result"] = json.loads(data["result"]) if data.get("result") else None
     return Job.model_validate(data)
+
+
+class AlbumRemoval(BaseModel):
+    """Write-ahead record of one album removed by an import undo (DASHBOARD-8)."""
+
+    id: str
+    profile: str
+    run_id: str
+    album_id: str
+    label: str
+    delete_files: bool
+    state: Literal["pending", "removed", "failed"]
+    deleted: list[str] = []
+    error: str | None = None
+    created_at: datetime
+    completed_at: datetime | None = None
+
+
+class AppRemovals:
+    """``album_removals``: written before an album is removed, completed after."""
+
+    def __init__(self, db: AppDB) -> None:
+        self.db = db
+
+    @property
+    def _conn(self) -> sqlite3.Connection:
+        return self.db._conn  # pyright: ignore[reportPrivateUsage]
+
+    def begin(
+        self, profile: str, run_id: str, album_id: str, label: str, delete_files: bool
+    ) -> AlbumRemoval:
+        removal = AlbumRemoval(
+            id=new_ulid(),
+            profile=profile,
+            run_id=run_id,
+            album_id=album_id,
+            label=label,
+            delete_files=delete_files,
+            state="pending",
+            created_at=datetime.now(UTC),
+        )
+        self._conn.execute(
+            "INSERT INTO album_removals (id, profile, run_id, album_id, label, delete_files,"
+            " state, created_at) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)",
+            (
+                removal.id,
+                profile,
+                run_id,
+                album_id,
+                label,
+                int(delete_files),
+                removal.created_at.isoformat(),
+            ),
+        )
+        return removal
+
+    def finish(
+        self,
+        removal_id: str,
+        state: Literal["removed", "failed"],
+        *,
+        deleted: list[str] | None = None,
+        error: str | None = None,
+    ) -> None:
+        self._conn.execute(
+            "UPDATE album_removals SET state = ?, deleted = ?, error = ?, completed_at = ?"
+            " WHERE id = ?",
+            (state, json.dumps(deleted or []), error, _now(), removal_id),
+        )
+
+    def pending(self, profile: str) -> list[AlbumRemoval]:
+        rows = self._conn.execute(
+            "SELECT * FROM album_removals WHERE profile = ? AND state = 'pending'"
+            " ORDER BY created_at, id",
+            (profile,),
+        ).fetchall()
+        return [_removal(r) for r in rows]
+
+    def for_run(self, run_id: str) -> list[AlbumRemoval]:
+        rows = self._conn.execute(
+            "SELECT * FROM album_removals WHERE run_id = ? ORDER BY created_at, id", (run_id,)
+        ).fetchall()
+        return [_removal(r) for r in rows]
+
+
+def _removal(row: sqlite3.Row) -> AlbumRemoval:
+    data = dict(row)
+    data["delete_files"] = bool(data["delete_files"])
+    data["deleted"] = json.loads(data["deleted"])
+    return AlbumRemoval.model_validate(data)
