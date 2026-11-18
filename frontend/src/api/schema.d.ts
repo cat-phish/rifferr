@@ -1160,7 +1160,8 @@ export interface components {
         };
         /**
          * ChangeSet
-         * @description Proposed field changes to one album and/or its items (CHANGESET-1, -14).
+         * @description Proposed field changes to one album and/or its items (CHANGESET-1, -14), and/or
+         *     file moves of one album (``files``, S-LIBRARY-MOVE).
          */
         ChangeSet: {
             /**
@@ -1168,6 +1169,11 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /**
+             * Files
+             * @description File moves or copies (S-LIBRARY-MOVE); accepted or rejected as a whole
+             */
+            files?: components["schemas"]["FileEffect"][];
             /** Id */
             id: string;
             /** Profile */
@@ -1177,9 +1183,13 @@ export interface components {
             /** Run Id */
             run_id?: string | null;
             source: components["schemas"]["ChangeSource"];
+            stamp?: components["schemas"]["Stamp"] | null;
             /** Step Id */
             step_id?: string | null;
-            /** Targets */
+            /**
+             * Targets
+             * @description Empty only when ``files`` isn't
+             */
             targets: components["schemas"]["TargetChange"][];
         };
         /**
@@ -1680,6 +1690,48 @@ export interface components {
             existed_before: boolean;
             /** Field */
             field: string;
+            target: components["schemas"]["TargetRef"];
+        };
+        /**
+         * FileEffect
+         * @description One file of a FileChangeSet: the ``files`` change kind (S-LIBRARY-MOVE).
+         *
+         *     ``size`` and ``sha256`` describe the source when planned; they are what the copy
+         *     is verified against (LIBRARY-MOVE-7, -8). ``state`` is journaled per file (-9).
+         */
+        FileEffect: {
+            /**
+             * Dst
+             * @description Absolute path
+             */
+            dst: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "item" | "art" | "artifact";
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "move" | "copy";
+            /** Note */
+            note?: string | null;
+            /** Sha256 */
+            sha256: string;
+            /** Size */
+            size: number;
+            /**
+             * Src
+             * @description Absolute path
+             */
+            src: string;
+            /**
+             * State
+             * @default planned
+             * @enum {string}
+             */
+            state: "planned" | "copied" | "done" | "skipped";
             target: components["schemas"]["TargetRef"];
         };
         /**
@@ -2709,6 +2761,20 @@ export interface components {
             sha256: string;
             /** Valid */
             valid: boolean;
+        };
+        /**
+         * Stamp
+         * @description A field set to the date a FileChangeSet is applied (LIBRARY-MOVE-6b).
+         */
+        Stamp: {
+            /** Field */
+            field: string;
+            /**
+             * Format
+             * @description strftime format
+             * @default %Y-%m-%d
+             */
+            format: string;
         };
         /** StepState */
         StepState: {

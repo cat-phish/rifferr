@@ -23,6 +23,7 @@ ENGINE_EVENTS = frozenset(
         "changeset.rejected",
         "changeset.conflicted",
         "changeset.undone",
+        "changeset.undo_incomplete",  # S-LIBRARY-MOVE LIBRARY-MOVE-13
         # S-REVIEW
         "review.requested",
         "review.resolved",

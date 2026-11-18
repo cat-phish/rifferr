@@ -126,10 +126,22 @@ class FileEffect(BaseModel):          # C-CHANGESET `files` change kind
     state: Literal["planned", "copied", "done", "skipped"] = "planned"
 
 class LibraryBackend(Protocol):       # capability "move" (C-BACKEND amendment)
-    def plan_moves(self, albums: Selection, formats: list[PathFormat] | None,
-                   directory: Path | None) -> list[FileEffect]: ...
-    def apply_move(self, effect: FileEffect) -> FileEffect: ...   # one file, returns new state
-    def set_paths(self, effects: list[FileEffect]) -> None: ...   # library path update only
+    def plan_moves(self, selection: Selection, *, mode: FileMode,
+                   formats: Sequence[PathFormat] | None, directory: Path | None,
+                   artifacts: Sequence[ArtifactRule]) -> list[MovePlan]: ...  # reads only
+    def copy_file(self, effect: FileEffect) -> FileEffect: ...      # planned -> copied (or done)
+    def remove_source(self, effect: FileEffect) -> FileEffect: ...  # copied -> done, dst verified
+    def set_paths(self, effects: Sequence[FileEffect]) -> None: ... # library path update only
+    def file_sha256(self, path: str) -> str | None: ...
+    def reconcile_file(self, effect: FileEffect) -> FileEffect: ... # recovery, removes temp files
+
+class MovePlan(BaseModel):            # one album
+    album: TargetRef; label: str; src_dir: str; dst_dir: str
+    files: list[FileEffect]; conflicts: list[str]   # LIBRARY-MOVE-5; empty = can move
+
+class ChangeSet:                      # C-CHANGESET amendment
+    files: list[FileEffect] = []      # accepted or rejected as a whole
+    stamp: Stamp | None = None        # the stamp field change gets the apply date
 
 class PathFormat(BaseModel):
     query: str                        # beets query, or "default"
@@ -214,13 +226,22 @@ cover goes in an `Art` sub-folder (artifact rules).
 
 1. "24-bit" currently means any bit depth above 16 (author: "probably"). Revisit if a 20-bit or
    32-bit float release should be labelled differently.
+2. beets pads `$disc` in path formats (`Disc 01/`); foobar2000's `%discnumber%` gives `Disc 1/`.
+   Keep beets' padding, or add a built-in template function (e.g. `%unpad{}`) for the reference
+   pattern? (found while implementing, 2026-11-18)
+3. LIBRARY-MOVE-5 says a conflicting album "goes to the review queue as a conflict". It currently
+   fails the album's lane (RUN-5 `on_error`) with the conflicts in the run log; the review queue
+   shows no move conflicts yet. Is a failed lane enough, or should conflicts be a review item
+   (retry after fixing)?
 
 ## Tasks
-- [ ] C-CHANGESET amendment: `files` change kind; narrow the file-operation non-goal to deletes.
-- [ ] C-JOURNAL amendment: file effects, per-file states, recovery, undo rules (LIBRARY-MOVE-7..15).
-- [ ] C-BACKEND amendment: `move` capability; contract tests for `Item.destination()` with path
+- [x] C-CHANGESET amendment: `files` change kind; narrow the file-operation non-goal to deletes.
+- [x] C-JOURNAL amendment: file effects, per-file states, recovery, undo rules (LIBRARY-MOVE-7..15).
+- [x] C-BACKEND amendment: `move` capability; contract tests for `Item.destination()` with path
   formats, `replace:`, the `the` plugin and Rifferr template functions.
-- [ ] FakeBackend `move` capability on an in-memory filesystem.
-- [ ] Step, apply path, recovery, undo; tests per behavior ID.
+- [x] FakeBackend `move` capability on an in-memory filesystem.
+- [x] Step, apply path, recovery, undo; tests per behavior ID.
+- [ ] LIBRARY-MOVE-6a: safety report notes `copyartifacts`/`copyartifacts3` in the profile's beets config.
+- [ ] LIBRARY-MOVE-15: "force" for one changed file (engine refuses; review-queue control missing).
 - [ ] Review queue: FileChangeSet view (LIBRARY-MOVE-16) and Playwright test.
 - [ ] `examples/workflows/foobar-style.yaml` and `docs/coverage.md` rows 5, 15, 17, 18, 19.

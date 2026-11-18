@@ -27,7 +27,14 @@ from rifferr.core.review import GateState, ReviewGate
 from rifferr.core.triggers import DedupRecord
 from rifferr.engine.changesets import StoredChangeSet
 from rifferr.engine.events import Event
-from rifferr.engine.journal import JournalError, completed, failed, recovered, undone
+from rifferr.engine.journal import (
+    JournalError,
+    completed,
+    failed,
+    progressed,
+    recovered,
+    undone,
+)
 from rifferr.engine.lanes import FINAL_LANE_STATES, Hold, Lane
 
 JobState = Literal["queued", "running", "waiting_review", "succeeded", "failed", "cancelled"]
@@ -1252,6 +1259,12 @@ class AppJournal:
         self._store(undone(self._get(entry_id), by))
 
     def recover(self, entry: JournalEntry) -> None:
+        self._store(recovered(self._get(entry.id), entry))
+
+    def progress(self, entry: JournalEntry) -> None:
+        self._store(progressed(self._get(entry.id), entry))
+
+    def settle(self, entry: JournalEntry) -> None:
         self._store(recovered(self._get(entry.id), entry))
 
     def uncertain(self, profile: str) -> list[JournalEntry]:

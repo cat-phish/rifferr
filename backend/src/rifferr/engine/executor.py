@@ -25,13 +25,17 @@ from rifferr.core.changeset import (
     ChangeSet,
     ChangeSetProposal,
     ChangeSource,
+    FieldChange,
     JournalEntry,
+    Stamp,
+    TargetChange,
     TargetRef,
 )
 from rifferr.core.covers import CoverReview
 from rifferr.core.files import BusyFolder, CleanupDecision
 from rifferr.core.ids import new_ulid
 from rifferr.core.imports import ImportDecision, ImportQuestion
+from rifferr.core.moves import MovePlan
 from rifferr.core.notify import Notification, SendResult
 from rifferr.core.profile import ProfileFile, Redactor, env_var_name, merged_vars
 from rifferr.core.review import GateAlbum, GateRequest, ReviewGate
@@ -662,6 +666,9 @@ class Engine:
                 propose=lambda proposal, current, snapshots: self._propose(
                     state, spec, proposal, current, snapshots
                 ),
+                propose_files=lambda plan, stamp, snapshots: self._propose_files(
+                    state, spec, plan, stamp, snapshots
+                ),
                 profile_dir=state.profile_dir,
                 interpolate=lambda value: self._interpolate_text(state, value),
                 interpolate_template=lambda value: self._interpolate_template_text(state, value),
@@ -910,9 +917,73 @@ class Engine:
                 self._log_outcome(state, spec.id, outcome.entry)
             else:
                 state.holds.setdefault(spec.id, []).append(cs.id)
-                album = snapshots.album_of(cs.targets[0].target)
+                album = snapshots.album_of(cs.first_target())
                 state.lane_holds.setdefault(album, []).append(Hold("changeset", cs.id))  # LANES-5
         return changesets
+
+    def _propose_files(
+        self,
+        state: _RunState,
+        spec: StepSpec,
+        plan: MovePlan,
+        stamp: Stamp | None,
+        snapshots: SnapshotIndex,
+    ) -> ChangeSet:
+        """One album's FileChangeSet (S-LIBRARY-MOVE): stored, then applied or held."""
+        run = state.run
+        fields = snapshots.fields(plan.album)
+        if fields is None:
+            raise StepFailure(f"{plan.album.label()} is not one of this step's targets")
+        if plan.conflicts:
+            raise StepFailure("; ".join(plan.conflicts))
+        if not plan.files:
+            raise StepFailure(f"{plan.label}: nothing to move")
+        targets: list[TargetChange] = []
+        if stamp is not None:
+            today = self.clock.now().astimezone().strftime(stamp.format)
+            change = FieldChange(field=stamp.field, old=fields.get(stamp.field), new=today)
+            targets.append(TargetChange(target=plan.album, changes=[change]))
+        step_type = self.registry.step_type(spec.uses)
+        cs = ChangeSet(
+            id=new_ulid(),
+            profile=run.profile,
+            run_id=run.id,
+            step_id=spec.id,
+            source=ChangeSource(kind="step", name=spec.uses),
+            rationale=f"{spec.uses}: {plan.src_dir} -> {plan.dst_dir}",
+            created_at=self.clock.now(),
+            targets=targets,
+            files=plan.files,
+            stamp=stamp,
+        )
+        try:
+            problems = state.backend.check(cs) if targets else []
+        except CapabilityError as exc:
+            raise StepFailure(f"this profile's backend can't apply changes: {exc}") from exc
+        if problems:
+            detail = "; ".join(f"{p.target.label()} {p.field}: {p.message}" for p in problems)
+            raise StepFailure(f"proposed changes can't be applied: {detail}")
+        emit = self._change_emitter(state, spec.id)
+        self.changesets.add(cs)
+        emit("changeset.proposed", proposed_event(cs))
+        force_review = bool(getattr(step_type, "force_review", False))
+        if apply_policy(spec, step_type) == "auto" and not force_review:
+            outcome = apply_changeset(
+                cs,
+                backend=state.backend,
+                journal=self.journal,
+                store=self.changesets,
+                new_id=new_ulid,
+                now=self.clock.now,
+                emit=emit,
+            )
+            self._log_outcome(state, spec.id, outcome.entry)
+            if outcome.error is not None:
+                raise StepFailure(f"{plan.label}: {outcome.error}")
+        else:
+            state.holds.setdefault(spec.id, []).append(cs.id)
+            state.lane_holds.setdefault(plan.album.id, []).append(Hold("changeset", cs.id))
+        return cs
 
     # -- review gates (S-REVIEW) ---------------------------------------------------
 

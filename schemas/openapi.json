@@ -241,12 +241,20 @@
       },
       "ChangeSet": {
         "additionalProperties": false,
-        "description": "Proposed field changes to one album and/or its items (CHANGESET-1, -14).",
+        "description": "Proposed field changes to one album and/or its items (CHANGESET-1, -14), and/or\nfile moves of one album (``files``, S-LIBRARY-MOVE).",
         "properties": {
           "created_at": {
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "files": {
+            "description": "File moves or copies (S-LIBRARY-MOVE); accepted or rejected as a whole",
+            "items": {
+              "$ref": "#/components/schemas/FileEffect"
+            },
+            "title": "Files",
+            "type": "array"
           },
           "id": {
             "title": "Id",
@@ -281,6 +289,16 @@
           "source": {
             "$ref": "#/components/schemas/ChangeSource"
           },
+          "stamp": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Stamp"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "step_id": {
             "anyOf": [
               {
@@ -293,10 +311,10 @@
             "title": "Step Id"
           },
           "targets": {
+            "description": "Empty only when ``files`` isn't",
             "items": {
               "$ref": "#/components/schemas/TargetChange"
             },
-            "minItems": 1,
             "title": "Targets",
             "type": "array"
           }
@@ -1590,6 +1608,87 @@
           "after"
         ],
         "title": "FieldEffect",
+        "type": "object"
+      },
+      "FileEffect": {
+        "additionalProperties": false,
+        "description": "One file of a FileChangeSet: the ``files`` change kind (S-LIBRARY-MOVE).\n\n``size`` and ``sha256`` describe the source when planned; they are what the copy\nis verified against (LIBRARY-MOVE-7, -8). ``state`` is journaled per file (-9).",
+        "properties": {
+          "dst": {
+            "description": "Absolute path",
+            "minLength": 1,
+            "title": "Dst",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "item",
+              "art",
+              "artifact"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "mode": {
+            "enum": [
+              "move",
+              "copy"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Sha256",
+            "type": "string"
+          },
+          "size": {
+            "minimum": 0.0,
+            "title": "Size",
+            "type": "integer"
+          },
+          "src": {
+            "description": "Absolute path",
+            "minLength": 1,
+            "title": "Src",
+            "type": "string"
+          },
+          "state": {
+            "default": "planned",
+            "enum": [
+              "planned",
+              "copied",
+              "done",
+              "skipped"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "target": {
+            "$ref": "#/components/schemas/TargetRef"
+          }
+        },
+        "required": [
+          "target",
+          "kind",
+          "src",
+          "dst",
+          "mode",
+          "size",
+          "sha256"
+        ],
+        "title": "FileEffect",
         "type": "object"
       },
       "FolderItem": {
@@ -4435,6 +4534,28 @@
           "errors"
         ],
         "title": "ScriptSummary",
+        "type": "object"
+      },
+      "Stamp": {
+        "additionalProperties": false,
+        "description": "A field set to the date a FileChangeSet is applied (LIBRARY-MOVE-6b).",
+        "properties": {
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "format": {
+            "default": "%Y-%m-%d",
+            "description": "strftime format",
+            "minLength": 1,
+            "title": "Format",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field"
+        ],
+        "title": "Stamp",
         "type": "object"
       },
       "StepState": {

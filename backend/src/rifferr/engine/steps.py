@@ -11,10 +11,11 @@ from typing import Any, Protocol, runtime_checkable
 from pydantic import BaseModel, JsonValue
 
 from rifferr.backends.base import BackendCapabilities, LibraryBackend
-from rifferr.core.changeset import ChangeSet, ChangeSetProposal, TargetRef
+from rifferr.core.changeset import ChangeSet, ChangeSetProposal, Stamp, TargetRef
 from rifferr.core.covers import CoverQuery, RankedCandidate
 from rifferr.core.files import BusyFolder, CleanupChoice, CleanupEntry, CleanupOptions
 from rifferr.core.imports import ImportQuestion, TimeoutAction
+from rifferr.core.moves import MovePlan
 from rifferr.core.notify import Notification, SendResult
 from rifferr.core.profile import ProfileFile, Secret
 from rifferr.core.review import GateDecision, GateRequest, OnReject
@@ -94,6 +95,8 @@ class StepType(Protocol):
 Emit = Callable[[str, dict[str, JsonValue]], None]
 #: The engine's side of ``ctx.propose``: proposal, current target -> the ChangeSets made.
 Propose = Callable[[ChangeSetProposal, TargetRef | None, SnapshotIndex], list[ChangeSet]]
+#: The engine's side of ``ctx.propose_files``: one album's plan, optional stamp -> ChangeSet.
+ProposeFiles = Callable[[MovePlan, Stamp | None, SnapshotIndex], ChangeSet]
 
 
 @dataclass(frozen=True)
@@ -185,6 +188,10 @@ def _no_propose(
     raise StepFailure("this run can't propose ChangeSets")
 
 
+def _no_propose_files(plan: MovePlan, stamp: Stamp | None, s: SnapshotIndex) -> ChangeSet:
+    raise StepFailure("this step can't propose file moves here")
+
+
 def _no_gate(requests: list[GateRequest], options: GateOptions, s: SnapshotIndex) -> str:
     raise StepFailure("this run can't open review gates")
 
@@ -234,6 +241,7 @@ class StepContext:
         on_secret: Callable[[Secret], None] | None = None,
         redact: Callable[[str], str] | None = None,
         propose: Propose | None = None,
+        propose_files: ProposeFiles | None = None,
         profile_dir: Path | None = None,
         interpolate: Callable[[str], str] | None = None,
         interpolate_template: Callable[[str], str] | None = None,
@@ -275,6 +283,7 @@ class StepContext:
         self._is_cancelled = is_cancelled
         self.failed_targets: list[FailedTarget] = []
         self._propose = propose or _no_propose
+        self._propose_files = propose_files or _no_propose_files
         self._open_gate = open_gate or _no_gate
         self._on_hold = on_hold or _no_hold
         self._request_import = request_import or _no_import
@@ -360,6 +369,15 @@ class StepContext:
         made = self._propose(proposal, current, self._snapshots)
         self.proposed.extend(made)
         return [cs.id for cs in made]
+
+    def propose_files(self, plan: MovePlan, stamp: Stamp | None = None) -> str:
+        """Propose one album's file moves (S-LIBRARY-MOVE) as a FileChangeSet, accepted or
+        rejected as a whole. ``plan.album`` must come from ``albums()``. The step's ``apply``
+        policy applies it now (``auto``; a file failure raises ``StepFailure``) or leaves it
+        for review. Returns its id."""
+        made = self._propose_files(plan, stamp, self._snapshots)
+        self.proposed.append(made)
+        return made.id
 
     def open_gate(self, requests: list[GateRequest], options: GateOptions | None = None) -> str:
         """Hold the run for a human decision on albums from ``albums()`` (RUN-14, S-REVIEW).

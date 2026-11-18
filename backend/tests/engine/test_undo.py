@@ -434,7 +434,7 @@ def test_JOURNAL_3_undo_that_completed_before_the_crash_marks_the_original(lib: 
 
 def test_JOURNAL_9_entries_hold_tag_values_only_and_are_kept(lib: Lib) -> None:
     assert set(JournalEntry.model_fields) == {
-        "id", "profile", "changeset_id", "run_id", "accepted", "state", "intended",
+        "id", "profile", "changeset_id", "run_id", "accepted", "state", "intended", "files",
         "effects", "write_failures", "conflicts", "error", "uncertain", "undo_of",
         "undone_by", "created_at", "completed_at",
     }  # fmt: skip

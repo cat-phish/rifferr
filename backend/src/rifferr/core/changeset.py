@@ -1,6 +1,7 @@
 """ChangeSets (C-CHANGESET) and journal entries (C-JOURNAL).
 
-Every tag change in Rifferr is a ChangeSet. Steps propose them through
+Every tag change and every file move or copy (S-LIBRARY-MOVE) in Rifferr is a
+ChangeSet. Steps propose them through
 ``ctx.propose`` with a ``ChangeSetProposal``; only the engine applies them,
 through ``LibraryBackend.apply``, after the journal has recorded the intent.
 """
@@ -100,6 +101,47 @@ class ProposedTargetChange(BaseModel):
     changes: list[ProposedFieldChange] = Field(min_length=1)
 
 
+FileKind = Literal["item", "art", "artifact"]
+FileMode = Literal["move", "copy"]
+FileState = Literal["planned", "copied", "done", "skipped"]
+
+
+class FileEffect(BaseModel):
+    """One file of a FileChangeSet: the ``files`` change kind (S-LIBRARY-MOVE).
+
+    ``size`` and ``sha256`` describe the source when planned; they are what the copy
+    is verified against (LIBRARY-MOVE-7, -8). ``state`` is journaled per file (-9).
+    """
+
+    model_config = _FROZEN
+
+    target: TargetRef
+    """The item, or the album for its art file and artifacts."""
+    kind: FileKind
+    src: str = Field(min_length=1, description="Absolute path")
+    dst: str = Field(min_length=1, description="Absolute path")
+    mode: FileMode
+    size: int = Field(ge=0)
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    state: FileState = "planned"
+    note: str | None = None
+    """Why a file was skipped, for the run log and review queue."""
+
+    @property
+    def tracked(self) -> bool:
+        """Whether the library stores this file's path (items and the album's art)."""
+        return self.kind != "artifact"
+
+
+class Stamp(BaseModel):
+    """A field set to the date a FileChangeSet is applied (LIBRARY-MOVE-6b)."""
+
+    model_config = _FROZEN
+
+    field: FieldName
+    format: str = Field(default="%Y-%m-%d", min_length=1, description="strftime format")
+
+
 class ChangeSource(BaseModel):
     model_config = _FROZEN
 
@@ -108,7 +150,8 @@ class ChangeSource(BaseModel):
 
 
 class ChangeSet(BaseModel):
-    """Proposed field changes to one album and/or its items (CHANGESET-1, -14)."""
+    """Proposed field changes to one album and/or its items (CHANGESET-1, -14), and/or
+    file moves of one album (``files``, S-LIBRARY-MOVE)."""
 
     model_config = _FROZEN
 
@@ -119,7 +162,23 @@ class ChangeSet(BaseModel):
     source: ChangeSource
     rationale: str | None = None
     created_at: datetime
-    targets: list[TargetChange] = Field(min_length=1)
+    targets: list[TargetChange] = Field(description="Empty only when ``files`` isn't")
+    files: list[FileEffect] = Field(
+        default_factory=list[FileEffect],
+        description="File moves or copies (S-LIBRARY-MOVE); accepted or rejected as a whole",
+    )
+    stamp: Stamp | None = None
+    """With ``files``: the field change to ``stamp.field`` in ``targets`` gets the apply date."""
+
+    @model_validator(mode="after")
+    def _not_empty(self) -> Self:
+        if not self.targets and not self.files:
+            raise ValueError("a ChangeSet needs at least one field change or file")
+        return self
+
+    def first_target(self) -> TargetRef:
+        """A target of this ChangeSet, to find its album by."""
+        return self.targets[0].target if self.targets else self.files[0].target
 
     def field_changes(self) -> list[tuple[TargetRef, FieldChange]]:
         """Every field change in order. Indexes into this list identify a field change
@@ -139,7 +198,7 @@ class ChangeSet(BaseModel):
             index += len(t.changes)
             if kept:
                 targets.append(TargetChange(target=t.target, changes=kept))
-        if not targets:
+        if not targets and not self.files:
             raise ValueError("an accepted subset needs at least one field change")
         return self.model_copy(update={"targets": targets})
 
@@ -232,7 +291,8 @@ class ApplyResult(BaseModel):
     write_failures: list[WriteFailure] = Field(default_factory=list[WriteFailure])
 
 
-JournalState = Literal["pending", "applied", "failed"]
+JournalState = Literal["pending", "applied", "partial", "failed"]
+"""``partial``: a file apply stopped part-way (LIBRARY-MOVE-10); it can be undone."""
 
 
 class JournalEntry(BaseModel):
@@ -248,6 +308,8 @@ class JournalEntry(BaseModel):
     """Field-change indexes when only part of the ChangeSet was accepted."""
     state: JournalState = "pending"
     intended: list[TargetChange]
+    files: list[FileEffect] = Field(default_factory=list[FileEffect])
+    """Planned file effects with their current per-file state (LIBRARY-MOVE-7, -9)."""
     effects: list[FieldEffect] = Field(default_factory=list[FieldEffect])
     write_failures: list[WriteFailure] = Field(default_factory=list[WriteFailure])
     conflicts: list[Conflict] = Field(default_factory=list[Conflict])

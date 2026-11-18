@@ -47,6 +47,14 @@ class Journal(Protocol):
         """Replace a ``pending`` entry with its reconciled version (JOURNAL-3)."""
         ...
 
+    def progress(self, entry: JournalEntry) -> None:
+        """Record per-file states of a ``pending`` file apply (LIBRARY-MOVE-9). Durable."""
+        ...
+
+    def settle(self, entry: JournalEntry) -> None:
+        """Finish a ``pending`` file apply: ``applied``, ``partial`` or ``failed``."""
+        ...
+
     def uncertain(self, profile: str) -> list[JournalEntry]:
         """Entries recovery couldn't settle; they wait for a human (JOURNAL-3)."""
         ...
@@ -75,7 +83,7 @@ def failed(entry: JournalEntry, error: str, now: datetime) -> JournalEntry:
 
 
 def undone(entry: JournalEntry, by: str) -> JournalEntry:
-    if entry.state != "applied":
+    if entry.state not in ("applied", "partial"):
         raise JournalError(f"journal entry {entry.id} is {entry.state}, not applied")
     if entry.undone_by is not None:
         raise JournalError(f"journal entry {entry.id} is already undone by {entry.undone_by}")
@@ -87,6 +95,15 @@ def recovered(old: JournalEntry, new: JournalEntry) -> JournalEntry:
     _check_pending(old)
     if new.id != old.id or new.state == "pending" or new.intended != old.intended:
         raise JournalError(f"journal entry {old.id}: not a settlement of the pending entry")
+    return new
+
+
+def progressed(old: JournalEntry, new: JournalEntry) -> JournalEntry:
+    """Check that ``new`` only advances the file states of the pending entry ``old``."""
+    _check_pending(old)
+    same = [(f.src, f.dst) for f in old.files] == [(f.src, f.dst) for f in new.files]
+    if new.id != old.id or new.state != "pending" or not same or new.intended != old.intended:
+        raise JournalError(f"journal entry {old.id}: not a progress update of the pending entry")
     return new
 
 
@@ -131,6 +148,12 @@ class InMemoryJournal:
         self.entries[entry_id] = undone(self._get(entry_id), by)
 
     def recover(self, entry: JournalEntry) -> None:
+        self.entries[entry.id] = recovered(self._get(entry.id), entry)
+
+    def progress(self, entry: JournalEntry) -> None:
+        self.entries[entry.id] = progressed(self._get(entry.id), entry)
+
+    def settle(self, entry: JournalEntry) -> None:
         self.entries[entry.id] = recovered(self._get(entry.id), entry)
 
     def uncertain(self, profile: str) -> list[JournalEntry]:

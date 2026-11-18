@@ -49,6 +49,7 @@ def test_BACKEND_2_capabilities_default() -> None:
         files=True,
         remove=True,
         art=True,
+        move=True,
     )
 
 

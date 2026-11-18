@@ -320,6 +320,75 @@
               "type": "string"
             },
             "uses": {
+              "const": "library.move",
+              "title": "Uses"
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Backend condition (a beets query).",
+              "title": "When"
+            },
+            "with": {
+              "$ref": "#/$defs/With_library_move"
+            }
+          },
+          "required": [
+            "id",
+            "uses"
+          ],
+          "title": "Step: library.move",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One entry of ``steps:`` (WORKFLOW-2, WORKFLOW-3).",
+          "properties": {
+            "apply": {
+              "default": "review",
+              "description": "Whether this step's ChangeSets apply automatically or wait for review. Ignored by steps that don't produce ChangeSets.",
+              "enum": [
+                "auto",
+                "review"
+              ],
+              "title": "Apply",
+              "type": "string"
+            },
+            "id": {
+              "pattern": "^[a-z][a-z0-9_-]*$",
+              "title": "Id",
+              "type": "string"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Name"
+            },
+            "on_error": {
+              "default": "stop",
+              "enum": [
+                "stop",
+                "skip",
+                "continue"
+              ],
+              "title": "On Error",
+              "type": "string"
+            },
+            "uses": {
               "const": "notify",
               "title": "Uses"
             },
@@ -1217,6 +1286,157 @@
         "path"
       ],
       "title": "CleanupParams",
+      "type": "object"
+    },
+    "With_library_move": {
+      "additionalProperties": false,
+      "description": "``with:`` of a ``library.move`` step (LIBRARY-MOVE-1).",
+      "properties": {
+        "artifacts": {
+          "description": "Untracked files that travel with the album: globs, or {match, to}",
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "#/$defs/With_library_move__ArtifactRule"
+              }
+            ]
+          },
+          "title": "Artifacts",
+          "type": "array"
+        },
+        "directory": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Destination root instead of beets' directory",
+          "title": "Directory"
+        },
+        "mode": {
+          "default": "move",
+          "enum": [
+            "move",
+            "copy"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "paths": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/With_library_move__PathParam"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override the profile's beets paths: for this step; first match wins",
+          "title": "Paths"
+        },
+        "stamp": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/With_library_move__Stamp"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "library.move",
+      "type": "object"
+    },
+    "With_library_move__ArtifactRule": {
+      "additionalProperties": false,
+      "description": "Which untracked files travel with the album, and where (LIBRARY-MOVE-1, -6).",
+      "properties": {
+        "match": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Match",
+          "type": "array"
+        },
+        "to": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "To"
+        }
+      },
+      "required": [
+        "match"
+      ],
+      "title": "ArtifactRule",
+      "type": "object"
+    },
+    "With_library_move__PathParam": {
+      "additionalProperties": false,
+      "description": "One ``paths`` entry: beets query and path format, as in beets' ``paths:``.",
+      "properties": {
+        "format": {
+          "description": "A beets path format (https://beets.readthedocs.io/en/stable/reference/config.html#path-format-configuration)",
+          "minLength": 1,
+          "title": "Format",
+          "type": "string",
+          "x-rifferr-template": true
+        },
+        "query": {
+          "description": "A beets query, or 'default'",
+          "minLength": 1,
+          "title": "Query",
+          "type": "string"
+        }
+      },
+      "required": [
+        "query",
+        "format"
+      ],
+      "title": "PathParam",
+      "type": "object"
+    },
+    "With_library_move__Stamp": {
+      "additionalProperties": false,
+      "description": "A field set to the date a FileChangeSet is applied (LIBRARY-MOVE-6b).",
+      "properties": {
+        "field": {
+          "title": "Field",
+          "type": "string"
+        },
+        "format": {
+          "default": "%Y-%m-%d",
+          "description": "strftime format",
+          "minLength": 1,
+          "title": "Format",
+          "type": "string"
+        }
+      },
+      "required": [
+        "field"
+      ],
+      "title": "Stamp",
       "type": "object"
     },
     "With_notify": {

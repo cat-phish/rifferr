@@ -140,7 +140,10 @@ def recover_pending(
     reader = _LibraryReader(backend)
     settled: list[JournalEntry] = []
     for entry in journal.pending(profile):
-        done = reconcile(entry, reader.for_entry(entry), now())
+        if entry.files:
+            done = reconcile_files(entry, backend, reader, now())
+        else:
+            done = reconcile(entry, reader.for_entry(entry), now())
         journal.recover(done)
         settled.append(done)
         stored = store.get(entry.changeset_id)
@@ -150,8 +153,9 @@ def recover_pending(
             "journal_id": entry.id,
             "recovered": True,
         }
-        if done.state == "applied":
-            state: ChangeSetState = "partially_applied" if entry.accepted else "applied"
+        if done.state in ("applied", "partial"):
+            partly = entry.accepted or done.state == "partial"
+            state: ChangeSetState = "partially_applied" if partly else "applied"
             if stored is not None:
                 store.set_state(entry.changeset_id, state)
             if entry.undo_of is not None:
@@ -167,6 +171,42 @@ def recover_pending(
                 {**data, "error": INTERRUPTED},
             )
     return settled
+
+
+def reconcile_files(
+    entry: JournalEntry, backend: LibraryBackend, reader: _LibraryReader, now: datetime
+) -> JournalEntry:
+    """The settled version of a pending file apply (LIBRARY-MOVE-12).
+
+    Each unfinished file's state comes from the filesystem (temporary files removed); the
+    library points at every verified destination. Tag changes (``stamp``) count only if the
+    library already has them. Nothing is deleted.
+    """
+    files = [
+        f if f.state in ("done", "skipped") else backend.reconcile_file(f) for f in entry.files
+    ]
+    backend.set_paths([f for f in files if f.tracked and f.state in ("copied", "done")])
+    moved = any(f.state in ("copied", "done") for f in files)
+    all_done = all(f.state in ("done", "skipped") for f in files)
+    tags = reconcile(entry, reader.for_entry(entry), now) if entry.intended else None
+    tags_applied = tags is None or (tags.state == "applied" and not tags.uncertain)
+    if all_done and tags_applied:
+        state = "applied"
+    elif moved:
+        state = "partial"
+    else:
+        return entry.model_copy(
+            update={"state": "failed", "files": files, "error": INTERRUPTED, "completed_at": now}
+        )
+    return entry.model_copy(
+        update={
+            "state": state,
+            "files": files,
+            "effects": tags.effects if tags is not None and tags.state == "applied" else [],
+            "error": None if state == "applied" else "interrupted; recovered from the filesystem",
+            "completed_at": now,
+        }
+    )
 
 
 def _finish_recovered_undo(entry: JournalEntry, journal: Journal, store: ChangeSetStore) -> None:

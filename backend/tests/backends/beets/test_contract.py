@@ -54,6 +54,7 @@ def test_BEETS_IMPORT_11_contract_runs_for_declared_capabilities(beets_env: Beet
         import_decisions=True,
         files=True,
         remove=True,
+        move=True,
     )
     assert beets_env.backend(art=True).capabilities.art
     assert issubclass(TestBeetsBackendContract, BackendContract)

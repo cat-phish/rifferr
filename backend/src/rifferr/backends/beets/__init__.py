@@ -21,6 +21,7 @@ from beets.library import Album, Item, Library
 from beets.library.queries import parse_query_parts
 
 from rifferr.artstore import ArtStore
+from rifferr.backends import localfs
 from rifferr.backends.base import (
     RUN_MARKER,
     BackendCapabilities,
@@ -37,6 +38,7 @@ from rifferr.backends.base import (
 )
 from rifferr.backends.beets import apply as changes_apply
 from rifferr.backends.beets import config, templates
+from rifferr.backends.beets import moves as library_moves
 from rifferr.backends.beets.importer import (
     AppliedImportSession,
     DecidingImportSession,
@@ -46,9 +48,17 @@ from rifferr.backends.beets.importer import (
 from rifferr.backends.beets.snapshots import album_snapshot, field_value, parse_id
 from rifferr.backends.coerce import coerce_value
 from rifferr.beets_config import ConfigTrusted
-from rifferr.core.changeset import ApplyResult, ChangeProblem, ChangeSet, same_value
+from rifferr.core.changeset import (
+    ApplyResult,
+    ChangeProblem,
+    ChangeSet,
+    FileEffect,
+    FileMode,
+    same_value,
+)
 from rifferr.core.ids import new_ulid
 from rifferr.core.imports import ImportAction, ImportApplyError, ImportQuestion
+from rifferr.core.moves import ALL_ARTIFACTS, ArtifactRule, MovePlan, PathFormat
 from rifferr.core.profile import Profile
 from rifferr.core.selection import Selection
 from rifferr.core.snapshot import AlbumSnapshot, FieldValue, ItemSnapshot
@@ -65,6 +75,7 @@ CAPABILITIES = BackendCapabilities(
     files=True,
     remove=True,
     art=True,
+    move=True,
 )
 
 
@@ -76,6 +87,7 @@ READ_ONLY_CAPABILITIES = CAPABILITIES.model_copy(
         "import_decisions": False,
         "remove": False,
         "art": False,
+        "move": False,
     }
 )
 
@@ -337,6 +349,49 @@ class BeetsBackend:
             if problems:
                 raise ChangeSetRejected(problems)
             return changes_apply.apply(lib, changes, write_tags=self.write_tags, art=self.art)
+
+    # -- capability "move" (S-LIBRARY-MOVE) ---------------------------------------
+
+    def plan_moves(
+        self,
+        selection: Selection,
+        *,
+        mode: FileMode,
+        formats: Sequence[PathFormat] | None,
+        directory: Path | None,
+        artifacts: Sequence[ArtifactRule] = ALL_ARTIFACTS,
+    ) -> list[MovePlan]:
+        self._writable("move files")
+        albums = self.query(selection.model_copy(update={"scope": "album"}))
+        with self.library() as lib:
+            return library_moves.plan(
+                lib,
+                albums,
+                mode=mode,
+                formats=formats,
+                directory=directory,
+                artifacts=artifacts,
+            )
+
+    def copy_file(self, effect: FileEffect) -> FileEffect:
+        self._writable("move files")
+        return localfs.copy_file(effect)
+
+    def remove_source(self, effect: FileEffect) -> FileEffect:
+        self._writable("move files")
+        return localfs.remove_source(effect)
+
+    def set_paths(self, effects: Sequence[FileEffect]) -> None:
+        self._writable("move files")
+        with self.library() as lib:
+            library_moves.set_paths(lib, effects)
+
+    def file_sha256(self, path: str) -> str | None:
+        return localfs.sha256(path)
+
+    def reconcile_file(self, effect: FileEffect) -> FileEffect:
+        self._writable("move files")
+        return localfs.reconcile_file(effect)
 
     def remove_album(self, album_id: str, *, delete_files: bool) -> list[str]:
         """beets' ``Album.remove``: with ``delete`` it deletes the files and art and

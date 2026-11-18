@@ -23,7 +23,9 @@ from rifferr.core.changeset import (
     ChangeSetState,
     ChangeSource,
     FieldChange,
+    FileEffect,
     JournalEntry,
+    JournalState,
     ProposedTargetChange,
     TargetChange,
     TargetRef,
@@ -217,6 +219,7 @@ def proposed_event(changeset: ChangeSet) -> dict[str, JsonValue]:
         "changeset_id": changeset.id,
         "targets": [t.target.label() for t in changeset.targets],
         "field_changes": len(changeset.field_changes()),
+        "files": len(changeset.files),
     }
 
 
@@ -228,6 +231,8 @@ class ApplyOutcome:
     state: ChangeSetState
     entry: JournalEntry | None
     problems: list[ChangeProblem] = field(default_factory=list[ChangeProblem])
+    error: str | None = None
+    """A file apply stopped at a file (LIBRARY-MOVE-10); the album's lane fails."""
 
 
 def apply_changeset(
@@ -249,6 +254,18 @@ def apply_changeset(
     ``applied``, ``partially_applied`` or ``conflicted``; refused changes
     (``check`` problems) end ``rejected`` without touching the journal.
     """
+    if changeset.files:
+        return _apply_files(
+            changeset,
+            backend=backend,
+            journal=journal,
+            store=store,
+            new_id=new_id,
+            now=now,
+            emit=emit,
+            resolved_by=resolved_by,
+            undo_of=undo_of,
+        )
     total = len(changeset.field_changes())
     partial = accepted is not None and sorted(set(accepted)) != list(range(total))
     target = changeset.subset(accepted) if accepted is not None else changeset
@@ -324,6 +341,158 @@ def apply_changeset(
         },
     )
     return ApplyOutcome(state, entry)
+
+
+def _apply_files(
+    changeset: ChangeSet,
+    *,
+    backend: LibraryBackend,
+    journal: Journal,
+    store: ChangeSetStore,
+    new_id: Callable[[], str],
+    now: Callable[[], datetime],
+    emit: EmitChange,
+    resolved_by: str | None,
+    undo_of: str | None,
+) -> ApplyOutcome:
+    """A FileChangeSet, file by file through the journal (LIBRARY-MOVE-7..10, -6b).
+
+    Accepted or rejected as a whole (LIBRARY-MOVE-16). The journal lists every file as
+    ``planned`` before the first one is touched, and records each file's state after it.
+    Tag changes (``stamp``) are applied only once every file is ``done``.
+    """
+    problems = backend.check(changeset) if changeset.targets else []
+    if problems:
+        store.set_state(changeset.id, "rejected", resolved_by=resolved_by)
+        emit(
+            "changeset.rejected",
+            {
+                "changeset_id": changeset.id,
+                "problems": [f"{p.target.label()} {p.field}: {p.message}" for p in problems],
+            },
+        )
+        return ApplyOutcome("rejected", None, problems)
+    entry = JournalEntry(
+        id=new_id(),
+        profile=changeset.profile,
+        changeset_id=changeset.id,
+        run_id=changeset.run_id,
+        intended=changeset.targets,
+        files=changeset.files,
+        undo_of=undo_of,
+        created_at=now(),
+    )
+    journal.begin(entry)  # every file planned, durable before any is touched (LIBRARY-MOVE-7)
+    files = list(entry.files)
+    error: str | None = None
+    for i, effect in enumerate(files):
+        if effect.state in ("done", "skipped"):
+            continue
+        try:
+            files[i] = _apply_file(
+                effect, backend, lambda f, i=i: _record(journal, entry, files, i, f)
+            )
+        except Exception as exc:
+            error = f"{effect.src}: {exc}"
+            break
+    result = None
+    if error is None and changeset.targets:
+        try:
+            result = backend.apply(_dated(changeset, now()))
+        except Exception as exc:
+            error = f"{type(exc).__name__}: {exc}"
+    moved = any(f.state in ("copied", "done") for f in files)
+    final: JournalState
+    if error is None and (result is None or result.applied):
+        final = "applied"
+    else:
+        final = "partial" if moved or (result is not None and result.applied) else "failed"
+    if result is not None and not result.applied and error is None:
+        error = "tag changes conflicted after the files moved"
+    settled = entry.model_copy(
+        update={
+            "state": final,
+            "files": files,
+            "effects": result.effects if result is not None and result.applied else [],
+            "write_failures": result.write_failures if result is not None else [],
+            "conflicts": result.conflicts if result is not None else [],
+            "error": error,
+            "completed_at": now(),
+        }
+    )
+    journal.settle(settled)
+    states: dict[JournalState, ChangeSetState] = {
+        "applied": "applied",
+        "partial": "partially_applied",
+        "failed": "conflicted",
+    }
+    state = states[final]
+    store.set_state(changeset.id, state, resolved_by=resolved_by)
+    emit(
+        "changeset.applied" if final != "failed" else "changeset.conflicted",
+        {
+            "changeset_id": changeset.id,
+            "journal_id": settled.id,
+            "partial": final == "partial",
+            "files": cast(
+                list[JsonValue],
+                [{"src": f.src, "dst": f.dst, "state": f.state} for f in files],
+            ),
+            "error": error,
+        },
+    )
+    return ApplyOutcome(state, journal.get(settled.id), error=error)
+
+
+def _dated(changeset: ChangeSet, at: datetime) -> ChangeSet:
+    """The tag part of a FileChangeSet, ``stamp.field`` set to the apply date (-6b)."""
+    stamp = changeset.stamp
+    targets = changeset.targets
+    if stamp is not None:
+        today = at.astimezone().strftime(stamp.format)
+        targets = [
+            t.model_copy(
+                update={
+                    "changes": [
+                        c.model_copy(update={"new": today})
+                        if c.field == stamp.field and c.op == "set"
+                        else c
+                        for c in t.changes
+                    ]
+                }
+            )
+            for t in targets
+        ]
+    return changeset.model_copy(update={"files": [], "stamp": None, "targets": targets})
+
+
+def _record(
+    journal: Journal, entry: JournalEntry, files: list[FileEffect], i: int, effect: FileEffect
+) -> None:
+    files[i] = effect
+    journal.progress(entry.model_copy(update={"files": list(files)}))
+
+
+def _apply_file(
+    effect: FileEffect, backend: LibraryBackend, record: Callable[[FileEffect], None]
+) -> FileEffect:
+    """planned -> copied -> done for one file (LIBRARY-MOVE-8, -9). The library path changes
+    only once the destination is verified; a source is removed only after that."""
+    if effect.state == "planned":
+        effect = backend.copy_file(effect)  # verified destination, or an atomic rename
+        record(effect)
+    elif backend.file_sha256(effect.dst) != effect.sha256:  # undo of a copy: the other copy
+        raise ValueError(f"{effect.dst} is missing or changed; {effect.src} is kept")
+    if effect.tracked:
+        backend.set_paths([effect])
+    if effect.state == "copied":
+        effect = backend.remove_source(effect) if effect.mode == "move" else _done(effect)
+        record(effect)
+    return effect
+
+
+def _done(effect: FileEffect) -> FileEffect:
+    return effect.model_copy(update={"state": "done"})
 
 
 def reject_changeset(
