@@ -226,9 +226,8 @@ cover goes in an `Art` sub-folder (artifact rules).
 
 1. "24-bit" currently means any bit depth above 16 (author: "probably"). Revisit if a 20-bit or
    32-bit float release should be labelled differently.
-2. beets pads `$disc` in path formats (`Disc 01/`); foobar2000's `%discnumber%` gives `Disc 1/`.
-   Keep beets' padding, or add a built-in template function (e.g. `%unpad{}`) for the reference
-   pattern? (found while implementing, 2026-11-18)
+2. Resolved 2026-11-18 (author): match foobar2000 (`Disc 1/`). beets pads `$disc` in path
+   formats, so the reference pattern uses the built-in `%unpad{$disc}` (TEMPLATE-FUNCTIONS-7).
 3. LIBRARY-MOVE-5 says a conflicting album "goes to the review queue as a conflict". It currently
    fails the album's lane (RUN-5 `on_error`) with the conflicts in the run log; the review queue
    shows no move conflicts yet. Is a failed lane enough, or should conflicts be a review item

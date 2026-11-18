@@ -37,19 +37,25 @@ Used by S-LIBRARY-MOVE (path formats) and S-TAGSCRIPT (`set` templates, `when` i
 - TEMPLATE-FUNCTIONS-6: Built-in `%ifgreater{a,b,then,else}` MUST return `then` when `a` and `b`
   both parse as numbers and `a > b`, else `else` (empty when omitted). Non-numeric `a` or `b`
   returns `else`.
+- TEMPLATE-FUNCTIONS-7: Built-in `%unpad{n}` MUST strip leading zeros from a whole number
+  (`01` → `1`, `00` → `0`), so a path matches foobar2000's unpadded `%discnumber%`. Text that
+  isn't a whole number MUST come back unchanged (added 2026-11-18, author: S-LIBRARY-MOVE
+  question 2).
 
 ## Interfaces
 ```toml
 [project.entry-points."rifferr.template_functions"]
 ifgreater = "rifferr.tagscript.functions:ifgreater"
+unpad = "rifferr.tagscript.functions:unpad"
 ```
 ```python
 def ifgreater(a: str, b: str, then: str = "", else_: str = "") -> str: ...
+def unpad(n: str) -> str: ...
 ```
 
 ## Examples
-- `%ifgreater{$disctotal,1,Disc $disc/}` with `disctotal=2, disc=1` → `Disc 1/`; with
-  `disctotal=1` → empty.
+- `%ifgreater{$disctotal,1,Disc %unpad{$disc}/}` with `disctotal=2, disc=1` → `Disc 1/` (beets
+  pads `$disc` to `01`); with `disctotal=1` → empty.
 - `%ifgreater{x,1,yes,no}` → `no`.
 
 ## Extensibility
@@ -71,4 +77,5 @@ Resolved: built-ins live in `rifferr.tagscript.functions` (pure layer); the beet
 ## Tasks
 - [x] Rifferr beets plugin registering `rifferr.template_functions` (TEMPLATE-FUNCTIONS-1..4).
 - [x] `ifgreater` built-in with Hypothesis tests.
+- [x] `unpad` built-in with Hypothesis tests (TEMPLATE-FUNCTIONS-7).
 - [x] Contract test: same function result in-process and through the `beet` CLI.

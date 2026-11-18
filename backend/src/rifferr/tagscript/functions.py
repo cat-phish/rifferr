@@ -23,3 +23,12 @@ def ifgreater(a: str, b: str, then: str = "", else_: str = "") -> str:
     (TEMPLATE-FUNCTIONS-6)."""
     x, y = _number(a), _number(b)
     return then if x is not None and y is not None and x > y else else_
+
+
+def unpad(n: str) -> str:
+    """``%unpad{n}``: a whole number without leading zeros, else ``n`` unchanged
+    (TEMPLATE-FUNCTIONS-7). beets pads ``$disc`` and ``$track`` in paths."""
+    text = n.strip()
+    if not text.isascii() or not text.isdigit():
+        return n
+    return text.lstrip("0") or "0"

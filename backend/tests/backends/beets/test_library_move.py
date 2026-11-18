@@ -26,12 +26,12 @@ RUN = "01RUNLIBRARYMOVE000000001"
 REGULAR = (
     "%the{$albumartist}/%if{$original_year,($original_year) }$album "
     "[%if{%ifgreater{$bitdepth,16,1},24-bit }$format]/"
-    "%ifgreater{$disctotal,1,Disc $disc/}$track. $title"
+    "%ifgreater{$disctotal,1,Disc %unpad{$disc}/}$track. $title"
 )
 SPLIT = (
     "%the{$albumartist}/$album%if{$original_year, ($original_year)} "
     "[%if{%ifgreater{$bitdepth,16,1},24-bit }$format]/"
-    "%ifgreater{$disctotal,1,Disc $disc/}$track. $title"
+    "%ifgreater{$disctotal,1,Disc %unpad{$disc}/}$track. $title"
 )
 CONFIG = f"""\
 plugins: [the]
@@ -145,8 +145,8 @@ def test_LIBRARY_MOVE_3_disc_folder_only_for_multi_disc(env: Env) -> None:
     env.set(disctotal=2)  # beets reads album-level fields from the album in path formats
     env.item(disctotal=2, disc=1)
     assert env.rel(env.plan())[0] == (
-        # beets pads $disc in paths (foobar2000's %discnumber% isn't): S-LIBRARY-MOVE question 2
-        "Beatles, The/(1969) Abbey Road [FLAC]/Disc 01/01. Come Together.flac"
+        # beets pads $disc in paths; %unpad matches foobar2000's %discnumber% (question 2)
+        "Beatles, The/(1969) Abbey Road [FLAC]/Disc 1/01. Come Together.flac"
     )
 
 
