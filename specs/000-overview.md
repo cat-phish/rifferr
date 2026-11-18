@@ -42,6 +42,8 @@ A row gets a link once its spec file exists. Build order: [docs/roadmap.md](../d
 | [S-SUBWORKFLOW](steps/S-SUBWORKFLOW.md) | `workflow` (call another workflow) step | 3 | M2 | Implemented |
 | S-COVERS-SEARCH | `covers.search` step and provider protocol | 6 | M3 | Implemented |
 | S-AI-TAG | `ai.tag` step | 7 | M4 | Planned |
+| [S-LIBRARY-MOVE](steps/S-LIBRARY-MOVE.md) | `library.move` step: journaled rename, move and copy | 2, 3, 8 | M5 | Draft |
+| [C-TEMPLATE-FUNCTIONS](core/C-TEMPLATE-FUNCTIONS.md) | Rifferr template functions in beets templates | 1, 4 | M5 | Draft |
 | [F-DEV-TOOLING](features/F-DEV-TOOLING.md) | Project skeleton, checks, CI, fixtures | 9, 10 | M0 | Implemented |
 | [F-SECURITY](features/F-SECURITY.md) | Host/Origin checks, local token, remote auth, workflow trust | 8 | M0 | Implemented |
 | [F-API](features/F-API.md) | HTTP API and SSE event stream | 8 | M0 | Implemented |

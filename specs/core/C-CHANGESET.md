@@ -166,7 +166,7 @@ ChangeSet (CHANGESET-4), so the step proposes nothing and the run doesn't pause.
 - Merging two pending ChangeSets that touch the same field (the second conflicts once the first applies).
 
 ## Open questions
-- None yet.
+- S-LIBRARY-MOVE (Draft, 2026-11-18) proposes a `files` change kind and narrowing the file-operation non-goal to deletes. Decide when approving that spec.
 
 ## Tasks
 - [x] models in `rifferr.core.changeset` + published proposal schema

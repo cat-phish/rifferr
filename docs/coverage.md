@@ -16,19 +16,19 @@ workflow gains a capability (agent loop step 6).
 | 6.1a | Flag albums that look like an EP by track count and running time (≤ 6 tracks, < 30 min) for review | — (needs album track count and length in conditions, B-044) | — | Not yet |
 | 6.2 | Search for "EP (EP)" and "(EP) (EP)" | Not needed: the script's guards never add a second suffix, and `idempotence: fail` refuses a script that would | S-TAGSCRIPT | Done (M1) |
 | 6.3 | Compilations get (Anthology) or (Compilation) if appropriate | `suffixes/compilations` (in `release-suffixes.yaml`) / `tags.script` with `examples/scripts/compilation.yaml` (`apply: review`); Anthology is chosen by rejecting and editing in the tag grid | S-TAGSCRIPT, F-REVIEW-QUEUE | Done (M1) |
-| 7 | Artist clean-up: names, Various Artists → Splits/Collabs/Soundtracks, album artists split by `;` | — | — | Not yet (M5) |
+| 7 | Artist clean-up: names, Various Artists → Splits/Collabs/Soundtracks, album artists split by `;` | Planned (2026-11-18): a `tags.script` proposes `albumkind`; two or more album artists → review with choices split / collab / soundtrack / compilation; MusicBrainz `albumtypes` soundtrack or compilation → proposed directly | S-TAGSCRIPT, S-REVIEW | Not yet (M5) |
 | 8 | Dates: ORIGINALDATE, ORIGINALYEAR, DATE, RELEASEDATE | — (copy actions exist; the rules and manual cases aren't written yet) | S-TAGSCRIPT | Not yet (M5) |
 | 9 | Album Artist → Album Artists, splits and collabs | — | — | Not yet (M5) |
 | 10 | Splits and collabs carry the artists in the album name | — | — | Not yet (M5) |
 | 11 | Replace "/", ":", "?" in album, title, artist, album artist | — (a `replace` action can do it) | S-TAGSCRIPT | Not yet (M5) |
 | 12 | Singles, EPs, Anthologies, Compilations, 24-bit and Vinyl in names and tags | Singles, EPs, Compilations: rows 6.1, 6.3. Vinyl: B-045. 24-bit: B-046 | S-TAGSCRIPT | Partly (M1) |
-| 13 | DATE ADDED tag as YYYY-MM-DD | — | — | Not yet (M5) |
+| 13 | DATE ADDED tag as YYYY-MM-DD | Planned: `library.move` `stamp: { field: date_added }`, the day the album enters the library | S-LIBRARY-MOVE (Draft) | Not yet (M5) |
 | 14 | Genres: copy to Sub Genre, resolve into broad categories | — (AI genre step) | S-AI-TAG | Planned (M4) |
-| 15 | Rename and move files with foobar2000 | — | — | Not yet (M5) |
+| 15 | Rename and move files with foobar2000 | Planned: `library.move` with beets `paths:` equivalent of the author's foobar2000 pattern | S-LIBRARY-MOVE, C-TEMPLATE-FUNCTIONS (Draft) | Not yet (M5) |
 | 16 | ReplayGain (album and track) | — | — | Not yet (M5) |
-| 17 | "The" artist scripts | — | — | Not yet (M5) |
-| 18 | Rename Collaboration, Splits, Compilations, Soundtracks folders | — | — | Not yet (M5) |
-| 19 | Copy files into the library | — | — | Not yet (M5) |
+| 17 | "The" artist scripts | Planned: folder names only, via the beets `the` plugin (`%the{$albumartist}`) in path formats; tags unchanged | S-LIBRARY-MOVE (Draft) | Not yet (M5) |
+| 18 | Rename Collaboration, Splits, Compilations, Soundtracks folders | Planned: query-specific beets `paths:` entries used by `library.move` (pattern still open, S-LIBRARY-MOVE Open question 1) | S-LIBRARY-MOVE (Draft) | Not yet (M5) |
+| 19 | Copy files into the library | Planned: `library.move` (`mode: copy`), journaled, undoable | S-LIBRARY-MOVE (Draft) | Not yet (M5) |
 | 20 | MusicBee: scan for new files, add to playlists | — (outside Rifferr; a `shell` step or integration could trigger a scan) | — | Not yet |
 | 21 | iPod sync with ", The" playlists | — (outside Rifferr) | — | Not applicable |
 
