@@ -36,7 +36,7 @@ from rifferr.backends.base import (
     TemplateError,
 )
 from rifferr.backends.beets import apply as changes_apply
-from rifferr.backends.beets import config
+from rifferr.backends.beets import config, templates
 from rifferr.backends.beets.importer import (
     AppliedImportSession,
     DecidingImportSession,
@@ -199,9 +199,13 @@ class BeetsBackend:
         with self.library() as lib:
             obj = _overlay(_load(lib, target.id), target)
             try:
-                return obj.evaluate_template(template)
+                with templates.capture() as failures:
+                    out = obj.evaluate_template(template)
             except Exception as exc:  # beets raises various errors for broken templates
                 raise TemplateError(f"template {template!r}: {exc}") from exc
+            if failures:  # beets inlines function errors; surface them (TEMPLATE-FUNCTIONS-5)
+                raise TemplateError(f"template {template!r}: {failures[0]}")
+            return out
 
     def coerce(self, field: str, value: FieldValue) -> FieldValue:
         """By the field's beets type; flexible attributes without a type stay
@@ -314,7 +318,9 @@ class BeetsBackend:
             if part.endswith(","):
                 start = True
         # "--": a query part starting with "-" is a query, never a beet option.
-        return [sys.executable, "-m", "beets", subcommand, *args, "--", *grouped]
+        # -p: the same plugins as in-process, including rifferr (TEMPLATE-FUNCTIONS-3).
+        plugins = ",".join(config.plugin_names())
+        return [sys.executable, "-m", "beets", "-p", plugins, subcommand, *args, "--", *grouped]
 
     def check(self, changes: ChangeSet) -> list[ChangeProblem]:
         with self.library() as lib:

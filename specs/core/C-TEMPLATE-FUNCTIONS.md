@@ -1,5 +1,5 @@
 # C-TEMPLATE-FUNCTIONS: Rifferr template functions in beets templates
-Status: Draft
+Status: Implemented
 Milestone: M5
 
 ## Context
@@ -22,15 +22,18 @@ Used by S-LIBRARY-MOVE (path formats) and S-TAGSCRIPT (`set` templates, `when` i
   alike.
 - TEMPLATE-FUNCTIONS-2: Registration MUST go through beets' public plugin mechanism
   (`BeetsPlugin.template_funcs`), via one Rifferr beets plugin module inside
-  `rifferr.backends.beets`, loaded by name in the profile's beets config. beets is not patched.
+  `rifferr.backends.beets`, loaded by name (`rifferr`) as a beets plugin. The worker adds it to
+  the plugin list when the profile's beets config doesn't list it. beets is not patched; beets
+  imports plugins as `beetsplug.<name>`, so the package ships a `beetsplug/rifferr` shim.
 - TEMPLATE-FUNCTIONS-3: For `beets.command` subprocesses, the same plugin MUST be importable by
-  the `beet` CLI (the profile's beets config lists it), so path formats evaluate identically
-  in-process and in the CLI.
+  the `beet` CLI, which gets the worker's plugin list with `-p`, so path formats evaluate
+  identically in-process and in the CLI.
 - TEMPLATE-FUNCTIONS-4: A function name that collides with a beets built-in or another plugin's
   function MUST fail worker startup with a message naming both providers.
 - TEMPLATE-FUNCTIONS-5: A template function MUST be a pure function of its string arguments:
   no filesystem, network or library access. An exception inside it MUST surface as a template
-  error naming the function (TAGSCRIPT-15 for scripts; LIBRARY-MOVE-5 for path planning).
+  error naming the function (beets itself inlines `<message>` into the output; the backend
+  raises instead) (TAGSCRIPT-15 for scripts; LIBRARY-MOVE-5 for path planning).
 - TEMPLATE-FUNCTIONS-6: Built-in `%ifgreater{a,b,then,else}` MUST return `then` when `a` and `b`
   both parse as numbers and `a > b`, else `else` (empty when omitted). Non-numeric `a` or `b`
   returns `else`.
@@ -38,7 +41,7 @@ Used by S-LIBRARY-MOVE (path formats) and S-TAGSCRIPT (`set` templates, `when` i
 ## Interfaces
 ```toml
 [project.entry-points."rifferr.template_functions"]
-ifgreater = "rifferr.templates.builtin:ifgreater"
+ifgreater = "rifferr.tagscript.functions:ifgreater"
 ```
 ```python
 def ifgreater(a: str, b: str, then: str = "", else_: str = "") -> str: ...
@@ -62,10 +65,10 @@ be defined from workflow or config text (that remains the `inline` plugin, behin
 - Template functions with library or filesystem access.
 
 ## Open questions
-1. Module location: `rifferr.templates` is outside the layered packages in CLAUDE.md's layout.
-   Put built-ins in `rifferr.tagscript.functions` instead?
+Resolved: built-ins live in `rifferr.tagscript.functions` (pure layer); the beets plugin in
+`rifferr.backends.beets.templates`.
 
 ## Tasks
-- [ ] Rifferr beets plugin registering `rifferr.template_functions` (TEMPLATE-FUNCTIONS-1..4).
-- [ ] `ifgreater` built-in with Hypothesis tests.
-- [ ] Contract test: same function result in-process and through the `beet` CLI.
+- [x] Rifferr beets plugin registering `rifferr.template_functions` (TEMPLATE-FUNCTIONS-1..4).
+- [x] `ifgreater` built-in with Hypothesis tests.
+- [x] Contract test: same function result in-process and through the `beet` CLI.

@@ -58,6 +58,13 @@ local = "rifferr.covers.providers:LocalFiles"
 [project.entry-points."rifferr.backends"]
 beets = "rifferr.backends.beets:from_profile"
 
+[project.entry-points."rifferr.template_functions"]
+ifgreater = "rifferr.tagscript.functions:ifgreater"
+
+[tool.uv.build-backend]
+# beets finds plugins as beetsplug.<name>: ship the rifferr plugin shim (C-TEMPLATE-FUNCTIONS).
+module-name = ["rifferr", "beetsplug.rifferr"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"
