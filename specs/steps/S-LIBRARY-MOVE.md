@@ -176,15 +176,15 @@ The author's foobar2000 pattern (2026-11-18), for the profile's beets config:
 
 Regular albums are sorted by original year inside the artist folder; splits and compilations
 put the year after the album name (author, 2026-11-18). Proposed beets `paths:` (needs the `the`
-plugin and the `ifgreater` template function, C-TEMPLATE-FUNCTIONS; `albumkind` is the
+plugin and the `ifgreater` and `unpad` template functions, C-TEMPLATE-FUNCTIONS; `albumkind` is the
 flexible attribute the classification rules set):
 
 ```yaml
 plugins: [the]
 the: { a: no, format: "{0}, {1}" }
 paths:
-  "albumkind::^(split|compilation)$": "%the{$albumartist}/$album%if{$original_year, ($original_year)} [%if{%ifgreater{$bitdepth,16,1}, 24-bit }$format]/%ifgreater{$disctotal,1,Disc $disc/}$track. $title"
-  default: "%the{$albumartist}/%if{$original_year,($original_year) }$album [%if{%ifgreater{$bitdepth,16,1},24-bit }$format]/%ifgreater{$disctotal,1,Disc $disc/}$track. $title"
+  "albumkind::^(split|compilation)$": "%the{$albumartist}/$album%if{$original_year, ($original_year)} [%if{%ifgreater{$bitdepth,16,1}, 24-bit }$format]/%ifgreater{$disctotal,1,Disc %unpad{$disc}/}$track. $title"
+  default: "%the{$albumartist}/%if{$original_year,($original_year) }$album [%if{%ifgreater{$bitdepth,16,1},24-bit }$format]/%ifgreater{$disctotal,1,Disc %unpad{$disc}/}$track. $title"
 ```
 
 - `%the{}` changes folder names only; tags keep "The Beatles" (decision 2026-11-18).
@@ -254,5 +254,5 @@ cover goes in an `Art` sub-folder (artifact rules).
 - [x] Move conflicts in the review queue (LIBRARY-MOVE-5a): engine, worker retry job, API, UI.
 - [ ] LIBRARY-MOVE-6a: safety report notes `copyartifacts`/`copyartifacts3` in the profile's beets config.
 - [ ] LIBRARY-MOVE-15: "force" for one changed file (engine refuses; review-queue control missing).
-- [ ] Review queue: FileChangeSet view (LIBRARY-MOVE-16) and Playwright test.
-- [ ] `examples/workflows/foobar-style.yaml` and `docs/coverage.md` rows 5, 15, 17, 18, 19.
+- [x] Review queue: FileChangeSet view (LIBRARY-MOVE-16) and Playwright test.
+- [x] `examples/workflows/foobar-style.yaml` and `docs/coverage.md` rows 5, 13, 15, 17, 18, 19.

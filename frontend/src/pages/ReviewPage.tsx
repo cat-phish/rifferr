@@ -19,6 +19,7 @@ import { Link, useSearchParams } from "react-router";
 import { api, ok } from "../api/client";
 import { CoverPicker } from "../components/CoverPicker";
 import { CleanupDecisionView } from "../components/CleanupDecisionView";
+import { FileChangeSetView } from "../components/FileChangeSetView";
 import { MoveConflictView } from "../components/MoveConflictView";
 import { ImportDecisionView } from "../components/ImportDecisionView";
 import type { GateAlbum, QueueItem, ReviewGate } from "../api/types";
@@ -312,6 +313,25 @@ function RunCard({ group, focus }: { group: RunGroup; focus: string | null }) {
                 profile={item.cover_review.profile}
                 mode={{ kind: "review", review: item.cover_review }}
               />
+            </ItemCard>
+          ) : item.kind === "changeset" &&
+            item.changeset &&
+            (item.changeset.files?.length ?? 0) > 0 &&
+            item.state === "proposed" ? (
+            <ItemCard
+              key={item.id}
+              item={item}
+              focused={focus === item.id}
+              title={
+                <Group gap="xs">
+                  <Text fw={500}>Library move</Text>
+                  <Text size="sm" c="dimmed">
+                    from step {item.step_id}
+                  </Text>
+                </Group>
+              }
+            >
+              <FileChangeSetView id={item.id} changeset={item.changeset} />
             </ItemCard>
           ) : (
             <ChangeSetCard key={item.id} item={item} focused={focus === item.id} />

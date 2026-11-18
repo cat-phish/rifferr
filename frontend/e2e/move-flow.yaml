@@ -1,0 +1,23 @@
+# Workflow for the library move e2e test (S-LIBRARY-MOVE LIBRARY-MOVE-16): import an album
+# where it is, then move it into another folder after review.
+name: move-flow
+description: Import in place, then move into the library after review.
+vars:
+  inbox:
+    description: Folder with an album to import
+  library:
+    description: Folder to move the album into
+steps:
+  - id: import
+    uses: beets.import
+    with:
+      path: "{{ vars.inbox }}"
+      set: { albumartist: Move Artist, album: Move Sessions }
+      options: { copy: false, move: false, duplicate_action: keep }
+  - id: into-library
+    uses: library.move
+    with:
+      directory: "{{ vars.library }}"
+      paths:
+        - { query: default, format: "$albumartist/$album/$track. $title" }
+      stamp: { field: date_added }

@@ -11,10 +11,14 @@
 # or one album:
 #   rifferr run foobar-style --profile main --input "/path/to/inbox/Artist - Album"
 name: foobar-style
-description: Import new albums with beets, fix release-type suffixes, find missing covers.
+description: >-
+  Import new albums with beets, fix release-type suffixes, find missing covers, clean up,
+  then move each album into the library after review.
 vars:
   inbox:
     description: Folder with new albums to import (the checklist's "Stage 1, unsorted")
+  library:
+    description: The music library folder albums move into once reviewed
 # Manual runs without --input import the whole inbox.
 input: "{{ vars.inbox }}"
 on:
@@ -57,3 +61,43 @@ steps:
       # A manual run's input is the whole inbox, which must stay; the album folder of a
       # watch run is left empty instead (BACKLOG B-055).
       remove_root: false
+  # Checklist lines 5, 13, 15, 17, 18, 19: rename and move each album into the library.
+  # Albums are imported where they are (set `import: {copy: no, move: no}` in the
+  # profile's beets config) and only move once a person accepts the move in the review
+  # queue (`apply` defaults to review): one decision per album, showing the old and new
+  # folder and every file's old and new name. Moves are journaled and undoable; a file
+  # is never overwritten, and an album whose destination is taken waits in the queue as
+  # a move conflict to retry once it's fixed.
+  #
+  # Names come from beets path formats, the equivalent of the author's foobar2000
+  # pattern. `%the{}` needs the beets `the` plugin in the profile's beets config:
+  #   plugins: [the]
+  #   the: { a: no, format: "{0}, {1}" }
+  # `%ifgreater` and `%unpad` are Rifferr's built-in template functions. `albumkind` is
+  # the flexible attribute the classification rules set (checklist line 7, not yet).
+  - id: into-library
+    uses: library.move
+    with:
+      directory: "{{ vars.library }}"
+      paths:
+        # Splits and compilations: the year after the album name.
+        - query: "albumkind::^(split|compilation)$"
+          format: >-
+            %the{$albumartist}/$album%if{$original_year, ($original_year)}
+            [%if{%ifgreater{$bitdepth,16,1},24-bit }$format]/%ifgreater{$disctotal,1,Disc
+            %unpad{$disc}/}$track. $title
+        # Everything else: sorted by original year inside the artist folder, e.g.
+        # "Beatles, The/(1969) Abbey Road [FLAC]/01. Come Together.flac".
+        - query: default
+          format: >-
+            %the{$albumartist}/%if{$original_year,($original_year) }$album
+            [%if{%ifgreater{$bitdepth,16,1},24-bit }$format]/%ifgreater{$disctotal,1,Disc
+            %unpad{$disc}/}$track. $title
+      # DATE ADDED (line 13): the day the album enters the library.
+      stamp: { field: date_added }
+      # Images other than the cover go in an Art sub-folder; everything else left after
+      # cleanup (rip logs, cue sheets) keeps its place in the album folder.
+      artifacts:
+        - match: ["*.jpg", "*.jpeg", "*.png", "*.gif", "*.webp", "*.tif", "*.tiff", "*.bmp"]
+          to: Art
+        - "*"

@@ -16,6 +16,7 @@ from rifferr.backends.localfs import TMP_SUFFIX
 from rifferr.core.changeset import ChangeSet, ChangeSource, JournalEntry
 from rifferr.core.moves import ArtifactRule, MovePlan, PathFormat
 from rifferr.core.selection import Selection
+from rifferr.core.workflow import load_workflow
 from rifferr.engine import InMemoryJournal
 from rifferr.engine.changesets import ApplyOutcome, InMemoryChangeSetStore, apply_changeset
 from rifferr.engine.recovery import recover_pending
@@ -163,6 +164,21 @@ def test_LIBRARY_MOVE_3_query_specific_format_for_splits(env: Env) -> None:
 def test_LIBRARY_MOVE_2_step_paths_override_profile_paths(env: Env) -> None:
     plan = env.plan(formats=[PathFormat(query="default", format="$album/$title")])
     assert env.rel(plan)[0] == "Abbey Road/Come Together.flac"
+
+
+EXAMPLE = Path(__file__).parents[4] / "examples" / "workflows" / "foobar-style.yaml"
+
+
+def test_LIBRARY_MOVE_3_reference_workflow_paths_match_the_pattern(env: Env) -> None:
+    workflow, _ = load_workflow(EXAMPLE.read_text(), str(EXAMPLE))
+    [move] = [s for s in workflow.steps if s.uses == "library.move"]
+    formats = [PathFormat.model_validate(p) for p in move.with_["paths"]]
+    assert [f.format for f in formats] == [SPLIT, REGULAR]
+    env.set(disctotal=2)
+    env.item(disctotal=2, disc=1)
+    assert env.rel(env.plan(formats=formats))[0] == (
+        "Beatles, The/(1969) Abbey Road [FLAC]/Disc 1/01. Come Together.flac"
+    )
 
 
 def test_LIBRARY_MOVE_3_beets_replace_rules_apply(env: Env) -> None:
