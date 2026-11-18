@@ -1,5 +1,5 @@
 # S-LIBRARY-MOVE: `library.move` step (journaled rename, move and copy)
-Status: Draft
+Status: Approved
 Milestone: M5
 
 ## Context
