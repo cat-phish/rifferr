@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -136,3 +137,31 @@ async def test_LIBRARY_MOVE_5a_cancelling_the_run_cancels_its_conflicts(h: MoveH
     stored = h.moves.get(conflict_id)
     assert stored is not None
     assert stored.state == "cancelled"
+
+
+async def test_LIBRARY_MOVE_15_undo_reports_changed_files_and_force_undoes_them(
+    h: MoveHarness,
+) -> None:
+    h.beatles()
+    del h.backend.fs[TAKEN]
+    h.submit(MOVE)
+    await h.until(lambda: h.state() == "succeeded")
+    assert h.path() == TAKEN
+    h.backend.fs[TAKEN] = b"retagged in the library"
+
+    async def finished(job_id: str) -> Any:
+        await h.until(
+            lambda: (
+                (j := h.db.job(job_id)) is not None and j.state != "queued" and j.state != "running"
+            )
+        )
+        return h.db.job(job_id)
+
+    refused = await finished(await h.supervisor.undo(run_id=RUN, by="ui"))
+    assert refused.state == "failed"
+    assert refused.result["changed_files"] == [TAKEN]
+    assert h.path() == TAKEN
+    done = await finished(await h.supervisor.undo(run_id=RUN, by="ui", force=[TAKEN]))
+    assert done.state == "succeeded", done.result
+    assert h.path().startswith(SRC)
+    assert h.backend.fs[h.path()] == b"retagged in the library"

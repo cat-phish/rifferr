@@ -99,8 +99,8 @@ class BackendCapabilities(BaseModel):
     an album's cover when a ChangeSet changes it (S-COVERS-SEARCH COVERS-SEARCH-16). The
     image must be in the profile's art store; the old art is copied there first."""
     move: bool = False
-    """``plan_moves``, ``copy_file``, ``remove_source``, ``set_paths``, ``file_sha256`` and
-    ``reconcile_file`` move or copy an album's files (S-LIBRARY-MOVE)."""
+    """``plan_moves``, ``copy_file``, ``remove_source``, ``set_paths``, ``file_sha256``,
+    ``file_stat`` and ``reconcile_file`` move or copy an album's files (S-LIBRARY-MOVE)."""
 
     @staticmethod
     def display_name(field: str) -> str:
@@ -322,6 +322,10 @@ class LibraryBackend(Protocol):
 
     def file_sha256(self, path: str) -> str | None:
         """The file's SHA-256, or ``None`` if it doesn't exist."""
+        ...
+
+    def file_stat(self, path: str) -> tuple[int, str] | None:
+        """The file's size and SHA-256, or ``None`` if it doesn't exist."""
         ...
 
     def reconcile_file(self, effect: FileEffect) -> FileEffect:

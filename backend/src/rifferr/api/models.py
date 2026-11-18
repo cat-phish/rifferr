@@ -310,6 +310,21 @@ class JobQueued(_Model):
     job_id: str
 
 
+class UndoBody(_Model):
+    """Optional body of an undo request (LIBRARY-MOVE-15)."""
+
+    force: list[Annotated[str, StringConstraints(min_length=1, max_length=4096)]] = Field(
+        default_factory=list,
+        max_length=10_000,
+        description="Library files to undo although they changed since they were moved; "
+        "the undo report's changed_files names them",
+    )
+
+
+#: An undo request without a body undoes as before: nothing forced.
+NO_UNDO_BODY = UndoBody()
+
+
 # -- review queue (F-REVIEW-QUEUE) ------------------------------------------------------
 
 

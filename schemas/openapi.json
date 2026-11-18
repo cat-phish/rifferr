@@ -5216,6 +5216,25 @@
         "title": "TrustResult",
         "type": "object"
       },
+      "UndoBody": {
+        "additionalProperties": false,
+        "description": "Optional body of an undo request (LIBRARY-MOVE-15).",
+        "properties": {
+          "force": {
+            "description": "Library files to undo although they changed since they were moved; the undo report's changed_files names them",
+            "items": {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 10000,
+            "title": "Force",
+            "type": "array"
+          }
+        },
+        "title": "UndoBody",
+        "type": "object"
+      },
       "ValidateResult": {
         "additionalProperties": false,
         "properties": {
@@ -8225,6 +8244,18 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UndoBody",
+                "default": {
+                  "force": []
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "202": {
             "content": {
@@ -9725,7 +9756,7 @@
     },
     "/api/runs/{run_id}/undo": {
       "post": {
-        "description": "Queue the undo of the run's applied changes, newest first (REVIEW-QUEUE-8,\nJOURNAL-6). The result arrives as ``job.finished`` on the run's stream.",
+        "description": "Queue the undo of the run's applied changes, newest first (REVIEW-QUEUE-8,\nJOURNAL-6). The result arrives as ``job.finished`` on the run's stream. ``force``\nnames moved files to undo although they changed (LIBRARY-MOVE-15).",
         "operationId": "undo_run_api_runs__run_id__undo_post",
         "parameters": [
           {
@@ -9738,6 +9769,18 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UndoBody",
+                "default": {
+                  "force": []
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "202": {
             "content": {

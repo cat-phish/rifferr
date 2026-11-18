@@ -1,5 +1,5 @@
 # S-LIBRARY-MOVE: `library.move` step (journaled rename, move and copy)
-Status: Approved
+Status: Implemented
 Milestone: M5
 
 ## Context
@@ -85,7 +85,10 @@ effect when this spec is Approved:
   folder. Files matching no rule stay behind for `files.cleanup`.
 - LIBRARY-MOVE-6a: Because the step moves files itself, beets `move`/import hooks (e.g. the
   third-party `copyartifacts3` plugin) do not fire. `artifacts` replaces that plugin for this
-  step; the safety report notes when the profile's beets config enables it.
+  step; the safety report notes when the profile's beets config enables it. The safety report
+  MUST list every `library.move` step as a `file_move` finding naming the mode, the destination
+  directory and the artifact rules, plus one `file_move` note per `copyartifacts` /
+  `copyartifacts3` plugin the profile's beets config enables (including `include:` files).
 - LIBRARY-MOVE-6b: With `stamp`, the FileChangeSet MUST also carry an album-level tag change
   setting `stamp.field` to the apply date in `stamp.format`. It is journaled and undone with the
   moves, and written only once the album's files are all `done`.
@@ -119,8 +122,13 @@ effect when this spec is Approved:
 - LIBRARY-MOVE-14: Undo of a `copy` MUST remove the library copy only if the original still
   exists with a matching hash; it then restores the library path to the original. Undo never
   deletes a file that is the only copy.
-- LIBRARY-MOVE-15: Undo MUST refuse (409, naming the file) when a destination file changed since
-  the move (hash differs), unless the user forces it for that file in the review queue.
+- LIBRARY-MOVE-15: Undo MUST refuse when a destination file changed since the move (hash
+  differs), unless the user forces it for that file. The refused undo job fails and its result
+  names the files in `changed_files` (undo is a job, so not an HTTP 409; amended 2026-11-18).
+  The run page's undo report (REVIEW-QUEUE-15) lists them with a checkbox each and "Undo
+  anyway", which queues the undo again with `{force: [paths]}` (also accepted by the journal
+  entry undo route). A forced moved file goes back as it is now; for a forced copy the changed
+  library copy is removed only when the unchanged original is still there (LIBRARY-MOVE-14).
 
 ### Review
 - LIBRARY-MOVE-16: In the review queue, a FileChangeSet MUST show per album the old and new
@@ -147,6 +155,7 @@ class LibraryBackend(Protocol):       # capability "move" (C-BACKEND amendment)
     def remove_source(self, effect: FileEffect) -> FileEffect: ...  # copied -> done, dst verified
     def set_paths(self, effects: Sequence[FileEffect]) -> None: ... # library path update only
     def file_sha256(self, path: str) -> str | None: ...
+    def file_stat(self, path: str) -> tuple[int, str] | None: ...   # size, sha256 (LIBRARY-MOVE-15)
     def reconcile_file(self, effect: FileEffect) -> FileEffect: ... # recovery, removes temp files
 
 class MovePlan(BaseModel):            # one album
@@ -252,7 +261,7 @@ cover goes in an `Art` sub-folder (artifact rules).
 - [x] FakeBackend `move` capability on an in-memory filesystem.
 - [x] Step, apply path, recovery, undo; tests per behavior ID.
 - [x] Move conflicts in the review queue (LIBRARY-MOVE-5a): engine, worker retry job, API, UI.
-- [ ] LIBRARY-MOVE-6a: safety report notes `copyartifacts`/`copyartifacts3` in the profile's beets config.
-- [ ] LIBRARY-MOVE-15: "force" for one changed file (engine refuses; review-queue control missing).
+- [x] LIBRARY-MOVE-6a: safety report notes `copyartifacts`/`copyartifacts3` in the profile's beets config.
+- [x] LIBRARY-MOVE-15: "force" for changed files (engine, undo routes, run page control).
 - [x] Review queue: FileChangeSet view (LIBRARY-MOVE-16) and Playwright test.
 - [x] `examples/workflows/foobar-style.yaml` and `docs/coverage.md` rows 5, 13, 15, 17, 18, 19.

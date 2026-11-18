@@ -894,6 +894,9 @@ class Worker:
             now=lambda: datetime.now(UTC),
             emitter_for=self._changeset_emitter,
             by=by if isinstance(by, str) else None,
+            force=frozenset(f for f in forced if isinstance(f, str))
+            if isinstance(forced := payload.get("force"), list)
+            else frozenset(),
         )
         entry_id, run_id = payload.get("entry_id"), payload.get("run_id")
         try:
@@ -907,6 +910,8 @@ class Worker:
                     "problems": [
                         f"{p.target.label()} {p.field}: {p.message}" for p in one.problems
                     ],
+                    "changed_files": list(one.changed_files),
+                    "skipped_files": list(one.skipped_files),
                 }
             elif isinstance(run_id, str):
                 result = undo_run(run_id, ctx).as_json()

@@ -745,6 +745,9 @@ class FakeBackend:
         info = self._stat(path)
         return None if info is None else info[1]
 
+    def file_stat(self, path: str) -> tuple[int, str] | None:
+        return self._stat(path)
+
     def reconcile_file(self, effect: FileEffect) -> FileEffect:
         verified = self._stat(effect.dst) == (effect.size, effect.sha256)
         if not verified:

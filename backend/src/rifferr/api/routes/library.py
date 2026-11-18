@@ -16,7 +16,7 @@ from pydantic import JsonValue
 
 from rifferr.api import sse
 from rifferr.api.errors import ERROR_RESPONSES, ApiError, not_found
-from rifferr.api.models import ChangesCreated, JobQueued, ManualEdit
+from rifferr.api.models import NO_UNDO_BODY, ChangesCreated, JobQueued, ManualEdit, UndoBody
 from rifferr.api.readonly import READ_ONLY_RESPONSES, ask
 from rifferr.api.routes.runs import SSE_RESPONSE
 from rifferr.api.routes.workflows import get_profile
@@ -148,7 +148,9 @@ async def recent_changes(
 @router.post(
     "/journal/{entry_id}/undo", status_code=202, response_model=JobQueued, responses=ERROR_RESPONSES
 )
-async def undo_entry(profile: str, entry_id: str, state: State) -> JobQueued:
+async def undo_entry(
+    profile: str, entry_id: str, state: State, body: UndoBody = NO_UNDO_BODY
+) -> JobQueued:
     """Queue the undo of one journal entry (JOURNAL-4, -5). The result arrives as
     ``job.finished`` on the profile stream (TAG-GRID-11)."""
     get_profile(state, profile)
@@ -156,7 +158,7 @@ async def undo_entry(profile: str, entry_id: str, state: State) -> JobQueued:
     if entry is None or entry.profile != profile:
         raise not_found(f"journal entry {entry_id} in profile '{profile}'")
     try:
-        job_id = await state.supervisor.undo(entry_id=entry_id, by="local user")
+        job_id = await state.supervisor.undo(entry_id=entry_id, by="local user", force=body.force)
     except ValueError as exc:
         raise ApiError(409, "not_undoable", str(exc)) from None
     return JobQueued(job_id=job_id)

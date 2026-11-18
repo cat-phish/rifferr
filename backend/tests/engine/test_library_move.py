@@ -102,8 +102,9 @@ class Lib:
         assert not plan.conflicts
         return self.apply(self.changeset(plan))
 
-    def ctx(self) -> UndoContext:
+    def ctx(self, force: frozenset[str] = frozenset()) -> UndoContext:
         return UndoContext(
+            force=force,
             backend=self.backend,
             journal=self.journal,
             store=self.store,
@@ -437,6 +438,42 @@ def test_LIBRARY_MOVE_15_undo_refuses_when_a_moved_file_changed(lib: Lib) -> Non
     assert not undo.undone
     assert undo.changed_files == [f"{DEST}/1 T1.flac"]
     assert lib.paths()[0] == f"{DEST}/1 T1.flac"  # nothing undone
+
+
+def test_LIBRARY_MOVE_15_forced_undo_moves_the_changed_file_back(lib: Lib) -> None:
+    before = lib.paths()
+    outcome = lib.move()
+    assert outcome.entry is not None
+    changed = f"{DEST}/1 T1.flac"
+    lib.backend.fs[changed] = b"retagged"
+    undo = undo_entry(outcome.entry.id, lib.ctx(frozenset({changed})))
+    assert undo.undone, undo
+    assert lib.paths() == before
+    assert lib.backend.fs[before[0]] == b"retagged"  # moved back as it is now
+    assert changed not in lib.backend.fs
+
+
+def test_LIBRARY_MOVE_15_force_only_covers_the_named_file(lib: Lib) -> None:
+    outcome = lib.move()
+    assert outcome.entry is not None
+    lib.backend.fs[f"{DEST}/1 T1.flac"] = b"retagged"
+    lib.backend.fs[f"{DEST}/2 T2.flac"] = b"retagged too"
+    undo = undo_entry(outcome.entry.id, lib.ctx(frozenset({f"{DEST}/1 T1.flac"})))
+    assert undo.changed_files == [f"{DEST}/2 T2.flac"]
+
+
+def test_LIBRARY_MOVE_15_forced_undo_of_a_copy_keeps_the_original(lib: Lib) -> None:
+    before = lib.paths()
+    original = lib.backend.fs[before[0]]
+    outcome = lib.move("copy")
+    assert outcome.entry is not None
+    changed = f"{DEST}/1 T1.flac"
+    lib.backend.fs[changed] = b"retagged"
+    undo = undo_entry(outcome.entry.id, lib.ctx(frozenset({changed})))
+    assert undo.undone, undo
+    assert lib.paths() == before
+    assert lib.backend.fs[before[0]] == original
+    assert changed not in lib.backend.fs
 
 
 def test_LIBRARY_MOVE_8_copy_never_overwrites(lib: Lib) -> None:

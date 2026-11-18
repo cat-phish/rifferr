@@ -389,6 +389,9 @@ class BeetsBackend:
     def file_sha256(self, path: str) -> str | None:
         return localfs.sha256(path)
 
+    def file_stat(self, path: str) -> tuple[int, str] | None:
+        return localfs.stat_hash(path)
+
     def reconcile_file(self, effect: FileEffect) -> FileEffect:
         self._writable("move files")
         return localfs.reconcile_file(effect)

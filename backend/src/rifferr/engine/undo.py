@@ -92,6 +92,8 @@ class RunUndoOutcome:
             ]
             if self.stopped
             else [],
+            "changed_files": list(self.stopped.changed_files) if self.stopped else [],
+            "skipped_files": list(self.stopped.skipped_files) if self.stopped else [],
         }
 
 
@@ -112,10 +114,14 @@ def inverse(effects: list[FieldEffect]) -> list[TargetChange]:
 
 
 def inverse_files(
-    files: list[FileEffect], sha256: Callable[[str], str | None]
+    files: list[FileEffect],
+    stat: Callable[[str], tuple[int, str] | None],
+    force: Collection[str] = (),
 ) -> tuple[list[FileEffect], list[str]]:
     """The inverse plan of a file apply, newest first (LIBRARY-MOVE-13, -14), and the files
-    that changed since (LIBRARY-MOVE-15). ``sha256`` reads the filesystem.
+    that changed since (LIBRARY-MOVE-15). ``stat`` reads size and SHA-256 from the
+    filesystem. A changed file whose destination is in ``force`` goes back anyway, as it
+    is now (a move), or is dropped for its unchanged original (a copy).
 
     - a finished move goes back by the same copy-verify-remove path;
     - where both copies exist (a copy, or a move stopped after copying), the library copy
@@ -128,17 +134,18 @@ def inverse_files(
         if f.state not in ("copied", "done"):
             continue
         back = f.model_copy(update={"src": f.dst, "dst": f.src, "mode": "move", "note": None})
-        now = sha256(f.dst)
+        now = stat(f.dst)
         if now is None:
             out.append(back.model_copy(update={"state": "skipped", "note": f"{f.dst} is missing"}))
             continue
-        if now != f.sha256:
+        if now[1] != f.sha256 and f.dst not in force:
             changed.append(f.dst)
             continue
         both = f.mode == "copy" or f.state == "copied"
-        if not both:
-            out.append(back.model_copy(update={"state": "planned"}))
-        elif sha256(f.src) == f.sha256:
+        if not both:  # moved back as it is now: the verified copy checks today's content
+            size, sha = now
+            out.append(back.model_copy(update={"state": "planned", "size": size, "sha256": sha}))
+        elif (info := stat(f.src)) is not None and info[1] == f.sha256:
             out.append(back.model_copy(update={"state": "copied"}))
         else:
             note = f"{f.src} is missing or changed; {f.dst} is the only copy"
@@ -167,6 +174,8 @@ class UndoContext:
     now: Callable[[], datetime]
     emitter_for: EmitterFor
     by: str | None = None
+    force: frozenset[str] = frozenset()
+    """Destination files to undo although they changed since the move (LIBRARY-MOVE-15)."""
 
 
 def undo_entry(entry_id: str, ctx: UndoContext) -> UndoOutcome:
@@ -178,7 +187,7 @@ def undo_entry(entry_id: str, ctx: UndoContext) -> UndoOutcome:
     targets = inverse(entry.effects)
     files: list[FileEffect] = []
     if entry.files:
-        files, changed = inverse_files(entry.files, ctx.backend.file_sha256)
+        files, changed = inverse_files(entry.files, ctx.backend.file_stat, ctx.force)
         if changed:
             return UndoOutcome(entry.id, False, changed_files=changed)
     cs = ChangeSet(

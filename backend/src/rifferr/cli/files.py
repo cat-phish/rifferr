@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from rifferr.appdb import AppDB
-from rifferr.beets_config import inspect_config
+from rifferr.beets_config import enabled_plugins, inspect_config
 from rifferr.core.profile import Profile, ProfileError, ProfileLoadError
 from rifferr.core.workflow import (
     Calls,
@@ -121,6 +121,18 @@ def _registry() -> StepTypeRegistry:
     return registry
 
 
+def _plugins(profile: Profile | str | None) -> list[str]:
+    """The profile's beets plugins, for the safety report (LIBRARY-MOVE-6a)."""
+    if isinstance(profile, str):
+        if not profile:
+            return []
+        try:
+            profile = load_profile(config_root(), profile)
+        except (ProfileError, ProfileLoadError):
+            return []
+    return enabled_plugins(profile.beets.beetsdir) if profile is not None else []
+
+
 def _profile(name: str | None, prog: str) -> Profile | int | None:
     if name is None:
         return None
@@ -148,7 +160,7 @@ def cmd_validate(args: argparse.Namespace) -> int:
         else:
             print(f"{path}: ok")
         if args.safety and c.workflow is not None:
-            print_safety(path, safety_report(c.workflow, c.calls))
+            print_safety(path, safety_report(c.workflow, c.calls, beets_plugins=_plugins(profile)))
     return status
 
 
@@ -221,7 +233,7 @@ def _trust(args: argparse.Namespace, c: Checked, db: AppDB, profile: str) -> int
     folder = c.folder or path.parent
     for f in untrusted:
         print(f"{folder / f.path}: called, not trusted: sha256 {f.sha256}")
-    print_safety(path, safety_report(c.workflow, c.calls))
+    print_safety(path, safety_report(c.workflow, c.calls, beets_plugins=_plugins(profile)))
     where = f"in profile '{profile}'" if profile else "in every profile (no --profile given)"
     print(f"{path}: will be trusted {where}")
     if not args.yes:

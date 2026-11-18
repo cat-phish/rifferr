@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from rifferr.backends.base import RUN_MARKER
+from rifferr.beets_config import enabled_plugins
 from rifferr.core.selection import Selection
+from rifferr.core.workflow import load_workflow
+from rifferr.core.workflow.safety import safety_report
 from rifferr.engine import Run, RunState, StepTypeRegistry
 from rifferr.engine.executor import RunValidationError
 from rifferr.engine.moves import InMemoryMoveConflictStore
@@ -150,3 +155,38 @@ async def test_LIBRARY_MOVE_10_file_failure_fails_the_album(h: Harness) -> None:
     assert any("disk full" in line for line in h.logs(run, "error"))
     [stored] = h.engine.changesets.for_run(run.id)
     assert stored.state == "partially_applied"
+
+
+MOVE_WF = """\
+name: into
+steps:
+  - id: into-library
+    uses: library.move
+    with:
+      mode: copy
+      directory: /music
+      artifacts: [{match: ["*.jpg"], to: Art}, "*.log"]
+"""
+
+
+def test_LIBRARY_MOVE_6a_safety_report_lists_the_move() -> None:
+    wf, _ = load_workflow(MOVE_WF)
+    [finding] = safety_report(wf).findings
+    assert (finding.step_id, finding.kind) == ("into-library", "file_move")
+    assert finding.detail.startswith("copies album files into /music")
+    assert "*.jpg" in finding.detail
+    assert "*.log" in finding.detail
+
+
+def test_LIBRARY_MOVE_6a_safety_report_notes_copyartifacts(tmp_path: Path) -> None:
+    (tmp_path / "config.yaml").write_text("plugins: [the, copyartifacts3]\ninclude: [more.yaml]\n")
+    (tmp_path / "more.yaml").write_text("plugins: fetchart copyartifacts\n")
+    plugins = enabled_plugins(tmp_path)
+    assert plugins == ["the", "copyartifacts3", "fetchart", "copyartifacts"]
+    assert enabled_plugins(None) == []
+    wf, _ = load_workflow(MOVE_WF)
+    notes = [f.detail for f in safety_report(wf, beets_plugins=plugins).findings][1:]
+    assert len(notes) == 2
+    assert notes[0].startswith("the profile's beets config enables copyartifacts,")
+    assert "copyartifacts3" in notes[1]
+    assert all("bypasses" in n for n in notes)

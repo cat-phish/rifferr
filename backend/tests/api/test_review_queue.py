@@ -335,6 +335,12 @@ async def test_REVIEW_QUEUE_8_run_undo(api: Api) -> None:
     assert job is not None
     assert (job.kind, job.payload["run_id"], job.payload["by"]) == ("undo", run_id, "ui")
     assert (await post(api, "/api/runs/nope/undo")).status_code == 404
+    # LIBRARY-MOVE-15: moved files to undo although they changed
+    forced = await post(api, f"/api/runs/{run_id}/undo", {"force": ["/music/A/01.flac"]})
+    forced_job = api.state.db.job(forced.json()["job_id"])
+    assert forced_job is not None
+    assert forced_job.payload["force"] == ["/music/A/01.flac"]
+    assert "force" not in job.payload
 
     # Still queued or running: nothing to undo yet.
     db = api.state.db

@@ -13,6 +13,7 @@ from fastapi import APIRouter, Query
 
 from rifferr.api.errors import ERROR_RESPONSES, ApiError, not_found
 from rifferr.api.models import (
+    NO_UNDO_BODY,
     ChangeSetDetail,
     CleanupDecided,
     CleanupDecisionBody,
@@ -27,6 +28,7 @@ from rifferr.api.models import (
     MoveDecisionBody,
     QueueItem,
     RunDecision,
+    UndoBody,
 )
 from rifferr.api.readonly import READ_ONLY_RESPONSES, ask
 from rifferr.api.state import State
@@ -313,11 +315,13 @@ async def decide_run(run_id: str, body: RunDecision, state: State) -> JobsQueued
 @router.post(
     "/runs/{run_id}/undo", status_code=202, response_model=JobQueued, responses=ERROR_RESPONSES
 )
-async def undo_run(run_id: str, state: State) -> JobQueued:
+async def undo_run(run_id: str, state: State, body: UndoBody = NO_UNDO_BODY) -> JobQueued:
     """Queue the undo of the run's applied changes, newest first (REVIEW-QUEUE-8,
-    JOURNAL-6). The result arrives as ``job.finished`` on the run's stream."""
+    JOURNAL-6). The result arrives as ``job.finished`` on the run's stream. ``force``
+    names moved files to undo although they changed (LIBRARY-MOVE-15)."""
+    force = body.force
     try:
-        job_id = await state.supervisor.undo(run_id=run_id, by=DECIDER)
+        job_id = await state.supervisor.undo(run_id=run_id, by=DECIDER, force=force)
     except KeyError:
         raise not_found(f"run {run_id}") from None
     except ValueError as exc:

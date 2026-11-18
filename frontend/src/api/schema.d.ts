@@ -979,7 +979,8 @@ export interface paths {
         /**
          * Undo Run
          * @description Queue the undo of the run's applied changes, newest first (REVIEW-QUEUE-8,
-         *     JOURNAL-6). The result arrives as ``job.finished`` on the run's stream.
+         *     JOURNAL-6). The result arrives as ``job.finished`` on the run's stream. ``force``
+         *     names moved files to undo although they changed (LIBRARY-MOVE-15).
          */
         post: operations["undo_run_api_runs__run_id__undo_post"];
         delete?: never;
@@ -3095,6 +3096,17 @@ export interface components {
              */
             trusted: true;
         };
+        /**
+         * UndoBody
+         * @description Optional body of an undo request (LIBRARY-MOVE-15).
+         */
+        UndoBody: {
+            /**
+             * Force
+             * @description Library files to undo although they changed since they were moved; the undo report's changed_files names them
+             */
+            force?: string[];
+        };
         /** ValidateResult */
         ValidateResult: {
             /** Called */
@@ -5201,7 +5213,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["UndoBody"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             202: {
@@ -6255,7 +6271,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["UndoBody"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             202: {

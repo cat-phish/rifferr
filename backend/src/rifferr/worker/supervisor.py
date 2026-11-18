@@ -249,7 +249,12 @@ class WorkerSupervisor:
         return job.id
 
     async def undo(
-        self, *, entry_id: str | None = None, run_id: str | None = None, by: str | None = None
+        self,
+        *,
+        entry_id: str | None = None,
+        run_id: str | None = None,
+        by: str | None = None,
+        force: list[str] | None = None,
     ) -> str:
         """Queue an undo of one journal entry or of a whole run as a worker job (C-JOURNAL).
 
@@ -263,6 +268,8 @@ class WorkerSupervisor:
             raise ValueError("undo needs exactly one of entry_id or run_id")
         journal = AppJournal(self.db)
         payload: dict[str, JsonValue] = {"entry_id": entry_id, "run_id": run_id, "by": by}
+        if force:  # LIBRARY-MOVE-15: changed files the user undoes anyway
+            payload["force"] = list[JsonValue](force)
         if entry_id is not None:
             found = journal.get(entry_id)
             if found is None:

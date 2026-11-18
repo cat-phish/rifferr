@@ -105,7 +105,7 @@ Snapshots carry tag data and paths only, never credentials or config.
 ## Non-goals
 - ChangeSet semantics and undo (C-CHANGESET, C-JOURNAL, M1).
 - FilesBackend (later milestone).
-- ~~File moves~~ Amended 2026-11-18 (S-LIBRARY-MOVE): capability `move` with `plan_moves`, `copy_file`, `remove_source`, `set_paths`, `file_sha256` and `reconcile_file`; BeetsBackend computes destinations with `Item.destination()` and copies through `rifferr.backends.localfs`.
+- ~~File moves~~ Amended 2026-11-18 (S-LIBRARY-MOVE): capability `move` with `plan_moves`, `copy_file`, `remove_source`, `set_paths`, `file_sha256`, `file_stat` and `reconcile_file`; BeetsBackend computes destinations with `Item.destination()` and copies through `rifferr.backends.localfs`.
 - Interactive import decisions (F-IMPORT-UI, M2): `decide` is accepted but only `quiet` is implemented in M0.
 
 ## Open questions
