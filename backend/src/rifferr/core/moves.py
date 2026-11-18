@@ -9,9 +9,10 @@ from __future__ import annotations
 
 import posixpath
 from collections.abc import Callable, Iterable
+from datetime import datetime
 from fnmatch import fnmatchcase
 from pathlib import PurePosixPath
-from typing import Self
+from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -79,6 +80,49 @@ class MovePlan(BaseModel):
     files: list[FileEffect] = Field(default_factory=list[FileEffect])
     conflicts: list[str] = Field(default_factory=list[str])
     """Why the album can't move (LIBRARY-MOVE-5); empty when it can."""
+
+
+class MoveSettings(BaseModel):
+    """A ``library.move`` step's resolved ``with:``, kept so a conflict can be retried
+    the same way (LIBRARY-MOVE-5a). ``directory`` is absolute, or ``None`` for beets'."""
+
+    model_config = _FROZEN
+
+    mode: FileMode = "move"
+    formats: list[PathFormat] | None = None
+    directory: str | None = None
+    artifacts: list[ArtifactRule] = Field(default_factory=lambda: list(ALL_ARTIFACTS))
+    stamp: Stamp | None = None
+
+
+MoveConflictState = Literal["pending", "moved", "in_place", "failed", "cancelled"]
+MoveChoice = Literal["retry", "fail"]
+
+
+class MoveConflict(BaseModel):
+    """An album that can't move yet, waiting in the review queue (LIBRARY-MOVE-5a)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    profile: str
+    run_id: str
+    step_id: str
+    album_id: str
+    label: str
+    state: MoveConflictState = "pending"
+    conflicts: list[str]
+    src_dir: str = ""
+    dst_dir: str = ""
+    settings: MoveSettings
+    created_at: datetime
+    attempts: int = Field(default=0, description="Retries that still found conflicts")
+    decided_by: str | None = None
+    decided_at: datetime | None = None
+    changeset_id: str | None = Field(default=None, description="The FileChangeSet a retry applied")
+
+    def hold_key(self) -> str:
+        return self.album_id
 
 
 def album_folder(paths: Iterable[str]) -> str:

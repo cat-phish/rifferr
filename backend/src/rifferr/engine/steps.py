@@ -15,7 +15,7 @@ from rifferr.core.changeset import ChangeSet, ChangeSetProposal, Stamp, TargetRe
 from rifferr.core.covers import CoverQuery, RankedCandidate
 from rifferr.core.files import BusyFolder, CleanupChoice, CleanupEntry, CleanupOptions
 from rifferr.core.imports import ImportQuestion, TimeoutAction
-from rifferr.core.moves import MovePlan
+from rifferr.core.moves import MovePlan, MoveSettings
 from rifferr.core.notify import Notification, SendResult
 from rifferr.core.profile import ProfileFile, Secret
 from rifferr.core.review import GateDecision, GateRequest, OnReject
@@ -170,6 +170,10 @@ class CoverRequest:
 RequestCover = Callable[[CoverRequest], str]
 
 
+#: The engine's side of ``ctx.request_move_conflict``: plan, settings -> conflict id.
+RequestMoveConflict = Callable[[MovePlan, MoveSettings], str]
+
+
 #: The engine's side of ``ctx.request_cleanup``: request -> decision id.
 RequestCleanup = Callable[[CleanupRequest], str]
 #: The engine's side of ``ctx.hold_pass``: kind, ref, label for a pass without lanes.
@@ -210,6 +214,10 @@ def _no_cleanup(request: CleanupRequest) -> str:
 
 def _no_cover(request: CoverRequest) -> str:
     raise StepFailure("this run can't leave cover reviews")
+
+
+def _no_move_conflict(plan: MovePlan, settings: MoveSettings) -> str:
+    raise StepFailure("this run can't leave move conflicts")
 
 
 def _no_hold_pass(kind: str, ref: str, label: str) -> None:
@@ -256,6 +264,7 @@ class StepContext:
         request_cleanup: RequestCleanup | None = None,
         hold_pass: HoldPass | None = None,
         request_cover: RequestCover | None = None,
+        request_move_conflict: RequestMoveConflict | None = None,
         run_input: str = "",
     ) -> None:
         self.run_id = run_id
@@ -297,6 +306,7 @@ class StepContext:
         self._request_cleanup = request_cleanup or _no_cleanup
         self._hold_pass = hold_pass or _no_hold_pass
         self._request_cover = request_cover or _no_cover
+        self._request_move_conflict = request_move_conflict or _no_move_conflict
         """The profile's ``notify.base_url``, for links in notifications (NOTIFY-6)."""
         self._snapshots = SnapshotIndex()
         self.proposed: list[ChangeSet] = []
@@ -431,6 +441,11 @@ class StepContext:
         """Leave an album in the review queue to pick its cover; only that album's lane
         waits (COVERS-SEARCH-14). Returns the review id."""
         return self._request_cover(request)
+
+    def request_move_conflict(self, plan: MovePlan, settings: MoveSettings) -> str:
+        """Leave a conflicted album in the review queue; only its lane waits until it is
+        retried or failed (S-LIBRARY-MOVE LIBRARY-MOVE-5a). Returns the conflict id."""
+        return self._request_move_conflict(plan, settings)
 
     async def notify(
         self, notification: Notification, targets: list[str] | None = None

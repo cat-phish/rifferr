@@ -22,6 +22,7 @@ from rifferr.core.covers import CoverReview
 from rifferr.core.files import CleanupDecision
 from rifferr.core.ids import new_ulid
 from rifferr.core.imports import ImportDecision, ImportDecisionState
+from rifferr.core.moves import MoveConflict
 from rifferr.core.notify import Notification, QueueRef
 from rifferr.core.review import GateState, ReviewGate
 from rifferr.core.triggers import DedupRecord
@@ -55,6 +56,7 @@ JobKind = Literal[
     "cleanup_apply",
     "import_undo",
     "cover_apply",
+    "move_retry",
 ]
 
 #: ChangeSet states that still hold a suspended run (CHANGESET-7).
@@ -1074,6 +1076,102 @@ class CoverBusyError(ValueError):
     def __init__(self, review_id: str) -> None:
         super().__init__(f"cover review {review_id} is being decided; try again shortly")
         self.review_id = review_id
+
+
+class AppMoveConflicts:
+    """``MoveConflictStore`` backed by the ``move_conflicts`` table (LIBRARY-MOVE-5a)."""
+
+    def __init__(self, db: AppDB) -> None:
+        self.db = db
+
+    @property
+    def _conn(self) -> sqlite3.Connection:
+        return self.db._conn  # pyright: ignore[reportPrivateUsage]
+
+    def add(self, conflict: MoveConflict) -> None:
+        self._conn.execute(
+            "INSERT INTO move_conflicts (id, profile, run_id, step_id, album_id, state, body,"
+            " created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                conflict.id,
+                conflict.profile,
+                conflict.run_id,
+                conflict.step_id,
+                conflict.album_id,
+                conflict.state,
+                conflict.model_dump_json(),
+                conflict.created_at.isoformat(),
+            ),
+        )
+
+    def get(self, conflict_id: str) -> MoveConflict | None:
+        row = self._conn.execute(
+            "SELECT body FROM move_conflicts WHERE id = ?", (conflict_id,)
+        ).fetchone()
+        return MoveConflict.model_validate_json(row["body"]) if row else None
+
+    def pending(self, profile: str | None = None, run_id: str | None = None) -> list[MoveConflict]:
+        """Pending conflicts, oldest first."""
+        sql, args = "SELECT body FROM move_conflicts WHERE state = 'pending'", list[Any]()
+        if profile is not None:
+            sql, args = sql + " AND profile = ?", [*args, profile]
+        if run_id is not None:
+            sql, args = sql + " AND run_id = ?", [*args, run_id]
+        rows = self._conn.execute(sql + " ORDER BY created_at, id", args).fetchall()
+        return [MoveConflict.model_validate_json(r["body"]) for r in rows]
+
+    def claim(self, conflict_id: str, job: str) -> MoveConflict:
+        """Reserve a pending conflict for one decision. Raises ``KeyError`` (unknown),
+        ``MoveResolvedError`` (not pending) or ``MoveBusyError`` (claimed)."""
+        cur = self._conn.execute(
+            "UPDATE move_conflicts SET claim = ? WHERE id = ? AND state = 'pending'"
+            " AND claim IS NULL",
+            (job, conflict_id),
+        )
+        conflict = self.get(conflict_id)
+        if conflict is None:
+            raise KeyError(conflict_id)
+        if cur.rowcount != 1:
+            if conflict.state != "pending":
+                raise MoveResolvedError(conflict_id, conflict.state)
+            raise MoveBusyError(conflict_id)
+        return conflict
+
+    def set_claim(self, conflict_id: str, job: str | None) -> None:
+        self._conn.execute("UPDATE move_conflicts SET claim = ? WHERE id = ?", (job, conflict_id))
+
+    def release(self, conflict: MoveConflict) -> None:
+        """Save ``conflict`` and drop the claim."""
+        self._conn.execute(
+            "UPDATE move_conflicts SET state = ?, body = ?, claim = NULL WHERE id = ?",
+            (conflict.state, conflict.model_dump_json(), conflict.id),
+        )
+
+    def cancel_for_run(self, run_id: str) -> list[str]:
+        """Cancel the run's pending conflicts (a cancelled or finished run). Returns ids."""
+        cancelled: list[str] = []
+        for conflict in self.pending(run_id=run_id):
+            conflict.state = "cancelled"
+            self.release(conflict)
+            cancelled.append(conflict.id)
+        return cancelled
+
+
+class MoveResolvedError(ValueError):
+    """The move conflict isn't pending any more (LIBRARY-MOVE-5a: decided once)."""
+
+    def __init__(self, conflict_id: str, state: str) -> None:
+        super().__init__(f"move conflict {conflict_id} is already {state}")
+        self.conflict_id = conflict_id
+        self.state = state
+
+
+class MoveBusyError(ValueError):
+    """A job is retrying this conflict right now."""
+
+    def __init__(self, conflict_id: str) -> None:
+        super().__init__(f"move conflict {conflict_id} is being decided; try again shortly")
+        self.conflict_id = conflict_id
 
 
 class CleanupResolvedError(ValueError):

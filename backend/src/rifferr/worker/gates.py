@@ -20,6 +20,7 @@ from rifferr.appdb import (
     AppDB,
     AppImportDecisions,
     AppLanes,
+    AppMoveConflicts,
     AppReviewGates,
 )
 from rifferr.core.review import REJECTED_AT_REVIEW, ReviewGate
@@ -121,6 +122,7 @@ def _close_leftovers(db: AppDB, run_id: str, emit: EmitRun) -> None:
     AppImportDecisions(db).cancel_for_run(run_id)
     AppCleanupDecisions(db).cancel_for_run(run_id)
     AppCoverReviews(db).cancel_for_run(run_id)
+    AppMoveConflicts(db).cancel_for_run(run_id)
 
 
 def _finish_whole(db: AppDB, run_id: str, emit: EmitRun) -> bool:

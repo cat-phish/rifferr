@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from rifferr.backends.base import BackendCapabilities, QueryError, TemplateError
 from rifferr.core.changeset import Stamp
-from rifferr.core.moves import ArtifactRule, PathFormat
+from rifferr.core.moves import ArtifactRule, MoveSettings, PathFormat
 from rifferr.core.workflow.template_fields import TEMPLATE_EXTRA
 from rifferr.engine import StepContext, StepFailure, StepResult
 
@@ -86,6 +86,17 @@ class LibraryMoveParams(BaseModel):
             raise StepFailure(f"directory must be an absolute path: {self.directory}")
         return path
 
+    def settings(self) -> MoveSettings:
+        """The resolved ``with:``, kept with a conflict for its retry (LIBRARY-MOVE-5a)."""
+        root = self.root()
+        return MoveSettings(
+            mode=self.mode,
+            formats=self.formats(),
+            directory=str(root) if root is not None else None,
+            artifacts=self.rules(),
+            stamp=self.stamp,
+        )
+
 
 class LibraryMoveStep:
     name = "library.move"
@@ -96,13 +107,14 @@ class LibraryMoveStep:
         params = ctx.params
         assert isinstance(params, LibraryMoveParams)
         ctx.albums()  # the step's targets (and their snapshots for the stamp)
+        settings = params.settings()
         try:
             plans = ctx.backend.plan_moves(
                 ctx.selection.model_copy(update={"scope": "album"}),
-                mode=params.mode,
-                formats=params.formats(),
+                mode=settings.mode,
+                formats=settings.formats,
                 directory=params.root(),
-                artifacts=params.rules(),
+                artifacts=settings.artifacts,
             )
         except (QueryError, TemplateError) as exc:
             raise StepFailure(str(exc)) from exc
@@ -115,7 +127,7 @@ class LibraryMoveStep:
                 conflicts += 1
                 for line in plan.conflicts:
                     ctx.log(f"{plan.label}: conflict: {line}", "error", album)
-                ctx.fail_target(album, f"can't {params.mode}: {plan.conflicts[0]}")
+                ctx.request_move_conflict(plan, settings)  # LIBRARY-MOVE-5a: lane waits
                 continue
             if not plan.files:
                 ctx.log(f"{plan.label}: already in place", target=album)

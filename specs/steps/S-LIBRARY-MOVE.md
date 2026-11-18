@@ -54,13 +54,27 @@ effect when this spec is Approved:
   containing only files whose destination differs from their current path. An album with no
   differing files proposes nothing and logs "already in place".
 - LIBRARY-MOVE-4: Planning MUST NOT touch the filesystem except to read (`stat`, existence).
-- LIBRARY-MOVE-5: Planning MUST fail the album (RUN-5 `on_error`) when: a destination lies
+- LIBRARY-MOVE-5: Planning MUST stop the album as a conflict (LIBRARY-MOVE-5a) when: a destination lies
   outside `directory` after resolving `..` and symlinks; two items of the run map to the same
   destination; a destination file already exists and is not the item's own current file; or an
   album's destination folder already exists and is not that album's own current folder (no
   merging into another album's folder, even when no file name collides). The album goes to the
   review queue as a conflict naming the item or folder and the colliding path. Rifferr never
   overwrites and never adds beets' `.1` suffixes.
+- LIBRARY-MOVE-5a: A conflicted album (LIBRARY-MOVE-5, or a path format that fails for one of its
+  items) MUST wait in the review queue as a *move conflict* (queue kind `move`) that holds only
+  its lane (LANES-14), listing each conflict and the source and destination folders. It keeps the
+  step's resolved `with:` (mode, paths, directory, artifacts, stamp). Decisions:
+  `POST /api/move-conflicts/{id}/decision {decision: retry|fail}`.
+  - `retry` (`202 {job_id}`) plans the album again in the worker with the kept settings. Still
+    conflicted: the item stays pending with the new conflicts and the job fails naming them.
+    Already in place: the item resolves and the lane continues. Otherwise the FileChangeSet is
+    applied at once through the journal (the retry is the review, as a cover choice is,
+    COVERS-SEARCH-21) and the lane continues; a file that then fails fails the lane
+    (LIBRARY-MOVE-10).
+  - `fail` (`202 {job_id: null}`) ends the lane `failed` at once.
+  The item is cancelled with its run, notifies like other queue items (NOTIFY-8), and emits
+  `move.requested` / `move.resolved` (added 2026-11-18, author: question 3).
 - LIBRARY-MOVE-6: Untracked files in the album folder matching `artifacts` (rip logs, scans,
   `.cue`, …) MUST be planned as file effects of kind `artifact`, and are hashed, journaled,
   moved and undone exactly like audio files. Files in sub-folders count. A plain glob rule keeps
@@ -228,10 +242,7 @@ cover goes in an `Art` sub-folder (artifact rules).
    32-bit float release should be labelled differently.
 2. Resolved 2026-11-18 (author): match foobar2000 (`Disc 1/`). beets pads `$disc` in path
    formats, so the reference pattern uses the built-in `%unpad{$disc}` (TEMPLATE-FUNCTIONS-7).
-3. LIBRARY-MOVE-5 says a conflicting album "goes to the review queue as a conflict". It currently
-   fails the album's lane (RUN-5 `on_error`) with the conflicts in the run log; the review queue
-   shows no move conflicts yet. Is a failed lane enough, or should conflicts be a review item
-   (retry after fixing)?
+3. Resolved 2026-11-18 (author): conflicts are review-queue items with retry (LIBRARY-MOVE-5a).
 
 ## Tasks
 - [x] C-CHANGESET amendment: `files` change kind; narrow the file-operation non-goal to deletes.
@@ -240,6 +251,7 @@ cover goes in an `Art` sub-folder (artifact rules).
   formats, `replace:`, the `the` plugin and Rifferr template functions.
 - [x] FakeBackend `move` capability on an in-memory filesystem.
 - [x] Step, apply path, recovery, undo; tests per behavior ID.
+- [x] Move conflicts in the review queue (LIBRARY-MOVE-5a): engine, worker retry job, API, UI.
 - [ ] LIBRARY-MOVE-6a: safety report notes `copyartifacts`/`copyartifacts3` in the profile's beets config.
 - [ ] LIBRARY-MOVE-15: "force" for one changed file (engine refuses; review-queue control missing).
 - [ ] Review queue: FileChangeSet view (LIBRARY-MOVE-16) and Playwright test.

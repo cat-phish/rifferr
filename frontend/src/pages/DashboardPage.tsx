@@ -32,6 +32,7 @@ const KIND_LABEL: Record<QueueItem["kind"], string> = {
   import: "import decisions",
   cleanup: "folder cleanups",
   cover: "cover choices",
+  move: "move conflicts",
 };
 
 const INBOX_COLOR: Record<InboxEntry["state"], string> = {
@@ -87,6 +88,7 @@ function itemLabel(item: QueueItem): string {
   if (item.kind === "import") return item.import_decision?.path ?? "import decision";
   if (item.kind === "cleanup") return item.cleanup_decision?.path ?? "folder cleanup";
   if (item.kind === "cover") return item.cover_review?.label ?? "cover choice";
+  if (item.kind === "move") return item.move_conflict?.label ?? "move conflict";
   const targets = item.changeset?.targets.length ?? 0;
   return `tag changes to ${count(targets, "target")}`;
 }

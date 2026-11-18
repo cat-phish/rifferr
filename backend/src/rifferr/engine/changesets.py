@@ -27,10 +27,12 @@ from rifferr.core.changeset import (
     JournalEntry,
     JournalState,
     ProposedTargetChange,
+    Stamp,
     TargetChange,
     TargetRef,
     same_value,
 )
+from rifferr.core.moves import MovePlan
 from rifferr.core.selection import Selection
 from rifferr.core.snapshot import AlbumSnapshot, FieldValue, label
 from rifferr.engine.journal import Journal
@@ -583,3 +585,36 @@ def repropose_targets(
         if kept:
             out.append(TargetChange(target=t.target, changes=kept))
     return out
+
+
+def file_changeset(
+    plan: MovePlan,
+    stamp: Stamp | None,
+    old_stamp: FieldValue | None,
+    *,
+    id: str,
+    profile: str,
+    run_id: str,
+    step_id: str,
+    source: str,
+    now: datetime,
+) -> ChangeSet:
+    """One album's FileChangeSet (S-LIBRARY-MOVE), with the ``stamp`` change set to
+    ``now``'s local date (LIBRARY-MOVE-6b). ``old_stamp`` is the field's current value."""
+    targets: list[TargetChange] = []
+    if stamp is not None:
+        today = now.astimezone().strftime(stamp.format)
+        change = FieldChange(field=stamp.field, old=old_stamp, new=today)
+        targets.append(TargetChange(target=plan.album, changes=[change]))
+    return ChangeSet(
+        id=id,
+        profile=profile,
+        run_id=run_id,
+        step_id=step_id,
+        source=ChangeSource(kind="step", name=source),
+        rationale=f"{source}: {plan.src_dir} -> {plan.dst_dir}",
+        created_at=now,
+        targets=targets,
+        files=plan.files,
+        stamp=stamp,
+    )

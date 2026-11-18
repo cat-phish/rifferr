@@ -13,6 +13,7 @@ from rifferr.core.changeset import ChangeSet, ChangeSetState
 from rifferr.core.covers import CoverChoice, CoverQuery, CoverReview, RankedCandidate
 from rifferr.core.files import CleanupChoice, CleanupDecision
 from rifferr.core.imports import MAX_LOOKUP_IDS, MAX_LOOKUP_TEXT, ImportAction, ImportDecision
+from rifferr.core.moves import MoveChoice, MoveConflict
 from rifferr.core.profile import GridColumns
 from rifferr.core.review import ReviewGate
 from rifferr.engine.changesets import CurrentTarget
@@ -195,9 +196,10 @@ LaneStateOut = Literal[
 
 
 class LaneHold(_Model):
-    kind: Literal["changeset", "gate", "import", "cleanup", "cover"]
+    kind: Literal["changeset", "gate", "import", "cleanup", "cover", "move"]
     ref: str = Field(
-        description="ChangeSet id, review gate id, import decision id or cleanup decision id"
+        description="ChangeSet id, review gate id, import decision id, cleanup decision id,"
+        " cover review id or move conflict id"
     )
 
 
@@ -314,9 +316,10 @@ class JobQueued(_Model):
 class QueueItem(_Model):
     """One thing that waits for a decision (REVIEW-QUEUE-1). ``kind`` says which of
     ``changeset`` / ``gate`` / ``import_decision`` / ``cleanup_decision`` /
-    ``cover_review`` is set (IMPORT-UI-7, FILES-CLEANUP-14, COVERS-SEARCH-21)."""
+    ``cover_review`` / ``move_conflict`` is set (IMPORT-UI-7, FILES-CLEANUP-14,
+    COVERS-SEARCH-21, LIBRARY-MOVE-5a)."""
 
-    kind: Literal["changeset", "gate", "import", "cleanup", "cover"]
+    kind: Literal["changeset", "gate", "import", "cleanup", "cover", "move"]
     id: str
     profile: str
     run_id: str
@@ -329,6 +332,7 @@ class QueueItem(_Model):
     import_decision: ImportDecision | None = None
     cleanup_decision: CleanupDecision | None = None
     cover_review: CoverReview | None = None
+    move_conflict: MoveConflict | None = None
 
 
 class ChangeSetDetail(_Model):
@@ -595,6 +599,18 @@ class CoverProvidersView(_Model):
 class CoverProvidersBody(_Model):
     providers: list[CoverProviderOrder] = Field(description="In the new order")
     profile_hash: str
+
+
+class MoveDecisionBody(_Model):
+    """Answer a move conflict (LIBRARY-MOVE-5a): plan it again, or fail its lane."""
+
+    decision: MoveChoice
+
+
+class MoveDecided(_Model):
+    """``job_id`` is the worker job that retries the move (``retry``); ``None`` otherwise."""
+
+    job_id: str | None = None
 
 
 class CoverDecided(_Model):

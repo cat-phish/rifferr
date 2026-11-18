@@ -33,6 +33,8 @@ REVIEW_EVENTS = frozenset(
         "cleanup.resolved",
         "cover.requested",
         "cover.resolved",
+        "move.requested",
+        "move.resolved",
         "job.finished",
     }
 )

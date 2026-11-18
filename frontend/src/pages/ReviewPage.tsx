@@ -19,6 +19,7 @@ import { Link, useSearchParams } from "react-router";
 import { api, ok } from "../api/client";
 import { CoverPicker } from "../components/CoverPicker";
 import { CleanupDecisionView } from "../components/CleanupDecisionView";
+import { MoveConflictView } from "../components/MoveConflictView";
 import { ImportDecisionView } from "../components/ImportDecisionView";
 import type { GateAlbum, QueueItem, ReviewGate } from "../api/types";
 import { useProfile, withProfile } from "../hooks/useProfile";
@@ -276,6 +277,22 @@ function RunCard({ group, focus }: { group: RunGroup; focus: string | null }) {
               }
             >
               <CleanupDecisionView decision={item.cleanup_decision} />
+            </ItemCard>
+          ) : item.kind === "move" && item.move_conflict ? (
+            <ItemCard
+              key={item.id}
+              item={item}
+              focused={focus === item.id}
+              title={
+                <Group gap="xs">
+                  <Text fw={500}>Move conflict</Text>
+                  <Text size="sm" c="dimmed">
+                    step {item.step_id}
+                  </Text>
+                </Group>
+              }
+            >
+              <MoveConflictView conflict={item.move_conflict} />
             </ItemCard>
           ) : item.kind === "cover" && item.cover_review ? (
             <ItemCard

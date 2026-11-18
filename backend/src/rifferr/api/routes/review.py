@@ -23,6 +23,8 @@ from rifferr.api.models import (
     ImportLookupBody,
     JobQueued,
     JobsQueued,
+    MoveDecided,
+    MoveDecisionBody,
     QueueItem,
     RunDecision,
 )
@@ -35,6 +37,7 @@ from rifferr.appdb import (
     AppCoverReviews,
     AppImportDecisions,
     AppJournal,
+    AppMoveConflicts,
     AppReviewGates,
     CleanupBusyError,
     CleanupResolvedError,
@@ -42,9 +45,12 @@ from rifferr.appdb import (
     GateResolvedError,
     ImportBusyError,
     ImportResolvedError,
+    MoveBusyError,
+    MoveResolvedError,
 )
 from rifferr.core.files import CleanupDecision
 from rifferr.core.imports import ImportDecision
+from rifferr.core.moves import MoveConflict
 from rifferr.core.review import ReviewGate
 from rifferr.engine.changesets import StoredChangeSet
 
@@ -65,7 +71,8 @@ async def review_queue(
 ) -> list[QueueItem]:
     """What waits for a decision, oldest first: run ChangeSets that are proposed or
     conflicted, pending review gates (REVIEW-QUEUE-1), pending import decisions
-    (IMPORT-UI-7) and pending cleanup decisions (FILES-CLEANUP-14)."""
+    (IMPORT-UI-7), pending cleanup decisions (FILES-CLEANUP-14), cover reviews
+    (COVERS-SEARCH-14) and move conflicts (LIBRARY-MOVE-5a)."""
     workflows: dict[str, str | None] = {}
 
     def workflow(run_id: str) -> str | None:
@@ -141,6 +148,19 @@ async def review_queue(
                 step_id=cover.step_id,
                 created_at=cover.created_at,
                 cover_review=cover,
+            )
+        )
+    for move in AppMoveConflicts(state.db).pending(profile=profile, run_id=run):
+        items.append(
+            QueueItem(
+                kind="move",
+                id=move.id,
+                profile=move.profile,
+                run_id=move.run_id,
+                workflow=workflow(move.run_id),
+                step_id=move.step_id,
+                created_at=move.created_at,
+                move_conflict=move,
             )
         )
     items.sort(key=lambda i: (i.created_at, i.id))
@@ -406,3 +426,45 @@ async def decide_cleanup(
     except ValueError as exc:
         raise ApiError(409, "not_waiting", str(exc)) from None
     return CleanupDecided(job_id=job_id)
+
+
+# -- move conflicts (S-LIBRARY-MOVE LIBRARY-MOVE-5a) ------------------------------------
+
+
+def _move(state: State, conflict_id: str) -> MoveConflict:
+    found = AppMoveConflicts(state.db).get(conflict_id)
+    if found is None:
+        raise not_found(f"move conflict {conflict_id}")
+    return found
+
+
+@router.get("/move-conflicts/{conflict_id}", response_model=MoveConflict, responses=ERROR_RESPONSES)
+async def get_move_conflict(conflict_id: str, state: State) -> MoveConflict:
+    return _move(state, conflict_id)
+
+
+@router.post(
+    "/move-conflicts/{conflict_id}/decision",
+    status_code=202,
+    response_model=MoveDecided,
+    responses=ERROR_RESPONSES,
+)
+async def decide_move(conflict_id: str, body: MoveDecisionBody, state: State) -> MoveDecided:
+    """``retry`` queues the worker job that plans the album again and, when nothing
+    conflicts any more, moves it at once; ``fail`` fails the album's lane."""
+    found = _move(state, conflict_id)
+    if found.state != "pending":
+        raise ApiError(
+            409, "already_resolved", f"move conflict {conflict_id} is already {found.state}"
+        )
+    try:
+        job_id = await state.supervisor.decide_move(conflict_id, body.decision, by=DECIDER)
+    except KeyError:
+        raise not_found(f"move conflict {conflict_id}") from None
+    except MoveResolvedError as exc:
+        raise ApiError(409, "already_resolved", str(exc)) from None
+    except MoveBusyError as exc:
+        raise ApiError(409, "busy", str(exc)) from None
+    except ValueError as exc:
+        raise ApiError(409, "not_waiting", str(exc)) from None
+    return MoveDecided(job_id=job_id)

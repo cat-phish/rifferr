@@ -8,6 +8,7 @@ from rifferr.backends.base import RUN_MARKER
 from rifferr.core.selection import Selection
 from rifferr.engine import Run, RunState, StepTypeRegistry
 from rifferr.engine.executor import RunValidationError
+from rifferr.engine.moves import InMemoryMoveConflictStore
 from rifferr.steps.library_move import LibraryMoveParams, LibraryMoveStep
 from tests.engine.conftest import Harness
 from tests.engine.steps import ALL
@@ -105,13 +106,32 @@ def test_LIBRARY_MOVE_2_paths_refuse_workflow_interpolation(h: Harness) -> None:
         start(h, '{paths: [{query: default, format: "{{ vars.library }}/$album"}]}')
 
 
-async def test_LIBRARY_MOVE_5_conflict_fails_the_album_and_moves_nothing(h: Harness) -> None:
+async def test_LIBRARY_MOVE_5_conflict_moves_nothing(h: Harness) -> None:
     run = start(h, "{directory: /music}", apply="auto")
     h.backend.add_files({f"{DEST}/1 Come Together.flac": "already here"})
     await h.engine.execute(run)
     assert any("conflict" in line for line in h.logs(run, "error"))
     assert paths(h)[0].startswith(SRC)
     assert h.engine.changesets.for_run(run.id) == []
+
+
+async def test_LIBRARY_MOVE_5a_conflict_waits_in_review_queue(h: Harness) -> None:
+    run = start(h, "{directory: /music, stamp: {field: date_added}}", apply="auto")
+    h.backend.add_files({f"{DEST}/1 Come Together.flac": "already here"})
+    await h.engine.execute(run)
+    assert run.state is RunState.waiting_review
+    moves = h.engine.moves
+    assert isinstance(moves, InMemoryMoveConflictStore)
+    [conflict] = moves.items.values()
+    [album] = h.backend.query(_all())
+    assert (conflict.album_id, conflict.state, conflict.src_dir) == (album.id, "pending", SRC)
+    assert "already exists" in conflict.conflicts[0]
+    assert conflict.settings.directory == "/music"
+    assert conflict.settings.stamp is not None
+    [lane] = h.engine.lanes.load(run.id).values()
+    assert lane.state == "waiting"
+    assert [(hold.kind, hold.ref) for hold in lane.holds] == [("move", conflict.id)]
+    assert any(e.type == "move.requested" for e in h.events(run))
 
 
 async def test_LIBRARY_MOVE_3_in_place_album_logs_and_proposes_nothing(h: Harness) -> None:

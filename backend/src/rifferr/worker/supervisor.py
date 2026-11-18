@@ -28,6 +28,7 @@ from rifferr.appdb import (
     AppImportDecisions,
     AppJournal,
     AppLanes,
+    AppMoveConflicts,
     AppReviewGates,
     GateAlbumsError,
     GateResolvedError,
@@ -37,6 +38,7 @@ from rifferr.core.changeset import ChangeSet
 from rifferr.core.covers import CoverChoice
 from rifferr.core.files import CleanupChoice
 from rifferr.core.imports import ImportAction
+from rifferr.core.moves import MoveChoice
 from rifferr.core.review import GateDecision
 from rifferr.engine.events import Event, EventSink, profile_stream
 from rifferr.engine.undo import run_entries, undoable
@@ -636,6 +638,61 @@ class WorkerSupervisor:
             await self._wake(claimed.profile)
         return None
 
+    # -- move conflicts (S-LIBRARY-MOVE) ----------------------------------------------
+
+    async def decide_move(
+        self, conflict_id: str, decision: MoveChoice, *, by: str | None = None
+    ) -> str | None:
+        """Answer a move conflict (LIBRARY-MOVE-5a). ``retry`` queues the worker job that
+        plans the album again and returns its id; ``fail`` fails its lane (``None``).
+        Raises ``KeyError`` (unknown), ``MoveResolvedError`` (decided already),
+        ``MoveBusyError`` (a retry is running) or ``ValueError`` while its run isn't
+        waiting yet."""
+        if self._shutting_down:
+            raise RuntimeError("server is shutting down")
+        store = AppMoveConflicts(self.db)
+        found = store.get(conflict_id)
+        if found is None:
+            raise KeyError(conflict_id)
+        job = self.db.job_for_run(found.run_id)
+        if found.state == "pending" and (job is None or job.state != "waiting_review"):
+            state = job.state if job is not None else "missing"
+            raise ValueError(f"run {found.run_id} is {state}; the conflict can't be decided yet")
+        claimed = store.claim(conflict_id, "pending-job")
+        if decision == "retry":
+            payload: dict[str, JsonValue] = {"conflict_id": conflict_id, "by": by}
+            queued = self.db.submit_job(claimed.profile, "move_retry", payload, claimed.run_id)
+            store.set_claim(conflict_id, queued.id)
+            await self._wake(claimed.profile)
+            return queued.id
+        run_id = claimed.run_id
+        claimed.state = "failed"
+        claimed.decided_by = by
+        claimed.decided_at = self._clock()
+        store.release(claimed)
+        lanes = AppLanes(self.db)
+        moved = lanes.set_state(run_id, [claimed.album_id], "failed", only_from=("waiting",))
+        for key in moved:
+            data = {"key": key, "state": "failed", "reason": "move conflict (review)"}
+            self._emit_run(run_id, "lane.finished", claimed.step_id, dict(data))
+        self._emit_run(
+            run_id,
+            "move.resolved",
+            claimed.step_id,
+            {
+                "conflict_id": conflict_id,
+                "album_id": claimed.album_id,
+                "decision": decision,
+                "decided_by": by,
+            },
+        )
+        lanes.resolve_hold(run_id, conflict_id)
+        if settle(self.db, run_id, lambda t, step, d: self._emit_run(run_id, t, step, d)) == (
+            "requeued"
+        ):
+            await self._wake(claimed.profile)
+        return None
+
     async def decide_overdue_cleanups(self) -> list[str]:
         """Answer every overdue cleanup decision with its ``on_timeout``."""
         decided: list[str] = []
@@ -702,6 +759,7 @@ class WorkerSupervisor:
             AppImportDecisions(self.db).cancel_for_run(run_id)  # IMPORT-UI-14
             AppCleanupDecisions(self.db).cancel_for_run(run_id)  # FILES-CLEANUP-14
             AppCoverReviews(self.db).cancel_for_run(run_id)  # COVERS-SEARCH-14
+            AppMoveConflicts(self.db).cancel_for_run(run_id)  # LIBRARY-MOVE-5a
             seq = self.db.last_seq(run_id) + 1
             self._persist(self._event(run_id, seq, "run.finished", {"status": "cancelled"}))
             return
