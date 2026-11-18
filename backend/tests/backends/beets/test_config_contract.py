@@ -89,14 +89,14 @@ def test_BEETS_IMPORT_12_regex_query_needs_quotes_for_backslashes(beets_env: Bee
 def test_BEETS_IMPORT_15_entry_point_refuses_profile_without_beetsdir() -> None:
     profile = parse_profile("{}\n", "p.yaml", name="p", root=Path("/p"), env={})
     with pytest.raises(ProfileError, match=r"beets\.beetsdir"):
-        from_profile(profile)
+        from_profile(profile, config_trusted=lambda _sha: True)
 
 
 def test_BEETS_IMPORT_15_entry_point_loads_the_profiles_beetsdir(beets_env: BeetsEnv) -> None:
     beets_env.write_config()
     text = f"beets: {{ beetsdir: {beets_env.beetsdir} }}\n"
     profile = parse_profile(text, "p.yaml", name="p", root=Path("/p"), env={})
-    assert isinstance(from_profile(profile), BeetsBackend)
+    assert isinstance(from_profile(profile, config_trusted=lambda _sha: True), BeetsBackend)
     assert config.loaded_beetsdir() == beets_env.beetsdir.resolve()
 
 

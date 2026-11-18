@@ -27,6 +27,8 @@ F-IMPORT-UI in M2. Prior art: beets-flask's `ImportSession` subclass (MIT).
 - BEETS-IMPORT-15: The package MUST register a `rifferr.backends` entry point `beets` whose factory refuses a profile without `beets.beetsdir` (PROFILE-8).
 - BEETS-IMPORT-16: The import MUST run in a thread so the worker's event loop stays responsive; cancellation (RUN-8) MUST take effect between albums.
 - BEETS-IMPORT-12: Contract tests MUST pin, against a temp profile under `tmp_path` and generated audio fixtures: quiet import of a tagged fixture album, flexible attribute storage, `evaluate_template` on `$albumartist - $album`, and a query with `::` regex. They run first on any beets version bump.
+- BEETS-IMPORT-17: The step MUST refuse (`StepRefused`) when its own `options.duplicate_action` is `remove`, `merge` or `upgrade` and the workflow is not trusted (SECURITY-10).
+- BEETS-IMPORT-18: A profile's beets config that runs code MUST be loaded only when trusted. Code means `pluginpath` non-empty, or the plugins `inline` or `hook`, read as plain YAML from `config.yaml` and its `include:` files. The worker MUST load it only if the SHA-256 over those files (prefixed `rifferr beets-config v1`) is trusted for that profile in `trusted_files` (SECURITY-14); otherwise the worker MUST fail to start with a message naming the keys and `rifferr trust-config PROFILE`. The check runs before `config.load` and receives the decision through the backend factory's `config_trusted` callback (BACKEND-13).
 
 Note (2026-11-13, C-LANES): `beets.import` is `run_level` (LANES-6). It runs before any lane exists, and each album it imports gets a lane at the next step (LANES-1).
 
@@ -80,6 +82,8 @@ beets plugins configured by the user load as usual and affect import and templat
 ## Security & safety
 - Uses the user's beets config read-only; Rifferr never writes to the beets config file.
 - Contract tests never touch the developer's real beets config (DEV-TOOLING-6), and set `autotag: no` (or replay recorded MusicBrainz responses) so they make no network calls.
+- A beets config that runs code is covered by trust (BEETS-IMPORT-18, SECURITY-14); this narrows the old boundary that left the profile's beets config outside trust.
+- `beets.import` is `destructive` in the safety report when `move: true`, `write: true` or a destructive `duplicate_action` is set (SECURITY-11).
 
 ## Non-goals
 - `auto` / `interactive` modes and the review queue for import decisions (F-IMPORT-UI, M2).
@@ -92,6 +96,10 @@ beets plugins configured by the user load as usual and affect import and templat
 - ~~Version range?~~ Resolved 2026-11-11 (author): `>=2.14,<2.15`; bumps start with the contract tests.
 
 Note (2026-11-13, F-IMPORT-UI): `mode` now accepts `quiet`, `auto` and `interactive`, and defaults to `auto` (IMPORT-UI-1); `duplicate_action: ask` makes duplicates import decisions outside quiet mode (IMPORT-UI-3). New params `decision_timeout` and `on_timeout` (IMPORT-UI-10); output `decisions`.
+- (2026-11-18, audit SEC-08) Should the destructive `duplicate_action` gate (BEETS-IMPORT-17) also apply when the effective value comes from the user's beets config (step option unset)? Needs a backend way to read the effective importer config.
+- (2026-11-18, audit SEC-08) For trusted unattended runs, should a destructive `duplicate_action` become an import decision unless the step sets an explicit opt-in? Should removed albums and paths be logged as a run event?
+- (2026-11-18, audit SEC-65) Should `move` alone be trust-gated? It would need a trust confirm for every untrusted import workflow that moves files.
+- (2026-11-18, audit SEC-62) Which commands count as code for BEETS-IMPORT-18: `convert`, `badfiles`, `play` and `replaygain` command backends are not counted now. The UI has no button for `trust-config` yet (API and CLI only).
 
 ## Tasks
 - [x] config + plugin loading module and contract tests

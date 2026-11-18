@@ -60,7 +60,7 @@ still run it as a `beets.command` step.
   when set (no contact is built in); time out each request after `covers.timeout` (default
   `15s`); and refuse a response body over `covers.max_bytes` (default 25 MB). A provider error
   or timeout MUST end only that provider's results, logged with the provider name, and the
-  search MUST go on with the others.
+  search MUST go on with the others. `covers.timeout` bounds a whole `CoverHttp.get` (all hops and the body), not each phase; slow links with big covers may need a larger value.
 - COVERS-SEARCH-6: Providers MUST run concurrently, and candidates MUST be emitted as each
   provider yields them (the UI never polls, architecture tenets). A search MUST be cancellable.
 
@@ -138,7 +138,7 @@ still run it as a `beets.command` step.
   they need no library access.
 - COVERS-SEARCH-20: `GET /api/covers/image/{sha256|candidate id}?thumb=1` MUST serve cached
   images only (never fetch an arbitrary URL for the client), with the right `Content-Type`
-  and `Content-Security-Policy: default-src 'none'`.
+  and `Content-Security-Policy: default-src 'none'`. The route takes optional `review_id` and `album_id`; a local (path) candidate MUST be served only when its parent equals that review's or album's folder, else 400. The UI passes them.
 - COVERS-SEARCH-21: `POST /api/reviews/covers/{item_id}/decision {decision: choose|skip|fail,
   candidate_id?, query?}` MUST resolve a `cover` review item: `choose` downloads the candidate
   if needed (COVERS-SEARCH-13 checks apply) and proposes its ChangeSet (COVERS-SEARCH-15),
@@ -148,6 +148,9 @@ still run it as a `beets.command` step.
 - COVERS-SEARCH-22: Snapshots (C-BACKEND) MUST expose an album's art as `art: {sha256, width,
   height, mime} | null`, and `GET /api/albums/{id}/art` MUST serve the current art file of an
   album through the read-only worker.
+- COVERS-SEARCH-23: The album art route MUST answer 502 `bad_image` for a file larger than 4 x `covers.max_bytes`, and MUST read it bounded.
+- COVERS-SEARCH-24: CoverArtArchive ids that are not UUID-shaped MUST be skipped (lower-cased otherwise).
+- COVERS-SEARCH-25: `CoverCandidate.source_url` MUST be null unless it is an http(s) URL; the UI re-checks.
 
 ## Interfaces
 ```yaml
@@ -286,6 +289,7 @@ Auto mode takes the CAA image. Without an MBID, CAA yields nothing; iTunes's 0.6
 - Provider API keys are profile secrets (PROFILE-4), never logged or returned.
 - Only official APIs; the providers' terms are recorded in the dependency/provider ledger.
 - No network in tests: providers are tested with `respx` and recorded replies.
+- `query` is a template field under WORKFLOW-14: run values come out literal.
 
 ## Non-goals
 - The picker UI (F-COVER-PICKER).

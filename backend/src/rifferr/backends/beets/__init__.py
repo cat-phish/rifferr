@@ -45,6 +45,7 @@ from rifferr.backends.beets.importer import (
 )
 from rifferr.backends.beets.snapshots import album_snapshot, field_value, parse_id
 from rifferr.backends.coerce import coerce_value
+from rifferr.beets_config import ConfigTrusted
 from rifferr.core.changeset import ApplyResult, ChangeProblem, ChangeSet, same_value
 from rifferr.core.ids import new_ulid
 from rifferr.core.imports import ImportAction, ImportApplyError, ImportQuestion
@@ -79,10 +80,12 @@ READ_ONLY_CAPABILITIES = CAPABILITIES.model_copy(
 )
 
 
-def from_profile(profile: Profile, *, read_only: bool = False) -> BeetsBackend:
+def from_profile(
+    profile: Profile, *, read_only: bool = False, config_trusted: ConfigTrusted | None = None
+) -> BeetsBackend:
     """``rifferr.backends`` entry point (BEETS-IMPORT-15, BACKEND-13)."""
     beetsdir = profile.require_beetsdir()
-    config.load(beetsdir)
+    config.load(beetsdir, config_trusted, profile.name)
     from rifferr.profile_store import art_store_path
 
     return BeetsBackend(

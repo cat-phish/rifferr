@@ -238,6 +238,7 @@ Implementation notes (2026-11-14, added while implementing; not new behavior):
   only text they template. They can't add URLs.
 - Message bodies can include album labels and tag values from imported files; they are sent as
   plain text (Apprise `body_format: text`), never as HTML or Markdown.
+- `title`, `body` and `message` are template fields under WORKFLOW-14: run values come out literal.
 
 ## Non-goals
 - Quiet hours, digests or rate limits beyond NOTIFY-8's per-pass grouping and NOTIFY-15's

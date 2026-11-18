@@ -51,7 +51,7 @@ class BeetsEnv:
 
     def backend(self, extra: str = "", *, art: bool = False) -> BeetsBackend:
         self.write_config(extra)
-        config.load(self.beetsdir)
+        config.load(self.beetsdir, lambda _sha: True)  # fixture plugins use pluginpath (SEC-62)
         store = self.root / "art" if art else None
         return BeetsBackend(self.beetsdir.resolve(), art_store=store)
 

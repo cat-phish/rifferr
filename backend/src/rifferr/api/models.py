@@ -137,6 +137,16 @@ class TrustResult(_Model):
     called: dict[str, str] = Field(default_factory=dict[str, str])
 
 
+class BeetsConfigStatus(_Model):
+    """SEC-62: what a profile's beets config runs, and whether the user trusted it."""
+
+    sha256: str
+    files: list[str]
+    code_keys: list[str] = Field(description="Keys that run code, e.g. `pluginpath`")
+    needs_trust: bool
+    trusted: bool
+
+
 class RunCreate(_Model):
     profile: str
     workflow: str = Field(description="Workflow file stem in the profile's workflows/ folder")

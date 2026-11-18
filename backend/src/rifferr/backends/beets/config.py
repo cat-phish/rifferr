@@ -24,6 +24,8 @@ import beets
 import beets.plugins
 import confuse
 
+from rifferr.beets_config import ConfigTrusted, inspect_config, refusal
+
 _loaded: Path | None = None
 
 
@@ -31,8 +33,11 @@ class BeetsConfigError(Exception):
     """The profile's beets configuration can't be used."""
 
 
-def load(beetsdir: Path) -> None:
-    """Load beets config and plugins from ``beetsdir``. Once per process (one profile)."""
+def load(beetsdir: Path, trusted: ConfigTrusted | None = None, profile: str | None = None) -> None:
+    """Load beets config and plugins from ``beetsdir``. Once per process (one profile).
+
+    SEC-62: a config that runs code (``pluginpath``, ``inline``, ``hook``) loads only when
+    ``trusted(sha256)`` says the user trusted exactly this content."""
     global _loaded
     beetsdir = beetsdir.expanduser().resolve()
     if _loaded == beetsdir:
@@ -44,6 +49,9 @@ def load(beetsdir: Path) -> None:
         )
     if not beetsdir.is_dir():
         raise BeetsConfigError(f"beets directory {beetsdir} does not exist")
+    report = inspect_config(beetsdir)
+    if report.needs_trust and not (trusted is not None and trusted(report.sha256)):
+        raise BeetsConfigError(refusal(beetsdir, report, profile))
     os.environ["BEETSDIR"] = str(beetsdir)
     beets.config.clear()
     try:

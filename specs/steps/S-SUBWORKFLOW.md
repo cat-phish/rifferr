@@ -66,7 +66,7 @@ S-TAGSCRIPT (script paths, the model for workflow paths).
 - SUBWORKFLOW-13: A run MUST be trusted (SECURITY-10) only when the caller and every workflow it
   calls are trusted by content hash. Trusting a caller MUST NOT trust the files it calls. The
   trust prompt in the UI and `rifferr trust` MUST list untrusted called files and let the user
-  trust them together, each by its own hash.
+  trust them together, each by its own hash. Trigger arming applies the same rule (TRIGGERS-2).
 - SUBWORKFLOW-14: The static safety report (SECURITY-11) for a caller MUST include the findings
   of every workflow it calls, each labelled with its expanded step id and the called file.
 - SUBWORKFLOW-15: `RunSummary` / `GET /api/runs/{id}` MUST record the hash of each called file

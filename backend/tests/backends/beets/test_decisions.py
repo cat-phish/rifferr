@@ -50,7 +50,7 @@ def backend(env: BeetsEnv, releases: list[dict[str, Any]], extra: str = "") -> B
     text = text.replace("plugins: []", f"pluginpath: ['{PLUGINS}']\nplugins: [rifferrfixture]")
     text = text.replace("autotag: no", "autotag: yes")
     (env.beetsdir / "config.yaml").write_text(text + extra)
-    config.load(env.beetsdir)
+    config.load(env.beetsdir, lambda _sha: True)
     return BeetsBackend(env.beetsdir.resolve())
 
 

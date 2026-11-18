@@ -218,6 +218,7 @@ Resolved (author, 2026-11-14):
 4. Emptying the trash is a profile setting, `files.trash_keep` (FILES-CLEANUP-16).
 5. Busy covers both pending import decisions and other active runs' inputs
    (FILES-CLEANUP-7): a nightly sweep must not clean a folder another run is importing.
+- (2026-11-18, audit SEC-125) Malformed glob sets fail the step with a message but are not caught by `rifferr validate`. Should validation require them to parse?
 
 ## Tasks
 - [x] C-BACKEND amendment: `files` capability, `library_files`, `library_dirs`, `importable`;

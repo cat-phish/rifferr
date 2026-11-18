@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from rifferr.appdb import AppDB
+from rifferr.beets_config import inspect_config
 from rifferr.core.profile import Profile, ProfileError, ProfileLoadError
 from rifferr.core.workflow import (
     Calls,
@@ -48,6 +49,13 @@ def add_parsers(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> Non
     )
     t.add_argument("--yes", action="store_true", help="don't ask for confirmation")
     t.set_defaults(func=cmd_trust)
+    c = sub.add_parser(
+        "trust-config",
+        help="trust a profile's beets config that runs code (pluginpath, inline, hook)",
+    )
+    c.add_argument("profile")
+    c.add_argument("--yes", action="store_true", help="don't ask for confirmation")
+    c.set_defaults(func=cmd_trust_config)
 
 
 @dataclass
@@ -160,6 +168,47 @@ def cmd_trust(args: argparse.Namespace) -> int:
         return _trust(args, c, db, profile.name if profile is not None else "")
     finally:
         db.close()
+
+
+def cmd_trust_config(args: argparse.Namespace) -> int:
+    """SEC-62: trust the exact beets config content (config + include files) in one profile."""
+    profile = _profile(args.profile, "trust-config")
+    if isinstance(profile, int):
+        return profile
+    assert profile is not None
+    try:
+        beetsdir = profile.require_beetsdir()
+    except ProfileError as exc:
+        print(f"rifferr trust-config: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+    report = inspect_config(Path(beetsdir))
+    print(f"beets config in {beetsdir}: sha256 {report.sha256}")
+    for f in report.files:
+        print(f"  file: {f}")
+    if not report.needs_trust:
+        print("it runs no code (no pluginpath, inline or hook): nothing to trust")
+        return EXIT_OK
+    for line in report.code_keys:
+        print(f"  runs code: {line}")
+    print(f"will be trusted in profile '{profile.name}'")
+    if not args.yes:
+        if not sys.stdin.isatty():
+            print(
+                "rifferr trust-config: no terminal to confirm on; pass --yes to trust",
+                file=sys.stderr,
+            )
+            return EXIT_USAGE
+        answer = input("Trust exactly this config? beets will then run the code it names. [y/N] ")
+        if answer.strip().lower() not in ("y", "yes"):
+            print("not trusted")
+            return EXIT_INVALID
+    db = AppDB(app_db_path())
+    try:
+        db.trust(report.sha256, str(Path(beetsdir) / "config.yaml"), "cli", profile.name)
+    finally:
+        db.close()
+    print("trusted")
+    return EXIT_OK
 
 
 def _trust(args: argparse.Namespace, c: Checked, db: AppDB, profile: str) -> int:

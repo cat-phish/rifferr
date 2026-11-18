@@ -26,6 +26,8 @@ M1 additions (WORKER-11) are specified in [S-TAGSCRIPT](../steps/S-TAGSCRIPT.md)
 - WORKER-9: The IPC channel MUST be the worker's inherited stdin (server → worker) and stdout (worker → server), carrying one JSON message per line. Nothing else may be written to the worker's stdout; its stderr goes to the server log. No socket or TCP port is opened.
 - WORKER-10: A worker MUST send a heartbeat every 5 seconds from a thread independent of step execution. The server MUST treat a worker silent for 30 seconds as hung, kill its process group, and handle it as in WORKER-6 with reason `worker_hung`.
 - WORKER-11: The server MAY start a second worker per profile in read-only mode (`-m rifferr.worker --profile P --read-only`) for preview and query jobs. It opens the backend read-only (BACKEND-13), accepts no run, apply or undo jobs, takes requests over the same IPC channel (WORKER-9), and follows the same idle timeout, heartbeat and shutdown rules. Its jobs are not stored in the job table: they are short-lived and lost on a crash, and the request fails with `503 preview_unavailable` (added for S-TAGSCRIPT).
+- WORKER-12: Worker stderr and error messages MUST be logged with control characters (except tab) escaped as `\xNN`.
+- WORKER-13: A worker for a profile whose beets config runs code and is not trusted MUST fail to start (BEETS-IMPORT-18); the error names the keys and `rifferr trust-config PROFILE`.
 
 ## Interfaces
 ```python

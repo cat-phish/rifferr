@@ -27,7 +27,7 @@ record them, given non-negotiable 3.
 - BEETS-COMMAND-1: The step MUST accept `command` (one subcommand name, matching `^[a-z][a-z0-9_-]*$`), `args` (a list of strings, default empty) and `timeout` (a duration as in S-REVIEW, default `1h`, open question 4). `command` or `args` given as a single string MUST be a validation error.
 - BEETS-COMMAND-2: `command` and each `args` element MUST have `{{ }}` interpolated at step start (C-WORKFLOW). beets template syntax in `args` (`$path`, `%if{}`) MUST be passed to beets unchanged, not evaluated by Rifferr, because beets evaluates its own format options (e.g. `ls -f '$albumartist'`).
 - BEETS-COMMAND-3: The subcommands `import` (use `beets.import`), `config` and `edit` (they open an editor) MUST be validation errors that name the reason (open question 3).
-- BEETS-COMMAND-4: The selection MUST be the step's default selection narrowed by `when` (RUN-2), written as CLI query arguments by the backend (BACKEND-14). The run-marker term MUST always be one of them, so a `beet` command never runs on the whole library.
+- BEETS-COMMAND-4: The selection MUST be the step's default selection narrowed by `when` (RUN-2), written as CLI query arguments by the backend (BACKEND-14). The run-marker term MUST always be one of them, so a `beet` command never runs on the whole library. `cli_command` MUST put the run-marker and album-id terms in every beets OR group (each `,`-ended part) and emit `--` before the query. Album mode MUST also be detected from short-flag clusters (`-ay`). Options belong in `args`, never in `when`.
 - BEETS-COMMAND-5: Before starting the subprocess, the step MUST query the selection through the backend. If no album matches, it MUST log "nothing to do" and finish successfully without running `beet`.
 - BEETS-COMMAND-6: The argv MUST be the backend's CLI command (BACKEND-14), then `command`, then `args`, then the query arguments, with no shell and no word splitting. The query arguments MUST come last so they can't be read as option values.
 - BEETS-COMMAND-7: The process MUST get the inherited environment plus `backend.command_env()` (`BEETSDIR`), `RIFFERR_RUN_ID` and `RIFFERR_PROFILE`; profile secrets MUST NOT be added, and inherited `env:` secret variables MUST be removed (as SHELL-4). stdin MUST be empty (`/dev/null`), so a prompt gets end-of-file. cwd MUST be the profile directory.
@@ -92,6 +92,7 @@ options go in `args`).
 - The selection always carries the run marker (BEETS-COMMAND-4), so a mistyped `when` narrows the run's albums and never widens to the library.
 - Commands can delete files (`remove -d`) or rewrite tags, so the step runs only in trusted workflows (BEETS-COMMAND-13).
 - Secrets don't reach the process (BEETS-COMMAND-7).
+- `args` are not escaped under WORKFLOW-14: the `beet` subprocess evaluates templates only for some subcommands and options (`modify` values, `list -f`), so escaping every arg would corrupt plain ones such as paths with `$`.
 
 ## Non-goals
 - One invocation per album (that arrives with lanes, M2).
@@ -111,6 +112,7 @@ Resolved 2026-11-12 (author: "go with your recommendations, approved"):
    Durations is B-040.
 5. ~~Album vs item queries?~~ The same query works for both; `-a` stays in `args`.
 6. ~~Which `beet`?~~ `python -m beets` from the worker's Python (BACKEND-14).
+- (2026-11-18, audit SEC-22) How to treat run values in `beets.command args`: (a) escape only when the command is known to take templates, (b) refuse `run.*`, `steps.*` and run-supplied vars in `args` (like SEC-21), or (c) document as trusted-only.
 
 ## Tasks
 - [x] BACKEND-14: `cli` capability, `cli_command` on BeetsBackend and FakeBackend, contract test

@@ -142,6 +142,48 @@
         "title": "AlbumSnapshot",
         "type": "object"
       },
+      "BeetsConfigStatus": {
+        "additionalProperties": false,
+        "description": "SEC-62: what a profile's beets config runs, and whether the user trusted it.",
+        "properties": {
+          "code_keys": {
+            "description": "Keys that run code, e.g. `pluginpath`",
+            "items": {
+              "type": "string"
+            },
+            "title": "Code Keys",
+            "type": "array"
+          },
+          "files": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "needs_trust": {
+            "title": "Needs Trust",
+            "type": "boolean"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "trusted": {
+            "title": "Trusted",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "sha256",
+          "files",
+          "code_keys",
+          "needs_trust",
+          "trusted"
+        ],
+        "title": "BeetsConfigStatus",
+        "type": "object"
+      },
       "CalledWorkflow": {
         "additionalProperties": false,
         "description": "A workflow file a workflow calls (S-SUBWORKFLOW), trusted on its own (SUBWORKFLOW-13).",
@@ -6738,6 +6780,162 @@
         "summary": "Album Cover Query",
         "tags": [
           "covers"
+        ]
+      }
+    },
+    "/api/profiles/{profile}/beets-config": {
+      "get": {
+        "description": "The keys in the profile's beets config that run code, and its trust (SEC-62).",
+        "operationId": "get_beets_config_api_profiles__profile__beets_config_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeetsConfigStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Get Beets Config",
+        "tags": [
+          "profiles"
+        ]
+      }
+    },
+    "/api/profiles/{profile}/beets-config/trust": {
+      "post": {
+        "description": "Trust exactly the beets config content the user reviewed, in this profile (SEC-62).",
+        "operationId": "trust_beets_config_api_profiles__profile__beets_config_trust_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrustRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeetsConfigStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Trust Beets Config",
+        "tags": [
+          "profiles"
         ]
       }
     },

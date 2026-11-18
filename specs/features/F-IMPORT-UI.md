@@ -93,6 +93,7 @@ and C-LANES (a `skipped` lane state, IMPORT-UI-17).
 
   An error from IMPORT-UI-11 or -13 MUST be shown on the item with "Look up again". Labels use beets' terms (candidate, as-is, distance, `search_ids`) and link the beets importer docs.
 - IMPORT-UI-16: The run page lane table (LANES-15) MUST show a pending lane's hold as "import decision", linked to the queue item.
+- IMPORT-UI-18: `ImportCandidate.url` MUST be null unless it is an http(s) URL; the UI re-checks.
 
 Implementation notes (2026-11-13, added while implementing; not new behavior):
 - Questions come back in `ImportResult.questions`, not through the `decide` callback: the backend's import returns them, and the step calls `ctx.request_import` for each. `DecisionCallback` stays in the protocol, reserved. The old `backends.base.ImportDecision` (a per-folder outcome) is renamed `ImportOutcome`; `ImportDecision` is now the stored decision (`core.imports`).
