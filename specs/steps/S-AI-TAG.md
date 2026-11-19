@@ -307,10 +307,9 @@ class AIProvider(Protocol):
 - An AI review of workflow safety (later; advisory only, SECURITY-12).
 
 ## Open questions
-1. Non-negotiable 4 says AI output "follows the step's `apply` policy, which defaults to
-   `review`", which reads as if `apply: auto` is allowed; C-CHANGESET's Security section says
-   AI output can never auto-apply. This draft follows C-CHANGESET (`force_review = True`).
-   Which is intended?
+1. ~~`apply: auto` allowed for AI output?~~ Resolved 2026-11-18 (author): follow
+   C-CHANGESET, AI output never auto-applies. `ai.tag` declares `force_review = True`
+   (AI-TAG-8).
 2. `on_error` default: `fail` (lane fails, visible on the dashboard) or `skip` (run succeeds,
    warning only)? Unattended runs may prefer `skip` with a notification.
 3. Should a flagged (`not_in_vocabulary`) value offer "add to vocabulary" in review, which
