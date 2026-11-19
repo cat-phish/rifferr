@@ -14,8 +14,9 @@ from typing import Final, Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from rifferr.core.changeset import ApplyResult, ChangeProblem, ChangeSet
+from rifferr.core.changeset import ApplyResult, ChangeProblem, ChangeSet, FileEffect, FileMode
 from rifferr.core.imports import ImportAction, ImportQuestion
+from rifferr.core.moves import ArtifactRule, MovePlan, PathFormat
 from rifferr.core.selection import Selection
 from rifferr.core.snapshot import AlbumSnapshot, FieldValue, ItemSnapshot
 
@@ -39,6 +40,10 @@ class QueryError(ValueError):
 
 class TemplateError(ValueError):
     """A template is invalid or uses something this backend doesn't support."""
+
+
+class FileMoveError(RuntimeError):
+    """One file of a FileChangeSet couldn't be copied, verified or removed (LIBRARY-MOVE-10)."""
 
 
 class ChangeSetRejected(ValueError):
@@ -93,6 +98,9 @@ class BackendCapabilities(BaseModel):
     """Albums carry ``art_sha256`` (``core.covers.ART_FIELD``), and ``apply`` sets or removes
     an album's cover when a ChangeSet changes it (S-COVERS-SEARCH COVERS-SEARCH-16). The
     image must be in the profile's art store; the old art is copied there first."""
+    move: bool = False
+    """``plan_moves``, ``copy_file``, ``remove_source``, ``set_paths``, ``file_sha256``,
+    ``file_stat`` and ``reconcile_file`` move or copy an album's files (S-LIBRARY-MOVE)."""
 
     @staticmethod
     def display_name(field: str) -> str:
@@ -277,4 +285,50 @@ class LibraryBackend(Protocol):
         ``selection`` (BACKEND-14): the tool, ``subcommand``, ``args``, then the selection
         as query arguments, last. Raises ``ValueError`` for a selection that would match
         the whole library."""
+        ...
+
+    # -- capability "move" (S-LIBRARY-MOVE) ------------------------------------------
+    # Only the engine calls the writing methods, after journaling (LIBRARY-MOVE-7).
+
+    def plan_moves(
+        self,
+        selection: Selection,
+        *,
+        mode: FileMode,
+        formats: Sequence[PathFormat] | None,
+        directory: Path | None,
+        artifacts: Sequence[ArtifactRule],
+    ) -> list[MovePlan]:
+        """One plan per selected album: its items, art file and matching artifacts with
+        their destinations from the backend's path formats (``formats`` override them),
+        sources hashed, files already in place left out, LIBRARY-MOVE-5 conflicts filled
+        in. Only reads the filesystem (LIBRARY-MOVE-4)."""
+        ...
+
+    def copy_file(self, effect: FileEffect) -> FileEffect:
+        """``planned`` -> ``copied``: copy to a temporary name beside ``dst``, fsync, verify
+        size and SHA-256, rename (LIBRARY-MOVE-8). In ``move`` mode on one filesystem it may
+        rename instead and return ``done``. Never overwrites; raises ``FileMoveError``."""
+        ...
+
+    def remove_source(self, effect: FileEffect) -> FileEffect:
+        """``copied`` -> ``done`` for ``move``: removes ``src`` only once ``dst`` exists and
+        matches ``sha256``. Raises ``FileMoveError`` otherwise."""
+        ...
+
+    def set_paths(self, effects: Sequence[FileEffect]) -> None:
+        """Point the library at each tracked effect's ``dst`` (items, album art)."""
+        ...
+
+    def file_sha256(self, path: str) -> str | None:
+        """The file's SHA-256, or ``None`` if it doesn't exist."""
+        ...
+
+    def file_stat(self, path: str) -> tuple[int, str] | None:
+        """The file's size and SHA-256, or ``None`` if it doesn't exist."""
+        ...
+
+    def reconcile_file(self, effect: FileEffect) -> FileEffect:
+        """After a crash: the effect's state from the filesystem, temporary files removed
+        (LIBRARY-MOVE-12). Never deletes anything else."""
         ...

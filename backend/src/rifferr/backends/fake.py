@@ -37,6 +37,8 @@ ask``). Albums asked about wait in ``questions`` until ``import_decided``. Folde
 
 from __future__ import annotations
 
+import hashlib
+import posixpath
 import re
 import shlex
 import sys
@@ -52,6 +54,7 @@ from rifferr.backends.base import (
     CapabilityError,
     ChangeSetRejected,
     DecisionCallback,
+    FileMoveError,
     ImportMode,
     ImportOutcome,
     ImportResult,
@@ -66,6 +69,8 @@ from rifferr.core.changeset import (
     ChangeProblem,
     ChangeSet,
     FieldEffect,
+    FileEffect,
+    FileMode,
     TargetRef,
     WriteFailure,
     diff_effects,
@@ -79,8 +84,18 @@ from rifferr.core.imports import (
     ImportCandidate,
     ImportQuestion,
 )
+from rifferr.core.moves import (
+    ALL_ARTIFACTS,
+    ArtifactRule,
+    MovePlan,
+    PathFormat,
+    Tracked,
+    build_plan,
+    check_conflicts,
+    shared_folders,
+)
 from rifferr.core.selection import Selection
-from rifferr.core.snapshot import AlbumSnapshot, FieldValue, ItemSnapshot
+from rifferr.core.snapshot import AlbumSnapshot, FieldValue, ItemSnapshot, label
 
 DEFAULT_CAPABILITIES = BackendCapabilities(
     import_=True,
@@ -93,7 +108,10 @@ DEFAULT_CAPABILITIES = BackendCapabilities(
     files=True,
     remove=True,
     art=True,
+    move=True,
 )
+#: FakeBackend's default path format (``plan_moves``); fields as in ``render_template``.
+FAKE_PATH_FORMAT = "$albumartist/$album/$track $title"
 #: Suffixes a FakeBackend treats as importable music (tests only; not engine policy).
 FAKE_IMPORTABLE = frozenset({".flac", ".mp3", ".ogg", ".opus", ".m4a", ".wav"})
 #: Default command-line tool of a FakeBackend: prints its arguments as JSON (BACKEND-14).
@@ -142,6 +160,11 @@ class _Album:
     path: str | None
     fields: dict[str, FieldValue]
     items: list[_Item] = field(default_factory=list[_Item])
+
+    @property
+    def artpath(self) -> str | None:
+        value = self.fields.get("artpath")
+        return value if isinstance(value, str) and value else None
 
 
 @dataclass(frozen=True)
@@ -204,6 +227,16 @@ class FakeBackend:
         """(album id, delete_files) per ``remove_album`` call."""
         self.deleted: list[str] = []
         """Paths ``remove_album`` would have deleted."""
+        self.fs: dict[str, bytes] = {}
+        """In-memory files for the ``move`` capability: absolute path -> content."""
+        self.directory = "/library"
+        """Destination root of ``plan_moves`` (beets: ``directory``)."""
+        self.path_formats: list[PathFormat] = [PathFormat(query="default", format=FAKE_PATH_FORMAT)]
+        self.fail_files: dict[str, str] = {}
+        """source or destination path -> error, to make ``copy_file``/``remove_source`` fail."""
+        self.same_filesystem = False
+        """True: ``move`` effects rename in one step (``copy_file`` returns ``done``)."""
+        self.set_paths_calls: list[list[FileEffect]] = []
         """Message ``lookup`` and ``import_decided`` fail with (network errors)."""
 
     # -- building ------------------------------------------------------------
@@ -600,6 +633,128 @@ class FakeBackend:
 
     # -- helpers -------------------------------------------------------------
 
+    # -- capability "move" (S-LIBRARY-MOVE) -----------------------------------------
+
+    def add_files(self, files: Mapping[str, bytes | str]) -> None:
+        """Put files in the in-memory filesystem."""
+        for path, data in files.items():
+            self.fs[path] = data.encode() if isinstance(data, str) else data
+
+    def album_files(self, album_id: str) -> None:
+        """Create the files of an album (items and art) with their path as content."""
+        album = next(a for a in self._albums if a.id == album_id)
+        for path in [i.path for i in album.items] + ([album.artpath] if album.artpath else []):
+            self.fs.setdefault(path, path.encode())
+
+    def _stat(self, path: str) -> tuple[int, str] | None:
+        data = self.fs.get(path)
+        return None if data is None else (len(data), hashlib.sha256(data).hexdigest())
+
+    def _list(self, folder: str) -> list[str]:
+        prefix = folder.rstrip("/") + "/"
+        return [p[len(prefix) :] for p in self.fs if p.startswith(prefix)]
+
+    def _is_dir(self, path: str) -> bool:
+        prefix = path.rstrip("/") + "/"
+        return any(p.startswith(prefix) for p in self.fs)
+
+    def plan_moves(
+        self,
+        selection: Selection,
+        *,
+        mode: FileMode,
+        formats: Sequence[PathFormat] | None,
+        directory: Path | None,
+        artifacts: Sequence[ArtifactRule] = ALL_ARTIFACTS,
+    ) -> list[MovePlan]:
+        self._need("move")
+        root = posixpath.normpath(str(directory)) if directory is not None else self.directory
+        chosen = list(formats) if formats else self.path_formats
+        plans: list[MovePlan] = []
+        for snap in self.query(selection.model_copy(update={"scope": "album"})):
+            album = next(a for a in self._albums if a.id == snap.id)
+            ref = TargetRef(scope="album", id=album.id)
+            tracked: list[Tracked] = []
+            for item in sorted(album.items, key=_sort_key):
+                env = {**album.fields, **item.fields}
+                fmt = _pick_format(chosen, env)
+                rel = render_template(fmt, env)
+                ext = posixpath.splitext(item.path)[1]
+                dst = posixpath.normpath(posixpath.join(root, rel + ext))
+                tracked.append((TargetRef(scope="item", id=item.id), "item", item.path, dst))
+            if album.artpath and tracked:
+                dst_dir = posixpath.dirname(tracked[0][3])
+                art_dst = posixpath.join(dst_dir, posixpath.basename(album.artpath))
+                tracked.append((ref, "art", album.artpath, art_dst))
+            if not tracked:
+                continue
+            plans.append(
+                build_plan(
+                    ref,
+                    label(snap),
+                    tracked,
+                    mode=mode,
+                    artifacts=artifacts,
+                    list_files=self._list,
+                    stat=self._stat,
+                )
+            )
+        plans = shared_folders(plans)
+        return check_conflicts(plans, root, exists=lambda p: p in self.fs, is_dir=self._is_dir)
+
+    def _fail(self, *paths: str) -> None:
+        for path in paths:
+            if path in self.fail_files:
+                raise FileMoveError(f"{path}: {self.fail_files[path]}")
+
+    def copy_file(self, effect: FileEffect) -> FileEffect:
+        self._need("move")
+        self._fail(effect.src, effect.dst)
+        if effect.dst in self.fs:
+            raise FileMoveError(f"{effect.dst} already exists")
+        if self._stat(effect.src) != (effect.size, effect.sha256):
+            raise FileMoveError(f"{effect.src} changed since it was planned")
+        if effect.mode == "move" and self.same_filesystem:
+            self.fs[effect.dst] = self.fs.pop(effect.src)
+            return effect.model_copy(update={"state": "done"})
+        self.fs[effect.dst] = self.fs[effect.src]
+        return effect.model_copy(update={"state": "copied"})
+
+    def remove_source(self, effect: FileEffect) -> FileEffect:
+        self._need("move")
+        self._fail(effect.src)
+        if self._stat(effect.dst) != (effect.size, effect.sha256):
+            raise FileMoveError(f"{effect.dst} doesn't match; {effect.src} is kept")
+        self.fs.pop(effect.src, None)
+        return effect.model_copy(update={"state": "done"})
+
+    def set_paths(self, effects: Sequence[FileEffect]) -> None:
+        self._need("move")
+        self.set_paths_calls.append(list(effects))
+        for e in effects:
+            obj = self._find(e.target)
+            if e.kind == "item" and isinstance(obj, _Item):
+                obj.path = e.dst
+            elif e.kind == "art" and isinstance(obj, _Album):
+                obj.fields["artpath"] = e.dst
+        for album in self._albums:  # the album folder follows its items
+            if album.items:
+                album.path = posixpath.commonpath([posixpath.dirname(i.path) for i in album.items])
+
+    def file_sha256(self, path: str) -> str | None:
+        info = self._stat(path)
+        return None if info is None else info[1]
+
+    def file_stat(self, path: str) -> tuple[int, str] | None:
+        return self._stat(path)
+
+    def reconcile_file(self, effect: FileEffect) -> FileEffect:
+        verified = self._stat(effect.dst) == (effect.size, effect.sha256)
+        if not verified:
+            return effect.model_copy(update={"state": "planned"})
+        state = "copied" if effect.src in self.fs else "done"
+        return effect.model_copy(update={"state": state})
+
     def _find(self, ref: TargetRef) -> _Album | _Item | None:
         for album in self._albums:
             if ref.scope == "album" and album.id == ref.id:
@@ -701,6 +856,17 @@ def _candidate(spec: Mapping[str, Any]) -> ImportCandidate:
         tracks=int(spec.get("tracks", 0)),
         distance=float(spec.get("distance", 0.5)),
     )
+
+
+def _pick_format(formats: Sequence[PathFormat], env: Mapping[str, FieldValue]) -> str:
+    """First matching query wins, ``default`` last, as beets' ``paths:``."""
+    for f in formats:
+        if f.query != "default" and _matches_all(parse_query(f.query), env):
+            return f.format
+    for f in formats:
+        if f.query == "default":
+            return f.format
+    raise TemplateError("no 'default' path format")
 
 
 def _album_snapshot(album: _Album, items: list[_Item] | None = None) -> AlbumSnapshot:

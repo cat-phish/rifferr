@@ -28,6 +28,7 @@ from rifferr.appdb import (
     AppDB,
     AppImportDecisions,
     AppLanes,
+    AppMoveConflicts,
     AppNotifications,
     AppReviewGates,
     StoredNotification,
@@ -183,9 +184,14 @@ class NotificationService:
             if not isinstance(hold, dict):
                 continue
             kind, ref = hold.get("kind"), hold.get("ref")
-            if kind not in ("changeset", "gate", "import", "cleanup", "cover") or not isinstance(
-                ref, str
-            ):
+            if kind not in (
+                "changeset",
+                "gate",
+                "import",
+                "cleanup",
+                "cover",
+                "move",
+            ) or not isinstance(ref, str):
                 continue
             old = held.items.get(ref)
             labels = (*old.labels, label) if old is not None else (label,)
@@ -474,6 +480,9 @@ class NotificationService:
         if item.kind == "cover":
             cover = AppCoverReviews(self.db).get(item.ref)
             return cover is not None and cover.state == "pending"
+        if item.kind == "move":
+            move = AppMoveConflicts(self.db).get(item.ref)
+            return move is not None and move.state == "pending"
         stored = AppChangeSets(self.db).get(item.ref)
         return stored is not None and stored.state in HOLDING_STATES
 

@@ -39,6 +39,8 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     watched: join(root, "watched"),
     dashboard: join(root, "dashboard-inbox"),
     covers: join(root, "covers-inbox"),
+    moves: join(root, "moves-inbox"),
+    moved: join(root, "moved-library"),
     home: join(root, "home"),
   };
   for (const d of Object.values(dirs)) mkdirSync(d, { recursive: true, mode: 0o700 });
@@ -108,6 +110,8 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   const rifferr = (...args: string[]): string =>
     execFileSync(uv, ["run", "--project", backend, "rifferr", ...args], { env, encoding: "utf8" });
   rifferr("profile", "create", "main", "--beetsdir", dirs.beets);
+  // The e2e beets config loads test plugins (pluginpath): it runs code, so trust it (SEC-62).
+  rifferr("trust-config", "main", "--yes");
   // An album already in the library, for the tag-script preview (TAGSCRIPT-22). Its album
   // name differs from the inbox copy, so the two-step import isn't a duplicate.
   const library = join(root, "preimport");
@@ -192,6 +196,19 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     join(here, "lanes-flow.yaml"),
     join(dirs.config, "profiles", "main", "workflows", "lanes-flow.yaml"),
   );
+  // An album imported in place, then moved after review (S-LIBRARY-MOVE).
+  cpSync(
+    join(here, "move-flow.yaml"),
+    join(dirs.config, "profiles", "main", "workflows", "move-flow.yaml"),
+  );
+  cpSync(
+    join(backend, "tests", "fixtures", "audio", "album-flac"),
+    join(dirs.moves, "Move Sessions"),
+    {
+      recursive: true,
+    },
+  );
+  writeFileSync(join(dirs.moves, "Move Sessions", "rip.log"), "log");
   // A workflow that calls another one (S-SUBWORKFLOW).
   for (const name of ["call-flow.yaml", "call-shared.yaml"]) {
     cpSync(join(here, name), join(dirs.config, "profiles", "main", "workflows", name));
@@ -243,6 +260,8 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   process.env.RIFFERR_E2E_WATCHED = dirs.watched;
   process.env.RIFFERR_E2E_DASHBOARD = dirs.dashboard;
   process.env.RIFFERR_E2E_COVERS_INBOX = dirs.covers;
+  process.env.RIFFERR_E2E_MOVES_INBOX = dirs.moves;
+  process.env.RIFFERR_E2E_MOVED_LIBRARY = dirs.moved;
   process.env.RIFFERR_E2E_FIXTURE = join(backend, "tests", "fixtures", "audio", "album-flac");
 
   return async () => {

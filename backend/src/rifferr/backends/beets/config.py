@@ -24,6 +24,7 @@ import beets
 import beets.plugins
 import confuse
 
+from rifferr.backends.beets import templates
 from rifferr.beets_config import ConfigTrusted, inspect_config, refusal
 
 _loaded: Path | None = None
@@ -59,8 +60,24 @@ def load(beetsdir: Path, trusted: ConfigTrusted | None = None, profile: str | No
     except confuse.ConfigError as exc:
         beets.config.clear()
         raise BeetsConfigError(f"can't read beets config in {beetsdir}: {exc}") from None
-    beets.plugins.load_plugins()
+    # TEMPLATE-FUNCTIONS-1..4: the rifferr plugin always loads; collisions stop the worker.
+    try:
+        templates.rifferr_functions()
+        names = beets.config["plugins"].as_str_seq()
+        if templates.PLUGIN_NAME not in names:
+            beets.config.set({"plugins": [*names, templates.PLUGIN_NAME]})
+        beets.plugins.load_plugins()
+        templates.check_collisions()
+    except templates.TemplateFunctionError as exc:
+        beets.plugins._instances.clear()  # pyright: ignore[reportPrivateUsage]
+        beets.config.clear()
+        raise BeetsConfigError(str(exc)) from None
     _loaded = beetsdir
+
+
+def plugin_names() -> list[str]:
+    """The plugins this process loaded, for the ``beet`` CLI's ``-p`` (TEMPLATE-FUNCTIONS-3)."""
+    return beets.plugins.get_plugin_names()
 
 
 def loaded_beetsdir() -> Path | None:

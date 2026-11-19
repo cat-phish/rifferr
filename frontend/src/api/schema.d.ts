@@ -354,6 +354,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/move-conflicts/{conflict_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Move Conflict */
+        get: operations["get_move_conflict_api_move_conflicts__conflict_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/move-conflicts/{conflict_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decide Move
+         * @description ``retry`` queues the worker job that plans the album again and, when nothing
+         *     conflicts any more, moves it at once; ``fail`` fails the album's lane.
+         */
+        post: operations["decide_move_api_move_conflicts__conflict_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/profiles": {
         parameters: {
             query?: never;
@@ -779,7 +817,8 @@ export interface paths {
          * Review Queue
          * @description What waits for a decision, oldest first: run ChangeSets that are proposed or
          *     conflicted, pending review gates (REVIEW-QUEUE-1), pending import decisions
-         *     (IMPORT-UI-7) and pending cleanup decisions (FILES-CLEANUP-14).
+         *     (IMPORT-UI-7), pending cleanup decisions (FILES-CLEANUP-14), cover reviews
+         *     (COVERS-SEARCH-14) and move conflicts (LIBRARY-MOVE-5a).
          */
         get: operations["review_queue_api_review_get"];
         put?: never;
@@ -940,7 +979,8 @@ export interface paths {
         /**
          * Undo Run
          * @description Queue the undo of the run's applied changes, newest first (REVIEW-QUEUE-8,
-         *     JOURNAL-6). The result arrives as ``job.finished`` on the run's stream.
+         *     JOURNAL-6). The result arrives as ``job.finished`` on the run's stream. ``force``
+         *     names moved files to undo although they changed (LIBRARY-MOVE-15).
          */
         post: operations["undo_run_api_runs__run_id__undo_post"];
         delete?: never;
@@ -1112,6 +1152,16 @@ export interface components {
             path: string | null;
         };
         /**
+         * ArtifactRule
+         * @description Which untracked files travel with the album, and where (LIBRARY-MOVE-1, -6).
+         */
+        ArtifactRule: {
+            /** Match */
+            match: string[];
+            /** To */
+            to?: string | null;
+        };
+        /**
          * BeetsConfigStatus
          * @description SEC-62: what a profile's beets config runs, and whether the user trusted it.
          */
@@ -1160,7 +1210,8 @@ export interface components {
         };
         /**
          * ChangeSet
-         * @description Proposed field changes to one album and/or its items (CHANGESET-1, -14).
+         * @description Proposed field changes to one album and/or its items (CHANGESET-1, -14), and/or
+         *     file moves of one album (``files``, S-LIBRARY-MOVE).
          */
         ChangeSet: {
             /**
@@ -1168,6 +1219,11 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /**
+             * Files
+             * @description File moves or copies (S-LIBRARY-MOVE); accepted or rejected as a whole
+             */
+            files?: components["schemas"]["FileEffect"][];
             /** Id */
             id: string;
             /** Profile */
@@ -1177,9 +1233,13 @@ export interface components {
             /** Run Id */
             run_id?: string | null;
             source: components["schemas"]["ChangeSource"];
+            stamp?: components["schemas"]["Stamp"] | null;
             /** Step Id */
             step_id?: string | null;
-            /** Targets */
+            /**
+             * Targets
+             * @description Empty only when ``files`` isn't
+             */
             targets: components["schemas"]["TargetChange"][];
         };
         /**
@@ -1683,6 +1743,48 @@ export interface components {
             target: components["schemas"]["TargetRef"];
         };
         /**
+         * FileEffect
+         * @description One file of a FileChangeSet: the ``files`` change kind (S-LIBRARY-MOVE).
+         *
+         *     ``size`` and ``sha256`` describe the source when planned; they are what the copy
+         *     is verified against (LIBRARY-MOVE-7, -8). ``state`` is journaled per file (-9).
+         */
+        FileEffect: {
+            /**
+             * Dst
+             * @description Absolute path
+             */
+            dst: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "item" | "art" | "artifact";
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "move" | "copy";
+            /** Note */
+            note?: string | null;
+            /** Sha256 */
+            sha256: string;
+            /** Size */
+            size: number;
+            /**
+             * Src
+             * @description Absolute path
+             */
+            src: string;
+            /**
+             * State
+             * @default planned
+             * @enum {string}
+             */
+            state: "planned" | "copied" | "done" | "skipped";
+            target: components["schemas"]["TargetRef"];
+        };
+        /**
          * FolderItem
          * @description One file of the folder as it is now: its tags before any match.
          */
@@ -2055,10 +2157,10 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "changeset" | "gate" | "import" | "cleanup" | "cover";
+            kind: "changeset" | "gate" | "import" | "cleanup" | "cover" | "move";
             /**
              * Ref
-             * @description ChangeSet id, review gate id, import decision id or cleanup decision id
+             * @description ChangeSet id, review gate id, import decision id, cleanup decision id, cover review id or move conflict id
              */
             ref: string;
         };
@@ -2165,6 +2267,102 @@ export interface components {
              */
             undo_journal_id?: string | null;
         };
+        /**
+         * MoveConflict
+         * @description An album that can't move yet, waiting in the review queue (LIBRARY-MOVE-5a).
+         */
+        MoveConflict: {
+            /** Album Id */
+            album_id: string;
+            /**
+             * Attempts
+             * @description Retries that still found conflicts
+             * @default 0
+             */
+            attempts: number;
+            /**
+             * Changeset Id
+             * @description The FileChangeSet a retry applied
+             */
+            changeset_id?: string | null;
+            /** Conflicts */
+            conflicts: string[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Decided At */
+            decided_at?: string | null;
+            /** Decided By */
+            decided_by?: string | null;
+            /**
+             * Dst Dir
+             * @default
+             */
+            dst_dir: string;
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Profile */
+            profile: string;
+            /** Run Id */
+            run_id: string;
+            settings: components["schemas"]["MoveSettings"];
+            /**
+             * Src Dir
+             * @default
+             */
+            src_dir: string;
+            /**
+             * State
+             * @default pending
+             * @enum {string}
+             */
+            state: "pending" | "moved" | "in_place" | "failed" | "cancelled";
+            /** Step Id */
+            step_id: string;
+        };
+        /**
+         * MoveDecided
+         * @description ``job_id`` is the worker job that retries the move (``retry``); ``None`` otherwise.
+         */
+        MoveDecided: {
+            /** Job Id */
+            job_id?: string | null;
+        };
+        /**
+         * MoveDecisionBody
+         * @description Answer a move conflict (LIBRARY-MOVE-5a): plan it again, or fail its lane.
+         */
+        MoveDecisionBody: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "retry" | "fail";
+        };
+        /**
+         * MoveSettings
+         * @description A ``library.move`` step's resolved ``with:``, kept so a conflict can be retried
+         *     the same way (LIBRARY-MOVE-5a). ``directory`` is absolute, or ``None`` for beets'.
+         */
+        MoveSettings: {
+            /** Artifacts */
+            artifacts?: components["schemas"]["ArtifactRule"][];
+            /** Directory */
+            directory?: string | null;
+            /** Formats */
+            formats?: components["schemas"]["PathFormat"][] | null;
+            /**
+             * Mode
+             * @default move
+             * @enum {string}
+             */
+            mode: "move" | "copy";
+            stamp?: components["schemas"]["Stamp"] | null;
+        };
         /** NotifyTestBody */
         NotifyTestBody: {
             /**
@@ -2184,6 +2382,16 @@ export interface components {
             sent: boolean;
             /** Target */
             target: string;
+        };
+        /**
+         * PathFormat
+         * @description One ``paths:`` entry: a backend query (or ``default``) and a path format.
+         */
+        PathFormat: {
+            /** Format */
+            format: string;
+            /** Query */
+            query: string;
         };
         /** PreviewError */
         PreviewError: {
@@ -2347,7 +2555,8 @@ export interface components {
          * QueueItem
          * @description One thing that waits for a decision (REVIEW-QUEUE-1). ``kind`` says which of
          *     ``changeset`` / ``gate`` / ``import_decision`` / ``cleanup_decision`` /
-         *     ``cover_review`` is set (IMPORT-UI-7, FILES-CLEANUP-14, COVERS-SEARCH-21).
+         *     ``cover_review`` / ``move_conflict`` is set (IMPORT-UI-7, FILES-CLEANUP-14,
+         *     COVERS-SEARCH-21, LIBRARY-MOVE-5a).
          */
         QueueItem: {
             changeset?: components["schemas"]["ChangeSet"] | null;
@@ -2366,7 +2575,8 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "changeset" | "gate" | "import" | "cleanup" | "cover";
+            kind: "changeset" | "gate" | "import" | "cleanup" | "cover" | "move";
+            move_conflict?: components["schemas"]["MoveConflict"] | null;
             /** Profile */
             profile: string;
             /** Run Id */
@@ -2710,6 +2920,20 @@ export interface components {
             /** Valid */
             valid: boolean;
         };
+        /**
+         * Stamp
+         * @description A field set to the date a FileChangeSet is applied (LIBRARY-MOVE-6b).
+         */
+        Stamp: {
+            /** Field */
+            field: string;
+            /**
+             * Format
+             * @description strftime format
+             * @default %Y-%m-%d
+             */
+            format: string;
+        };
         /** StepState */
         StepState: {
             /**
@@ -2871,6 +3095,17 @@ export interface components {
              * @constant
              */
             trusted: true;
+        };
+        /**
+         * UndoBody
+         * @description Optional body of an undo request (LIBRARY-MOVE-15).
+         */
+        UndoBody: {
+            /**
+             * Force
+             * @description Library files to undo although they changed since they were moved; the undo report's changed_files names them
+             */
+            force?: string[];
         };
         /** ValidateResult */
         ValidateResult: {
@@ -4032,6 +4267,126 @@ export interface operations {
             };
         };
     };
+    get_move_conflict_api_move_conflicts__conflict_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conflict_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MoveConflict"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    decide_move_api_move_conflicts__conflict_id__decision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conflict_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveDecisionBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MoveDecided"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     get_profiles_api_profiles_get: {
         parameters: {
             query?: never;
@@ -4858,7 +5213,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["UndoBody"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             202: {
@@ -5912,7 +6271,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["UndoBody"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             202: {

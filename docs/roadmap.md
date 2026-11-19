@@ -204,6 +204,9 @@ F-COVER-PICKER.
 
 Order: S-AI-TAG (providers, validation, cache) → F-AI-CHAT.
 
+- [ ] S-AI-TAG: Drafted 2026-11-18; open questions to settle before approval.
+- [ ] F-AI-CHAT: not drafted yet.
+
 ## M5 — Reference workflow and packaging
 
 **Done when:** `examples/workflows/foobar-style.yaml` reproduces the original
@@ -212,6 +215,9 @@ installs from PyPI and runs from the Docker image.
 
 Order: reference workflow + coverage → F-PACKAGING (PyPI with bundled
 frontend, Docker image with PUID/PGID).
+
+- [x] S-LIBRARY-MOVE (ahead of the main order): Implemented 2026-11-18. Journaled
+  rename, move and copy into the library; conflicts wait in review; undo restores moved files.
 
 M1–M5 stay at headline level here. Each gets detailed, with draft specs, when
 it starts.

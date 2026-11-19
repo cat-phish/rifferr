@@ -3,6 +3,7 @@ import {
   Anchor,
   Badge,
   Button,
+  Checkbox,
   Group,
   Modal,
   Stack,
@@ -163,6 +164,8 @@ const HOLD_SAYS: Record<string, string> = {
   gate: "review gate",
   import: "import decision",
   cleanup: "cleanup decision",
+  cover: "cover choice",
+  move: "move conflict",
 };
 
 /** One row per album: where it is in the run and what it waits for (C-LANES LANES-15). */
@@ -237,6 +240,10 @@ interface UndoReport {
   stopped_at: string | null;
   conflicts: UndoConflict[];
   problems: string[];
+  /** Moved files changed since the move: undo refused them (LIBRARY-MOVE-15). */
+  changed_files: string[];
+  /** Files left alone so the only copy is never deleted (LIBRARY-MOVE-13, -14). */
+  skipped_files: string[];
 }
 
 interface JobFinished {
@@ -266,10 +273,16 @@ function UndoRun({ run }: { run: RunDetail }) {
     },
   });
   const undo = useMutation({
-    mutationFn: async () =>
-      ok(await api.POST("/api/runs/{run_id}/undo", { params: { path: { run_id: run.id } } })),
+    mutationFn: async (force: string[]) =>
+      ok(
+        await api.POST("/api/runs/{run_id}/undo", {
+          params: { path: { run_id: run.id } },
+          body: { force },
+        }),
+      ),
     onSuccess: ({ job_id }) => {
       setConfirming(false);
+      setReport(null);
       setJobId(job_id);
       const early = finished.current[job_id];
       if (early !== undefined) {
@@ -303,7 +316,15 @@ function UndoRun({ run }: { run: RunDetail }) {
           Undoing…
         </Text>
       )}
-      {report !== null && <UndoReportView data={report} />}
+      {report !== null && (
+        <UndoReportView
+          data={report}
+          forcing={undo.isPending}
+          onForce={(files) => {
+            undo.mutate(files);
+          }}
+        />
+      )}
       <Modal
         opened={confirming}
         onClose={() => {
@@ -331,7 +352,7 @@ function UndoRun({ run }: { run: RunDetail }) {
               color="orange"
               loading={undo.isPending}
               onClick={() => {
-                undo.mutate();
+                undo.mutate([]);
               }}
             >
               Undo
@@ -343,7 +364,15 @@ function UndoRun({ run }: { run: RunDetail }) {
   );
 }
 
-function UndoReportView({ data }: { data: JobFinished["data"] }) {
+function UndoReportView({
+  data,
+  forcing,
+  onForce,
+}: {
+  data: JobFinished["data"];
+  forcing: boolean;
+  onForce: (files: string[]) => void;
+}) {
   const result = data.result as Partial<UndoReport> | null | undefined;
   const undone = result?.undone?.length ?? 0;
   if (result?.stopped_at == null && data.state !== "succeeded") {
@@ -376,6 +405,75 @@ function UndoReportView({ data }: { data: JobFinished["data"] }) {
           {p}
         </Text>
       ))}
+      <ChangedFiles files={result.changed_files ?? []} forcing={forcing} onForce={onForce} />
+      {(result.skipped_files ?? []).length > 0 && (
+        <Stack gap={2} mt="xs" data-testid="undo-skipped-files">
+          <Text size="sm">Left alone, so the only copy is never deleted:</Text>
+          {(result.skipped_files ?? []).map((f) => (
+            <Text size="sm" ff="monospace" key={f}>
+              {f}
+            </Text>
+          ))}
+        </Stack>
+      )}
     </Alert>
+  );
+}
+
+/** Moved files that changed since the move (LIBRARY-MOVE-15): undo refused them. Each
+ * can be undone anyway; it then moves back as it is now. */
+function ChangedFiles({
+  files,
+  forcing,
+  onForce,
+}: {
+  files: string[];
+  forcing: boolean;
+  onForce: (files: string[]) => void;
+}) {
+  const [picked, setPicked] = useState<Set<string>>(() => new Set());
+  if (files.length === 0) return null;
+  return (
+    <Stack gap={4} mt="xs" data-testid="undo-changed-files">
+      <Text size="sm">
+        These library files changed since they were moved (their content is not what was moved), so
+        the undo stopped. Undo anyway moves them back as they are now:
+      </Text>
+      {files.map((f) => (
+        <Checkbox
+          key={f}
+          size="xs"
+          label={
+            <Text size="sm" ff="monospace">
+              {f}
+            </Text>
+          }
+          aria-label={`Undo ${f} anyway`}
+          checked={picked.has(f)}
+          disabled={forcing}
+          onChange={() => {
+            setPicked((s) => {
+              const next = new Set(s);
+              if (next.has(f)) next.delete(f);
+              else next.add(f);
+              return next;
+            });
+          }}
+        />
+      ))}
+      <Group>
+        <Button
+          size="xs"
+          color="orange"
+          disabled={picked.size === 0}
+          loading={forcing}
+          onClick={() => {
+            onForce([...picked]);
+          }}
+        >
+          Undo anyway
+        </Button>
+      </Group>
+    </Stack>
   );
 }

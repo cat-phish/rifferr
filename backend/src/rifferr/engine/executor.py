@@ -26,12 +26,14 @@ from rifferr.core.changeset import (
     ChangeSetProposal,
     ChangeSource,
     JournalEntry,
+    Stamp,
     TargetRef,
 )
 from rifferr.core.covers import CoverReview
 from rifferr.core.files import BusyFolder, CleanupDecision
 from rifferr.core.ids import new_ulid
 from rifferr.core.imports import ImportDecision, ImportQuestion
+from rifferr.core.moves import MoveConflict, MovePlan, MoveSettings
 from rifferr.core.notify import Notification, SendResult
 from rifferr.core.profile import ProfileFile, Redactor, env_var_name, merged_vars
 from rifferr.core.review import GateAlbum, GateRequest, ReviewGate
@@ -60,6 +62,7 @@ from rifferr.engine.changesets import (
     SnapshotIndex,
     apply_changeset,
     build_changesets,
+    file_changeset,
     new_changeset,
     proposed_event,
 )
@@ -76,6 +79,7 @@ from rifferr.engine.lanes import (
     LaneStore,
     lane_json,
 )
+from rifferr.engine.moves import InMemoryMoveConflictStore, MoveConflictStore
 from rifferr.engine.review import GateStore, InMemoryGateStore, conflicted_for, fold_changes
 from rifferr.engine.run import PassRecord, Run, RunState, Scalar, StepRecord
 from rifferr.engine.steps import (
@@ -179,8 +183,10 @@ class Engine:
         imports: ImportDecisionStore | None = None,
         cleanups: CleanupDecisionStore | None = None,
         covers: CoverReviewStore | None = None,
+        moves: MoveConflictStore | None = None,
     ) -> None:
         self.registry = registry
+        self.moves: MoveConflictStore = moves or InMemoryMoveConflictStore()
         self.covers: CoverReviewStore = covers or InMemoryCoverStore()
         self.cleanups: CleanupDecisionStore = cleanups or InMemoryCleanupStore()
         self.imports: ImportDecisionStore = imports or InMemoryImportStore()
@@ -514,7 +520,7 @@ class Engine:
     def _hold(
         self, state: _RunState, key: str, kind: str, ref: str, label: str | None = None
     ) -> None:
-        if kind not in ("changeset", "gate", "import", "cleanup", "cover"):
+        if kind not in ("changeset", "gate", "import", "cleanup", "cover", "move"):
             raise ValueError(f"unknown hold kind {kind!r}")
         state.lane_holds.setdefault(key, []).append(Hold(cast(Any, kind), ref))
         if label is not None:
@@ -587,6 +593,35 @@ class Engine:
         }
         self._emit(run, "cover.requested", spec.id, data)
         return review.id
+
+    def _request_move_conflict(
+        self, state: _RunState, spec: StepSpec, plan: MovePlan, settings: MoveSettings
+    ) -> str:
+        """LIBRARY-MOVE-5a: store the conflict and hold only that album's lane."""
+        run = state.run
+        conflict = MoveConflict(
+            id=new_ulid(),
+            profile=run.profile,
+            run_id=run.id,
+            step_id=spec.id,
+            album_id=plan.album.id,
+            label=plan.label,
+            conflicts=list(plan.conflicts),
+            src_dir=plan.src_dir,
+            dst_dir=plan.dst_dir,
+            settings=settings,
+            created_at=self.clock.now(),
+        )
+        self.moves.add(conflict)
+        self._hold(state, conflict.album_id, "move", conflict.id)
+        data: dict[str, JsonValue] = {
+            "conflict_id": conflict.id,
+            "album_id": conflict.album_id,
+            "label": conflict.label,
+            "conflicts": list(conflict.conflicts),
+        }
+        self._emit(run, "move.requested", spec.id, _redact(data, state.redactor))
+        return conflict.id
 
     def rename_lane(self, run_id: str, old: str, new: str) -> None:
         """LANES-14: a ``pending:`` lane becomes its album's lane once it is imported."""
@@ -662,6 +697,9 @@ class Engine:
                 propose=lambda proposal, current, snapshots: self._propose(
                     state, spec, proposal, current, snapshots
                 ),
+                propose_files=lambda plan, stamp, snapshots: self._propose_files(
+                    state, spec, plan, stamp, snapshots
+                ),
                 profile_dir=state.profile_dir,
                 interpolate=lambda value: self._interpolate_text(state, value),
                 interpolate_template=lambda value: self._interpolate_template_text(state, value),
@@ -683,6 +721,9 @@ class Engine:
                 busy_folders=state.busy,
                 request_cleanup=lambda request: self._request_cleanup(state, spec, request),
                 request_cover=lambda request: self._request_cover(state, spec, request),
+                request_move_conflict=lambda plan, settings: self._request_move_conflict(
+                    state, spec, plan, settings
+                ),
                 hold_pass=lambda kind, ref, label: self._hold_pass(state, kind, ref, label),
             )
             result = await self._run_cancellable(state, step_type.run(ctx))
@@ -910,9 +951,67 @@ class Engine:
                 self._log_outcome(state, spec.id, outcome.entry)
             else:
                 state.holds.setdefault(spec.id, []).append(cs.id)
-                album = snapshots.album_of(cs.targets[0].target)
+                album = snapshots.album_of(cs.first_target())
                 state.lane_holds.setdefault(album, []).append(Hold("changeset", cs.id))  # LANES-5
         return changesets
+
+    def _propose_files(
+        self,
+        state: _RunState,
+        spec: StepSpec,
+        plan: MovePlan,
+        stamp: Stamp | None,
+        snapshots: SnapshotIndex,
+    ) -> ChangeSet:
+        """One album's FileChangeSet (S-LIBRARY-MOVE): stored, then applied or held."""
+        run = state.run
+        fields = snapshots.fields(plan.album)
+        if fields is None:
+            raise StepFailure(f"{plan.album.label()} is not one of this step's targets")
+        if plan.conflicts:
+            raise StepFailure("; ".join(plan.conflicts))
+        if not plan.files:
+            raise StepFailure(f"{plan.label}: nothing to move")
+        step_type = self.registry.step_type(spec.uses)
+        cs = file_changeset(
+            plan,
+            stamp,
+            fields.get(stamp.field) if stamp is not None else None,
+            id=new_ulid(),
+            profile=run.profile,
+            run_id=run.id,
+            step_id=spec.id,
+            source=spec.uses,
+            now=self.clock.now(),
+        )
+        try:
+            problems = state.backend.check(cs) if cs.targets else []
+        except CapabilityError as exc:
+            raise StepFailure(f"this profile's backend can't apply changes: {exc}") from exc
+        if problems:
+            detail = "; ".join(f"{p.target.label()} {p.field}: {p.message}" for p in problems)
+            raise StepFailure(f"proposed changes can't be applied: {detail}")
+        emit = self._change_emitter(state, spec.id)
+        self.changesets.add(cs)
+        emit("changeset.proposed", proposed_event(cs))
+        force_review = bool(getattr(step_type, "force_review", False))
+        if apply_policy(spec, step_type) == "auto" and not force_review:
+            outcome = apply_changeset(
+                cs,
+                backend=state.backend,
+                journal=self.journal,
+                store=self.changesets,
+                new_id=new_ulid,
+                now=self.clock.now,
+                emit=emit,
+            )
+            self._log_outcome(state, spec.id, outcome.entry)
+            if outcome.error is not None:
+                raise StepFailure(f"{plan.label}: {outcome.error}")
+        else:
+            state.holds.setdefault(spec.id, []).append(cs.id)
+            state.lane_holds.setdefault(plan.album.id, []).append(Hold("changeset", cs.id))
+        return cs
 
     # -- review gates (S-REVIEW) ---------------------------------------------------
 

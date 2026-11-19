@@ -11,10 +11,11 @@ from typing import Any, Protocol, runtime_checkable
 from pydantic import BaseModel, JsonValue
 
 from rifferr.backends.base import BackendCapabilities, LibraryBackend
-from rifferr.core.changeset import ChangeSet, ChangeSetProposal, TargetRef
+from rifferr.core.changeset import ChangeSet, ChangeSetProposal, Stamp, TargetRef
 from rifferr.core.covers import CoverQuery, RankedCandidate
 from rifferr.core.files import BusyFolder, CleanupChoice, CleanupEntry, CleanupOptions
 from rifferr.core.imports import ImportQuestion, TimeoutAction
+from rifferr.core.moves import MovePlan, MoveSettings
 from rifferr.core.notify import Notification, SendResult
 from rifferr.core.profile import ProfileFile, Secret
 from rifferr.core.review import GateDecision, GateRequest, OnReject
@@ -94,6 +95,8 @@ class StepType(Protocol):
 Emit = Callable[[str, dict[str, JsonValue]], None]
 #: The engine's side of ``ctx.propose``: proposal, current target -> the ChangeSets made.
 Propose = Callable[[ChangeSetProposal, TargetRef | None, SnapshotIndex], list[ChangeSet]]
+#: The engine's side of ``ctx.propose_files``: one album's plan, optional stamp -> ChangeSet.
+ProposeFiles = Callable[[MovePlan, Stamp | None, SnapshotIndex], ChangeSet]
 
 
 @dataclass(frozen=True)
@@ -167,6 +170,10 @@ class CoverRequest:
 RequestCover = Callable[[CoverRequest], str]
 
 
+#: The engine's side of ``ctx.request_move_conflict``: plan, settings -> conflict id.
+RequestMoveConflict = Callable[[MovePlan, MoveSettings], str]
+
+
 #: The engine's side of ``ctx.request_cleanup``: request -> decision id.
 RequestCleanup = Callable[[CleanupRequest], str]
 #: The engine's side of ``ctx.hold_pass``: kind, ref, label for a pass without lanes.
@@ -183,6 +190,10 @@ def _no_propose(
     proposal: ChangeSetProposal, current: TargetRef | None, s: SnapshotIndex
 ) -> list[ChangeSet]:
     raise StepFailure("this run can't propose ChangeSets")
+
+
+def _no_propose_files(plan: MovePlan, stamp: Stamp | None, s: SnapshotIndex) -> ChangeSet:
+    raise StepFailure("this step can't propose file moves here")
 
 
 def _no_gate(requests: list[GateRequest], options: GateOptions, s: SnapshotIndex) -> str:
@@ -203,6 +214,10 @@ def _no_cleanup(request: CleanupRequest) -> str:
 
 def _no_cover(request: CoverRequest) -> str:
     raise StepFailure("this run can't leave cover reviews")
+
+
+def _no_move_conflict(plan: MovePlan, settings: MoveSettings) -> str:
+    raise StepFailure("this run can't leave move conflicts")
 
 
 def _no_hold_pass(kind: str, ref: str, label: str) -> None:
@@ -234,6 +249,7 @@ class StepContext:
         on_secret: Callable[[Secret], None] | None = None,
         redact: Callable[[str], str] | None = None,
         propose: Propose | None = None,
+        propose_files: ProposeFiles | None = None,
         profile_dir: Path | None = None,
         interpolate: Callable[[str], str] | None = None,
         interpolate_template: Callable[[str], str] | None = None,
@@ -248,6 +264,7 @@ class StepContext:
         request_cleanup: RequestCleanup | None = None,
         hold_pass: HoldPass | None = None,
         request_cover: RequestCover | None = None,
+        request_move_conflict: RequestMoveConflict | None = None,
         run_input: str = "",
     ) -> None:
         self.run_id = run_id
@@ -275,6 +292,7 @@ class StepContext:
         self._is_cancelled = is_cancelled
         self.failed_targets: list[FailedTarget] = []
         self._propose = propose or _no_propose
+        self._propose_files = propose_files or _no_propose_files
         self._open_gate = open_gate or _no_gate
         self._on_hold = on_hold or _no_hold
         self._request_import = request_import or _no_import
@@ -288,6 +306,7 @@ class StepContext:
         self._request_cleanup = request_cleanup or _no_cleanup
         self._hold_pass = hold_pass or _no_hold_pass
         self._request_cover = request_cover or _no_cover
+        self._request_move_conflict = request_move_conflict or _no_move_conflict
         """The profile's ``notify.base_url``, for links in notifications (NOTIFY-6)."""
         self._snapshots = SnapshotIndex()
         self.proposed: list[ChangeSet] = []
@@ -361,6 +380,15 @@ class StepContext:
         self.proposed.extend(made)
         return [cs.id for cs in made]
 
+    def propose_files(self, plan: MovePlan, stamp: Stamp | None = None) -> str:
+        """Propose one album's file moves (S-LIBRARY-MOVE) as a FileChangeSet, accepted or
+        rejected as a whole. ``plan.album`` must come from ``albums()``. The step's ``apply``
+        policy applies it now (``auto``; a file failure raises ``StepFailure``) or leaves it
+        for review. Returns its id."""
+        made = self._propose_files(plan, stamp, self._snapshots)
+        self.proposed.append(made)
+        return made.id
+
     def open_gate(self, requests: list[GateRequest], options: GateOptions | None = None) -> str:
         """Hold the run for a human decision on albums from ``albums()`` (RUN-14, S-REVIEW).
 
@@ -413,6 +441,11 @@ class StepContext:
         """Leave an album in the review queue to pick its cover; only that album's lane
         waits (COVERS-SEARCH-14). Returns the review id."""
         return self._request_cover(request)
+
+    def request_move_conflict(self, plan: MovePlan, settings: MoveSettings) -> str:
+        """Leave a conflicted album in the review queue; only its lane waits until it is
+        retried or failed (S-LIBRARY-MOVE LIBRARY-MOVE-5a). Returns the conflict id."""
+        return self._request_move_conflict(plan, settings)
 
     async def notify(
         self, notification: Notification, targets: list[str] | None = None

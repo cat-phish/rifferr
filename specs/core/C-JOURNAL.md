@@ -106,7 +106,7 @@ Worker killed between `begin` and `apply` → on restart, all old values current
 
 ## Non-goals
 - Undoing imports (removing albums and their files). Imports aren't ChangeSets; import undo arrives with the M2 dashboard.
-- Undoing `beets.command` or `shell` side effects that bypass ChangeSets (files moved, art fetched). Those steps say so in their specs.
+- Undoing `beets.command` or `shell` side effects that bypass ChangeSets (files moved, art fetched). Those steps say so in their specs. File moves made by `library.move` are journaled and undone (amendment 2026-11-18, S-LIBRARY-MOVE LIBRARY-MOVE-7..15): entries carry `files` with a per-file state, the state `partial`, `Journal.progress`/`settle`, file reconciliation at start-up, and undo that never deletes the only copy. File entries hold paths, sizes and hashes, never file contents (JOURNAL-9).
 - A CLI `rifferr undo` (F-REVIEW-QUEUE adds the UI; a CLI command can follow).
 
 ## Open questions

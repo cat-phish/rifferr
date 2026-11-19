@@ -31,6 +31,8 @@ class ConfigReport:
     code_keys: list[str] = field(default_factory=list)
     """Human-readable lines, e.g. ``config.yaml: pluginpath: /x/plugins``."""
     unreadable: list[str] = field(default_factory=list)
+    plugins: list[str] = field(default_factory=list)
+    """Every plugin the config files enable, in order (S-LIBRARY-MOVE LIBRARY-MOVE-6a)."""
 
     @property
     def needs_trust(self) -> bool:
@@ -55,6 +57,7 @@ def inspect_config(beetsdir: Path) -> ConfigReport:
     files: list[str] = []
     keys: list[str] = []
     bad: list[str] = []
+    plugins: list[str] = []
     queue = [beetsdir / "config.yaml"]
     seen: set[Path] = set()
     yaml = YAML(typ="safe")
@@ -85,6 +88,7 @@ def inspect_config(beetsdir: Path) -> ConfigReport:
             continue
         if doc.get("pluginpath"):
             keys.append(f"{name}: pluginpath: {doc['pluginpath']}")
+        plugins += [p for p in _plugins(doc.get("plugins")) if p not in plugins]
         used = sorted(CODE_PLUGINS.intersection(_plugins(doc.get("plugins"))))
         if used:
             keys.append(f"{name}: plugins: {', '.join(used)}")
@@ -92,7 +96,12 @@ def inspect_config(beetsdir: Path) -> ConfigReport:
             queue.append((beetsdir / inc).resolve())
     if queue:
         bad.append("too many include files")
-    return ConfigReport(digest.hexdigest(), files, keys, bad)
+    return ConfigReport(digest.hexdigest(), files, keys, bad, plugins)
+
+
+def enabled_plugins(beetsdir: str | Path | None) -> list[str]:
+    """The plugins a beets config enables, or none without a beets folder."""
+    return inspect_config(Path(beetsdir)).plugins if beetsdir else []
 
 
 ConfigTrusted = Callable[[str], bool]

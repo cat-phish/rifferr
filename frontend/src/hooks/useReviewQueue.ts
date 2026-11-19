@@ -18,6 +18,8 @@ export const APP_EVENTS = [
   "import.resolved",
   "cleanup.requested",
   "cleanup.resolved",
+  "move.requested",
+  "move.resolved",
   "changeset.proposed",
   "changeset.applied",
   "changeset.rejected",

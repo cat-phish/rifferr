@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import shlex
+from collections.abc import Collection
 from typing import Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict
@@ -51,7 +52,11 @@ FindingKind = Literal[
     "local_script",
     "auto_apply",
     "tag_field",
+    "file_move",
 ]
+#: beets plugins that copy or move extra files on beets' own move events. ``library.move``
+#: moves files itself, so they don't fire (S-LIBRARY-MOVE LIBRARY-MOVE-6a).
+ARTIFACT_PLUGINS: frozenset[str] = frozenset({"copyartifacts", "copyartifacts3"})
 #: Library subcommands that delete files or library entries (``beets.command``).
 DESTRUCTIVE_LIBRARY_COMMANDS: frozenset[str] = frozenset({"remove"})
 #: ``beets.import`` duplicate actions that remove or replace an album already in the
@@ -79,12 +84,15 @@ class SafetyReport(BaseModel):
         return [f for f in self.findings if f.kind == kind]
 
 
-def safety_report(wf: Workflow, calls: Calls | None = None) -> SafetyReport:
+def safety_report(
+    wf: Workflow, calls: Calls | None = None, *, beets_plugins: Collection[str] = ()
+) -> SafetyReport:
     """``calls``: the files ``wf`` calls; their steps are reported too, by expanded step id
-    and file (SUBWORKFLOW-14)."""
+    and file (SUBWORKFLOW-14). ``beets_plugins``: the plugins the profile's beets config
+    enables, when known (LIBRARY-MOVE-6a)."""
     if calls is not None:
         wf = expand(wf, calls)
-    report = _report(wf)
+    report = _report(wf, frozenset(beets_plugins))
     files = {s.id: s.workflow for s in wf.steps if isinstance(s, CalledStep)}
     return SafetyReport(
         findings=[
@@ -94,7 +102,7 @@ def safety_report(wf: Workflow, calls: Calls | None = None) -> SafetyReport:
     )
 
 
-def _report(wf: Workflow) -> SafetyReport:
+def _report(wf: Workflow, beets_plugins: frozenset[str] = frozenset()) -> SafetyReport:
     findings: list[Finding] = []
     for step in wf.steps:
         if step.apply == "auto":  # TAGSCRIPT-18; any step that proposes ChangeSets (SEC-65)
@@ -113,6 +121,8 @@ def _report(wf: Workflow) -> SafetyReport:
             continue
         if step.uses == "beets.import":
             findings += _import_findings(step.id, step.with_)
+        if step.uses == "library.move":
+            findings += _move_findings(step.id, step.with_, beets_plugins)
             continue
         if step.uses != "shell":
             continue
@@ -222,6 +232,42 @@ def _import_findings(step_id: str, params: dict[str, Any]) -> list[Finding]:
                 kind="destructive",
                 detail=f"duplicate_action: {action}: may remove an album already in the "
                 "library; needs a trusted workflow",
+            )
+        )
+    return out
+
+
+def _artifact_rule(rule: Any) -> str:
+    if not isinstance(rule, dict):
+        return str(rule)
+    r = cast(dict[str, Any], rule)
+    match = r.get("match")
+    globs = (
+        " ".join(str(m) for m in cast(list[Any], match)) if isinstance(match, list) else str(match)
+    )
+    return f"{globs} -> {r['to']}/" if r.get("to") else globs
+
+
+def _move_findings(
+    step_id: str, params: dict[str, Any], beets_plugins: frozenset[str]
+) -> list[Finding]:
+    """A ``library.move`` step moves or copies album files (LIBRARY-MOVE-6a). It is
+    journaled and undoable, so it is listed, not flagged as destructive."""
+    verb = "copies" if params.get("mode") == "copy" else "moves"
+    where = params.get("directory") or "beets' directory"
+    rules = params.get("artifacts", ["*"])
+    names = [_artifact_rule(r) for r in (cast(list[Any], rules) if isinstance(rules, list) else [])]
+    travel = ", ".join(names) or "none"
+    detail = f"{verb} album files into {where}; other files that travel: {travel}"
+    out = [Finding(step_id=step_id, kind="file_move", detail=detail)]
+    for plugin in sorted(ARTIFACT_PLUGINS & beets_plugins):
+        out.append(
+            Finding(
+                step_id=step_id,
+                kind="file_move",
+                detail=f"the profile's beets config enables {plugin}, which this step "
+                "bypasses: it moves files itself, so beets' move events don't fire; its "
+                "artifacts setting decides which other files travel",
             )
         )
     return out

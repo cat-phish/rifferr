@@ -31,11 +31,12 @@ from rifferr.appdb import (
     AppImportDecisions,
     AppJournal,
     AppLanes,
+    AppMoveConflicts,
     AppReviewGates,
     Job,
     JobState,
 )
-from rifferr.backends.base import CapabilityError, LibraryBackend
+from rifferr.backends.base import CapabilityError, LibraryBackend, QueryError, TemplateError
 from rifferr.backends.loader import load_backend
 from rifferr.core.changeset import ChangeSet, ChangeSource, FieldChange, TargetChange, TargetRef
 from rifferr.core.covers import ART_FIELD
@@ -62,6 +63,7 @@ from rifferr.engine import (
 from rifferr.engine.changesets import (
     apply_changeset,
     current_values,
+    file_changeset,
     proposed_event,
     reject_changeset,
     repropose_targets,
@@ -170,6 +172,7 @@ class Worker:
         self.imports = AppImportDecisions(db)
         self.cleanups = AppCleanupDecisions(db)
         self.covers = AppCoverReviews(db)
+        self.moves = AppMoveConflicts(db)
 
     async def serve(self, commands: Commands) -> None:
         """Run jobs until stopped, the server goes away, or idle too long (WORKER-7)."""
@@ -313,6 +316,9 @@ class Worker:
         if job.kind == "cover_apply":
             self._apply_cover(job)
             return
+        if job.kind == "move_retry":
+            self._retry_move(job)
+            return
         payload = job.payload
         source = str(payload.get("source", ""))
         source_name = str(payload.get("source_name", "<workflow>"))
@@ -332,6 +338,7 @@ class Worker:
             imports=self.imports,
             cleanups=self.cleanups,
             covers=self.covers,
+            moves=self.moves,
         )
         try:
             wf, doc = load_workflow(source, source_name)
@@ -377,6 +384,7 @@ class Worker:
                 self.imports.cancel_for_run(job.run)  # nothing waits on a finished run
                 self.cleanups.cancel_for_run(job.run)
                 self.covers.cancel_for_run(job.run)
+                self.moves.cancel_for_run(job.run)
         except Exception as exc:  # an engine bug: still end the run cleanly
             log.exception("run %s crashed", run.id)
             self.db.finish(job.run, "failed", f"{type(exc).__name__}: {exc}")
@@ -671,6 +679,115 @@ class Worker:
             lambda type, step, d: self._changeset_emitter(review.run_id, step)(type, d),
         )
 
+    def _retry_move(self, job: Job) -> None:
+        """Plan a conflicted album again with its step's settings (LIBRARY-MOVE-5a). Still
+        conflicted: it stays in the queue. Otherwise its FileChangeSet is applied at once
+        (the retry was the review) and the album's lane goes on."""
+        conflict_id = str(job.payload.get("conflict_id"))
+        conflict = self.moves.get(conflict_id)
+        if conflict is None:
+            self._finish_job(job, "failed", f"no move conflict {conflict_id}")
+            return
+        by = job.payload.get("by")
+        decider = by if isinstance(by, str) else None
+        emit = self._changeset_emitter(conflict.run_id, conflict.step_id)
+        settings = conflict.settings
+
+        def log_line(stream: str, line: str) -> None:
+            emit("run.step.log", {"stream": stream, "line": f"{conflict.label}: {line}"})
+
+        try:
+            selection = Selection(ids=(conflict.album_id,), scope="album")
+            snapshots = self.backend.query(selection)
+            plans = self.backend.plan_moves(
+                selection,
+                mode=settings.mode,
+                formats=settings.formats,
+                directory=Path(settings.directory) if settings.directory else None,
+                artifacts=settings.artifacts,
+            )
+            if not snapshots or not plans:
+                raise QueryError(f"{conflict.album_id} is no longer in the library")
+            plan = plans[0]
+        except (QueryError, TemplateError, CapabilityError) as exc:
+            plan = None
+            problems = [str(exc)]
+        else:
+            problems = list(plan.conflicts)
+        if plan is None or problems:  # still conflicted: keep waiting
+            conflict.conflicts = problems
+            conflict.attempts += 1
+            self.moves.release(conflict)
+            for line in problems:
+                log_line("error", f"conflict: {line}")
+            self._finish_job(job, "failed", "still conflicts: " + "; ".join(problems))
+            return
+        cs = None
+        error: str | None = None
+        if plan.files:
+            stamp = settings.stamp
+            old = snapshots[0].fields.get(stamp.field) if stamp is not None else None
+            cs = file_changeset(
+                plan,
+                stamp,
+                old,
+                id=new_ulid(),
+                profile=conflict.profile,
+                run_id=conflict.run_id,
+                step_id=conflict.step_id,
+                source="library.move",
+                now=datetime.now(UTC),
+            )
+            self.changesets.add(cs)
+            emit("changeset.proposed", proposed_event(cs))
+            log_line(
+                "info", f"{settings.mode} {len(plan.files)} files: {plan.src_dir} -> {plan.dst_dir}"
+            )
+            outcome = apply_changeset(
+                cs,
+                backend=self.backend,
+                journal=self.journal,
+                store=self.changesets,
+                new_id=new_ulid,
+                now=lambda: datetime.now(UTC),
+                emit=emit,
+                resolved_by=decider,
+            )
+            error = outcome.error
+        else:
+            log_line("info", "already in place")
+        conflict.state = "moved" if cs is not None else "in_place"
+        conflict.changeset_id = cs.id if cs is not None else None
+        conflict.decided_by = decider
+        conflict.decided_at = datetime.now(UTC)
+        self.moves.release(conflict)
+        emit(
+            "move.resolved",
+            {
+                "conflict_id": conflict.id,
+                "album_id": conflict.album_id,
+                "decision": "retry",
+                "decided_by": decider,
+                "changeset_id": conflict.changeset_id,
+            },
+        )
+        if error is not None:  # LIBRARY-MOVE-10: a file failed, so the lane fails
+            log_line("error", error)
+            moved = self.lanes.set_state(
+                conflict.run_id, [conflict.album_id], "failed", only_from=("waiting",)
+            )
+            for key in moved:
+                data: dict[str, JsonValue] = {"key": key, "state": "failed", "reason": error}
+                emit("lane.finished", data)
+        self.lanes.resolve_hold(conflict.run_id, conflict.id)
+        result: dict[str, JsonValue] = {"changeset_id": conflict.changeset_id}
+        self._finish_job(job, "failed" if error else "succeeded", error, result=result)
+        settle(
+            self.db,
+            conflict.run_id,
+            lambda type, step, d: self._changeset_emitter(conflict.run_id, step)(type, d),
+        )
+
     def _lookup_import(self, job: Job) -> None:
         """Look a decision's folder up again and add what it finds (IMPORT-UI-9)."""
         payload = job.payload
@@ -777,6 +894,9 @@ class Worker:
             now=lambda: datetime.now(UTC),
             emitter_for=self._changeset_emitter,
             by=by if isinstance(by, str) else None,
+            force=frozenset(f for f in forced if isinstance(f, str))
+            if isinstance(forced := payload.get("force"), list)
+            else frozenset(),
         )
         entry_id, run_id = payload.get("entry_id"), payload.get("run_id")
         try:
@@ -790,6 +910,8 @@ class Worker:
                     "problems": [
                         f"{p.target.label()} {p.field}: {p.message}" for p in one.problems
                     ],
+                    "changed_files": list(one.changed_files),
+                    "skipped_files": list(one.skipped_files),
                 }
             elif isinstance(run_id, str):
                 result = undo_run(run_id, ctx).as_json()

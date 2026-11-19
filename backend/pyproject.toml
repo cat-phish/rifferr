@@ -48,6 +48,7 @@ notify = "rifferr.steps.notify:NotifyStep"
 "files.cleanup" = "rifferr.steps.files_cleanup:FilesCleanupStep"
 workflow = "rifferr.steps.workflow_call:WorkflowCallStep"
 "covers.search" = "rifferr.steps.covers_search:CoversSearchStep"
+"library.move" = "rifferr.steps.library_move:LibraryMoveStep"
 
 [project.entry-points."rifferr.cover_providers"]
 coverartarchive = "rifferr.covers.providers:CoverArtArchive"
@@ -57,6 +58,14 @@ local = "rifferr.covers.providers:LocalFiles"
 
 [project.entry-points."rifferr.backends"]
 beets = "rifferr.backends.beets:from_profile"
+
+[project.entry-points."rifferr.template_functions"]
+ifgreater = "rifferr.tagscript.functions:ifgreater"
+unpad = "rifferr.tagscript.functions:unpad"
+
+[tool.uv.build-backend]
+# beets finds plugins as beetsplug.<name>: ship the rifferr plugin shim (C-TEMPLATE-FUNCTIONS).
+module-name = ["rifferr", "beetsplug.rifferr"]
 
 [tool.ruff]
 line-length = 100

@@ -537,6 +537,47 @@ test("REVIEW_QUEUE_15 undo stops at a conflict and says which", async () => {
   expect(report).toHaveTextContent("album a1 year: expected 2002, now 1999");
 });
 
+test("LIBRARY_MOVE_15 undo refused for changed files; undo anyway sends them as force", async () => {
+  let n = 0;
+  const { calls } = await finishedRunWithUndo(() => {
+    n += 1;
+    return { status: 202, body: { job_id: `u${String(n)}` } };
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+  await screen.findByTestId("undo-pending");
+  await jobFinished({
+    job_id: "u1",
+    state: "failed",
+    error: "undo stopped at journal entry e1",
+    result: {
+      undone: [],
+      stopped_at: "e1",
+      conflicts: [],
+      problems: [],
+      changed_files: ["/music/A/01. One.flac", "/music/A/02. Two.flac"],
+      skipped_files: [],
+    },
+  });
+  const changed = await screen.findByTestId("undo-changed-files");
+  expect(changed).toHaveTextContent("changed since they were moved");
+  const button = within(changed).getByRole("button", { name: "Undo anyway" });
+  expect(button).toBeDisabled();
+  fireEvent.click(within(changed).getByLabelText("Undo /music/A/01. One.flac anyway"));
+  fireEvent.click(button);
+  await waitFor(() => {
+    expect(posts(calls, `/api/runs/${NEW_RUN}/undo`).map((c) => c.body)).toEqual([
+      { force: [] },
+      { force: ["/music/A/01. One.flac"] },
+    ]);
+  });
+  await jobFinished({
+    job_id: "u2",
+    state: "succeeded",
+    result: { undone: ["e1"], stopped_at: null, conflicts: [], problems: [] },
+  });
+  expect(await screen.findByTestId("undo-report")).toHaveTextContent("Undone: 1 change reverted.");
+});
+
 test("REVIEW_QUEUE_15 no undo for a run without applied changes", async () => {
   setup({
     extra: {

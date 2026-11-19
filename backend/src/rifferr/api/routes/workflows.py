@@ -19,6 +19,7 @@ from rifferr.api.models import (
     WorkflowSummary,
 )
 from rifferr.api.state import ServerState, State
+from rifferr.beets_config import enabled_plugins
 from rifferr.core.profile import Profile, ProfileError, ProfileLoadError, env_backed_vars
 from rifferr.core.workflow import (
     WORKFLOW_SUFFIXES,
@@ -215,7 +216,12 @@ async def validate_workflow(
     """Validation errors plus the static safety report (API-4, SECURITY-11)."""
     p = get_profile(state, profile)
     c = check(state, p, name, find_workflow(state, profile, name), {})
-    findings = safety_report(c.workflow, c.calls).findings if c.workflow is not None else []
+    plugins = enabled_plugins(p.beets.beetsdir) if c.workflow is not None else []
+    findings = (
+        safety_report(c.workflow, c.calls, beets_plugins=plugins).findings
+        if c.workflow is not None
+        else []
+    )
     return ValidateResult(
         valid=not c.errors,
         errors=error_out(c.errors),

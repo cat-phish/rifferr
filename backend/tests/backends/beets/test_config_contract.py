@@ -57,7 +57,7 @@ def test_BEETS_IMPORT_2_overlay_is_removed_afterwards(beets_env: BeetsEnv) -> No
 
 def test_BEETS_IMPORT_2_plugins_load_from_user_config(beets_env: BeetsEnv) -> None:
     backend = beets_env.backend("plugins: [inline]\nalbum_fields:\n  shout: album.upper()\n")
-    assert [p.name for p in beets.plugins.find_plugins()] == ["inline"]
+    assert [p.name for p in beets.plugins.find_plugins()] == ["inline", "rifferr"]
     seed(backend, [{"albumartist": "A", "album": "quiet", "items": [{"title": "t", "track": 1}]}])
     [album] = backend.query(Selection())
     assert backend.evaluate("$shout", album) == "QUIET"

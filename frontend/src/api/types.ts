@@ -43,6 +43,7 @@ export type ImportDecision = S["ImportDecision"];
 export type ImportCandidate = S["ImportCandidate"];
 export type CleanupDecision = S["CleanupDecision"];
 export type CoverReview = S["CoverReview"];
+export type MoveConflict = S["MoveConflict"];
 export type RankedCandidate = S["RankedCandidate"];
 export type CoverQuery = S["CoverQuery"];
 export type CoverProvidersView = S["CoverProvidersView"];

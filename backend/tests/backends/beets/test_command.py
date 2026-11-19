@@ -28,6 +28,8 @@ def test_BACKEND_14_beets_cli_is_python_m_beets_with_the_query_last(beets_env: B
         sys.executable,
         "-m",
         "beets",
+        "-p",
+        argv[4],
         "move",
         "-a",
         "--",
@@ -106,10 +108,10 @@ def test_LANES_3_beets_cli_query_selects_only_the_pass_albums(beets_env: BeetsEn
 
     lib = Library(str(beets_env.beetsdir / "library.db"), str(beets_env.music))
     try:
-        item_query = backend.cli_command("ls", [], selection)[4:]
+        item_query = backend.cli_command("ls", [], selection)[6:]
         number = parse_id(second.id)[1]
         assert {i.album_id for i in lib.items(item_query)} == {number}
-        album_query = backend.cli_command("ls", ["-a"], selection)[5:]
+        album_query = backend.cli_command("ls", ["-a"], selection)[7:]
         assert [a.id for a in lib.albums(album_query)] == [number]
     finally:
         lib._close()  # pyright: ignore[reportPrivateUsage]

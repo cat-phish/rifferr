@@ -142,6 +142,36 @@
         "title": "AlbumSnapshot",
         "type": "object"
       },
+      "ArtifactRule": {
+        "additionalProperties": false,
+        "description": "Which untracked files travel with the album, and where (LIBRARY-MOVE-1, -6).",
+        "properties": {
+          "match": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Match",
+            "type": "array"
+          },
+          "to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To"
+          }
+        },
+        "required": [
+          "match"
+        ],
+        "title": "ArtifactRule",
+        "type": "object"
+      },
       "BeetsConfigStatus": {
         "additionalProperties": false,
         "description": "SEC-62: what a profile's beets config runs, and whether the user trusted it.",
@@ -241,12 +271,20 @@
       },
       "ChangeSet": {
         "additionalProperties": false,
-        "description": "Proposed field changes to one album and/or its items (CHANGESET-1, -14).",
+        "description": "Proposed field changes to one album and/or its items (CHANGESET-1, -14), and/or\nfile moves of one album (``files``, S-LIBRARY-MOVE).",
         "properties": {
           "created_at": {
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "files": {
+            "description": "File moves or copies (S-LIBRARY-MOVE); accepted or rejected as a whole",
+            "items": {
+              "$ref": "#/components/schemas/FileEffect"
+            },
+            "title": "Files",
+            "type": "array"
           },
           "id": {
             "title": "Id",
@@ -281,6 +319,16 @@
           "source": {
             "$ref": "#/components/schemas/ChangeSource"
           },
+          "stamp": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Stamp"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "step_id": {
             "anyOf": [
               {
@@ -293,10 +341,10 @@
             "title": "Step Id"
           },
           "targets": {
+            "description": "Empty only when ``files`` isn't",
             "items": {
               "$ref": "#/components/schemas/TargetChange"
             },
-            "minItems": 1,
             "title": "Targets",
             "type": "array"
           }
@@ -1592,6 +1640,87 @@
         "title": "FieldEffect",
         "type": "object"
       },
+      "FileEffect": {
+        "additionalProperties": false,
+        "description": "One file of a FileChangeSet: the ``files`` change kind (S-LIBRARY-MOVE).\n\n``size`` and ``sha256`` describe the source when planned; they are what the copy\nis verified against (LIBRARY-MOVE-7, -8). ``state`` is journaled per file (-9).",
+        "properties": {
+          "dst": {
+            "description": "Absolute path",
+            "minLength": 1,
+            "title": "Dst",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "item",
+              "art",
+              "artifact"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "mode": {
+            "enum": [
+              "move",
+              "copy"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Sha256",
+            "type": "string"
+          },
+          "size": {
+            "minimum": 0.0,
+            "title": "Size",
+            "type": "integer"
+          },
+          "src": {
+            "description": "Absolute path",
+            "minLength": 1,
+            "title": "Src",
+            "type": "string"
+          },
+          "state": {
+            "default": "planned",
+            "enum": [
+              "planned",
+              "copied",
+              "done",
+              "skipped"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "target": {
+            "$ref": "#/components/schemas/TargetRef"
+          }
+        },
+        "required": [
+          "target",
+          "kind",
+          "src",
+          "dst",
+          "mode",
+          "size",
+          "sha256"
+        ],
+        "title": "FileEffect",
+        "type": "object"
+      },
       "FolderItem": {
         "additionalProperties": false,
         "description": "One file of the folder as it is now: its tags before any match.",
@@ -2622,13 +2751,14 @@
               "gate",
               "import",
               "cleanup",
-              "cover"
+              "cover",
+              "move"
             ],
             "title": "Kind",
             "type": "string"
           },
           "ref": {
-            "description": "ChangeSet id, review gate id, import decision id or cleanup decision id",
+            "description": "ChangeSet id, review gate id, import decision id, cleanup decision id, cover review id or move conflict id",
             "title": "Ref",
             "type": "string"
           }
@@ -2872,6 +3002,224 @@
         "title": "ManualEdit",
         "type": "object"
       },
+      "MoveConflict": {
+        "additionalProperties": false,
+        "description": "An album that can't move yet, waiting in the review queue (LIBRARY-MOVE-5a).",
+        "properties": {
+          "album_id": {
+            "title": "Album Id",
+            "type": "string"
+          },
+          "attempts": {
+            "default": 0,
+            "description": "Retries that still found conflicts",
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "changeset_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The FileChangeSet a retry applied",
+            "title": "Changeset Id"
+          },
+          "conflicts": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Conflicts",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "decided_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided By"
+          },
+          "dst_dir": {
+            "default": "",
+            "title": "Dst Dir",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "profile": {
+            "title": "Profile",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/MoveSettings"
+          },
+          "src_dir": {
+            "default": "",
+            "title": "Src Dir",
+            "type": "string"
+          },
+          "state": {
+            "default": "pending",
+            "enum": [
+              "pending",
+              "moved",
+              "in_place",
+              "failed",
+              "cancelled"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "step_id": {
+            "title": "Step Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "profile",
+          "run_id",
+          "step_id",
+          "album_id",
+          "label",
+          "conflicts",
+          "settings",
+          "created_at"
+        ],
+        "title": "MoveConflict",
+        "type": "object"
+      },
+      "MoveDecided": {
+        "additionalProperties": false,
+        "description": "``job_id`` is the worker job that retries the move (``retry``); ``None`` otherwise.",
+        "properties": {
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          }
+        },
+        "title": "MoveDecided",
+        "type": "object"
+      },
+      "MoveDecisionBody": {
+        "additionalProperties": false,
+        "description": "Answer a move conflict (LIBRARY-MOVE-5a): plan it again, or fail its lane.",
+        "properties": {
+          "decision": {
+            "enum": [
+              "retry",
+              "fail"
+            ],
+            "title": "Decision",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "title": "MoveDecisionBody",
+        "type": "object"
+      },
+      "MoveSettings": {
+        "additionalProperties": false,
+        "description": "A ``library.move`` step's resolved ``with:``, kept so a conflict can be retried\nthe same way (LIBRARY-MOVE-5a). ``directory`` is absolute, or ``None`` for beets'.",
+        "properties": {
+          "artifacts": {
+            "items": {
+              "$ref": "#/components/schemas/ArtifactRule"
+            },
+            "title": "Artifacts",
+            "type": "array"
+          },
+          "directory": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Directory"
+          },
+          "formats": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/PathFormat"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Formats"
+          },
+          "mode": {
+            "default": "move",
+            "enum": [
+              "move",
+              "copy"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "stamp": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Stamp"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "MoveSettings",
+        "type": "object"
+      },
       "NotifyTestBody": {
         "additionalProperties": false,
         "properties": {
@@ -2916,6 +3264,28 @@
           "sent"
         ],
         "title": "NotifyTestResult",
+        "type": "object"
+      },
+      "PathFormat": {
+        "additionalProperties": false,
+        "description": "One ``paths:`` entry: a backend query (or ``default``) and a path format.",
+        "properties": {
+          "format": {
+            "minLength": 1,
+            "title": "Format",
+            "type": "string"
+          },
+          "query": {
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query",
+          "format"
+        ],
+        "title": "PathFormat",
         "type": "object"
       },
       "PreviewError": {
@@ -3381,7 +3751,7 @@
       },
       "QueueItem": {
         "additionalProperties": false,
-        "description": "One thing that waits for a decision (REVIEW-QUEUE-1). ``kind`` says which of\n``changeset`` / ``gate`` / ``import_decision`` / ``cleanup_decision`` /\n``cover_review`` is set (IMPORT-UI-7, FILES-CLEANUP-14, COVERS-SEARCH-21).",
+        "description": "One thing that waits for a decision (REVIEW-QUEUE-1). ``kind`` says which of\n``changeset`` / ``gate`` / ``import_decision`` / ``cleanup_decision`` /\n``cover_review`` / ``move_conflict`` is set (IMPORT-UI-7, FILES-CLEANUP-14,\nCOVERS-SEARCH-21, LIBRARY-MOVE-5a).",
         "properties": {
           "changeset": {
             "anyOf": [
@@ -3448,10 +3818,21 @@
               "gate",
               "import",
               "cleanup",
-              "cover"
+              "cover",
+              "move"
             ],
             "title": "Kind",
             "type": "string"
+          },
+          "move_conflict": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoveConflict"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "profile": {
             "title": "Profile",
@@ -4437,6 +4818,28 @@
         "title": "ScriptSummary",
         "type": "object"
       },
+      "Stamp": {
+        "additionalProperties": false,
+        "description": "A field set to the date a FileChangeSet is applied (LIBRARY-MOVE-6b).",
+        "properties": {
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "format": {
+            "default": "%Y-%m-%d",
+            "description": "strftime format",
+            "minLength": 1,
+            "title": "Format",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field"
+        ],
+        "title": "Stamp",
+        "type": "object"
+      },
       "StepState": {
         "additionalProperties": false,
         "properties": {
@@ -4811,6 +5214,25 @@
           "sha256"
         ],
         "title": "TrustResult",
+        "type": "object"
+      },
+      "UndoBody": {
+        "additionalProperties": false,
+        "description": "Optional body of an undo request (LIBRARY-MOVE-15).",
+        "properties": {
+          "force": {
+            "description": "Library files to undo although they changed since they were moved; the undo report's changed_files names them",
+            "items": {
+              "maxLength": 4096,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 10000,
+            "title": "Force",
+            "type": "array"
+          }
+        },
+        "title": "UndoBody",
         "type": "object"
       },
       "ValidateResult": {
@@ -6543,6 +6965,161 @@
         ]
       }
     },
+    "/api/move-conflicts/{conflict_id}": {
+      "get": {
+        "operationId": "get_move_conflict_api_move_conflicts__conflict_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conflict_id",
+            "required": true,
+            "schema": {
+              "title": "Conflict Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MoveConflict"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Get Move Conflict",
+        "tags": [
+          "review"
+        ]
+      }
+    },
+    "/api/move-conflicts/{conflict_id}/decision": {
+      "post": {
+        "description": "``retry`` queues the worker job that plans the album again and, when nothing\nconflicts any more, moves it at once; ``fail`` fails the album's lane.",
+        "operationId": "decide_move_api_move_conflicts__conflict_id__decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conflict_id",
+            "required": true,
+            "schema": {
+              "title": "Conflict Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoveDecisionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MoveDecided"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Decide Move",
+        "tags": [
+          "review"
+        ]
+      }
+    },
     "/api/profiles": {
       "get": {
         "description": "Profiles with variable and secret *names* only (API-2, PROFILE-5).",
@@ -7667,6 +8244,18 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UndoBody",
+                "default": {
+                  "force": []
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "202": {
             "content": {
@@ -8500,7 +9089,7 @@
     },
     "/api/review": {
       "get": {
-        "description": "What waits for a decision, oldest first: run ChangeSets that are proposed or\nconflicted, pending review gates (REVIEW-QUEUE-1), pending import decisions\n(IMPORT-UI-7) and pending cleanup decisions (FILES-CLEANUP-14).",
+        "description": "What waits for a decision, oldest first: run ChangeSets that are proposed or\nconflicted, pending review gates (REVIEW-QUEUE-1), pending import decisions\n(IMPORT-UI-7), pending cleanup decisions (FILES-CLEANUP-14), cover reviews\n(COVERS-SEARCH-14) and move conflicts (LIBRARY-MOVE-5a).",
         "operationId": "review_queue_api_review_get",
         "parameters": [
           {
@@ -9167,7 +9756,7 @@
     },
     "/api/runs/{run_id}/undo": {
       "post": {
-        "description": "Queue the undo of the run's applied changes, newest first (REVIEW-QUEUE-8,\nJOURNAL-6). The result arrives as ``job.finished`` on the run's stream.",
+        "description": "Queue the undo of the run's applied changes, newest first (REVIEW-QUEUE-8,\nJOURNAL-6). The result arrives as ``job.finished`` on the run's stream. ``force``\nnames moved files to undo although they changed (LIBRARY-MOVE-15).",
         "operationId": "undo_run_api_runs__run_id__undo_post",
         "parameters": [
           {
@@ -9180,6 +9769,18 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UndoBody",
+                "default": {
+                  "force": []
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "202": {
             "content": {
