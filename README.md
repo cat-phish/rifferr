@@ -6,7 +6,11 @@ A local web app for building and running user-defined music-import workflows, wi
 - Architecture: [docs/architecture.md](docs/architecture.md)
 - Specs: [specs/](specs/), index in [specs/000-overview.md](specs/000-overview.md)
 
-## Setup
+## Try it
+
+[docs/getting-started.md](docs/getting-started.md): a first import with your own beets config, on a test profile that works on copies.
+
+## Development setup
 
 ```bash
 pre-commit install          # gitleaks + spec lint on every commit
