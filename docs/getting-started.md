@@ -66,6 +66,16 @@ import:
 ```
 
 Other changes:
+- **Make sure `plugins:` includes `musicbrainz`.** In beets 2.x MusicBrainz is a
+  plugin. beets loads it by itself only when the config has no `plugins:` list, so a
+  config written for an older beets often lists plugins without it. Without a
+  metadata source plugin (`musicbrainz`, `discogs`, …) beets can't find candidates
+  for any album. If you drop `discogs` because its package is missing, check
+  that a source is still left. `beet version`, run from `backend/`, lists the loaded
+  plugins:
+  ```bash
+  BEETSDIR=~/rifferr-test/beets uv run beet version
+  ```
 - **Remove `copyartifacts` / `copyartifacts3` from `plugins:`.** It doesn't fire
   for Rifferr's moves, and `library.move` has its own `artifacts` rules for logs,
   cue sheets and extra images.
@@ -190,3 +200,6 @@ When test runs behave:
   `trust`.
 - **`** error loading plugin X`:** the plugin or its Python package isn't in
   Rifferr's environment (see *Before you start*).
+- **Every album says "beets found no candidates", or the run log warns that beets has
+  no metadata source plugin loaded:** add `musicbrainz` to `plugins:` in the beets
+  config (see step 1), trust the config again, and restart `rifferr serve`.
