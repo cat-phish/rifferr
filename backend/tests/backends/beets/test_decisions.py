@@ -246,3 +246,18 @@ def test_IMPORT_UI_2_candidates_follow_the_users_match_config(beets_env: BeetsEn
     beets_env.inbox_album()
     (q,) = b.import_folder(beets_env.inbox, "auto", None, run_id=RUN).questions
     assert [c.id for c in q.candidates] == ["RifferrFixture:near"]
+
+
+def test_UI_REFRESH_6_match_thresholds_default_to_beets_defaults(beets_env: BeetsEnv) -> None:
+    # Contract: beets' own defaults for the two keys `beet import` colors matches with.
+    t = beets_env.backend().match_thresholds()
+    assert t is not None
+    assert (t.strong, t.medium) == (0.04, 0.25)
+
+
+def test_UI_REFRESH_6_match_thresholds_follow_the_profile_config(beets_env: BeetsEnv) -> None:
+    t = beets_env.backend(
+        "match:\n  strong_rec_thresh: 0.1\n  medium_rec_thresh: 0.3\n"
+    ).match_thresholds()
+    assert t is not None
+    assert (t.strong, t.medium) == (0.1, 0.3)

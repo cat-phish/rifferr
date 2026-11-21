@@ -83,6 +83,7 @@ from rifferr.core.imports import (
     ImportApplyError,
     ImportCandidate,
     ImportQuestion,
+    MatchThresholds,
 )
 from rifferr.core.moves import (
     ALL_ARTIFACTS,
@@ -221,6 +222,7 @@ class FakeBackend:
         self.lookup_calls: list[tuple[str, tuple[str, ...], str | None, str | None]] = []
         self.fail_lookup: str | None = None
         self.lookup_problem_text: str | None = None
+        self.thresholds: MatchThresholds | None = MatchThresholds(strong=0.04, medium=0.25)
         self.plugin_problems_list: list[str] = []
         """What ``lookup_problem`` answers (BEETS-IMPORT-19)."""
         self.music_dirs: list[Path] = []
@@ -502,6 +504,10 @@ class FakeBackend:
     def plugin_problems(self) -> list[str]:
         """``plugin_problems_list``, which tests set (BEETS-IMPORT-20)."""
         return list(self.plugin_problems_list)
+
+    def match_thresholds(self) -> MatchThresholds | None:
+        """``thresholds``, which tests may change (UI-REFRESH-6)."""
+        return self.thresholds
 
     def lookup_problem(self) -> str | None:
         """``lookup_problem_text``, which tests set (BEETS-IMPORT-19)."""

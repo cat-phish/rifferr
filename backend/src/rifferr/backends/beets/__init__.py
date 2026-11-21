@@ -16,6 +16,7 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import Any, cast
 
+from beets import config as beets_config
 from beets import dbcore, metadata_plugins
 from beets.library import Album, Item, Library
 from beets.library.queries import parse_query_parts
@@ -57,7 +58,7 @@ from rifferr.core.changeset import (
     same_value,
 )
 from rifferr.core.ids import new_ulid
-from rifferr.core.imports import ImportAction, ImportApplyError, ImportQuestion
+from rifferr.core.imports import ImportAction, ImportApplyError, ImportQuestion, MatchThresholds
 from rifferr.core.moves import ALL_ARTIFACTS, ArtifactRule, MovePlan, PathFormat
 from rifferr.core.profile import Profile
 from rifferr.core.selection import Selection
@@ -263,6 +264,15 @@ class BeetsBackend:
         if metadata_plugins.find_metadata_source_plugins.__wrapped__():
             return None
         return NO_METADATA_SOURCE
+
+    def match_thresholds(self) -> MatchThresholds | None:
+        """UI-REFRESH-6: beets' ``match.strong_rec_thresh`` and ``match.medium_rec_thresh``
+        from the profile's config; ``beet import`` colors a match with them."""
+        match = beets_config["match"]
+        return MatchThresholds(
+            strong=min(max(float(match["strong_rec_thresh"].as_number()), 0.0), 1.0),
+            medium=min(max(float(match["medium_rec_thresh"].as_number()), 0.0), 1.0),
+        )
 
     def plugin_problems(self) -> list[str]:
         """BEETS-IMPORT-20: plugins named in the config that beets couldn't load."""

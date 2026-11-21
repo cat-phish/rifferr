@@ -15,7 +15,7 @@ from typing import Final, Literal, Protocol, runtime_checkable
 from pydantic import BaseModel, ConfigDict, Field
 
 from rifferr.core.changeset import ApplyResult, ChangeProblem, ChangeSet, FileEffect, FileMode
-from rifferr.core.imports import ImportAction, ImportQuestion
+from rifferr.core.imports import ImportAction, ImportQuestion, MatchThresholds
 from rifferr.core.moves import ArtifactRule, MovePlan, PathFormat
 from rifferr.core.selection import Selection
 from rifferr.core.snapshot import AlbumSnapshot, FieldValue, ItemSnapshot
@@ -256,6 +256,11 @@ class LibraryBackend(Protocol):
     def lookup_problem(self) -> str | None:
         """Why album lookups can't find any candidates, whatever the folder (beets: no
         metadata source plugin is loaded), or ``None`` (BEETS-IMPORT-19)."""
+        ...
+
+    def match_thresholds(self) -> MatchThresholds | None:
+        """The distances up to which the backend calls a candidate a strong or a medium
+        match, or ``None`` when it has no such notion (F-UI-REFRESH UI-REFRESH-6)."""
         ...
 
     def plugin_problems(self) -> list[str]:

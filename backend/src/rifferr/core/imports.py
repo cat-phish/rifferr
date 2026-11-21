@@ -54,6 +54,16 @@ class TrackMatch(BaseModel):
     length: float | None = Field(default=None, description="The candidate track's seconds")
 
 
+class MatchThresholds(BaseModel):
+    """The backend's limits for a strong and a medium match, as distances (F-UI-REFRESH
+    UI-REFRESH-6). beets: ``match.strong_rec_thresh`` and ``match.medium_rec_thresh``."""
+
+    model_config = _FROZEN
+
+    strong: float = Field(ge=0, le=1)
+    medium: float = Field(ge=0, le=1)
+
+
 class ImportCandidate(BaseModel):
     """One match the backend's lookup found, in the backend's order (IMPORT-UI-2, -4)."""
 
@@ -120,6 +130,11 @@ class ImportDecision(BaseModel):
         default=None,
         description="Why the backend can't find candidates at all, e.g. no metadata source "
         "plugin loaded (IMPORT-UI-20); the queue shows it instead of 'no candidates'",
+    )
+    match_thresholds: MatchThresholds | None = Field(
+        default=None,
+        description="Distances up to which the backend calls a match strong or medium, for "
+        "coloring candidates (UI-REFRESH-6); null when the backend has none",
     )
     options: dict[str, str | bool] = Field(default_factory=dict[str, str | bool])
     set_fields: dict[str, str] = Field(default_factory=dict[str, str])

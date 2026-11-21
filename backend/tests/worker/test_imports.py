@@ -419,3 +419,16 @@ async def test_IMPORT_UI_8_job_results_go_on_the_runs_stream(h: ImportHarness) -
         (lookup, "import_lookup"),
         (job, "import_decision"),
     ]
+
+
+async def test_UI_REFRESH_6_decision_carries_the_backends_match_thresholds(
+    h: ImportHarness,
+) -> None:
+    await h.waiting_import()
+    t = h.decision().match_thresholds
+    assert t is not None
+    assert (t.strong, t.medium) == (0.04, 0.25)
+    h.backend.thresholds = None  # a lookup refreshes them
+    job = await h.supervisor.lookup_import(h.decision().id)
+    assert await h.job_done(job) == "succeeded"
+    assert h.decision().match_thresholds is None

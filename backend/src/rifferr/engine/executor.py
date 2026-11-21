@@ -1090,6 +1090,7 @@ class Engine:
             candidates=list(question.candidates),
             duplicates=list(question.duplicates),
             lookup_problem=state.backend.lookup_problem(),
+            match_thresholds=state.backend.match_thresholds(),
             options=dict(options.options),
             set_fields=dict(options.set_fields),
             created_at=now,

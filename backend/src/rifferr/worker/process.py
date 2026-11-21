@@ -869,6 +869,7 @@ class Worker:
         decision.fingerprint = found.fingerprint
         decision.items = list(found.items)
         decision.lookup_problem = self.backend.lookup_problem()
+        decision.match_thresholds = self.backend.match_thresholds()
         decision.candidates = (
             merge_candidates(decision.candidates, found.candidates)
             if search

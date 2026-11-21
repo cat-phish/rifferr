@@ -2303,6 +2303,17 @@
             "description": "Why the backend can't find candidates at all, e.g. no metadata source plugin loaded (IMPORT-UI-20); the queue shows it instead of 'no candidates'",
             "title": "Lookup Problem"
           },
+          "match_thresholds": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MatchThresholds"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Distances up to which the backend calls a match strong or medium, for coloring candidates (UI-REFRESH-6); null when the backend has none"
+          },
           "note": {
             "anyOf": [
               {
@@ -3012,6 +3023,30 @@
           "state"
         ],
         "title": "ManualEdit",
+        "type": "object"
+      },
+      "MatchThresholds": {
+        "additionalProperties": false,
+        "description": "The backend's limits for a strong and a medium match, as distances (F-UI-REFRESH\nUI-REFRESH-6). beets: ``match.strong_rec_thresh`` and ``match.medium_rec_thresh``.",
+        "properties": {
+          "medium": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Medium",
+            "type": "number"
+          },
+          "strong": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Strong",
+            "type": "number"
+          }
+        },
+        "required": [
+          "strong",
+          "medium"
+        ],
+        "title": "MatchThresholds",
         "type": "object"
       },
       "MoveConflict": {

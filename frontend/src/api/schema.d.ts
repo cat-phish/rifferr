@@ -1990,6 +1990,8 @@ export interface components {
              * @description Why the backend can't find candidates at all, e.g. no metadata source plugin loaded (IMPORT-UI-20); the queue shows it instead of 'no candidates'
              */
             lookup_problem?: string | null;
+            /** @description Distances up to which the backend calls a match strong or medium, for coloring candidates (UI-REFRESH-6); null when the backend has none */
+            match_thresholds?: components["schemas"]["MatchThresholds"] | null;
             /** Note */
             note?: string | null;
             /**
@@ -2271,6 +2273,17 @@ export interface components {
              * @description Journal entry of the undo, once undone
              */
             undo_journal_id?: string | null;
+        };
+        /**
+         * MatchThresholds
+         * @description The backend's limits for a strong and a medium match, as distances (F-UI-REFRESH
+         *     UI-REFRESH-6). beets: ``match.strong_rec_thresh`` and ``match.medium_rec_thresh``.
+         */
+        MatchThresholds: {
+            /** Medium */
+            medium: number;
+            /** Strong */
+            strong: number;
         };
         /**
          * MoveConflict
