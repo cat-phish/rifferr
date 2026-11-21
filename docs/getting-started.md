@@ -24,12 +24,17 @@ command here runs from `backend/` with `uv run`.
     packages. For example, `chroma` needs `pyacoustid` (and the `fpcalc` binary on
     PATH), `lastgenre` needs `pylast`, and `discogs` needs `python3-discogs-client`.
   - Third-party plugins (installed separately from beets) aren't there at all.
-  - beets prints `** error loading plugin <name>` and carries on without a plugin it
-    can't import.
-  - Until Rifferr has a supported way to add these (BACKLOG B-067), add them for a
-    session with `uv run --with`:
+  - beets carries on without a plugin it can't import. Rifferr warns about it when
+    the worker starts and in the run log of every import.
+  - Rifferr's optional extras install the packages for `chroma`, `lastgenre` and
+    `discogs`: `rifferr[chroma]`, `rifferr[lastgenre]`, `rifferr[discogs]`, or
+    `rifferr[plugins]` for all three. In a checkout, from `backend/`:
     ```bash
-    uv run --with pyacoustid --with pylast --with python3-discogs-client rifferr serve
+    uv sync --extra plugins
+    ```
+  - Add a third-party plugin's package for a session with `uv run --with`:
+    ```bash
+    uv run --with beets-copyartifacts3 rifferr serve
     ```
 - **Config that runs code needs trust.** A beets config that uses `pluginpath`, the
   `inline` plugin (`item_fields`, `album_fields`) or `hook` runs code. Rifferr won't

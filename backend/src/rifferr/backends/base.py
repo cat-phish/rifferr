@@ -258,6 +258,11 @@ class LibraryBackend(Protocol):
         metadata source plugin is loaded), or ``None`` (BEETS-IMPORT-19)."""
         ...
 
+    def plugin_problems(self) -> list[str]:
+        """One message per plugin the backend's config asks for but couldn't load
+        (BEETS-IMPORT-20); empty when all loaded."""
+        ...
+
     def command_env(self) -> Mapping[str, str]:
         """Environment for CLI subprocess steps (e.g. ``BEETSDIR``)."""
         ...

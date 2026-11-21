@@ -107,8 +107,10 @@ class BeetsImportStep:
                 f"this profile's backend can't ask about imports; mode '{params.mode}' "
                 "needs import decisions (use mode: quiet)"
             )
-        if (problem := ctx.backend.lookup_problem()) is not None:  # BEETS-IMPORT-19
-            ctx.log(f"warning: {problem}")
+        problems = [*ctx.backend.plugin_problems(), ctx.backend.lookup_problem()]
+        for problem in problems:  # BEETS-IMPORT-19, -20
+            if problem is not None:
+                ctx.log(f"warning: {problem}")
         loop = asyncio.get_running_loop()
 
         def report(decision: ImportOutcome) -> None:

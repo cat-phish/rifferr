@@ -63,6 +63,20 @@ def test_BEETS_IMPORT_2_plugins_load_from_user_config(beets_env: BeetsEnv) -> No
     assert backend.evaluate("$shout", album) == "QUIET"
 
 
+def test_BEETS_IMPORT_20_plugins_that_failed_to_load(beets_env: BeetsEnv) -> None:
+    b = beets_env.backend("plugins: [export, nosuchplugin]\n")
+    assert config.failed_plugins() == ["nosuchplugin"]
+    (problem,) = b.plugin_problems()
+    assert "`nosuchplugin`" in problem
+    assert "rifferr[plugins]" in problem
+
+
+def test_BEETS_IMPORT_20_no_problem_when_every_plugin_loads(beets_env: BeetsEnv) -> None:
+    b = beets_env.backend()
+    assert config.failed_plugins() == []
+    assert b.plugin_problems() == []
+
+
 def test_BEETS_IMPORT_9_plugin_template_functions(beets_env: BeetsEnv) -> None:
     backend = beets_env.backend()
     seed(backend, [{"albumartist": "A b", "album": "x", "items": [{"title": "t", "track": 1}]}])

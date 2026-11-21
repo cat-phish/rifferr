@@ -306,6 +306,14 @@ async def test_BEETS_IMPORT_19_no_metadata_source_warns_and_marks_the_decision(
     assert h.decision().lookup_problem is None
 
 
+async def test_BEETS_IMPORT_20_plugins_that_failed_to_load_are_warned_about(
+    h: ImportHarness,
+) -> None:
+    h.backend.plugin_problems_list = ["plugin `discogs` failed"]
+    await h.waiting_import()
+    assert "warning: plugin `discogs` failed" in h.logs()
+
+
 async def test_BEETS_IMPORT_19_no_warning_with_a_metadata_source(h: ImportHarness) -> None:
     await h.waiting_import()
     assert not any(line.startswith("warning:") for line in h.logs())

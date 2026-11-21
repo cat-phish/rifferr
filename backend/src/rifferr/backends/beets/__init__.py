@@ -135,6 +135,15 @@ NO_METADATA_SOURCE = (
 )
 
 
+#: BEETS-IMPORT-20. beets' bundled plugins with extra packages have Rifferr extras.
+PLUGIN_NOT_LOADED = (
+    "beets couldn't load the plugin `{name}` named in `plugins:`, so it runs without it. "
+    "Its Python package is probably missing from Rifferr's environment: install "
+    "`rifferr[plugins]` for chroma, lastgenre and discogs, or add the package with "
+    "`uv run --with <package>` (see docs/getting-started.md)."
+)
+
+
 class BeetsBackend:
     def __init__(
         self,
@@ -254,6 +263,10 @@ class BeetsBackend:
         if metadata_plugins.find_metadata_source_plugins.__wrapped__():
             return None
         return NO_METADATA_SOURCE
+
+    def plugin_problems(self) -> list[str]:
+        """BEETS-IMPORT-20: plugins named in the config that beets couldn't load."""
+        return [PLUGIN_NOT_LOADED.format(name=name) for name in config.failed_plugins()]
 
     def command_env(self) -> Mapping[str, str]:
         return {"BEETSDIR": str(self.beetsdir)}
