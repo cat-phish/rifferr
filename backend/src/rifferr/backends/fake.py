@@ -541,6 +541,9 @@ class FakeBackend:
     ) -> ImportResult:
         self._need("import_decisions")
         folder = str(path)
+        if action == "skip":  # imports nothing, so a changed or missing folder doesn't matter
+            self._questions.pop(folder, None)
+            return ImportResult(skipped=[SkippedFolder(path=folder, reason="skipped by decision")])
         entry = self._questions.get(folder)
         if entry is None:
             raise ImportApplyError(f"no import question for {folder}")
@@ -549,9 +552,6 @@ class FakeBackend:
         if self.fail_lookup is not None and action == "candidate":
             raise ImportApplyError(self.fail_lookup)
         raw, _ = entry
-        if action == "skip":
-            del self._questions[folder]
-            return ImportResult(skipped=[SkippedFolder(path=folder, reason="skipped by decision")])
         fields = _fixture_fields(raw)
         if action == "candidate":
             known = [*(raw.get("_candidates") or []), *self._lookup_candidates]

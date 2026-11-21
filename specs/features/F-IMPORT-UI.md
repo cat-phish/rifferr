@@ -69,7 +69,7 @@ and C-LANES (a `skipped` lane state, IMPORT-UI-17).
 - IMPORT-UI-11: The decision job MUST run in the profile's worker. If the folder's fingerprint no longer matches, it MUST NOT import. The decision stays `pending` with the error "the folder changed; look it up again". It is never looked up again automatically, so the user never applies a match they didn't see. Otherwise:
   - `candidate`: a beets import of that folder alone, with `search_ids` set to the candidate's album id, applying the candidate with that id. If the lookup no longer returns it, the decision stays `pending` with that error.
   - `asis`: a beets import of that folder alone, as-is.
-  - `skip`: no import.
+  - `skip`: no import. Skip MUST succeed even when the fingerprint no longer matches or the folder is gone, since it touches nothing (B-072).
   - a `duplicate` choice: a beets import with that `duplicate_action`.
 
   Imports use the stored `options` and `set` and mark the album with the run (BEETS-IMPORT-5, -13).

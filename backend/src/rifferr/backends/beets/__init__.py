@@ -497,12 +497,12 @@ class BeetsBackend:
     ) -> ImportResult:
         """Apply an import decision to the one folder ``path`` (IMPORT-UI-11)."""
         self._writable("import")
-        if not path.is_dir() or folder_fingerprint(str(path)) != fingerprint:
-            raise ImportApplyError("the folder changed; look it up again")
-        if action == "skip":
+        if action == "skip":  # imports nothing, so a changed or missing folder doesn't matter
             return ImportResult(
                 skipped=[SkippedFolder(path=str(path), reason="skipped by decision")]
             )
+        if not path.is_dir() or folder_fingerprint(str(path)) != fingerprint:
+            raise ImportApplyError("the folder changed; look it up again")
         if action == "candidate" and not candidate_id:
             raise ImportApplyError("choose a candidate")
         marker = run_id or new_ulid()

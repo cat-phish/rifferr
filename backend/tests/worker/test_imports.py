@@ -203,6 +203,17 @@ async def test_IMPORT_UI_11_changed_folder_stays_pending(h: ImportHarness) -> No
     assert h.album_names() == ["A"]
 
 
+async def test_IMPORT_UI_11_skip_works_after_the_folder_changed(h: ImportHarness) -> None:
+    await h.waiting_import()
+    decision = h.decision()
+    h.backend.change_folder(decision.path)
+    job = await h.supervisor.decide_import(decision.id, "skip", by="ui")
+    assert await h.job_done(job) == "succeeded"
+    await h.until(lambda: h.state() == "succeeded")
+    assert h.decision().state == "skipped"
+    assert h.lanes()[decision.lane_key] == ("b-folder", "skipped")
+
+
 async def test_IMPORT_UI_13_failure_logs_and_allows_a_retry(h: ImportHarness) -> None:
     await h.waiting_import()
     decision = h.decision()

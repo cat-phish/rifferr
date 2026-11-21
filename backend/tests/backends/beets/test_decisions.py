@@ -154,6 +154,22 @@ def test_IMPORT_UI_11_candidate_not_found_again_or_changed_folder_raise(
     assert b.query(Selection()) == []
 
 
+def test_IMPORT_UI_11_skip_works_when_the_folder_changed_or_is_gone(
+    beets_env: BeetsEnv,
+) -> None:
+    b = backend(beets_env, [OTHER])
+    folder = beets_env.inbox_album()
+    (q,) = b.import_folder(beets_env.inbox, "auto", None, run_id=RUN).questions
+    (folder / "extra.txt").write_text("new file")
+    changed = b.import_decided(folder, "skip", fingerprint=q.fingerprint)
+    assert [s.path for s in changed.skipped] == [str(folder)]
+    gone = beets_env.inbox / "moved-away"
+    folder.rename(gone)
+    missing = b.import_decided(folder, "skip", fingerprint=q.fingerprint)
+    assert [s.path for s in missing.skipped] == [str(folder)]
+    assert b.query(Selection()) == []
+
+
 def test_IMPORT_UI_9_lookup_by_id_and_by_name(beets_env: BeetsEnv) -> None:
     b = backend(beets_env, [OTHER, BY_ID])
     folder = beets_env.inbox_album()
