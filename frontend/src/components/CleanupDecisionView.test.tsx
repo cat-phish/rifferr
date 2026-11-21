@@ -103,9 +103,10 @@ test("FILES_CLEANUP_14 listing grouped by class, then Delete", async () => {
   expect(within(card).getByTestId("deadline")).toHaveTextContent("keep everything automatically");
   fireEvent.change(within(card).getByLabelText("Note (optional)"), { target: { value: "ok" } });
   fireEvent.click(within(card).getByRole("button", { name: "Delete" }));
-  expect(await within(card).findByTestId("decision-sent")).toHaveTextContent(
-    "Cleaning the folder.",
-  );
+  // Decided: the item leaves the waiting list at once (UI-REFRESH-20).
+  await waitFor(() => {
+    expect(card).not.toBeInTheDocument();
+  });
   expect(bodies(calls)).toEqual([{ decision: "delete", note: "ok" }]);
 });
 

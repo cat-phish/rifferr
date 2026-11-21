@@ -2,6 +2,7 @@ import { Alert, Button, Group, List, Stack, Text } from "@mantine/core";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, ok } from "../api/client";
 import type { MoveConflict } from "../api/types";
+import { jobOf, useMarkDecided } from "./Decided";
 
 type Choice = "retry" | "fail";
 
@@ -10,6 +11,7 @@ type Choice = "retry" | "fail";
  * conflicts any more; "Fail" ends the album's lane. */
 export function MoveConflictView({ conflict }: { conflict: MoveConflict }) {
   const queryClient = useQueryClient();
+  const markDecided = useMarkDecided();
   const decide = useMutation({
     mutationFn: async (choice: Choice) =>
       ok(
@@ -18,7 +20,10 @@ export function MoveConflictView({ conflict }: { conflict: MoveConflict }) {
           body: { decision: choice },
         }),
       ),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["review"] }),
+    onSuccess: (res) => {
+      markDecided(jobOf(res));
+      void queryClient.invalidateQueries({ queryKey: ["review"] });
+    },
   });
   const verb = conflict.settings.mode === "copy" ? "copied" : "moved";
 

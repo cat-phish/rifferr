@@ -134,7 +134,10 @@ test("IMPORT_UI_15 candidates best first, track table, import this match", async
   fireEvent.click(within(card).getByRole("button", { name: "Add note" }));
   fireEvent.change(within(card).getByLabelText("Note (optional)"), { target: { value: "ok" } });
   fireEvent.click(within(card).getByRole("button", { name: "Import this match" }));
-  expect(await within(card).findByTestId("decision-sent")).toHaveTextContent("Importing it.");
+  // Decided: the item leaves the waiting list at once (UI-REFRESH-20).
+  await waitFor(() => {
+    expect(card).not.toBeInTheDocument();
+  });
   expect(bodies(calls, "/api/imports/d1/decision")).toEqual([
     { action: "candidate", candidate_id: "c2", note: "ok" },
   ]);
@@ -145,7 +148,10 @@ test("IMPORT_UI_15 import as-is and skip", async () => {
   renderApp("/review?profile=main");
   const card = await screen.findByTestId("queue-item");
   fireEvent.click(within(card).getByRole("button", { name: "Skip" }));
-  expect(await within(card).findByTestId("decision-sent")).toHaveTextContent("Skipping it.");
+  // Decided: the item leaves the waiting list at once (UI-REFRESH-20).
+  await waitFor(() => {
+    expect(card).not.toBeInTheDocument();
+  });
   expect(bodies(calls, "/api/imports/d1/decision")).toEqual([
     { action: "skip", candidate_id: null, note: null },
   ]);

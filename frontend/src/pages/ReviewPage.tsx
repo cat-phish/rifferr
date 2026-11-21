@@ -12,7 +12,7 @@ import {
   Title,
 } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { api, ok } from "../api/client";
 import { CoverPicker } from "../components/CoverPicker";
@@ -20,6 +20,7 @@ import { CleanupDecisionView } from "../components/CleanupDecisionView";
 import { FileChangeSetView } from "../components/FileChangeSetView";
 import { MoveConflictView } from "../components/MoveConflictView";
 import { ActionsSlotContext, HeaderActions } from "../components/HeaderActions";
+import { DecidedContext, ItemIdContext, jobOf } from "../components/Decided";
 import { Diff } from "../components/Diff";
 import { useFold } from "../components/Fold";
 import { NoteField } from "../components/NoteField";
@@ -30,6 +31,7 @@ import type { GateAlbum, QueueItem, ReviewGate } from "../api/types";
 import { useProfile, withProfile } from "../hooks/useProfile";
 import { useReviewQueue } from "../hooks/useReviewQueue";
 import { BULK_ACTIONS, bulkKind, decideAll, type BulkFailure, type BulkKind } from "../lib/bulk";
+import { useAppEventListener } from "../lib/appEvents";
 import { time } from "../lib/format";
 import {
   count,
@@ -61,6 +63,17 @@ const SelectionContext = createContext<Selection>({
   toggle: () => undefined,
 });
 
+interface DecidedEntry {
+  /** The item as it was when decided; a change brings it back. */
+  sig: string;
+  jobId: string | null;
+  /** When its job finished (`job.finished`); a refetch after that brings it back. */
+  finishedAt: number | null;
+}
+
+/** Ids of the items decided on this page whose result hasn't come back yet. */
+const DecidedSetContext = createContext<ReadonlySet<string>>(new Set());
+
 /** The review queue: ChangeSets, review gates, import and cleanup decisions that wait for a decision, grouped by
  * run (F-REVIEW-QUEUE). Updates come from ``/api/events`` via the app shell. Several items
  * of one kind can be decided together (F-DASHBOARD DASHBOARD-13). */
@@ -91,6 +104,47 @@ export function ReviewPage() {
       });
     },
   };
+  // Items decided here leave the waiting list at once (UI-REFRESH-20). One comes back if
+  // it changes (an error, a conflict) or its job finishes while it still waits.
+  const [decidedMap, setDecided] = useState<Map<string, DecidedEntry>>(new Map());
+  const markDecided = useCallback(
+    (itemId: string, jobId?: string | null) => {
+      const item = (queue.data ?? []).find((i) => i.id === itemId);
+      if (item === undefined) return;
+      setDecided((old) =>
+        new Map(old).set(itemId, {
+          sig: JSON.stringify(item),
+          jobId: jobId ?? null,
+          finishedAt: null,
+        }),
+      );
+    },
+    [queue.data],
+  );
+  useAppEventListener((event) => {
+    if (event.type !== "job.finished") return;
+    const job = event.data.job_id;
+    setDecided((old) => {
+      let changed = false;
+      const next = new Map(old);
+      for (const [id, e] of old) {
+        if (e.jobId !== null && e.jobId === job && e.finishedAt === null) {
+          next.set(id, { ...e, finishedAt: Date.now() });
+          changed = true;
+        }
+      }
+      return changed ? next : old;
+    });
+  });
+  const decided = new Set(
+    [...decidedMap]
+      .filter(([id, e]) => {
+        const item = items.find((i) => i.id === id);
+        if (item === undefined || JSON.stringify(item) !== e.sig) return false;
+        return e.finishedAt === null || queue.dataUpdatedAt <= e.finishedAt;
+      })
+      .map(([id]) => id),
+  );
   const bulk = useMutation({
     mutationFn: async (action: string) => decideAll([...selected.values()], action),
     onSuccess: (failed) => {
@@ -185,9 +239,13 @@ export function ReviewPage() {
         </Alert>
       )}
       <SelectionContext.Provider value={selection}>
-        {groups.map((g) => (
-          <RunCard key={g.runId} group={g} focus={focus} />
-        ))}
+        <DecidedContext.Provider value={markDecided}>
+          <DecidedSetContext.Provider value={decided}>
+            {groups.map((g) => (
+              <RunCard key={g.runId} group={g} focus={focus} />
+            ))}
+          </DecidedSetContext.Provider>
+        </DecidedContext.Provider>
       </SelectionContext.Provider>
     </Stack>
   );
@@ -206,11 +264,13 @@ function RunCard({ group, focus }: { group: RunGroup; focus: string | null }) {
     queryFn: async () =>
       ok(await api.GET("/api/runs/{run_id}", { params: { path: { run_id: group.runId } } })),
   });
+  const decided = useContext(DecidedSetContext);
   const blocks = run.data
     ? groupByLane(
         group.items,
         run.data.lanes ?? [],
         run.data.steps.map((st) => st.id),
+        decided,
       )
     : null;
   const bulk = useMutation({
@@ -268,9 +328,18 @@ function RunCard({ group, focus }: { group: RunGroup; focus: string | null }) {
           )}
         </Group>
         {bulk.error && <Alert color="red">{bulk.error.message}</Alert>}
-        {blocks === null
-          ? group.items.map((item) => <QueueItemCard key={item.id} item={item} focus={focus} />)
-          : blocks.map((block) => <AlbumBlockView key={block.key} block={block} focus={focus} />)}
+        {blocks === null ? (
+          group.items
+            .filter((item) => !decided.has(item.id))
+            .map((item) => <QueueItemCard key={item.id} item={item} focus={focus} />)
+        ) : (
+          <>
+            {blocks.waiting.map((block) => (
+              <AlbumBlockView key={block.key} block={block} focus={focus} />
+            ))}
+            {blocks.working.length > 0 && <WorkingList blocks={blocks.working} />}
+          </>
+        )}
       </Stack>
       <Modal
         opened={confirm !== null}
@@ -339,6 +408,33 @@ function AlbumBlockView({ block, focus }: { block: AlbumBlock; focus: string | n
       {block.items.map((item) => (
         <QueueItemCard key={item.id} item={item} focus={focus} />
       ))}
+    </Stack>
+  );
+}
+
+/** Albums still working, one line each, below the ones that wait (UI-REFRESH-20). */
+function WorkingList({ blocks }: { blocks: AlbumBlock[] }) {
+  return (
+    <Stack gap={2} data-testid="working">
+      <Text size="xs" c="dimmed" fw={600}>
+        Working
+      </Text>
+      {blocks.map((block) => {
+        const status = laneStatus(block);
+        return (
+          <Group key={block.key} gap="xs" data-testid="working-album" data-lane={block.key}>
+            <Text size="sm">{block.label}</Text>
+            <Text
+              size="xs"
+              data-testid="album-status"
+              c={status.token ? undefined : "dimmed"}
+              style={status.token ? { color: tc(status.token) } : undefined}
+            >
+              {status.text}
+            </Text>
+          </Group>
+        );
+      })}
     </Stack>
   );
 }
@@ -486,7 +582,9 @@ function ItemCard({
           </Group>
           <div ref={setSlot} data-testid="item-actions" style={{ marginLeft: "auto" }} />
         </Group>
-        <ActionsSlotContext.Provider value={slot}>{children}</ActionsSlotContext.Provider>
+        <ItemIdContext.Provider value={item.id}>
+          <ActionsSlotContext.Provider value={slot}>{children}</ActionsSlotContext.Provider>
+        </ItemIdContext.Provider>
       </Stack>
     </Card>
   );
@@ -499,6 +597,10 @@ function ChangeSetCard({ item, focused }: { item: QueueItem; focused: boolean })
   const queryClient = useQueryClient();
   const rows = cs ? fieldRows(cs) : [];
   const fold = useFold(rows);
+  const markItem = useContext(DecidedContext);
+  const markDecided = (jobId?: string | null) => {
+    markItem(item.id, jobId);
+  };
   const [checked, setChecked] = useState<Set<number>>(() => new Set(rows.map((r) => r.index)));
   const [note, setNote] = useState("");
   const [sent, setSent] = useState<string | null>(null);
@@ -520,7 +622,8 @@ function ChangeSetCard({ item, focused }: { item: QueueItem; focused: boolean })
           body: { ...body, note: note.trim() === "" ? null : note.trim() },
         }),
       ),
-    onSuccess: (_d, body) => {
+    onSuccess: (d, body) => {
+      markDecided(jobOf(d));
       setSent(body.decision === "accept" ? "Accepting…" : "Rejecting…");
       void queryClient.invalidateQueries({ queryKey: ["review"] });
     },
@@ -532,7 +635,8 @@ function ChangeSetCard({ item, focused }: { item: QueueItem; focused: boolean })
           params: { path: { changeset_id: item.id } },
         }),
       ),
-    onSuccess: () => {
+    onSuccess: (d) => {
+      markDecided(jobOf(d));
       setSent("Proposing again on the current values…");
       void queryClient.invalidateQueries({ queryKey: ["review"] });
     },
@@ -730,6 +834,10 @@ function GateCard({
   focused: boolean;
 }) {
   const queryClient = useQueryClient();
+  const markItem = useContext(DecidedContext);
+  const markDecided = (jobId?: string | null) => {
+    markItem(item.id, jobId);
+  };
   const [note, setNote] = useState("");
   const decide = useMutation({
     mutationFn: async (decision: "continue" | "reject") =>
@@ -739,7 +847,10 @@ function GateCard({
           body: { decision, note: note.trim() === "" ? null : note.trim() },
         }),
       ),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["review"] }),
+    onSuccess: () => {
+      markDecided();
+      void queryClient.invalidateQueries({ queryKey: ["review"] });
+    },
   });
   // One album at a time (F-DASHBOARD DASHBOARD-11, -12); only on gates of several albums.
   const perAlbum = useMutation({

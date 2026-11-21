@@ -40,6 +40,7 @@ import {
   toBase64,
 } from "../lib/covers";
 import { tc } from "../theme";
+import { jobOf, useMarkDecided } from "./Decided";
 
 /** Where the picker is used: a cover review in the queue, or a library album outside a
  * run (F-COVER-PICKER COVER-PICKER-1, -2). */
@@ -296,6 +297,7 @@ function PickerBody({
   const [outcome, setOutcome] = useState<string | null>(null);
   const [refused, setRefused] = useState<Record<string, string>>({});
   const pendingJob = useRef<string | null>(null);
+  const markDecided = useMarkDecided();
   const pendingChange = useRef<string | null>(null);
   const choose = useMutation({
     mutationFn: async (c: RankedCandidate) => {
@@ -321,6 +323,7 @@ function PickerBody({
     },
     onSuccess: (jobId) => {
       pendingJob.current = jobId ?? null;
+      if (review !== null) markDecided(jobId ?? null);
       setOutcome("Setting the cover.");
       settle();
       if (review !== null) void queryClient.invalidateQueries({ queryKey: ["review"] });
@@ -337,7 +340,8 @@ function PickerBody({
           body: { decision },
         }),
       ),
-    onSuccess: () => {
+    onSuccess: (res) => {
+      markDecided(jobOf(res));
       setOutcome("Done.");
       void queryClient.invalidateQueries({ queryKey: ["review"] });
     },

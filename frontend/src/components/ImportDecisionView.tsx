@@ -23,6 +23,7 @@ import { useFold } from "./Fold";
 import { HeaderActions } from "./HeaderActions";
 import { MatchBadge, Penalties, type MatchThresholds } from "./MatchBadge";
 import { NoteField } from "./NoteField";
+import { jobOf, useMarkDecided } from "./Decided";
 
 type Action = "candidate" | "asis" | "skip" | "keep" | "remove" | "merge";
 
@@ -59,6 +60,7 @@ export function parseIds(text: string): string[] {
  * table on the right, the main actions in the item's header. */
 export function ImportDecisionView({ decision }: { decision: ImportDecision }) {
   const queryClient = useQueryClient();
+  const markDecided = useMarkDecided();
   const candidates = [...(decision.candidates ?? [])].sort((a, b) => a.distance - b.distance);
   const [selected, setSelected] = useState<string | null>(candidates[0]?.id ?? null);
   const [note, setNote] = useState("");
@@ -78,7 +80,10 @@ export function ImportDecisionView({ decision }: { decision: ImportDecision }) {
           },
         }),
       ),
-    onSuccess: refresh,
+    onSuccess: (res) => {
+      markDecided(jobOf(res));
+      refresh();
+    },
   });
   const lookup = useMutation({
     mutationFn: async (body: { ids?: string[]; artist?: string; album?: string }) =>

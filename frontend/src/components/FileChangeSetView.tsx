@@ -8,6 +8,7 @@ import { useFold } from "./Fold";
 import { HeaderActions } from "./HeaderActions";
 import { TokenBadge } from "./MatchBadge";
 import { NoteField } from "./NoteField";
+import { jobOf, useMarkDecided } from "./Decided";
 
 type FileEffect = NonNullable<ChangeSet["files"]>[number];
 
@@ -55,6 +56,7 @@ const KIND_SAYS: Record<FileEffect["kind"], string> = {
  * so an album never ends up split across folders. */
 export function FileChangeSetView({ id, changeset }: { id: string; changeset: ChangeSet }) {
   const queryClient = useQueryClient();
+  const markDecided = useMarkDecided();
   const [note, setNote] = useState("");
   const decide = useMutation({
     mutationFn: async (decision: "accept" | "reject") =>
@@ -64,7 +66,10 @@ export function FileChangeSetView({ id, changeset }: { id: string; changeset: Ch
           body: { decision, note: note.trim() === "" ? null : note.trim() },
         }),
       ),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["review"] }),
+    onSuccess: (res) => {
+      markDecided(jobOf(res));
+      void queryClient.invalidateQueries({ queryKey: ["review"] });
+    },
   });
   const files = changeset.files ?? [];
   const { from, to } = folders(files);

@@ -103,20 +103,31 @@ export interface AlbumBlock {
   key: string;
   label: string;
   lane: LaneOut | null;
+  /** Items that wait for the user. */
   items: QueueItem[];
+  /** Items the user decided whose result hasn't come back yet (UI-REFRESH-20). */
+  decided: QueueItem[];
+}
+
+export interface RunBlocks {
+  /** Albums with something to decide, first come first: an album whose next item
+   * arrives joins the bottom (UI-REFRESH-13). */
+  waiting: AlbumBlock[];
+  /** Albums still working: running a step, or busy with a decision (UI-REFRESH-20). */
+  working: AlbumBlock[];
 }
 
 /**
- * Group one run's queue items by album lane (UI-REFRESH-13): a block per lane that holds
- * a queue item or is still working (finished lanes only count, UI-REFRESH-15), in lane
- * order; items in workflow step order, then oldest first. Items held by several lanes (a
- * gate over several albums) and items no lane holds come last.
+ * Group one run's queue items by album lane (UI-REFRESH-13, -20). Items in `decided`
+ * left the waiting list the moment the user decided them. Items held by several lanes
+ * (a gate over several albums) and items no lane holds form blocks of their own.
  */
 export function groupByLane(
   items: QueueItem[],
   lanes: readonly LaneOut[],
   stepOrder: readonly string[],
-): AlbumBlock[] {
+  decided: ReadonlySet<string> = new Set(),
+): RunBlocks {
   const holders = new Map<string, LaneOut[]>();
   for (const lane of lanes) {
     for (const hold of lane.holds) {
@@ -125,40 +136,46 @@ export function groupByLane(
       holders.set(hold.ref, list);
     }
   }
-  const byLane = new Map<string, QueueItem[]>();
-  const several: QueueItem[] = [];
-  const other: QueueItem[] = [];
+  const blocks = new Map<string, AlbumBlock>();
+  const block = (key: string, label: string, lane: LaneOut | null): AlbumBlock => {
+    let b = blocks.get(key);
+    if (b === undefined) {
+      b = { key, label, lane, items: [], decided: [] };
+      blocks.set(key, b);
+    }
+    return b;
+  };
+  for (const lane of lanes) {
+    if (!FINAL_LANE_STATES.has(lane.state)) block(lane.key, lane.label, lane);
+  }
   for (const item of items) {
     const held = holders.get(item.id) ?? [];
-    if (held.length === 1) {
-      const key = (held[0] as LaneOut).key;
-      byLane.set(key, [...(byLane.get(key) ?? []), item]);
-    } else if (held.length > 1) several.push(item);
-    else other.push(item);
+    const b =
+      held.length === 1
+        ? block((held[0] as LaneOut).key, (held[0] as LaneOut).label, held[0] as LaneOut)
+        : held.length > 1
+          ? block("*several", "Several albums", null)
+          : block("*other", "Other", null);
+    (decided.has(item.id) ? b.decided : b.items).push(item);
   }
   const position = (step: string | null | undefined) => {
     const i = step ? stepOrder.indexOf(step) : -1;
     return i < 0 ? stepOrder.length : i;
   };
-  const order = (list: QueueItem[]) =>
-    [...list].sort(
-      (a, b) =>
-        position(a.step_id) - position(b.step_id) ||
-        (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0),
-    );
-  const blocks: AlbumBlock[] = [];
-  for (const lane of lanes) {
-    const held = byLane.get(lane.key) ?? [];
-    if (held.length === 0 && FINAL_LANE_STATES.has(lane.state)) continue;
-    blocks.push({ key: lane.key, label: lane.label, lane, items: order(held) });
+  const byTime = (a: QueueItem, b: QueueItem) =>
+    a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0;
+  const all = [...blocks.values()];
+  for (const b of all) {
+    b.items.sort((x, y) => position(x.step_id) - position(y.step_id) || byTime(x, y));
   }
-  if (several.length > 0) {
-    blocks.push({ key: "*several", label: "Several albums", lane: null, items: order(several) });
-  }
-  if (other.length > 0) {
-    blocks.push({ key: "*other", label: "Other", lane: null, items: order(other) });
-  }
-  return blocks;
+  const oldest = (b: AlbumBlock) =>
+    b.items.reduce((t, i) => (i.created_at < t ? i.created_at : t), "\uffff");
+  return {
+    waiting: all
+      .filter((b) => b.items.length > 0)
+      .sort((x, y) => (oldest(x) < oldest(y) ? -1 : oldest(x) > oldest(y) ? 1 : 0)),
+    working: all.filter((b) => b.items.length === 0),
+  };
 }
 
 export type LaneStatusToken = "warning" | "success" | "danger" | null;
@@ -167,10 +184,11 @@ export type LaneStatusToken = "warning" | "success" | "danger" | null;
 export function laneStatus(block: AlbumBlock): { text: string; token: LaneStatusToken } {
   const lane = block.lane;
   if (block.items.length > 0) return { text: "waiting on you", token: "warning" };
-  if (lane === null) return { text: "", token: null };
-  if (lane.state === "active") {
+  if (lane?.state === "active") {
     return { text: lane.position ? `running ${lane.position}` : "running", token: null };
   }
+  if (block.decided.length > 0) return { text: "working on your decision", token: null };
+  if (lane === null) return { text: "", token: null };
   if (lane.state === "waiting") return { text: "waiting", token: null };
   if (lane.state === "done") return { text: "done", token: "success" };
   if (lane.state === "failed") return { text: "failed", token: "danger" };

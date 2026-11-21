@@ -101,7 +101,10 @@ test("LIBRARY_MOVE_16 old and new folder and names, accepted per album", async (
   const item = card.closest<HTMLElement>('[data-testid="queue-item"]') as HTMLElement;
   const actions = within(item).getByTestId("item-actions");
   fireEvent.click(within(actions).getByRole("button", { name: "Move album" }));
-  expect(await within(actions).findByTestId("decision-sent")).toHaveTextContent("Moving…");
+  // Decided: the item leaves the waiting list at once (UI-REFRESH-20).
+  await waitFor(() => {
+    expect(actions).not.toBeInTheDocument();
+  });
   await waitFor(() => {
     const posted = calls.filter((c: Call) => c.path === "/api/changesets/cs1/decision");
     expect(posted.map((c) => c.body)).toEqual([{ decision: "accept", note: null }]);

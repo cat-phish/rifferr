@@ -66,7 +66,10 @@ test("LIBRARY_MOVE_5a conflict lists folders and conflicts, then Retry", async (
   expect(within(card).getByTestId("move-conflicts")).toHaveTextContent("Come Together.flac exists");
   expect(card).toHaveTextContent("Retried 2×, still conflicting.");
   fireEvent.click(within(card).getByRole("button", { name: "Retry" }));
-  expect(await within(card).findByTestId("decision-sent")).toHaveTextContent("Retrying the move.");
+  // Decided: the item leaves the waiting list at once (UI-REFRESH-20).
+  await waitFor(() => {
+    expect(card).not.toBeInTheDocument();
+  });
   expect(bodies(calls)).toEqual([{ decision: "retry" }]);
 });
 

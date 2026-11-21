@@ -138,9 +138,10 @@ test("COVER_PICKER_1 the review's candidates are shown and one is chosen (COVERS
   expect(shown[1]).toHaveTextContent("size unknown");
   expect(bodies(calls, "/api/covers/search")).toEqual([]); // no search until asked
   fireEvent.click(within(shown[0] as HTMLElement).getByRole("button", { name: "Use this cover" }));
-  expect(await within(picker).findByTestId("decision-sent")).toHaveTextContent(
-    "Setting the cover.",
-  );
+  // Decided: the item leaves the waiting list at once (UI-REFRESH-20).
+  await waitFor(() => {
+    expect(picker).not.toBeInTheDocument();
+  });
   expect(bodies(calls)).toEqual([{ decision: "choose", candidate_id: "c1" }]);
 });
 

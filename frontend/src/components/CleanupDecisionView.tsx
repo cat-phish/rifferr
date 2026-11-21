@@ -4,6 +4,7 @@ import { useState } from "react";
 import { api, ok } from "../api/client";
 import type { CleanupDecision, CleanupEntry } from "../api/types";
 import { time } from "../lib/format";
+import { jobOf, useMarkDecided } from "./Decided";
 
 type Choice = "delete" | "keep";
 type Cls = CleanupEntry["cls"];
@@ -47,6 +48,7 @@ export function byClass(entries: CleanupEntry[]): { cls: Cls; entries: CleanupEn
 /** A cleanup decision in the review queue (S-FILES-CLEANUP FILES-CLEANUP-14). */
 export function CleanupDecisionView({ decision }: { decision: CleanupDecision }) {
   const queryClient = useQueryClient();
+  const markDecided = useMarkDecided();
   const [note, setNote] = useState("");
   const decide = useMutation({
     mutationFn: async (choice: Choice) =>
@@ -56,7 +58,10 @@ export function CleanupDecisionView({ decision }: { decision: CleanupDecision })
           body: { decision: choice, note: note.trim() === "" ? null : note.trim() },
         }),
       ),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["review"] }),
+    onSuccess: (res) => {
+      markDecided(jobOf(res));
+      void queryClient.invalidateQueries({ queryKey: ["review"] });
+    },
   });
   const groups = byClass(decision.entries);
   const deleting = decision.entries.filter((e) => e.cls === "delete" || e.cls === "empty").length;

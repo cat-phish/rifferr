@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ok } from "../api/client";
 import type { RunEvent } from "../api/types";
+import { publishAppEvent } from "../lib/appEvents";
 import { useEventStream } from "./useEventStream";
 
 /** Events the app follows on ``/api/events``: run-level ones for the runs list
@@ -56,6 +57,7 @@ export function useAppEvents(onEvent?: (event: RunEvent) => void): void {
   useEventStream<RunEvent>("/api/events", {
     types: APP_EVENTS,
     onEvent: (_type, event) => {
+      publishAppEvent(event);
       // The review queue's album blocks follow their run's lanes (UI-REFRESH-14).
       if (event.type.startsWith("lane.") || event.type.startsWith("run.")) {
         void queryClient.invalidateQueries({ queryKey: ["run", event.run_id] });

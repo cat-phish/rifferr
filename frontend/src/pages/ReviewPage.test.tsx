@@ -225,7 +225,10 @@ test("REVIEW_QUEUE_12 field changes with current values; accept only the checked
     accepted: [0],
     note: "no disambig",
   });
-  expect(await screen.findByTestId("decision-sent")).toHaveTextContent("Accepting…");
+  // Decided: the item leaves the waiting list at once (UI-REFRESH-20).
+  await waitFor(() => {
+    expect(screen.queryAllByTestId("queue-item")).toHaveLength(0);
+  });
 });
 
 test("REVIEW_QUEUE_12 accept all, reject, and errors", async () => {
@@ -281,9 +284,10 @@ test("REVIEW_QUEUE_12 conflicted ChangeSet: expected, current, proposed; propose
   await waitFor(() => {
     expect(posts(calls, "/api/changesets/cs2/repropose")).toHaveLength(1);
   });
-  expect(await screen.findByTestId("decision-sent")).toHaveTextContent(
-    "Proposing again on the current values…",
-  );
+  // Decided: the item leaves the waiting list at once (UI-REFRESH-20).
+  await waitFor(() => {
+    expect(screen.queryAllByTestId("queue-item")).toHaveLength(0);
+  });
 });
 
 test("REVIEW_QUEUE_12 a target no longer in the library", async () => {
@@ -334,7 +338,10 @@ test("REVIEW_QUEUE_13 gate card: albums, changes, deadline, continue with a note
     target: { value: "looks right" },
   });
   fireEvent.click(within(card).getByRole("button", { name: "Continue" }));
-  expect(await within(card).findByTestId("decision-sent")).toHaveTextContent("Continued.");
+  // Decided: the item leaves the waiting list at once (UI-REFRESH-20).
+  await waitFor(() => {
+    expect(card).not.toBeInTheDocument();
+  });
   expect(nth(posts(calls, "/api/reviews/g1/decision"), 0).body).toEqual({
     decision: "continue",
     note: "looks right",
@@ -646,8 +653,9 @@ test("UI_REFRESH_13_UI_REFRESH_14_album_blocks_with_a_live_status_line", async (
     await Promise.resolve();
   });
   await waitFor(() => {
+    // Album A has nothing to decide now: it moves to the working list (UI-REFRESH-20).
     const a = screen
-      .getAllByTestId("album-block")
+      .getAllByTestId("working-album")
       .find((b) => b.dataset.lane === "A") as HTMLElement;
     expect(within(a).getByTestId("album-status")).toHaveTextContent("running covers");
   });
@@ -710,4 +718,36 @@ test("UI_REFRESH_16_item_links_and_accept_all_work_inside_album_blocks", async (
   const b = screen.getAllByTestId("album-block").find((x) => x.dataset.lane === "B") as HTMLElement;
   expect(within(b).getByTestId("queue-item")).toHaveAttribute("data-focused", "true");
   expect(screen.getByRole("button", { name: "Accept all" })).toBeInTheDocument();
+});
+
+test("UI_REFRESH_20_a_decided_item_leaves_at_once_and_comes_back_if_its_job_ends_without_it", async () => {
+  setup({
+    queue: () => [csItem("cs1", NEW_RUN), csItem("cs3", NEW_RUN)],
+    extra: { "POST /api/changesets/cs1/decision": () => ({ job_id: "job-1" }) },
+  });
+  renderApp("/review?profile=main");
+  await screen.findAllByTestId("queue-item");
+  fireEvent.click(within(item("cs1")).getByRole("button", { name: "Accept" }));
+  // Gone at once, while the job is still to run; the next item is right there.
+  await waitFor(() => {
+    expect(screen.getAllByTestId("queue-item").map((e) => e.dataset.item)).toEqual(["cs3"]);
+  });
+  // The job ends but the item still waits (it failed): it comes back.
+  await act(async () => {
+    FakeEventSource.last("/api/events").emit("job.finished", {
+      seq: 9,
+      run_id: NEW_RUN,
+      type: "job.finished",
+      data: { job_id: "job-1", state: "failed" },
+    });
+    await Promise.resolve();
+  });
+  await waitFor(() => {
+    expect(
+      screen
+        .getAllByTestId("queue-item")
+        .map((e) => e.dataset.item)
+        .sort(),
+    ).toEqual(["cs1", "cs3"]);
+  });
 });
