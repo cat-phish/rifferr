@@ -27,6 +27,9 @@ Import decisions (extends IMPORT-UI-15)
 - UI-REFRESH-8: The track table MUST show "Missing tracks" and "Unmatched files" in `warning` and changed titles through the diff (UI-REFRESH-4). Matching titles are dimmed (UI-REFRESH-5).
 - UI-REFRESH-9: On screens at least the `md` breakpoint wide, an import card MUST put the candidate list and the selected candidate's track table side by side. Narrower screens stack them. The folder's current items (IMPORT-UI-15, first bullet) MUST be collapsed by default behind "Show the folder's N files".
 
+- UI-REFRESH-18: For the selected candidate, the card MUST show every album field beets compares (artist, album, year, country, label, catalog number, media, mediums, disambiguation, album id, data source) whose value now differs from the candidate's or that carries a penalty: the folder's current value (beets' most common tag across its files), the candidate's value, as a diff (UI-REFRESH-4), with penalized fields marked in `warning`. A penalty such as `country`, `media` or `data_source` is never shown without the values it is about (author, 2026-11-21: "everything that shows up in beets as different should show up").
+- UI-REFRESH-19: Each track row MUST show what beets counts as different for that track: a changed track number as a diff, a length penalty as "now → candidate" in `warning`, a track artist column when any track has a `track_artist` penalty, and any other track penalty (for example `track_id`, `medium`) by name in `warning`. A row with a penalty counts as changed even when its title matches (author, 2026-11-21).
+
 Compact cards (extends REVIEW-QUEUE-12, -13)
 - UI-REFRESH-10: Every queue item MUST have a one-line header with its selection checkbox, kind, album label, age and its main actions on the right (for example Accept selected / Reject, Continue / Reject, Import this match / Import as-is / Skip). On narrow screens the actions wrap below the header.
 - UI-REFRESH-11: The optional note field MUST be hidden behind an "Add note" control until used, and a note typed in it is kept until the item is decided.
@@ -48,6 +51,7 @@ Implementation notes (2026-11-21, added while implementing; not new behavior):
 - Header actions are rendered into the item's header row through a portal (`HeaderActions`), so the card bodies keep their own state and tests find the actions inside the queue item.
 - Album blocks (UI-REFRESH-13): a block is shown for every lane that holds a queue item *or is still working* (`active`, `waiting`), so deciding an item turns its block to "running <step>" instead of removing it (UI-REFRESH-14, -17). Finished lanes only count (open question 3). An item held by several lanes (a gate over several albums) goes in a block "Several albums" before "Other".
 - The page reads lanes from `GET /api/runs/{id}` with the run page's query key. `run.step.started` and `run.step.finished` (not `run.step.log`) now go on `/api/events` (`api/state.py` `STEP_EVENTS`), so a lane's step changes reach the queue. API-9's test allows them.
+- UI-REFRESH-18/-19 data: `ImportCandidate.fields` (`FieldComparison`: field, current, candidate, penalized) and per-track `penalties`, `track_before`, `length_before`, `artist_before`, `artist_after` on `TrackMatch`. The beets backend takes the current values from `beets.util.get_most_common_tags` over the folder's files, the same values beets' `distance()` compares, and the penalties from `match.distance` and `match.distance.tracks`.
 - `match_thresholds` lives on `ImportDecision` and is refreshed on every lookup, like `lookup_problem` (IMPORT-UI-20).
 
 - Theme: `frontend/src/theme.ts`, a `createTheme` with the tokens of UI-REFRESH-1 as CSS variables (`--rifferr-color-success`, …) for both schemes, passed to `MantineProvider` (`frontend/src/providers.tsx`).
@@ -110,4 +114,5 @@ Album block:
 - [x] Import card: badge, penalties, track table, two-column layout, collapsed files (UI-REFRESH-6 .. -9)
 - [x] Compact card header, note toggle, row folding (UI-REFRESH-10 .. -12)
 - [x] Album blocks, status line, run lane counts (UI-REFRESH-13 .. -16)
+- [x] Album field comparisons and track penalties from beets; contract tests (UI-REFRESH-18, -19)
 - [x] Playwright test (UI-REFRESH-17); update `review-queue.spec.ts` and `imports.spec.ts`

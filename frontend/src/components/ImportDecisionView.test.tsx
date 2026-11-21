@@ -256,3 +256,51 @@ test("UI_REFRESH_7_penalties_UI_REFRESH_8_tracks_UI_REFRESH_9_layout", async () 
   expect(tracks.closest(".mantine-Grid-col")).not.toBe(best.closest(".mantine-Grid-col"));
   expect(within(card).queryByTestId("import-items")).toBeNull();
 });
+
+test("UI_REFRESH_18_album_fields_beets_compares_now_and_candidate", async () => {
+  const c = candidate("c1", 0.1, {
+    penalties: ["country", "media"],
+    fields: [
+      { field: "country", current: "US", candidate: "XE", penalized: true },
+      { field: "media", current: null, candidate: "Vinyl", penalized: true },
+      { field: "data_source", current: null, candidate: "Discogs", penalized: false },
+    ],
+  });
+  setup(decision({ candidates: [c] }));
+  renderApp("/review?profile=main");
+  const card = await screen.findByTestId("queue-item");
+  const rows = within(card).getAllByTestId("album-field");
+  expect(rows.map((r) => r.dataset.field)).toEqual(["country", "media", "data_source"]);
+  expect(rows[0]).toHaveAttribute("data-penalized", "true");
+  expect(rows[0]).toHaveTextContent("⚠ country");
+  expect(rows[0]).toHaveTextContent("US");
+  expect(rows[0]).toHaveTextContent("XE");
+  expect(rows[1]).toHaveTextContent("—");
+  expect(rows[2]).toHaveTextContent("data source");
+  expect(rows[2]).not.toHaveAttribute("data-penalized");
+});
+
+test("UI_REFRESH_19_track_penalties_show_index_length_and_the_rest", async () => {
+  const c = candidate("c1", 0.1, {
+    mapping: [
+      {
+        item: "/in/Live/01.flac",
+        title_before: "One",
+        title_after: "One",
+        track: 2,
+        track_before: 1,
+        length: 300,
+        length_before: 61,
+        penalties: ["track_index", "track_length", "track_id"],
+      },
+    ],
+  });
+  setup(decision({ candidates: [c] }));
+  renderApp("/review?profile=main");
+  const card = await screen.findByTestId("queue-item");
+  const row = within(card).getByTestId("track");
+  expect(row).toHaveAttribute("data-changed", "true"); // same title, still different
+  expect(row.querySelector('[data-seg="removed"]')).toHaveTextContent("1");
+  expect(within(row).getByTestId("track-length")).toHaveTextContent("⚠ 1:01 → 5:00");
+  expect(within(row).getByTestId("track-penalties")).toHaveTextContent("track id");
+});

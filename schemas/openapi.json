@@ -1562,6 +1562,50 @@
         "title": "FieldChange",
         "type": "object"
       },
+      "FieldComparison": {
+        "additionalProperties": false,
+        "description": "One album-level field as the folder has it now and as the candidate has it\n(UI-REFRESH-18). beets compares the folder's most common value per field.",
+        "properties": {
+          "candidate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate"
+          },
+          "current": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current"
+          },
+          "field": {
+            "description": "The backend's name for it, e.g. country, media, data_source",
+            "title": "Field",
+            "type": "string"
+          },
+          "penalized": {
+            "description": "Whether the backend's distance has a penalty for it",
+            "title": "Penalized",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "field",
+          "penalized"
+        ],
+        "title": "FieldComparison",
+        "type": "object"
+      },
       "FieldEffect": {
         "additionalProperties": false,
         "description": "What applying actually changed, including propagated item fields (CHANGESET-11).",
@@ -2060,6 +2104,14 @@
             "minimum": 0.0,
             "title": "Distance",
             "type": "number"
+          },
+          "fields": {
+            "description": "Album fields that differ or carry a penalty (UI-REFRESH-18)",
+            "items": {
+              "$ref": "#/components/schemas/FieldComparison"
+            },
+            "title": "Fields",
+            "type": "array"
           },
           "id": {
             "description": "'<data_source>:<album id>', stable across lookups",
@@ -5026,6 +5078,28 @@
         "additionalProperties": false,
         "description": "How one file maps to a candidate's track.",
         "properties": {
+          "artist_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artist After"
+          },
+          "artist_before": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artist Before"
+          },
           "item": {
             "description": "The file's path",
             "title": "Item",
@@ -5042,6 +5116,26 @@
             ],
             "description": "The candidate track's seconds",
             "title": "Length"
+          },
+          "length_before": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The file's seconds",
+            "title": "Length Before"
+          },
+          "penalties": {
+            "description": "What the backend counts as different for this track, e.g. track_title, track_length, track_index (UI-REFRESH-19)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Penalties",
+            "type": "array"
           },
           "title_after": {
             "anyOf": [
@@ -5076,6 +5170,18 @@
             ],
             "description": "The candidate's track number",
             "title": "Track"
+          },
+          "track_before": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The file's track number now",
+            "title": "Track Before"
           }
         },
         "required": [

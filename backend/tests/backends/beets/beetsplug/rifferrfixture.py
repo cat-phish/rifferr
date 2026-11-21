@@ -49,6 +49,8 @@ def _info(release: dict[str, Any]) -> AlbumInfo:
         artist_id=f"artist-{release['artist']}",
         year=release.get("year"),
         label=release.get("label"),
+        country=release.get("country"),
+        media=release.get("media"),
         mediums=1,
         data_source="RifferrFixture",
         data_url=f"https://fixture.invalid/release/{release['album_id']}",

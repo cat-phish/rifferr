@@ -261,3 +261,37 @@ def test_UI_REFRESH_6_match_thresholds_follow_the_profile_config(beets_env: Beet
     ).match_thresholds()
     assert t is not None
     assert (t.strong, t.medium) == (0.1, 0.3)
+
+
+def test_UI_REFRESH_18_candidate_lists_album_fields_beets_compares(beets_env: BeetsEnv) -> None:
+    release = {**OTHER, "country": "XE", "media": "Vinyl", "year": 1999}
+    b = backend(beets_env, [release])
+    beets_env.inbox_album()
+    (q,) = b.import_folder(beets_env.inbox, "auto", None, run_id=RUN).questions
+    (c,) = q.candidates
+    fields = {f.field: f for f in c.fields}
+    # beets penalizes the album name; the folder's value is its most common tag.
+    assert fields["album"].current == "Fixture Album"
+    assert fields["album"].candidate == "Something Else"
+    assert fields["album"].penalized
+    # Fields the folder has no value for still show what the candidate would set.
+    assert (fields["country"].current, fields["country"].candidate) == (None, "XE")
+    assert fields["media"].candidate == "Vinyl"
+    assert fields["data_source"].candidate == "RifferrFixture"
+    # Every penalty beets gave an album field has a row.
+    for key in c.penalties:
+        if key in ("artist", "album", "year", "country", "label", "media", "data_source"):
+            assert fields[key].penalized
+
+
+def test_UI_REFRESH_19_tracks_carry_beets_track_penalties(beets_env: BeetsEnv) -> None:
+    b = backend(beets_env, [OTHER])
+    beets_env.inbox_album()
+    (q,) = b.import_folder(beets_env.inbox, "auto", None, run_id=RUN).questions
+    (c,) = q.candidates
+    first = sorted(c.mapping, key=lambda m: m.track or 0)[0]
+    assert "track_title" in first.penalties
+    assert "track_length" in first.penalties  # 300 s against a short fixture file
+    assert first.track_before is not None
+    assert first.length_before is not None
+    assert first.artist_after == "Nobody"

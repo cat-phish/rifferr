@@ -1725,6 +1725,27 @@ export interface components {
             rationale?: string | null;
         };
         /**
+         * FieldComparison
+         * @description One album-level field as the folder has it now and as the candidate has it
+         *     (UI-REFRESH-18). beets compares the folder's most common value per field.
+         */
+        FieldComparison: {
+            /** Candidate */
+            candidate?: string | null;
+            /** Current */
+            current?: string | null;
+            /**
+             * Field
+             * @description The backend's name for it, e.g. country, media, data_source
+             */
+            field: string;
+            /**
+             * Penalized
+             * @description Whether the backend's distance has a penalty for it
+             */
+            penalized: boolean;
+        };
+        /**
          * FieldEffect
          * @description What applying actually changed, including propagated item fields (CHANGESET-11).
          */
@@ -1911,6 +1932,11 @@ export interface components {
              * @description 0 is a perfect match
              */
             distance: number;
+            /**
+             * Fields
+             * @description Album fields that differ or carry a penalty (UI-REFRESH-18)
+             */
+            fields?: components["schemas"]["FieldComparison"][];
             /**
              * Id
              * @description '<data_source>:<album id>', stable across lookups
@@ -3015,6 +3041,10 @@ export interface components {
          * @description How one file maps to a candidate's track.
          */
         TrackMatch: {
+            /** Artist After */
+            artist_after?: string | null;
+            /** Artist Before */
+            artist_before?: string | null;
             /**
              * Item
              * @description The file's path
@@ -3025,6 +3055,16 @@ export interface components {
              * @description The candidate track's seconds
              */
             length?: number | null;
+            /**
+             * Length Before
+             * @description The file's seconds
+             */
+            length_before?: number | null;
+            /**
+             * Penalties
+             * @description What the backend counts as different for this track, e.g. track_title, track_length, track_index (UI-REFRESH-19)
+             */
+            penalties?: string[];
             /** Title After */
             title_after?: string | null;
             /** Title Before */
@@ -3034,6 +3074,11 @@ export interface components {
              * @description The candidate's track number
              */
             track?: number | null;
+            /**
+             * Track Before
+             * @description The file's track number now
+             */
+            track_before?: number | null;
         };
         /**
          * TriggerStateOut

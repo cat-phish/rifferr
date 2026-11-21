@@ -52,6 +52,27 @@ class TrackMatch(BaseModel):
     title_after: str | None = None
     track: int | None = Field(default=None, description="The candidate's track number")
     length: float | None = Field(default=None, description="The candidate track's seconds")
+    track_before: int | None = Field(default=None, description="The file's track number now")
+    length_before: float | None = Field(default=None, description="The file's seconds")
+    artist_before: str | None = None
+    artist_after: str | None = None
+    penalties: list[str] = Field(
+        default_factory=list[str],
+        description="What the backend counts as different for this track, e.g. "
+        "track_title, track_length, track_index (UI-REFRESH-19)",
+    )
+
+
+class FieldComparison(BaseModel):
+    """One album-level field as the folder has it now and as the candidate has it
+    (UI-REFRESH-18). beets compares the folder's most common value per field."""
+
+    model_config = _FROZEN
+
+    field: str = Field(description="The backend's name for it, e.g. country, media, data_source")
+    current: str | None = None
+    candidate: str | None = None
+    penalized: bool = Field(description="Whether the backend's distance has a penalty for it")
 
 
 class MatchThresholds(BaseModel):
@@ -81,6 +102,10 @@ class ImportCandidate(BaseModel):
     tracks: int = 0
     distance: float = Field(ge=0, le=1, description="0 is a perfect match")
     penalties: list[str] = Field(default_factory=list[str])
+    fields: list[FieldComparison] = Field(
+        default_factory=list[FieldComparison],
+        description="Album fields that differ or carry a penalty (UI-REFRESH-18)",
+    )
     mapping: list[TrackMatch] = Field(default_factory=list[TrackMatch])
     missing: list[str] = Field(
         default_factory=list[str], description="Candidate tracks without a file"

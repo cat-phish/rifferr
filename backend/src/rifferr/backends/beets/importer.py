@@ -11,17 +11,17 @@ from __future__ import annotations
 import os
 import threading
 from collections.abc import Callable, Sequence
-from typing import Any
+from typing import Any, Final
 
 from beets import importer
 from beets.autotag import AlbumMatch, Recommendation, TrackMatch, tag_album
 from beets.importer import ImportAbortError, ImportTask, SingletonImportTask
 from beets.library import Library
-from beets.util import displayable_path
+from beets.util import displayable_path, get_most_common_tags
 
 from rifferr.backends.base import ImportOutcome
 from rifferr.backends.beets.snapshots import album_snapshot
-from rifferr.core.imports import FolderItem, ImportCandidate, ImportQuestion
+from rifferr.core.imports import FieldComparison, FolderItem, ImportCandidate, ImportQuestion
 from rifferr.core.imports import TrackMatch as TrackMatchOut
 
 Report = Callable[[ImportOutcome], None]
@@ -269,20 +269,70 @@ def _str(value: object) -> str | None:
     return str(value) if value not in (None, "") else None
 
 
+def _num(value: object) -> float | None:
+    return float(value) if isinstance(value, float | int) else None
+
+
+#: Album distance keys (``beets.autotag.distance.distance``) -> (field in beets' most
+#: common tags of the folder, attribute of the ``AlbumInfo``).
+ALBUM_FIELDS: Final = {
+    "artist": ("artist", "artist"),
+    "album": ("album", "album"),
+    "year": ("year", "year"),
+    "country": ("country", "country"),
+    "label": ("label", "label"),
+    "catalognum": ("catalognum", "catalognum"),
+    "media": ("media", "media"),
+    "mediums": ("disctotal", "mediums"),
+    "albumdisambig": ("albumdisambig", "albumdisambig"),
+    "album_id": ("mb_albumid", "album_id"),
+    "data_source": ("data_source", "data_source"),
+}
+
+
+def field_comparisons(match: AlbumMatch, penalties: set[str]) -> list[FieldComparison]:
+    """UI-REFRESH-18: every album field beets compares, as the folder has it (beets' most
+    common value) and as the candidate has it, when they differ or beets penalized it."""
+    items = [*match.mapping.keys(), *match.extra_items]
+    likelies = get_most_common_tags(items) if items else {}
+    out: list[FieldComparison] = []
+    for key, (have, info_attr) in ALBUM_FIELDS.items():
+        current = _str(likelies.get(have))
+        theirs = _str(getattr(match.info, info_attr, None))
+        penalized = key in penalties
+        if current is None and theirs is None:
+            continue
+        if current == theirs and not penalized:
+            continue
+        out.append(
+            FieldComparison(field=key, current=current, candidate=theirs, penalized=penalized)
+        )
+    return out
+
+
 def candidate(match: AlbumMatch) -> ImportCandidate:
     """beets' ``AlbumMatch`` as backend-neutral data (IMPORT-UI-4)."""
     info = match.info
+    track_dists = getattr(match.distance, "tracks", None) or {}
     mapping = [
         TrackMatchOut(
             item=os.fsdecode(item.path),
             title_before=_str(item.get("title")),
             title_after=_str(track.title),
             track=_int(track.index),
-            length=track.length if isinstance(track.length, float | int) else None,
+            length=_num(track.length),
+            track_before=_int(item.get("track")),
+            length_before=_num(item.get("length")),
+            artist_before=_str(item.get("artist")),
+            artist_after=_str(track.artist) or _str(info.artist),
+            penalties=[key for key, _ in track_dists[track].items()]
+            if track in track_dists
+            else [],
         )
         for item, track in match.mapping.items()
     ]
     distance = float(match.distance.distance)
+    penalties = [key for key, _ in match.distance.items()]
     return ImportCandidate(
         id=candidate_id(match),
         source=str(info.data_source),
@@ -295,7 +345,8 @@ def candidate(match: AlbumMatch) -> ImportCandidate:
         media=_str(info.media),
         tracks=len(info.tracks),
         distance=min(max(distance, 0.0), 1.0),
-        penalties=[key for key, _ in match.distance.items()],
+        penalties=penalties,
+        fields=field_comparisons(match, set(penalties)),
         mapping=mapping,
         missing=[str(t.title or "") for t in match.extra_tracks],
         unmatched=[os.fsdecode(i.path) for i in match.extra_items],

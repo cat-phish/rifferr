@@ -375,19 +375,77 @@ function Candidates({
 
 const WARNING = { color: tc("warning") } as const;
 
+/** beets' distance keys as words: `data_source` → "data source". */
+function words(key: string): string {
+  return key.replace(/_/g, " ");
+}
+
+/** Track penalties the table's columns already show; the rest are listed per row. */
+const SHOWN_TRACK_PENALTIES = new Set([
+  "track_title",
+  "track_length",
+  "track_index",
+  "track_artist",
+]);
+
+/** Album fields beets compares, now and on the candidate (UI-REFRESH-18). */
+function AlbumFields({ candidate }: { candidate: ImportCandidate }) {
+  const fields = candidate.fields ?? [];
+  if (fields.length === 0) return null;
+  return (
+    <Table fz="sm" withRowBorders={false} verticalSpacing={2} data-testid="album-fields">
+      <Table.Thead>
+        <Table.Tr>
+          <Table.Th>Album field</Table.Th>
+          <Table.Th>Now</Table.Th>
+          <Table.Th>Candidate</Table.Th>
+        </Table.Tr>
+      </Table.Thead>
+      <Table.Tbody>
+        {fields.map((f) => (
+          <Table.Tr
+            key={f.field}
+            data-testid="album-field"
+            data-field={f.field}
+            data-penalized={f.penalized ? "true" : undefined}
+          >
+            <Table.Td
+              style={f.penalized ? WARNING : undefined}
+              c={f.penalized ? undefined : "dimmed"}
+            >
+              {f.penalized ? "⚠ " : ""}
+              {words(f.field)}
+            </Table.Td>
+            <Table.Td>
+              <Diff old={f.current ?? ""} new={f.candidate ?? ""} side="old" empty="—" />
+            </Table.Td>
+            <Table.Td>
+              <Diff old={f.current ?? ""} new={f.candidate ?? ""} side="new" empty="—" />
+            </Table.Td>
+          </Table.Tr>
+        ))}
+      </Table.Tbody>
+    </Table>
+  );
+}
+
 function TrackTable({ candidate }: { candidate: ImportCandidate }) {
   const mapping = [...(candidate.mapping ?? [])].sort((a, b) => (a.track ?? 0) - (b.track ?? 0));
   const missing = candidate.missing ?? [];
   const unmatched = candidate.unmatched ?? [];
   const fold = useFold(mapping);
+  // An artist column only when beets sees a track artist differ (various artists).
+  const artists = mapping.some((m) => (m.penalties ?? []).includes("track_artist"));
   return (
     <Stack gap={4} data-testid="track-table">
+      <AlbumFields candidate={candidate} />
       <Table fz="sm" withRowBorders={false} verticalSpacing={2}>
         <Table.Thead>
           <Table.Tr>
             <Table.Th>#</Table.Th>
             <Table.Th>Title now</Table.Th>
             <Table.Th>Candidate title</Table.Th>
+            {artists && <Table.Th>Artist</Table.Th>}
             <Table.Th>Length</Table.Th>
           </Table.Tr>
         </Table.Thead>
@@ -395,20 +453,53 @@ function TrackTable({ candidate }: { candidate: ImportCandidate }) {
           {fold.shown.map((m) => {
             const before = m.title_before ?? "";
             const after = m.title_after ?? "";
+            const penalties = m.penalties ?? [];
+            const has = (key: string) => penalties.includes(key);
+            const other = penalties.filter((p) => !SHOWN_TRACK_PENALTIES.has(p));
             return (
               <Table.Tr
                 key={m.item}
                 data-testid="track"
-                data-changed={before === after ? undefined : "true"}
+                data-changed={before === after && penalties.length === 0 ? undefined : "true"}
+                data-penalties={penalties.join(" ")}
               >
-                <Table.Td c="dimmed">{m.track ?? ""}</Table.Td>
+                <Table.Td>
+                  {has("track_index") && m.track_before !== null && m.track_before !== undefined ? (
+                    <Diff old={String(m.track_before)} new={String(m.track ?? "")} empty="" />
+                  ) : (
+                    <Text span fz="sm" c="dimmed">
+                      {m.track ?? ""}
+                    </Text>
+                  )}
+                </Table.Td>
                 <Table.Td>
                   <Diff old={before} new={after} side="old" empty="" />
                 </Table.Td>
                 <Table.Td>
                   <Diff old={before} new={after} side="new" empty="" />
+                  {other.length > 0 && (
+                    <Text span fz="xs" style={WARNING} data-testid="track-penalties">
+                      {" "}
+                      ⚠ {other.map(words).join(", ")}
+                    </Text>
+                  )}
                 </Table.Td>
-                <Table.Td c="dimmed">{seconds(m.length)}</Table.Td>
+                {artists && (
+                  <Table.Td>
+                    <Diff old={m.artist_before ?? ""} new={m.artist_after ?? ""} empty="" />
+                  </Table.Td>
+                )}
+                <Table.Td data-testid="track-length">
+                  {has("track_length") ? (
+                    <Text span fz="sm" style={WARNING}>
+                      ⚠ {seconds(m.length_before)} → {seconds(m.length)}
+                    </Text>
+                  ) : (
+                    <Text span fz="sm" c="dimmed">
+                      {seconds(m.length)}
+                    </Text>
+                  )}
+                </Table.Td>
               </Table.Tr>
             );
           })}
