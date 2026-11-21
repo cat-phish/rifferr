@@ -296,6 +296,21 @@ async def test_API_8_live_events_already_replayed_are_dropped(api: Api) -> None:
     assert [m.split("\n")[0] for m in rest] == ["id: 3"]
 
 
+async def test_CLI_6_closing_the_hub_ends_open_streams(api: Api) -> None:
+    """B-068: shutdown ends every event stream, so no connection keeps it waiting."""
+    run_stream = sse.run_events(api.state, "idle", 0)
+    all_stream = sse.all_run_events(api.state)
+    assert await anext(all_stream) == ": connected\n\n"
+    pending = asyncio.ensure_future(anext(run_stream))
+    await asyncio.sleep(0)
+    api.state.hub.close()
+    with pytest.raises(StopAsyncIteration):
+        await asyncio.wait_for(pending, 5)
+    assert [m async for m in all_stream] == []
+    late = sse.all_run_events(api.state)
+    assert [m async for m in late] == [": connected\n\n"]
+
+
 async def test_API_8_idle_stream_sends_keepalive_comments(api: Api) -> None:
     stream = sse.run_events(api.state, "idle", 0)
     try:

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import AsyncGenerator
 
 from rifferr.api.state import ServerState
@@ -27,10 +26,12 @@ async def run_events(state: ServerState, run_id: str, after: int) -> AsyncGenera
                 return
         while True:
             try:
-                event = await asyncio.wait_for(queue.get(), state.keepalive)
+                event = await state.hub.next(queue, state.keepalive)
             except TimeoutError:
                 yield ": keepalive\n\n"
                 continue
+            if event is None:  # the server is shutting down
+                return
             if event.seq <= last:
                 continue
             yield format_event(event)
@@ -49,10 +50,12 @@ async def all_run_events(state: ServerState) -> AsyncGenerator[str]:
         yield ": connected\n\n"
         while True:
             try:
-                event = await asyncio.wait_for(queue.get(), state.keepalive)
+                event = await state.hub.next(queue, state.keepalive)
             except TimeoutError:
                 yield ": keepalive\n\n"
                 continue
+            if event is None:  # the server is shutting down
+                return
             yield f"event: {event.type}\ndata: {event.model_dump_json()}\n\n"
     finally:
         state.hub.unsubscribe(queue)

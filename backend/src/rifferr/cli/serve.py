@@ -15,12 +15,19 @@ import socket
 import subprocess
 import sys
 import webbrowser
+from collections.abc import Callable
 from pathlib import Path
 from types import FrameType
 
 import uvicorn
 
-from rifferr.api.app import DEFAULT_PORT, REPO_FRONTEND, VITE_PORT, ApiSettings, create_app
+from rifferr.api.app import (
+    DEFAULT_PORT,
+    REPO_FRONTEND,
+    VITE_PORT,
+    ApiSettings,
+    create_app_and_api,
+)
 from rifferr.api.security import (
     EXCHANGE_PATH,
     SIGN_IN_LINK_PATH,
@@ -167,6 +174,36 @@ def _graceful(signum: int, frame: FrameType | None) -> None:
     raise KeyboardInterrupt  # uvicorn re-raises the signal it caught after shutting down
 
 
+class _Server(uvicorn.Server):
+    """uvicorn's server, plus what it needs to stop with event streams open (CLI-6, B-068).
+
+    uvicorn waits for every connection to close before it stops, even after a second
+    Ctrl-C (on Python 3.12+ ``asyncio.Server.wait_closed`` waits for them too). A browser
+    tab's SSE stream never closes on its own, so shutdown first ends the streams, and a
+    forced quit closes whatever connections are left."""
+
+    def __init__(self, config: uvicorn.Config, end_streams: Callable[[], None]) -> None:
+        super().__init__(config)
+        self._end_streams = end_streams
+        self._loop: asyncio.AbstractEventLoop | None = None
+
+    async def shutdown(self, sockets: list[socket.socket] | None = None) -> None:
+        self._loop = asyncio.get_running_loop()
+        self._end_streams()
+        await super().shutdown(sockets)
+
+    def handle_exit(self, sig: int, frame: FrameType | None) -> None:
+        super().handle_exit(sig, frame)
+        if self.force_exit and self._loop is not None:
+            self._loop.call_soon_threadsafe(self._close_connections)
+
+    def _close_connections(self) -> None:
+        for connection in list(self.server_state.connections):
+            transport = getattr(connection, "transport", None)
+            if isinstance(transport, asyncio.BaseTransport):
+                transport.close()
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     try:
         check_bind(args.host)
@@ -188,9 +225,16 @@ def cmd_serve(args: argparse.Namespace) -> int:
         if exc.errno == errno.EADDRINUSE:
             return _fail(1, f"port {args.port} on {args.host} is already in use")
         return _fail(1, f"can't listen on {args.host}:{args.port}: {exc.strerror}")
-    config = uvicorn.Config(create_app(settings), lifespan="on", log_level="info")
+    app, api = create_app_and_api(settings)
+    config = uvicorn.Config(app, lifespan="on", log_level="info")
     logging.getLogger("uvicorn.access").addFilter(RedactTokens())
-    server = uvicorn.Server(config)
+
+    def end_streams() -> None:
+        state = getattr(api.state, "rifferr", None)
+        if state is not None:
+            state.hub.close()
+
+    server = _Server(config, end_streams)
     vite = _start_vite(args.port, args.vite_port) if args.dev else None
     info = new_server_info(args.port, args.no_auth, str(args.uds) if args.uds else None)
     ui_port = args.vite_port if args.dev else args.port
