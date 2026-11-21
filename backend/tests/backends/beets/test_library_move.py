@@ -171,9 +171,12 @@ EXAMPLE = Path(__file__).parents[4] / "examples" / "workflows" / "foobar-style.y
 
 def test_LIBRARY_MOVE_3_reference_workflow_paths_match_the_pattern(env: Env) -> None:
     workflow, _ = load_workflow(EXAMPLE.read_text(), str(EXAMPLE))
-    [move] = [s for s in workflow.steps if s.uses == "library.move"]
-    formats = [PathFormat.model_validate(p) for p in move.with_["paths"]]
+    moves = {s.id: s for s in workflow.steps if s.uses == "library.move"}
+    assert set(moves) == {"to-staging", "into-library"}
+    formats = [PathFormat.model_validate(p) for p in moves["into-library"].with_["paths"]]
     assert [f.format for f in formats] == [SPLIT, REGULAR]
+    # Staging uses the same names, so the final move only changes the root folder.
+    assert moves["to-staging"].with_["paths"] == moves["into-library"].with_["paths"]
     env.set(disctotal=2)
     env.item(disctotal=2, disc=1)
     assert env.rel(env.plan(formats=formats))[0] == (

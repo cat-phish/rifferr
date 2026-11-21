@@ -4,7 +4,7 @@
 #
 # Copy it and release-suffixes.yaml (which it calls) into a profile's workflows/
 # folder and the scripts they use from examples/scripts/ into the profile's scripts/
-# folder, set `inbox` in the profile's vars, and trust it (`rifferr trust`, which
+# folder, set `inbox`, `staging` and `library` in the profile's vars, and trust it (`rifferr trust`, which
 # trusts the called file too, each by its own hash). From then on every album folder that lands in
 # the inbox is imported once it has stopped changing. To import the whole inbox by hand:
 #   rifferr run foobar-style --profile main
@@ -12,11 +12,16 @@
 #   rifferr run foobar-style --profile main --input "/path/to/inbox/Artist - Album"
 name: foobar-style
 description: >-
-  Import new albums with beets, fix release-type suffixes, find missing covers, clean up,
-  then move each album into the library after review.
+  Import new albums with beets, move them out of the inbox into a staging folder, fix
+  release-type suffixes, find missing covers, then move each album into the library
+  after review.
 vars:
   inbox:
     description: Folder with new albums to import (the checklist's "Stage 1, unsorted")
+  staging:
+    description: >-
+      Folder imported albums move into right away, where they are tagged and wait for
+      review. The inbox only ever holds files nobody has touched.
   library:
     description: The music library folder albums move into once reviewed
 # Manual runs without --input import the whole inbox.
@@ -33,8 +38,54 @@ steps:
     with:
       path: "{{ run.input }}"
       # Strong matches import on their own; the rest wait in the review queue as import
-      # decisions, holding only their own album.
+      # decisions, holding only their own album, and their files stay as they are.
       mode: auto
+      # Import where the files are, but write no tags yet: the inbox keeps only
+      # untouched files. Tags are written once the album is in staging (`write-tags`).
+      # The profile's beets config needs `import: {copy: no, move: no}`.
+      options: { write: no }
+  # Checklist line 4: delete leftover junk from the imported album's folder in the
+  # inbox, so it doesn't travel along. Music beets could import is never deleted (an
+  # unmatched album stays for line 5), nor is a folder that still waits as an import
+  # decision: it is cleaned by the pass that runs once the decision is made. Rip logs and
+  # cue sheets are kept and move with the album.
+  - id: cleanup
+    uses: files.cleanup
+    with:
+      path: "{{ run.input }}"
+      mode: delete
+      delete: ["*.nfo", "*.m3u", "*.m3u8", "*.sfv", "*.url", "Thumbs.db", ".DS_Store"]
+      keep: ["*.log", "*.cue"]
+      # A manual run's input is the whole inbox, which must stay; the album folder of a
+      # watch run is left empty instead (BACKLOG B-055).
+      remove_root: false
+  # Move each imported album out of the inbox into staging at once, with its rip logs,
+  # cue sheets and scans (`artifacts` defaults to every other file). It is journaled and
+  # undoable like any move, and needs no review: staging is not the library.
+  - id: to-staging
+    uses: library.move
+    apply: auto
+    with:
+      directory: "{{ vars.staging }}"
+      paths: &album-paths
+        # Splits and compilations: the year after the album name.
+        - query: "albumkind::^(split|compilation)$"
+          format: >-
+            %the{$albumartist}/$album%if{$original_year, ($original_year)}
+            [%if{%ifgreater{$bitdepth,16,1},24-bit }$format]/%ifgreater{$disctotal,1,Disc
+            %unpad{$disc}/}$track. $title
+        # Everything else: sorted by original year inside the artist folder, e.g.
+        # "Beatles, The/(1969) Abbey Road [FLAC]/01. Come Together.flac".
+        - query: default
+          format: >-
+            %the{$albumartist}/%if{$original_year,($original_year) }$album
+            [%if{%ifgreater{$bitdepth,16,1},24-bit }$format]/%ifgreater{$disctotal,1,Disc
+            %unpad{$disc}/}$track. $title
+  # Now that the files are copies in staging, write the tags beets found into them.
+  - id: write-tags
+    uses: beets.command
+    with:
+      command: write
   # Release-type suffixes live in their own file, so other import workflows can call
   # them too. Its steps run here as suffixes/release-types and suffixes/compilations.
   - id: suffixes
@@ -47,24 +98,17 @@ steps:
   # in the review queue for a cover choice. The cover is a ChangeSet, so undo removes it.
   - id: art
     uses: covers.search
-  # Checklist line 4: delete leftover junk and empty folders from the imported folder.
-  # Music beets could import is never deleted (an unmatched album stays for line 5), nor
-  # is a folder that still waits as an import decision: it is cleaned by the pass that
-  # runs once the decision is made. Everything else that is left is logged as a warning.
-  - id: cleanup
+  # The album's folder in the inbox is empty now (or holds only what beets couldn't
+  # import, which stays for checklist line 5): remove the empty folders.
+  - id: empty-inbox
     uses: files.cleanup
     with:
       path: "{{ run.input }}"
       mode: delete
-      delete: ["*.nfo", "*.m3u", "*.m3u8", "*.sfv", "*.url", "Thumbs.db", ".DS_Store"]
-      keep: ["*.log", "*.cue"]
-      # A manual run's input is the whole inbox, which must stay; the album folder of a
-      # watch run is left empty instead (BACKLOG B-055).
       remove_root: false
-  # Checklist lines 5, 13, 15, 17, 18, 19: rename and move each album into the library.
-  # Albums are imported where they are (set `import: {copy: no, move: no}` in the
-  # profile's beets config) and only move once a person accepts the move in the review
-  # queue (`apply` defaults to review): one decision per album, showing the old and new
+  # Checklist lines 5, 13, 15, 17, 18, 19: rename and move each album from staging into
+  # the library, only once a person accepts the move in the review queue (`apply`
+  # defaults to review): one decision per album, showing the old and new
   # folder and every file's old and new name. Moves are journaled and undoable; a file
   # is never overwritten, and an album whose destination is taken waits in the queue as
   # a move conflict to retry once it's fixed.
@@ -79,24 +123,12 @@ steps:
     uses: library.move
     with:
       directory: "{{ vars.library }}"
-      paths:
-        # Splits and compilations: the year after the album name.
-        - query: "albumkind::^(split|compilation)$"
-          format: >-
-            %the{$albumartist}/$album%if{$original_year, ($original_year)}
-            [%if{%ifgreater{$bitdepth,16,1},24-bit }$format]/%ifgreater{$disctotal,1,Disc
-            %unpad{$disc}/}$track. $title
-        # Everything else: sorted by original year inside the artist folder, e.g.
-        # "Beatles, The/(1969) Abbey Road [FLAC]/01. Come Together.flac".
-        - query: default
-          format: >-
-            %the{$albumartist}/%if{$original_year,($original_year) }$album
-            [%if{%ifgreater{$bitdepth,16,1},24-bit }$format]/%ifgreater{$disctotal,1,Disc
-            %unpad{$disc}/}$track. $title
+      # The same names as in staging, so the album only changes root folder.
+      paths: *album-paths
       # DATE ADDED (line 13): the day the album enters the library.
       stamp: { field: date_added }
-      # Images other than the cover go in an Art sub-folder; everything else left after
-      # cleanup (rip logs, cue sheets) keeps its place in the album folder.
+      # Images other than the cover go in an Art sub-folder; everything else that came
+      # along (rip logs, cue sheets) keeps its place in the album folder.
       artifacts:
         - match: ["*.jpg", "*.jpeg", "*.png", "*.gif", "*.webp", "*.tif", "*.tiff", "*.bmp"]
           to: Art
