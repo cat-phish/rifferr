@@ -1,3 +1,4 @@
+import { tc } from "../theme";
 import { Box, Text } from "@mantine/core";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useEffect, useRef } from "react";
@@ -65,7 +66,7 @@ export function LogView({ lines, height = 420 }: { lines: LogLine[]; height?: nu
                 transform: `translateY(${String(row.start)}px)`,
                 whiteSpace: "pre",
                 padding: "0 8px",
-                color: line.stream === "stderr" ? "var(--mantine-color-red-text)" : undefined,
+                color: line.stream === "stderr" ? tc("danger") : undefined,
               }}
             >
               <span style={{ opacity: 0.6 }}>{clock(line.ts)} </span>

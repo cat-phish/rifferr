@@ -1,8 +1,13 @@
-import { Alert, Badge, Button, Group, Stack, Table, Text, TextInput } from "@mantine/core";
+import { Alert, Button, Group, Stack, Table, Text } from "@mantine/core";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, ok } from "../api/client";
 import type { ChangeSet } from "../api/types";
+import { Diff } from "./Diff";
+import { useFold } from "./Fold";
+import { HeaderActions } from "./HeaderActions";
+import { TokenBadge } from "./MatchBadge";
+import { NoteField } from "./NoteField";
 
 type FileEffect = NonNullable<ChangeSet["files"]>[number];
 
@@ -65,29 +70,30 @@ export function FileChangeSetView({ id, changeset }: { id: string; changeset: Ch
   const { from, to } = folders(files);
   const copy = files.some((f) => f.mode === "copy");
   const stamp = changeset.stamp;
+  const fold = useFold(files);
 
   return (
-    <Stack gap="sm" data-testid="file-changeset">
+    <Stack gap={6} data-testid="file-changeset">
       <Group gap="xs">
-        <Badge variant="light">{copy ? "copy" : "move"}</Badge>
+        <TokenBadge token="changed">{copy ? "copy" : "move"}</TokenBadge>
         <Text size="sm">
           {String(files.length)} file{files.length === 1 ? "" : "s"}
         </Text>
       </Group>
-      <Table withRowBorders={false} fz="sm" data-testid="file-folders">
+      <Table withRowBorders={false} fz="sm" verticalSpacing={2} data-testid="file-folders">
         <Table.Tbody>
           <Table.Tr>
             <Table.Td w={90} c="dimmed">
               Old folder
             </Table.Td>
             <Table.Td ff="monospace" data-testid="old-folder">
-              {from}
+              <Diff old={from} new={to} side="old" />
             </Table.Td>
           </Table.Tr>
           <Table.Tr>
             <Table.Td c="dimmed">New folder</Table.Td>
             <Table.Td ff="monospace" data-testid="new-folder">
-              {to}
+              <Diff old={from} new={to} side="new" />
             </Table.Td>
           </Table.Tr>
         </Table.Tbody>
@@ -101,7 +107,7 @@ export function FileChangeSetView({ id, changeset }: { id: string; changeset: Ch
           to the day it {copy ? "is copied" : "moves"}.
         </Text>
       )}
-      <Table data-testid="file-effects" fz="sm">
+      <Table data-testid="file-effects" fz="sm" verticalSpacing={2}>
         <Table.Thead>
           <Table.Tr>
             <Table.Th>Kind</Table.Th>
@@ -110,39 +116,34 @@ export function FileChangeSetView({ id, changeset }: { id: string; changeset: Ch
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
-          {files.map((f) => (
+          {fold.shown.map((f) => (
             <Table.Tr key={`${f.src}\u0000${f.dst}`} data-testid="file-effect" data-kind={f.kind}>
               <Table.Td c="dimmed">{KIND_SAYS[f.kind]}</Table.Td>
               <Table.Td ff="monospace" data-testid="old-name">
-                {relative(f.src, from)}
+                <Diff old={relative(f.src, from)} new={relative(f.dst, to)} side="old" />
               </Table.Td>
               <Table.Td ff="monospace" data-testid="new-name">
-                {relative(f.dst, to)}
+                <Diff old={relative(f.src, from)} new={relative(f.dst, to)} side="new" />
               </Table.Td>
             </Table.Tr>
           ))}
         </Table.Tbody>
       </Table>
+      {fold.control}
       <Text size="xs" c="dimmed">
         Accepted or rejected as a whole album, never file by file.
       </Text>
       {decide.error && <Alert color="red">{decide.error.message}</Alert>}
       {decide.isSuccess ? (
-        <Text size="sm" c="dimmed" data-testid="decision-sent">
-          {decide.variables === "accept" ? (copy ? "Copying…" : "Moving…") : "Rejecting…"}
-        </Text>
+        <HeaderActions>
+          <Text size="sm" c="dimmed" data-testid="decision-sent">
+            {decide.variables === "accept" ? (copy ? "Copying…" : "Moving…") : "Rejecting…"}
+          </Text>
+        </HeaderActions>
       ) : (
-        <Group justify="space-between" align="flex-end">
-          <TextInput
-            size="xs"
-            label="Note (optional)"
-            value={note}
-            onChange={(e) => {
-              setNote(e.currentTarget.value);
-            }}
-            w={260}
-          />
-          <Group gap="xs">
+        <>
+          <NoteField value={note} onChange={setNote} />
+          <HeaderActions>
             <Button
               size="xs"
               disabled={decide.isPending}
@@ -165,8 +166,8 @@ export function FileChangeSetView({ id, changeset }: { id: string; changeset: Ch
             >
               Reject
             </Button>
-          </Group>
-        </Group>
+          </HeaderActions>
+        </>
       )}
     </Stack>
   );

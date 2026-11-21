@@ -21,6 +21,7 @@ import { useProfile, withProfile } from "../hooks/useProfile";
 import { useReviewQueue } from "../hooks/useReviewQueue";
 import { time } from "../lib/format";
 import { count, reviewLink } from "../lib/review";
+import { tc } from "../theme";
 
 /** Oldest queue items shown on the dashboard (F-DASHBOARD open question 4). */
 export const OLDEST_SHOWN = 5;
@@ -239,7 +240,7 @@ function InboxFolderView({ folder }: { folder: InboxFolder }) {
           {folder.trigger_state}
         </Badge>
         {folder.detail && (
-          <Text size="xs" c="red">
+          <Text size="xs" style={{ color: tc("danger") }}>
             {folder.detail}
           </Text>
         )}
@@ -332,7 +333,7 @@ function InboxRow({ folder, entry }: { folder: InboxFolder; entry: InboxEntry })
           </Text>
         )}
         {again.error && (
-          <Text size="xs" c="red">
+          <Text size="xs" style={{ color: tc("danger") }}>
             {again.error.message}
           </Text>
         )}

@@ -1,7 +1,6 @@
 import {
   Alert,
   Anchor,
-  Badge,
   Button,
   Card,
   Checkbox,
@@ -10,7 +9,6 @@ import {
   Stack,
   Table,
   Text,
-  TextInput,
   Title,
 } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -21,6 +19,12 @@ import { CoverPicker } from "../components/CoverPicker";
 import { CleanupDecisionView } from "../components/CleanupDecisionView";
 import { FileChangeSetView } from "../components/FileChangeSetView";
 import { MoveConflictView } from "../components/MoveConflictView";
+import { ActionsSlotContext, HeaderActions } from "../components/HeaderActions";
+import { Diff } from "../components/Diff";
+import { useFold } from "../components/Fold";
+import { NoteField } from "../components/NoteField";
+import { TokenBadge } from "../components/MatchBadge";
+import { tc } from "../theme";
 import { ImportDecisionView } from "../components/ImportDecisionView";
 import type { GateAlbum, QueueItem, ReviewGate } from "../api/types";
 import { useProfile, withProfile } from "../hooks/useProfile";
@@ -388,19 +392,21 @@ function ItemCard({
 }) {
   const selection = useContext(SelectionContext);
   const kind = bulkKind(item);
+  const [slot, setSlot] = useState<HTMLDivElement | null>(null);
   return (
     <Card
       withBorder
-      padding="sm"
+      padding="xs"
       data-testid="queue-item"
       data-item={item.id}
       data-kind={item.kind}
       data-focused={focused ? "true" : undefined}
       style={focused ? { borderColor: "var(--mantine-color-blue-filled)", borderWidth: 2 } : {}}
     >
-      <Stack gap="xs">
-        <Group justify="space-between">
-          <Group gap="xs">
+      <Stack gap={6}>
+        {/* One header row: select, kind, age, then the item's actions on the right (UI-REFRESH-10). */}
+        <Group justify="space-between" wrap="wrap" gap="xs">
+          <Group gap="xs" wrap="nowrap">
             {kind !== null && (
               <Checkbox
                 aria-label="Select"
@@ -413,12 +419,13 @@ function ItemCard({
               />
             )}
             {title}
+            <Text size="xs" c="dimmed">
+              {time(item.created_at)}
+            </Text>
           </Group>
-          <Text size="xs" c="dimmed">
-            {time(item.created_at)}
-          </Text>
+          <div ref={setSlot} data-testid="item-actions" style={{ marginLeft: "auto" }} />
         </Group>
-        {children}
+        <ActionsSlotContext.Provider value={slot}>{children}</ActionsSlotContext.Provider>
       </Stack>
     </Card>
   );
@@ -430,6 +437,7 @@ function ChangeSetCard({ item, focused }: { item: QueueItem; focused: boolean })
   const cs = item.changeset;
   const queryClient = useQueryClient();
   const rows = cs ? fieldRows(cs) : [];
+  const fold = useFold(rows);
   const [checked, setChecked] = useState<Set<number>>(() => new Set(rows.map((r) => r.index)));
   const [note, setNote] = useState("");
   const [sent, setSent] = useState<string | null>(null);
@@ -491,17 +499,15 @@ function ChangeSetCard({ item, focused }: { item: QueueItem; focused: boolean })
               from step {item.step_id}
             </Text>
           )}
-          <Badge color={conflicted ? "orange" : "blue"} variant="light">
-            {item.state}
-          </Badge>
+          <TokenBadge token={conflicted ? "warning" : null}>{item.state}</TokenBadge>
         </Group>
       }
     >
       {cs.rationale && <Text size="sm">{cs.rationale}</Text>}
       {conflicted && (
-        <Text size="sm" c="orange" data-testid="conflict-note">
-          This ChangeSet conflicted: a field changed after the step proposed it. Propose it again on
-          the current values, or reject it.
+        <Text size="sm" style={{ color: tc("warning") }} data-testid="conflict-note">
+          ⚠ This ChangeSet conflicted: a field changed after the step proposed it. Propose it again
+          on the current values, or reject it.
         </Text>
       )}
       {current.error && (
@@ -509,7 +515,7 @@ function ChangeSetCard({ item, focused }: { item: QueueItem; focused: boolean })
           Current values unavailable: {current.error.message}
         </Text>
       )}
-      <Table data-testid="field-changes" withRowBorders={false} fz="sm">
+      <Table data-testid="field-changes" withRowBorders={false} fz="sm" verticalSpacing={2}>
         <Table.Thead>
           <Table.Tr>
             {!conflicted && (
@@ -533,7 +539,7 @@ function ChangeSetCard({ item, focused }: { item: QueueItem; focused: boolean })
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
-          {rows.map((row) => {
+          {fold.shown.map((row) => {
             const now = currentOf(row, targets);
             const gone = missing.has(targetKey(row.target));
             const changed = now !== undefined && !sameValue(now, row.old);
@@ -541,16 +547,23 @@ function ChangeSetCard({ item, focused }: { item: QueueItem; focused: boolean })
               <Table.Td
                 data-testid="now"
                 data-changed={changed ? "true" : undefined}
-                c={changed ? "orange" : undefined}
-                fw={changed ? 600 : undefined}
+                style={changed ? { color: tc("warning"), fontWeight: 600 } : undefined}
+                c={changed ? undefined : "dimmed"}
               >
                 {gone ? "no longer in the library" : now === undefined ? "…" : formatValue(now)}
                 {changed && " (changed)"}
               </Table.Td>
             );
             const proposedCell = (
-              <Table.Td data-testid="proposed">
-                {row.op === "delete" ? "(remove)" : formatValue(row.new)}
+              <Table.Td
+                data-testid="proposed"
+                data-new={row.op === "delete" ? "" : formatValue(row.new)}
+              >
+                {row.op === "delete" ? (
+                  <Diff old={formatValue(row.old)} new="" empty="(remove)" />
+                ) : (
+                  <Diff old={formatValue(row.old)} new={formatValue(row.new)} />
+                )}
               </Table.Td>
             );
             return (
@@ -574,7 +587,9 @@ function ChangeSetCard({ item, focused }: { item: QueueItem; focused: boolean })
                 )}
                 <Table.Td>{labelOf(row)}</Table.Td>
                 <Table.Td ff="monospace">{row.field}</Table.Td>
-                <Table.Td data-testid="old">{formatValue(row.old)}</Table.Td>
+                <Table.Td data-testid="old" c="dimmed">
+                  {formatValue(row.old)}
+                </Table.Td>
                 {conflicted ? nowCell : proposedCell}
                 {conflicted ? proposedCell : nowCell}
               </Table.Tr>
@@ -582,27 +597,18 @@ function ChangeSetCard({ item, focused }: { item: QueueItem; focused: boolean })
           })}
         </Table.Tbody>
       </Table>
+      {fold.control}
       {error && <Alert color="red">{error.message}</Alert>}
       {sent !== null ? (
-        <Text size="sm" c="dimmed" data-testid="decision-sent">
-          {sent}
-        </Text>
+        <HeaderActions>
+          <Text size="sm" c="dimmed" data-testid="decision-sent">
+            {sent}
+          </Text>
+        </HeaderActions>
       ) : (
-        <Group justify="space-between" align="flex-end">
-          {!conflicted ? (
-            <TextInput
-              size="xs"
-              label="Note (optional)"
-              value={note}
-              onChange={(e) => {
-                setNote(e.currentTarget.value);
-              }}
-              w={260}
-            />
-          ) : (
-            <span />
-          )}
-          <Group gap="xs">
+        <>
+          {!conflicted && <NoteField value={note} onChange={setNote} />}
+          <HeaderActions>
             {conflicted ? (
               <Button
                 size="xs"
@@ -639,8 +645,8 @@ function ChangeSetCard({ item, focused }: { item: QueueItem; focused: boolean })
             >
               Reject
             </Button>
-          </Group>
-        </Group>
+          </HeaderActions>
+        </>
       )}
     </ItemCard>
   );
@@ -717,14 +723,12 @@ function GateCard({
           <Stack key={targetKey(album.target)} gap={4}>
             <GateAlbumView album={album} />
             {several && verdict !== undefined && (
-              <Badge
-                size="sm"
-                variant="light"
-                color={verdict === "continued" ? "green" : "red"}
+              <TokenBadge
+                token={verdict === "continued" ? "success" : "danger"}
                 data-testid="album-decided"
               >
                 {verdict}
-              </Badge>
+              </TokenBadge>
             )}
             {several && verdict === undefined && !decide.isSuccess && (
               <Group gap="xs" data-testid="album-actions">
@@ -757,50 +761,44 @@ function GateCard({
       {perAlbum.error && <Alert color="red">{perAlbum.error.message}</Alert>}
       {decide.error && <Alert color="red">{decide.error.message}</Alert>}
       {decide.isSuccess ? (
-        <Text size="sm" c="dimmed" data-testid="decision-sent">
-          {decide.data.state === "continued" ? "Continued." : "Rejected."}
-        </Text>
-      ) : (
-        <Stack gap="xs">
-          <Text size="xs" c="dimmed" data-testid="reject-says">
-            {REJECT_SAYS[gate.on_reject]}
+        <HeaderActions>
+          <Text size="sm" c="dimmed" data-testid="decision-sent">
+            {decide.data.state === "continued" ? "Continued." : "Rejected."}
           </Text>
-          <Group justify="space-between" align="flex-end">
-            <TextInput
-              size="xs"
-              label="Note (optional)"
-              value={note}
-              onChange={(e) => {
-                setNote(e.currentTarget.value);
-              }}
-              w={260}
-            />
-            <Group gap="xs">
-              <Button
-                size="xs"
-                loading={decide.isPending && decide.variables === "continue"}
-                disabled={decide.isPending}
-                onClick={() => {
-                  decide.mutate("continue");
-                }}
-              >
-                {several && undecided < gate.albums.length ? "Continue the rest" : "Continue"}
-              </Button>
-              <Button
-                size="xs"
-                color="red"
-                variant="light"
-                loading={decide.isPending && decide.variables === "reject"}
-                disabled={decide.isPending}
-                onClick={() => {
-                  decide.mutate("reject");
-                }}
-              >
-                {several && undecided < gate.albums.length ? "Reject the rest" : "Reject"}
-              </Button>
-            </Group>
+        </HeaderActions>
+      ) : (
+        <>
+          <Group gap="xs" align="flex-end">
+            <NoteField value={note} onChange={setNote} />
+            <Text size="xs" c="dimmed" data-testid="reject-says">
+              {REJECT_SAYS[gate.on_reject]}
+            </Text>
           </Group>
-        </Stack>
+          <HeaderActions>
+            <Button
+              size="xs"
+              loading={decide.isPending && decide.variables === "continue"}
+              disabled={decide.isPending}
+              onClick={() => {
+                decide.mutate("continue");
+              }}
+            >
+              {several && undecided < gate.albums.length ? "Continue the rest" : "Continue"}
+            </Button>
+            <Button
+              size="xs"
+              color="red"
+              variant="light"
+              loading={decide.isPending && decide.variables === "reject"}
+              disabled={decide.isPending}
+              onClick={() => {
+                decide.mutate("reject");
+              }}
+            >
+              {several && undecided < gate.albums.length ? "Reject the rest" : "Reject"}
+            </Button>
+          </HeaderActions>
+        </>
       )}
     </ItemCard>
   );
@@ -811,21 +809,19 @@ function GateAlbumView({ album }: { album: GateAlbum }) {
   const shown = Object.entries(album.shown ?? {});
   const changes = album.changes ?? [];
   const conflicted = album.conflicted ?? [];
+  const foldShown = useFold(shown);
+  const foldChanges = useFold(changes);
   return (
     <Stack gap={4} data-testid="gate-album">
       <Group gap="xs">
         <Text fw={500}>{album.label}</Text>
-        {album.imported_by_run && (
-          <Badge size="sm" variant="light">
-            imported by this run
-          </Badge>
-        )}
+        {album.imported_by_run && <TokenBadge token="success">imported by this run</TokenBadge>}
       </Group>
       {album.message && <Text size="sm">{album.message}</Text>}
       {shown.length > 0 && (
-        <Table fz="sm" withRowBorders={false} data-testid="gate-shown">
+        <Table fz="sm" withRowBorders={false} verticalSpacing={2} data-testid="gate-shown">
           <Table.Tbody>
-            {shown.map(([field, value]) => (
+            {foldShown.shown.map(([field, value]) => (
               <Table.Tr key={field}>
                 <Table.Td ff="monospace" w={160}>
                   {field}
@@ -836,35 +832,45 @@ function GateAlbumView({ album }: { album: GateAlbum }) {
           </Table.Tbody>
         </Table>
       )}
+      {foldShown.control}
       {changes.length > 0 ? (
-        <Table fz="sm" withRowBorders={false} data-testid="gate-changes">
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>Changed by this run</Table.Th>
-              <Table.Th>Field</Table.Th>
-              <Table.Th>Before</Table.Th>
-              <Table.Th>After</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {changes.map((c) => (
-              <Table.Tr key={`${targetKey(c.target)}/${c.field}`}>
-                <Table.Td>{c.target.scope === "album" ? "album" : `item ${c.target.id}`}</Table.Td>
-                <Table.Td ff="monospace">{c.field}</Table.Td>
-                <Table.Td>{c.existed_before ? formatValue(c.before) : "—"}</Table.Td>
-                <Table.Td>{formatValue(c.after)}</Table.Td>
+        <>
+          <Table fz="sm" withRowBorders={false} verticalSpacing={2} data-testid="gate-changes">
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Changed by this run</Table.Th>
+                <Table.Th>Field</Table.Th>
+                <Table.Th>Before → after</Table.Th>
               </Table.Tr>
-            ))}
-          </Table.Tbody>
-        </Table>
+            </Table.Thead>
+            <Table.Tbody>
+              {foldChanges.shown.map((c) => (
+                <Table.Tr key={`${targetKey(c.target)}/${c.field}`}>
+                  <Table.Td>
+                    {c.target.scope === "album" ? "album" : `item ${c.target.id}`}
+                  </Table.Td>
+                  <Table.Td ff="monospace">{c.field}</Table.Td>
+                  <Table.Td data-testid="gate-change">
+                    <Diff
+                      old={c.existed_before ? formatValue(c.before) : ""}
+                      new={formatValue(c.after)}
+                      empty="—"
+                    />
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+          {foldChanges.control}
+        </>
       ) : (
         <Text size="xs" c="dimmed">
           No tag changes by this run so far.
         </Text>
       )}
       {conflicted.length > 0 && (
-        <Text size="sm" c="orange">
-          Conflicted ChangeSets:{" "}
+        <Text size="sm" style={{ color: tc("warning") }}>
+          ⚠ Conflicted ChangeSets:{" "}
           {conflicted.map((id, n) => (
             <span key={id}>
               {n > 0 && ", "}

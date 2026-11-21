@@ -52,6 +52,7 @@ import {
   toRequest,
   withEdit,
 } from "../lib/grid";
+import { tc } from "../theme";
 
 /** Queries and checks wait this long after the last keystroke or edit. */
 export const GRID_DELAY_MS = 300;
@@ -700,12 +701,12 @@ function PendingPanel(props: {
         </Text>
       )}
       {props.problems > 0 && (
-        <Text size="xs" c="red" data-testid="problems">
+        <Text size="xs" style={{ color: tc("danger") }} data-testid="problems">
           {props.problems} problem{props.problems === 1 ? "" : "s"}: fix or discard the red cells
         </Text>
       )}
       {props.checkError && (
-        <Text size="xs" c="red">
+        <Text size="xs" style={{ color: tc("danger") }}>
           {props.checkError}
         </Text>
       )}

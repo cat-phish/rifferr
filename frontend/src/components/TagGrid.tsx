@@ -30,6 +30,7 @@ import {
   setEdit,
   show,
 } from "../lib/grid";
+import { tc } from "../theme";
 
 const ROW = 34;
 const SELECT = 36;
@@ -555,7 +556,7 @@ function CellEditor({
         />
       )}
       {problem && (
-        <Text size="xs" c="red">
+        <Text size="xs" style={{ color: tc("danger") }}>
           {problem}
         </Text>
       )}

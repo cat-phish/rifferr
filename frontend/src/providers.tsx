@@ -2,6 +2,7 @@ import { MantineProvider } from "@mantine/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { ApiError } from "./api/client";
+import { cssVariablesResolver, theme } from "./theme";
 
 export function newQueryClient(): QueryClient {
   return new QueryClient({
@@ -26,7 +27,12 @@ export function Providers({
   env?: "default" | "test";
 }) {
   return (
-    <MantineProvider defaultColorScheme="auto" env={env}>
+    <MantineProvider
+      defaultColorScheme="auto"
+      env={env}
+      theme={theme}
+      cssVariablesResolver={cssVariablesResolver}
+    >
       <QueryClientProvider client={client}>{children}</QueryClientProvider>
     </MantineProvider>
   );

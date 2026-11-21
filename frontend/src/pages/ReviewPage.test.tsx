@@ -209,6 +209,12 @@ test("REVIEW_QUEUE_12 field changes with current values; accept only the checked
   expect(within(nth(rows, 1)).getByTestId("now")).not.toHaveAttribute("data-changed");
 
   fireEvent.click(screen.getByRole("checkbox", { name: "Accept albumdisambig of Band - Live" }));
+  // The proposed value is a diff of the value the step saw (UI-REFRESH-4).
+  const added = within(nth(rows, 0)).getByTestId("proposed").querySelector('[data-seg="added"]');
+  expect(added).toHaveTextContent("(EP)");
+  // The note is behind "Add note" (UI-REFRESH-11).
+  expect(screen.queryByLabelText("Note (optional)")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Add note" }));
   fireEvent.change(screen.getByLabelText("Note (optional)"), { target: { value: "no disambig" } });
   fireEvent.click(screen.getByRole("button", { name: "Accept selected" }));
   await waitFor(() => {
@@ -314,7 +320,7 @@ test("REVIEW_QUEUE_13 gate card: albums, changes, deadline, continue with a note
   expect(within(album).getByText("imported by this run")).toBeInTheDocument();
   expect(within(album).getByText("Rock; Live")).toBeInTheDocument();
   const changes = within(album).getByTestId("gate-changes");
-  expect(within(changes).getByText("Live (EP)")).toBeInTheDocument();
+  expect(within(changes).getByTestId("gate-change")).toHaveTextContent("Live (EP)");
   expect(within(album).getByRole("link", { name: "cs9" })).toHaveAttribute(
     "href",
     "/review?profile=main&item=cs9",
@@ -323,6 +329,7 @@ test("REVIEW_QUEUE_13 gate card: albums, changes, deadline, continue with a note
   expect(within(card).getByTestId("reject-says")).toHaveTextContent(
     "Reject undoes this run's tag changes, then stops the run.",
   );
+  fireEvent.click(within(card).getByRole("button", { name: "Add note" }));
   fireEvent.change(within(card).getByLabelText("Note (optional)"), {
     target: { value: "looks right" },
   });

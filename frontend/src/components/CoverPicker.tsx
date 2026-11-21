@@ -39,6 +39,7 @@ import {
   sizeLabel,
   toBase64,
 } from "../lib/covers";
+import { tc } from "../theme";
 
 /** Where the picker is used: a cover review in the queue, or a library album outside a
  * run (F-COVER-PICKER COVER-PICKER-1, -2). */
@@ -723,7 +724,7 @@ function PickerBody({
               </Text>
             </Group>
             {c.filtered != null && (
-              <Text size="xs" c="orange">
+              <Text size="xs" style={{ color: tc("warning") }}>
                 hidden: {FILTER_LABEL[c.filtered] ?? c.filtered}
               </Text>
             )}
@@ -733,7 +734,7 @@ function PickerBody({
               </Text>
             )}
             {refused[c.id] && (
-              <Text size="xs" c="red" data-testid="refused">
+              <Text size="xs" style={{ color: tc("danger") }} data-testid="refused">
                 {refused[c.id]}
               </Text>
             )}
@@ -938,7 +939,7 @@ function ProviderPanel(props: {
           </Text>
         )}
         {props.saveError && (
-          <Text size="xs" c="red">
+          <Text size="xs" style={{ color: tc("danger") }}>
             {props.saveError}
           </Text>
         )}
@@ -1047,7 +1048,7 @@ function CoverPreview(props: {
             )}
           </Group>
           {props.refused && (
-            <Text size="sm" c="red">
+            <Text size="sm" style={{ color: tc("danger") }}>
               {props.refused}
             </Text>
           )}

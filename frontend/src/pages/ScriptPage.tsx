@@ -20,6 +20,7 @@ import type { PreviewField, PreviewResponse, ScriptDetail } from "../api/types";
 import { BeetsTerm } from "../components/BeetsTerm";
 import { ErrorList } from "../components/ErrorList";
 import { useProfile } from "../hooks/useProfile";
+import { tc } from "../theme";
 
 /** Preview waits this long after the last edit (TAGSCRIPT-22). */
 export const PREVIEW_DELAY_MS = 300;
@@ -324,7 +325,7 @@ export function PreviewGrid({ data }: { data: PreviewResponse }) {
               ...(t.errors ?? []).map((e, i) => (
                 <Table.Tr key={`${t.target.id}-error-${String(i)}`}>
                   <Table.Td>{t.label}</Table.Td>
-                  <Table.Td colSpan={4} c="red">
+                  <Table.Td colSpan={4} style={{ color: tc("danger") }}>
                     {e}
                   </Table.Td>
                 </Table.Tr>

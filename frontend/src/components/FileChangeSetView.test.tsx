@@ -97,8 +97,11 @@ test("LIBRARY_MOVE_16 old and new folder and names, accepted per album", async (
   );
   expect(within(rows[3] as HTMLElement).getByTestId("new-name")).toHaveTextContent("Art/back.jpg");
   expect(within(card).queryAllByRole("checkbox")).toEqual([]); // never file by file
-  fireEvent.click(within(card).getByRole("button", { name: "Move album" }));
-  expect(await within(card).findByTestId("decision-sent")).toHaveTextContent("Moving…");
+  // The main actions sit in the item's header row (UI-REFRESH-10).
+  const item = card.closest<HTMLElement>('[data-testid="queue-item"]') as HTMLElement;
+  const actions = within(item).getByTestId("item-actions");
+  fireEvent.click(within(actions).getByRole("button", { name: "Move album" }));
+  expect(await within(actions).findByTestId("decision-sent")).toHaveTextContent("Moving…");
   await waitFor(() => {
     const posted = calls.filter((c: Call) => c.path === "/api/changesets/cs1/decision");
     expect(posted.map((c) => c.body)).toEqual([{ decision: "accept", note: null }]);

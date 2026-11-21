@@ -40,6 +40,7 @@ test("REVIEW_QUEUE_18 review queue: partial accept, continue the gate, undo the 
   await expect(gate).toContainText("Check the suffix");
   await expect(gate.getByTestId("gate-changes")).toContainText("Review Sessions (EP)");
   await expect(gate.getByTestId("gate-changes")).not.toContainText("albumdisambig");
+  await gate.getByRole("button", { name: "Add note" }).click();
   await gate.getByLabel("Note (optional)").fill("suffix looks right");
   await gate.getByRole("button", { name: "Continue" }).click();
   await expect(page.getByTestId("queue-empty")).toBeVisible({ timeout: 30_000 });
