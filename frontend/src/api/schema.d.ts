@@ -1985,6 +1985,11 @@ export interface components {
              * @enum {string}
              */
             kind: "match" | "duplicate";
+            /**
+             * Lookup Problem
+             * @description Why the backend can't find candidates at all, e.g. no metadata source plugin loaded (IMPORT-UI-20); the queue shows it instead of 'no candidates'
+             */
+            lookup_problem?: string | null;
             /** Note */
             note?: string | null;
             /**

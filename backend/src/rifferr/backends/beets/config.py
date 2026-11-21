@@ -7,6 +7,8 @@ semi-internal beets/confuse APIs, all pinned by the contract tests in
 - ``beets.config`` (a confuse ``LazyConfig``): ``clear()``, ``read()``, ``set()``
   and its ``sources`` list (to remove a temporary overlay again).
 - ``beets.plugins.load_plugins()`` and ``beets.plugins._instances`` (to unload in tests).
+- ``beets.metadata_plugins.find_metadata_source_plugins.__wrapped__`` (uncached; the backend's
+  ``lookup_problem``, BEETS-IMPORT-19).
 - confuse finds the config directory through the ``BEETSDIR`` environment variable.
 
 beets reads ``$BEETSDIR/config.yaml`` and never writes it; Rifferr doesn't either.

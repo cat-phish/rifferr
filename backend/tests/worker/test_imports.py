@@ -293,6 +293,25 @@ async def test_IMPORT_UI_13_failure_logs_and_allows_a_retry(h: ImportHarness) ->
     assert h.decision().error is None
 
 
+async def test_BEETS_IMPORT_19_no_metadata_source_warns_and_marks_the_decision(
+    h: ImportHarness,
+) -> None:
+    h.backend.lookup_problem_text = "no metadata source"
+    await h.waiting_import()
+    assert "warning: no metadata source" in h.logs()
+    assert h.decision().lookup_problem == "no metadata source"  # IMPORT-UI-20
+    h.backend.lookup_problem_text = None  # the config was fixed; a lookup clears it
+    job = await h.supervisor.lookup_import(h.decision().id)
+    assert await h.job_done(job) == "succeeded"
+    assert h.decision().lookup_problem is None
+
+
+async def test_BEETS_IMPORT_19_no_warning_with_a_metadata_source(h: ImportHarness) -> None:
+    await h.waiting_import()
+    assert not any(line.startswith("warning:") for line in h.logs())
+    assert h.decision().lookup_problem is None
+
+
 async def test_IMPORT_UI_9_lookup_by_id_adds_candidates(h: ImportHarness) -> None:
     await h.waiting_import()
     decision = h.decision()

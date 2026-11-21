@@ -220,6 +220,8 @@ class FakeBackend:
         self._lookup_candidates: list[dict[str, Any]] = []
         self.lookup_calls: list[tuple[str, tuple[str, ...], str | None, str | None]] = []
         self.fail_lookup: str | None = None
+        self.lookup_problem_text: str | None = None
+        """What ``lookup_problem`` answers (BEETS-IMPORT-19)."""
         self.music_dirs: list[Path] = []
         """What ``library_dirs`` returns."""
         self.importable_suffixes: frozenset[str] = FAKE_IMPORTABLE
@@ -495,6 +497,10 @@ class FakeBackend:
         if run_id is not None:
             spec[RUN_MARKER] = run_id
         return self.add_album(spec)
+
+    def lookup_problem(self) -> str | None:
+        """``lookup_problem_text``, which tests set (BEETS-IMPORT-19)."""
+        return self.lookup_problem_text
 
     def _fingerprint(self, folder: str) -> str:
         return f"fake:{folder}:{self._folder_versions.get(folder, 0)}"

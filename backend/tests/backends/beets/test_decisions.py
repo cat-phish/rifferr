@@ -170,6 +170,17 @@ def test_IMPORT_UI_11_skip_works_when_the_folder_changed_or_is_gone(
     assert b.query(Selection()) == []
 
 
+def test_BEETS_IMPORT_19_lookup_problem_without_a_metadata_source(beets_env: BeetsEnv) -> None:
+    from rifferr.backends.beets import NO_METADATA_SOURCE
+
+    assert beets_env.backend().lookup_problem() == NO_METADATA_SOURCE  # plugins: []
+    assert "`musicbrainz`" in NO_METADATA_SOURCE
+
+
+def test_BEETS_IMPORT_19_no_lookup_problem_with_a_metadata_source(beets_env: BeetsEnv) -> None:
+    assert backend(beets_env, [EXACT]).lookup_problem() is None  # rifferrfixture is one
+
+
 def test_IMPORT_UI_9_lookup_by_id_and_by_name(beets_env: BeetsEnv) -> None:
     b = backend(beets_env, [OTHER, BY_ID])
     folder = beets_env.inbox_album()

@@ -118,7 +118,12 @@ export function ImportDecisionView({ decision }: { decision: ImportDecision }) {
       {decision.kind === "duplicate" ? (
         <Duplicates decision={decision} />
       ) : (
-        <Candidates candidates={candidates} selected={selected} onSelect={setSelected} />
+        <Candidates
+          candidates={candidates}
+          selected={selected}
+          onSelect={setSelected}
+          lookupProblem={decision.lookup_problem ?? null}
+        />
       )}
       {decision.kind === "match" && chosen && <TrackTable candidate={chosen} />}
       {decision.kind === "match" && (
@@ -262,11 +267,21 @@ function Candidates({
   candidates,
   selected,
   onSelect,
+  lookupProblem,
 }: {
   candidates: ImportCandidate[];
   selected: string | null;
   onSelect: (id: string) => void;
+  lookupProblem: string | null;
 }) {
+  if (candidates.length === 0 && lookupProblem) {
+    // IMPORT-UI-20: say why there can't be candidates, not just that there are none
+    return (
+      <Alert color="yellow" data-testid="lookup-problem">
+        <Text size="sm">{lookupProblem}</Text>
+      </Alert>
+    );
+  }
   if (candidates.length === 0) {
     return (
       <Text size="sm" c="dimmed" data-testid="no-candidates">

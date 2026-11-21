@@ -80,7 +80,8 @@ async def test_BEETS_IMPORT_6_and_7_decisions_logged_and_skips_evented(
     assert r.state is RunState.succeeded
     assert r.steps[0].outputs == {"imported": 1, "skipped": 1, "duplicates": 1, "decisions": 0}
     logs = [str(e.data["line"]) for e in events if e.type == "run.step.log"]
-    assert [line.split(" ", 1)[0] for line in logs] == ["duplicate", "skipped", "imported"]
+    assert logs[0].startswith("warning: beets has no metadata source")  # BEETS-IMPORT-19
+    assert [line.split(" ", 1)[0] for line in logs[1:]] == ["duplicate", "skipped", "imported"]
     [skip] = [e for e in events if e.type == "run.step.import.skipped"]
     assert skip.data == {
         "path": str(beets_env.inbox / "b"),

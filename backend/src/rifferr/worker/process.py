@@ -868,6 +868,7 @@ class Worker:
             return
         decision.fingerprint = found.fingerprint
         decision.items = list(found.items)
+        decision.lookup_problem = self.backend.lookup_problem()
         decision.candidates = (
             merge_candidates(decision.candidates, found.candidates)
             if search
@@ -1330,6 +1331,8 @@ def main(
     try:
         profile = load_profile(config_root(), args.profile)
         backend = (backend_factory or load_backend)(profile)
+        if (problem := backend.lookup_problem()) is not None:  # BEETS-IMPORT-19
+            log.warning("[worker %s] %s", profile.name, problem)
         steps = registry or load_step_types()
         for problem in steps.errors:
             log.warning("%s", problem)

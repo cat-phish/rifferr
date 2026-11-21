@@ -116,6 +116,11 @@ class ImportDecision(BaseModel):
     items: list[FolderItem] = Field(default_factory=list[FolderItem])
     candidates: list[ImportCandidate] = Field(default_factory=list[ImportCandidate])
     duplicates: list[AlbumSnapshot] = Field(default_factory=list[AlbumSnapshot])
+    lookup_problem: str | None = Field(
+        default=None,
+        description="Why the backend can't find candidates at all, e.g. no metadata source "
+        "plugin loaded (IMPORT-UI-20); the queue shows it instead of 'no candidates'",
+    )
     options: dict[str, str | bool] = Field(default_factory=dict[str, str | bool])
     set_fields: dict[str, str] = Field(default_factory=dict[str, str])
     state: ImportDecisionState = "pending"
