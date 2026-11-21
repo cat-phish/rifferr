@@ -7,6 +7,8 @@ semi-internal beets/confuse APIs, all pinned by the contract tests in
 - ``beets.config`` (a confuse ``LazyConfig``): ``clear()``, ``read()``, ``set()``
   and its ``sources`` list (to remove a temporary overlay again).
 - ``beets.plugins.load_plugins()`` and ``beets.plugins._instances`` (to unload in tests).
+- ``beets.plugins.get_plugin_names()``, ``find_plugins()`` and ``BeetsPlugin.name``
+  (``failed_plugins``, BEETS-IMPORT-20).
 - ``beets.metadata_plugins.find_metadata_source_plugins.__wrapped__`` (uncached; the backend's
   ``lookup_problem``, BEETS-IMPORT-19).
 - confuse finds the config directory through the ``BEETSDIR`` environment variable.
@@ -80,6 +82,13 @@ def load(beetsdir: Path, trusted: ConfigTrusted | None = None, profile: str | No
 def plugin_names() -> list[str]:
     """The plugins this process loaded, for the ``beet`` CLI's ``-p`` (TEMPLATE-FUNCTIONS-3)."""
     return beets.plugins.get_plugin_names()
+
+
+def failed_plugins() -> list[str]:
+    """Plugins the config asks for that beets couldn't load (BEETS-IMPORT-20). beets only
+    logs ``** error loading plugin`` and carries on without them."""
+    loaded = {plugin.name for plugin in beets.plugins.find_plugins()}
+    return [name for name in beets.plugins.get_plugin_names() if name not in loaded]
 
 
 def loaded_beetsdir() -> Path | None:

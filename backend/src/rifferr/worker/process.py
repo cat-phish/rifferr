@@ -1331,8 +1331,10 @@ def main(
     try:
         profile = load_profile(config_root(), args.profile)
         backend = (backend_factory or load_backend)(profile)
-        if (problem := backend.lookup_problem()) is not None:  # BEETS-IMPORT-19
-            log.warning("[worker %s] %s", profile.name, problem)
+        problems = [*backend.plugin_problems(), backend.lookup_problem()]  # BEETS-IMPORT-19, -20
+        for problem in problems:
+            if problem is not None:
+                log.warning("[worker %s] %s", profile.name, problem)
         steps = registry or load_step_types()
         for problem in steps.errors:
             log.warning("%s", problem)

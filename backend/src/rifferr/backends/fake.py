@@ -221,6 +221,7 @@ class FakeBackend:
         self.lookup_calls: list[tuple[str, tuple[str, ...], str | None, str | None]] = []
         self.fail_lookup: str | None = None
         self.lookup_problem_text: str | None = None
+        self.plugin_problems_list: list[str] = []
         """What ``lookup_problem`` answers (BEETS-IMPORT-19)."""
         self.music_dirs: list[Path] = []
         """What ``library_dirs`` returns."""
@@ -497,6 +498,10 @@ class FakeBackend:
         if run_id is not None:
             spec[RUN_MARKER] = run_id
         return self.add_album(spec)
+
+    def plugin_problems(self) -> list[str]:
+        """``plugin_problems_list``, which tests set (BEETS-IMPORT-20)."""
+        return list(self.plugin_problems_list)
 
     def lookup_problem(self) -> str | None:
         """``lookup_problem_text``, which tests set (BEETS-IMPORT-19)."""
