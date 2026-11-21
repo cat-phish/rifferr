@@ -35,6 +35,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     inbox: join(root, "inbox"),
     lanes: join(root, "lanes-inbox"),
     imports: join(root, "imports-inbox"),
+    refresh: join(root, "refresh-inbox"),
     cleanup: join(root, "cleanup-inbox"),
     watched: join(root, "watched"),
     dashboard: join(root, "dashboard-inbox"),
@@ -71,6 +72,12 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   // Two albums in one folder for the lanes test (LANES-15).
   for (const fixture of ["album-flac", "single-mp3"]) {
     cpSync(join(backend, "tests", "fixtures", "audio", fixture), join(dirs.lanes, fixture), {
+      recursive: true,
+    });
+  }
+  // Two albums that both wait for an import decision (F-UI-REFRESH UI-REFRESH-17).
+  for (const fixture of ["album-flac", "single-mp3"]) {
+    cpSync(join(backend, "tests", "fixtures", "audio", fixture), join(dirs.refresh, fixture), {
       recursive: true,
     });
   }
@@ -256,6 +263,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   process.env.RIFFERR_E2E_INBOX = dirs.inbox;
   process.env.RIFFERR_E2E_LANES_INBOX = dirs.lanes;
   process.env.RIFFERR_E2E_IMPORTS_INBOX = dirs.imports;
+  process.env.RIFFERR_E2E_REFRESH_INBOX = dirs.refresh;
   process.env.RIFFERR_E2E_CLEANUP_INBOX = dirs.cleanup;
   process.env.RIFFERR_E2E_WATCHED = dirs.watched;
   process.env.RIFFERR_E2E_DASHBOARD = dirs.dashboard;

@@ -1,5 +1,5 @@
 # F-UI-REFRESH: Status colors, compact review cards and album-grouped queue
-Status: Approved
+Status: Implemented
 Milestone: M2
 
 ## Context
@@ -42,6 +42,14 @@ Tests
 - UI-REFRESH-17: A Playwright test MUST cover, against the e2e temp profile: a run with two albums that both wait for an import decision. The queue shows two album blocks with "waiting on you"; deciding one album's import changes that block's status line without a reload; candidate badges and penalties are colored by the fixture profile's thresholds.
 
 ## Interfaces
+Implementation notes (2026-11-21, added while implementing; not new behavior):
+- Status tokens are text colors (CSS variables `--rifferr-color-*`, `frontend/src/theme.ts`). Mantine `Alert`, `Button` and row-background tints (tag grid, script preview) keep Mantine colors: a token can't produce their light backgrounds. Badges in a status color are outlined (`TokenBadge`).
+- The diff (`frontend/src/lib/diff.ts`) works on grapheme clusters (`Intl.Segmenter`), so accents and emoji are never split. Side-by-side columns (library-move names and folders, import track titles) show each side's own changes (`<Diff side="old|new">`); a ChangeSet's proposed value shows both in one cell.
+- Header actions are rendered into the item's header row through a portal (`HeaderActions`), so the card bodies keep their own state and tests find the actions inside the queue item.
+- Album blocks (UI-REFRESH-13): a block is shown for every lane that holds a queue item *or is still working* (`active`, `waiting`), so deciding an item turns its block to "running <step>" instead of removing it (UI-REFRESH-14, -17). Finished lanes only count (open question 3). An item held by several lanes (a gate over several albums) goes in a block "Several albums" before "Other".
+- The page reads lanes from `GET /api/runs/{id}` with the run page's query key. `run.step.started` and `run.step.finished` (not `run.step.log`) now go on `/api/events` (`api/state.py` `STEP_EVENTS`), so a lane's step changes reach the queue. API-9's test allows them.
+- `match_thresholds` lives on `ImportDecision` and is refreshed on every lookup, like `lookup_problem` (IMPORT-UI-20).
+
 - Theme: `frontend/src/theme.ts`, a `createTheme` with the tokens of UI-REFRESH-1 as CSS variables (`--rifferr-color-success`, …) for both schemes, passed to `MantineProvider` (`frontend/src/providers.tsx`).
 - Shared components: `<Diff old new />`, `<MatchBadge distance thresholds />`, `<Penalties names />`, `<Collapsible rows limit={8} />`. The diff itself is `frontend/src/lib/diff.ts`, with no new dependency.
 - API, import decisions: the queue item for an import decision gains
@@ -96,10 +104,10 @@ Album block:
 3. Finished lanes: collapsed blocks or counts only? → counts only (UI-REFRESH-15), no block (author, 2026-11-21).
 
 ## Tasks
-- [ ] Theme tokens and contrast test (UI-REFRESH-1, -2)
-- [ ] `lib/diff.ts` and `<Diff>`; replace ad-hoc colors (UI-REFRESH-3, -4, -5)
-- [ ] `match_thresholds` through backend protocol, beets backend, FakeBackend, contract test, schemas, TS client (UI-REFRESH-6)
-- [ ] Import card: badge, penalties, track table, two-column layout, collapsed files (UI-REFRESH-6 .. -9)
-- [ ] Compact card header, note toggle, row folding (UI-REFRESH-10 .. -12)
-- [ ] Album blocks, status line, run lane counts (UI-REFRESH-13 .. -16)
-- [ ] Playwright test (UI-REFRESH-17); update `review-queue.spec.ts` and `imports.spec.ts`
+- [x] Theme tokens and contrast test (UI-REFRESH-1, -2)
+- [x] `lib/diff.ts` and `<Diff>`; replace ad-hoc colors (UI-REFRESH-3, -4, -5)
+- [x] `match_thresholds` through backend protocol, beets backend, FakeBackend, contract test, schemas, TS client (UI-REFRESH-6)
+- [x] Import card: badge, penalties, track table, two-column layout, collapsed files (UI-REFRESH-6 .. -9)
+- [x] Compact card header, note toggle, row folding (UI-REFRESH-10 .. -12)
+- [x] Album blocks, status line, run lane counts (UI-REFRESH-13 .. -16)
+- [x] Playwright test (UI-REFRESH-17); update `review-queue.spec.ts` and `imports.spec.ts`

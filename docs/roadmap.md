@@ -187,6 +187,7 @@ S-SUBWORKFLOW → queue dashboard (F-DASHBOARD).
 - [x] S-FILES-CLEANUP: Implemented 2026-11-14.
 - [x] S-SUBWORKFLOW: Implemented 2026-11-14.
 - [x] F-DASHBOARD: Implemented 2026-11-14.
+- [x] F-UI-REFRESH (out of the main order, from test runs): Implemented 2026-11-21. Status colors, compact review cards, queue grouped by album. The staging viewer follows as F-ALBUM-REVIEW.
 
 ## M3 — Cover search
 

@@ -23,7 +23,10 @@ test("LIBRARY_MOVE_16 a move waits for review with old and new folders; acceptin
   // Nothing moves before review (LIBRARY-MOVE-1: apply defaults to review).
   await expect(page.getByTestId("waiting-review")).toBeVisible({ timeout: 30_000 });
   await page.getByTestId("waiting-review").getByRole("link").first().click();
-  const item = page.getByTestId("file-changeset");
+  // The whole queue item: its actions sit in the header row (UI-REFRESH-10).
+  const item = page
+    .locator("[data-testid=queue-item]")
+    .filter({ has: page.getByTestId("file-changeset") });
   await expect(item.getByTestId("old-folder")).toHaveText(src);
   await expect(item.getByTestId("new-folder")).toHaveText(dst);
   await expect(item.getByTestId("file-stamp")).toContainText("date_added");

@@ -242,3 +242,17 @@ test("UI_REFRESH_6_no_thresholds_means_an_uncolored_badge", async () => {
   const first = within(card).getAllByTestId("candidate")[0] as HTMLElement;
   expect(first.querySelector("[data-token]")).toHaveAttribute("data-token", "none");
 });
+
+test("UI_REFRESH_7_penalties_UI_REFRESH_8_tracks_UI_REFRESH_9_layout", async () => {
+  setup(decision());
+  renderApp("/review?profile=main");
+  const card = await screen.findByTestId("queue-item");
+  const best = within(card).getAllByTestId("candidate")[0] as HTMLElement;
+  expect(within(best).getByTestId("penalties").textContent).toContain("missing tracks");
+  // -8: missing tracks are a warning, with a word and a sign, not only a color.
+  expect(within(card).getByTestId("missing-tracks")).toHaveTextContent("⚠ Missing tracks");
+  // -9: candidates and tracks are two columns of one grid; the files start collapsed.
+  const tracks = within(card).getByTestId("track-table");
+  expect(tracks.closest(".mantine-Grid-col")).not.toBe(best.closest(".mantine-Grid-col"));
+  expect(within(card).queryByTestId("import-items")).toBeNull();
+});

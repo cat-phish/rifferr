@@ -653,3 +653,61 @@ test("UI_REFRESH_13_UI_REFRESH_14_album_blocks_with_a_live_status_line", async (
   });
   expect(screen.getByTestId("lane-counts")).toHaveTextContent("1 waiting · 1 active · 1 done");
 });
+
+test("UI_REFRESH_10_main_actions_sit_in_the_header_row", async () => {
+  setup({ queue: () => [csItem("cs1", NEW_RUN)] });
+  renderApp("/review?profile=main");
+  await screen.findByTestId("queue-item");
+  const actions = within(item("cs1")).getByTestId("item-actions");
+  expect(within(actions).getByRole("button", { name: "Accept" })).toBeInTheDocument();
+  expect(within(actions).getByRole("button", { name: "Reject" })).toBeInTheDocument();
+});
+
+test("UI_REFRESH_11_note_hidden_until_used_and_kept", async () => {
+  setup({ queue: () => [csItem("cs1", NEW_RUN)] });
+  renderApp("/review?profile=main");
+  await screen.findByTestId("queue-item");
+  expect(screen.queryByLabelText("Note (optional)")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Add note" }));
+  fireEvent.change(screen.getByLabelText("Note (optional)"), { target: { value: "kept" } });
+  fireEvent.click(screen.getByRole("checkbox", { name: /Accept albumdisambig/ }));
+  expect(screen.getByLabelText("Note (optional)")).toHaveValue("kept");
+});
+
+test("UI_REFRESH_12_long_tables_fold_after_8_rows", async () => {
+  const changes = Array.from({ length: 11 }, (_, n) => ({
+    field: `f${String(n)}`,
+    op: "set" as const,
+    old: "a",
+    new: "b",
+  }));
+  const cs = changeset("cs1", NEW_RUN, {
+    targets: [{ target: { scope: "album", id: "a1" }, changes }],
+  });
+  setup({ queue: () => [csItem("cs1", NEW_RUN, "proposed", cs)] });
+  renderApp("/review?profile=main");
+  await screen.findByTestId("queue-item");
+  expect(screen.getAllByTestId("field-change")).toHaveLength(8);
+  fireEvent.click(screen.getByRole("button", { name: "Show all 11" }));
+  expect(screen.getAllByTestId("field-change")).toHaveLength(11);
+});
+
+test("UI_REFRESH_16_item_links_and_accept_all_work_inside_album_blocks", async () => {
+  setup({
+    queue: () => [csItem("cs1", NEW_RUN), csItem("cs2", NEW_RUN)],
+    extra: {
+      [`GET /api/runs/${NEW_RUN}`]: () =>
+        runDetail({
+          lanes: [
+            laneOf("A", "waiting", ["cs1"], "suffix"),
+            laneOf("B", "waiting", ["cs2"], "suffix"),
+          ],
+        }),
+    },
+  });
+  renderApp("/review?profile=main&item=cs2");
+  await screen.findAllByTestId("album-block");
+  const b = screen.getAllByTestId("album-block").find((x) => x.dataset.lane === "B") as HTMLElement;
+  expect(within(b).getByTestId("queue-item")).toHaveAttribute("data-focused", "true");
+  expect(screen.getByRole("button", { name: "Accept all" })).toBeInTheDocument();
+});
