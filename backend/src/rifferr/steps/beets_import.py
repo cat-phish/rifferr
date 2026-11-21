@@ -107,6 +107,8 @@ class BeetsImportStep:
                 f"this profile's backend can't ask about imports; mode '{params.mode}' "
                 "needs import decisions (use mode: quiet)"
             )
+        if (problem := ctx.backend.lookup_problem()) is not None:  # BEETS-IMPORT-19
+            ctx.log(f"warning: {problem}")
         loop = asyncio.get_running_loop()
 
         def report(decision: ImportOutcome) -> None:
@@ -163,5 +165,7 @@ def _escaping_links(folder: Path) -> str | None:
 def _log_decision(ctx: StepContext, decision: ImportOutcome) -> None:
     reason = f": {decision.reason}" if decision.reason else ""
     ctx.log(f"{decision.outcome} {decision.path}{reason}")
+    if decision.outcome == "imported":
+        ctx.imported_folder(decision.path)  # IMPORT-UI-19
     if decision.outcome == "skipped":
         ctx.emit("run.step.import.skipped", path=decision.path, reason=decision.reason or "")

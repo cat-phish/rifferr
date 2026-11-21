@@ -253,6 +253,11 @@ class LibraryBackend(Protocol):
         when neither is given. Raises ``ImportApplyError`` when it can't."""
         ...
 
+    def lookup_problem(self) -> str | None:
+        """Why album lookups can't find any candidates, whatever the folder (beets: no
+        metadata source plugin is loaded), or ``None`` (BEETS-IMPORT-19)."""
+        ...
+
     def command_env(self) -> Mapping[str, str]:
         """Environment for CLI subprocess steps (e.g. ``BEETSDIR``)."""
         ...

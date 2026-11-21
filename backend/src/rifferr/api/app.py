@@ -266,5 +266,12 @@ def create_api(settings: ApiSettings | None = None) -> FastAPI:
 
 def create_app(settings: ApiSettings | None = None) -> ASGIApp:
     """The FastAPI app behind the full F-SECURITY stack."""
+    return create_app_and_api(settings)[0]
+
+
+def create_app_and_api(settings: ApiSettings | None = None) -> tuple[ASGIApp, FastAPI]:
+    """``create_app``, plus the FastAPI app inside the security stack, for ``serve`` to
+    reach the running server's state (CLI-6)."""
     settings = settings or ApiSettings()
-    return secure(create_api(settings), settings.security())
+    api = create_api(settings)
+    return secure(api, settings.security()), api

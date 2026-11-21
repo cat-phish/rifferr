@@ -65,6 +65,7 @@ class EventHub:
 
     def __init__(self) -> None:
         self._subscribers: dict[asyncio.Queue[Event], str | None] = {}
+        self._closed = asyncio.Event()
 
     def subscribe(self, run_id: str | None) -> asyncio.Queue[Event]:
         """``run_id=None``: the events of every run that ``on_all_stream`` picks."""
@@ -74,6 +75,32 @@ class EventHub:
 
     def unsubscribe(self, queue: asyncio.Queue[Event]) -> None:
         self._subscribers.pop(queue, None)
+
+    def close(self) -> None:
+        """The server is shutting down: every stream ends (CLI-6, B-068). An open stream
+        would otherwise keep its connection, and with it the shutdown, waiting forever."""
+        self._closed.set()
+
+    async def next(self, queue: asyncio.Queue[Event], timeout: float) -> Event | None:
+        """The next event on ``queue``, or ``None`` once the hub is closed. Raises
+        ``TimeoutError`` if neither happens within ``timeout`` seconds."""
+        if self._closed.is_set():
+            return None
+        get = asyncio.ensure_future(queue.get())
+        stop = asyncio.ensure_future(self._closed.wait())
+        try:
+            done, _ = await asyncio.wait(
+                {get, stop}, timeout=timeout, return_when=asyncio.FIRST_COMPLETED
+            )
+        finally:
+            for task in (get, stop):
+                if not task.done():
+                    task.cancel()
+        if get in done:
+            return get.result()
+        if stop in done:
+            return None
+        raise TimeoutError
 
     def publish(self, event: Event) -> None:
         for queue, run_id in list(self._subscribers.items()):

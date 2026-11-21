@@ -220,6 +220,8 @@ class FakeBackend:
         self._lookup_candidates: list[dict[str, Any]] = []
         self.lookup_calls: list[tuple[str, tuple[str, ...], str | None, str | None]] = []
         self.fail_lookup: str | None = None
+        self.lookup_problem_text: str | None = None
+        """What ``lookup_problem`` answers (BEETS-IMPORT-19)."""
         self.music_dirs: list[Path] = []
         """What ``library_dirs`` returns."""
         self.importable_suffixes: frozenset[str] = FAKE_IMPORTABLE
@@ -496,6 +498,10 @@ class FakeBackend:
             spec[RUN_MARKER] = run_id
         return self.add_album(spec)
 
+    def lookup_problem(self) -> str | None:
+        """``lookup_problem_text``, which tests set (BEETS-IMPORT-19)."""
+        return self.lookup_problem_text
+
     def _fingerprint(self, folder: str) -> str:
         return f"fake:{folder}:{self._folder_versions.get(folder, 0)}"
 
@@ -541,6 +547,9 @@ class FakeBackend:
     ) -> ImportResult:
         self._need("import_decisions")
         folder = str(path)
+        if action == "skip":  # imports nothing, so a changed or missing folder doesn't matter
+            self._questions.pop(folder, None)
+            return ImportResult(skipped=[SkippedFolder(path=folder, reason="skipped by decision")])
         entry = self._questions.get(folder)
         if entry is None:
             raise ImportApplyError(f"no import question for {folder}")
@@ -549,9 +558,6 @@ class FakeBackend:
         if self.fail_lookup is not None and action == "candidate":
             raise ImportApplyError(self.fail_lookup)
         raw, _ = entry
-        if action == "skip":
-            del self._questions[folder]
-            return ImportResult(skipped=[SkippedFolder(path=folder, reason="skipped by decision")])
         fields = _fixture_fields(raw)
         if action == "candidate":
             known = [*(raw.get("_candidates") or []), *self._lookup_candidates]

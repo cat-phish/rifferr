@@ -274,6 +274,55 @@ def test_CLI_6_signal_shuts_down_cleanly(tmp_path: Path, sig: signal.Signals) ->
     assert runs()[0] in ("cancelled", "failed")
 
 
+#: A browser tab's event stream, in a child process (this one blocks TCP connections).
+SSE_CLIENT = """
+import sys, time, httpx
+base = sys.argv[1]
+for _ in range(600):
+    try:
+        if httpx.get(base + "/healthz").status_code == 200:
+            break
+    except httpx.TransportError:
+        time.sleep(0.05)
+with httpx.stream("GET", base + "/api/events", timeout=httpx.Timeout(10.0, read=None)) as r:
+    for chunk in r.iter_text():
+        print(chunk.strip(), flush=True)
+"""
+
+
+@pytest.mark.parametrize("sig", [signal.SIGTERM, signal.SIGINT])
+def test_CLI_6_open_event_stream_does_not_block_shutdown(
+    tmp_path: Path, sig: signal.Signals
+) -> None:
+    """B-068: an open SSE stream (a browser tab) kept uvicorn waiting for it to close.
+    Over TCP: a server on a Unix socket didn't show the hang."""
+    make_profile(tmp_path)
+    with socket.socket(socket.AF_INET) as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    serve = [sys.executable, "-m", "rifferr.cli", "serve", "--no-browser", "--no-auth"]
+    proc = subprocess.Popen(
+        [*serve, "--port", str(port)], stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    )
+    client = subprocess.Popen(
+        [sys.executable, "-c", SSE_CLIENT, f"http://127.0.0.1:{port}"],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert client.stdout is not None
+        assert client.stdout.readline().strip() == ": connected"
+        proc.send_signal(sig)
+        _out, err = proc.communicate(timeout=10)
+        assert proc.returncode == 0, err.decode()[-2000:]
+        client.wait(timeout=10)  # the server ended the stream
+    finally:
+        for p in (proc, client):
+            if p.poll() is None:
+                p.kill()
+                p.communicate()
+
+
 # -- CLI-7 / CLI-8 / CLI-9: run --------------------------------------------------------------------
 
 

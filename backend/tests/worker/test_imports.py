@@ -17,6 +17,7 @@ from rifferr.profile_store import config_root, load_profile
 from rifferr.steps.beets_import import BeetsImportStep
 from rifferr.steps.review import ReviewStep
 from rifferr.worker.process import Worker
+from rifferr.worker.protocol import WorkerCommand
 from tests.engine.steps import ALL
 from tests.worker.conftest import wf
 from tests.worker.test_gates import RUN, Harness, serving
@@ -203,6 +204,78 @@ async def test_IMPORT_UI_11_changed_folder_stays_pending(h: ImportHarness) -> No
     assert h.album_names() == ["A"]
 
 
+async def test_IMPORT_UI_11_skip_works_after_the_folder_changed(h: ImportHarness) -> None:
+    await h.waiting_import()
+    decision = h.decision()
+    h.backend.change_folder(decision.path)
+    job = await h.supervisor.decide_import(decision.id, "skip", by="ui")
+    assert await h.job_done(job) == "succeeded"
+    await h.until(lambda: h.state() == "succeeded")
+    assert h.decision().state == "skipped"
+    assert h.lanes()[decision.lane_key] == ("b-folder", "skipped")
+
+
+async def test_IMPORT_UI_19_a_newer_import_supersedes_an_older_runs_decision(
+    h: ImportHarness,
+) -> None:
+    await h.waiting_import()
+    old = h.decision()
+    folder = Path(old.path)
+    folder.mkdir(parents=True, exist_ok=True)
+    h.backend.add_import_fixture(folder, [{"_folder": str(folder), "album": "B"}])
+    newer = "01NEWERRUN0000000000000000"
+    source = wf(import_step()).replace("/inbox", str(folder))
+    h.db.submit("main", {"source": source, "source_name": "wf.yaml", "vars": {}}, run_id=newer)
+    h.queue.put_nowait(WorkerCommand(kind="start_run", profile="main"))
+    await h.until(lambda: (j := h.db.job_for_run(newer)) is not None and j.state == "succeeded")
+    await h.until(lambda: h.state() == "succeeded")
+    after = h.decision()
+    assert after.state == "skipped"
+    assert after.action == "skip"
+    assert after.decided_by == "rifferr"
+    assert after.note == f"superseded: run {newer} imported this folder"
+    assert h.lanes()[old.lane_key] == ("b-folder", "skipped")
+    assert h.events("import.resolved")[-1].data == {"decision_id": old.id, "action": "skip"}
+
+
+async def test_IMPORT_UI_19_a_decided_import_supersedes_other_runs_decisions(
+    h: ImportHarness,
+) -> None:
+    await h.waiting_import()
+    old = h.decision()
+    other = old.model_copy(update={"id": "01OTHERDECISION00000000000", "run_id": "01OTHERRUN"})
+    h.imports.add(other)
+    job = await h.supervisor.decide_import(
+        old.id, "candidate", candidate_id="MusicBrainz:b1", by="ui"
+    )
+    assert await h.job_done(job) == "succeeded"
+    stale = h.imports.get(other.id)
+    assert stale is not None
+    assert stale.state == "skipped"
+    assert stale.note == f"superseded: run {RUN} imported this folder"
+    assert h.decision().state == "applied"
+
+
+async def test_IMPORT_UI_19_a_claimed_or_other_folder_decision_is_left_alone(
+    h: ImportHarness,
+) -> None:
+    await h.waiting_import()
+    old = h.decision()
+    elsewhere = old.model_copy(
+        update={"id": "01ELSEWHERE000000000000000", "run_id": "01OTHERRUN", "path": "/x/y"}
+    )
+    claimed = old.model_copy(update={"id": "01CLAIMED00000000000000000", "run_id": "01OTHERRUN"})
+    h.imports.add(elsewhere)
+    h.imports.add(claimed)
+    h.imports.claim(claimed.id, "someone")
+    job = await h.supervisor.decide_import(old.id, "asis", by="ui")
+    assert await h.job_done(job) == "succeeded"
+    for kept in (elsewhere, claimed):
+        found = h.imports.get(kept.id)
+        assert found is not None
+        assert found.state == "pending"
+
+
 async def test_IMPORT_UI_13_failure_logs_and_allows_a_retry(h: ImportHarness) -> None:
     await h.waiting_import()
     decision = h.decision()
@@ -218,6 +291,25 @@ async def test_IMPORT_UI_13_failure_logs_and_allows_a_retry(h: ImportHarness) ->
     assert await h.job_done(job) == "succeeded"
     await h.until(lambda: h.state() == "succeeded")
     assert h.decision().error is None
+
+
+async def test_BEETS_IMPORT_19_no_metadata_source_warns_and_marks_the_decision(
+    h: ImportHarness,
+) -> None:
+    h.backend.lookup_problem_text = "no metadata source"
+    await h.waiting_import()
+    assert "warning: no metadata source" in h.logs()
+    assert h.decision().lookup_problem == "no metadata source"  # IMPORT-UI-20
+    h.backend.lookup_problem_text = None  # the config was fixed; a lookup clears it
+    job = await h.supervisor.lookup_import(h.decision().id)
+    assert await h.job_done(job) == "succeeded"
+    assert h.decision().lookup_problem is None
+
+
+async def test_BEETS_IMPORT_19_no_warning_with_a_metadata_source(h: ImportHarness) -> None:
+    await h.waiting_import()
+    assert not any(line.startswith("warning:") for line in h.logs())
+    assert h.decision().lookup_problem is None
 
 
 async def test_IMPORT_UI_9_lookup_by_id_adds_candidates(h: ImportHarness) -> None:

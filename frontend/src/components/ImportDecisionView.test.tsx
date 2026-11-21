@@ -164,6 +164,16 @@ test("IMPORT_UI_15 search by ID and by artist and album", async () => {
   });
 });
 
+test("IMPORT_UI_20 no metadata source says why there are no candidates", async () => {
+  const problem = "beets has no metadata source plugin loaded <b>x</b>";
+  setup(decision({ candidates: [], lookup_problem: problem }));
+  renderApp("/review?profile=main");
+  const card = await screen.findByTestId("import-decision");
+  expect(within(card).getByTestId("lookup-problem")).toHaveTextContent(problem);
+  expect(within(card).queryByTestId("no-candidates")).not.toBeInTheDocument();
+  expect(within(card).getByRole("button", { name: "Import as-is" })).toBeEnabled();
+});
+
 test("IMPORT_UI_15 an error shows with look up again", async () => {
   const { calls } = setup(decision({ error: "the folder changed; look it up again" }), {
     "POST /api/imports/d1/decision": () => err(409, "busy", "being worked on"),

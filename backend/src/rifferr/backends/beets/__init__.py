@@ -16,7 +16,7 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import Any, cast
 
-from beets import dbcore
+from beets import dbcore, metadata_plugins
 from beets.library import Album, Item, Library
 from beets.library.queries import parse_query_parts
 
@@ -125,6 +125,14 @@ def escape_template(value: str) -> str:
     """Make ``value`` literal in a beets template: ``$``, ``%``, ``}`` and ``,`` get a
     ``$`` escape (``{`` has none and needs none once ``}`` is escaped)."""
     return _TEMPLATE_SPECIALS.sub(r"$\1", value)
+
+
+#: BEETS-IMPORT-19. Names beets' plugin and config key, and links beets' docs.
+NO_METADATA_SOURCE = (
+    "beets has no metadata source plugin loaded, so it can't find candidates for any "
+    "album. Add `musicbrainz` (or another source, such as `discogs`) to `plugins:` in "
+    "the beets config: https://beets.readthedocs.io/en/stable/plugins/musicbrainz.html"
+)
 
 
 class BeetsBackend:
@@ -236,6 +244,16 @@ class BeetsBackend:
         """``Album.item_keys`` and every flexible attribute (beets' ``Album.store``)."""
         fixed = frozenset(Album._fields)  # pyright: ignore[reportPrivateUsage]
         return SharedFields(exclude=fixed - frozenset(Album.item_keys))
+
+    def lookup_problem(self) -> str | None:
+        """BEETS-IMPORT-19: with no metadata source plugin loaded, beets' autotagger has
+        nothing to search. In beets 2.x MusicBrainz is the ``musicbrainz`` plugin, loaded
+        by itself only when the config has no ``plugins:`` list."""
+        # ``__wrapped__``: beets caches the answer for the process, and tests load
+        # several configs in one process; a worker loads once, so both agree there.
+        if metadata_plugins.find_metadata_source_plugins.__wrapped__():
+            return None
+        return NO_METADATA_SOURCE
 
     def command_env(self) -> Mapping[str, str]:
         return {"BEETSDIR": str(self.beetsdir)}
@@ -497,12 +515,12 @@ class BeetsBackend:
     ) -> ImportResult:
         """Apply an import decision to the one folder ``path`` (IMPORT-UI-11)."""
         self._writable("import")
-        if not path.is_dir() or folder_fingerprint(str(path)) != fingerprint:
-            raise ImportApplyError("the folder changed; look it up again")
-        if action == "skip":
+        if action == "skip":  # imports nothing, so a changed or missing folder doesn't matter
             return ImportResult(
                 skipped=[SkippedFolder(path=str(path), reason="skipped by decision")]
             )
+        if not path.is_dir() or folder_fingerprint(str(path)) != fingerprint:
+            raise ImportApplyError("the folder changed; look it up again")
         if action == "candidate" and not candidate_id:
             raise ImportApplyError("choose a candidate")
         marker = run_id or new_ulid()

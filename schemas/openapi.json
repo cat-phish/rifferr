@@ -2291,6 +2291,18 @@
             "title": "Kind",
             "type": "string"
           },
+          "lookup_problem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the backend can't find candidates at all, e.g. no metadata source plugin loaded (IMPORT-UI-20); the queue shows it instead of 'no candidates'",
+            "title": "Lookup Problem"
+          },
           "note": {
             "anyOf": [
               {
