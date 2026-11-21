@@ -1,8 +1,8 @@
 import {
   Alert,
   Anchor,
-  Badge,
   Button,
+  Grid,
   Group,
   Radio,
   Stack,
@@ -17,6 +17,12 @@ import type { ImportCandidate, ImportDecision } from "../api/types";
 import { BEETS_DOCS } from "../lib/beetsDocs";
 import { webUrl } from "../lib/webUrl";
 import { time } from "../lib/format";
+import { tc } from "../theme";
+import { Diff } from "./Diff";
+import { useFold } from "./Fold";
+import { HeaderActions } from "./HeaderActions";
+import { MatchBadge, Penalties, type MatchThresholds } from "./MatchBadge";
+import { NoteField } from "./NoteField";
 
 type Action = "candidate" | "asis" | "skip" | "keep" | "remove" | "merge";
 
@@ -34,7 +40,8 @@ export function seconds(length?: number | null): string {
   return `${String(Math.floor(s / 60))}:${String(s % 60).padStart(2, "0")}`;
 }
 
-/** beets' distance as a percentage: 0 % is a perfect match. */
+/** beets' distance as a percentage: 0 % is a perfect match. The card shows similarity
+ * instead (UI-REFRESH-6, `similarityPercent`). */
 export function distancePercent(distance: number): string {
   return `${(distance * 100).toFixed(1)} %`;
 }
@@ -47,13 +54,16 @@ export function parseIds(text: string): string[] {
     .filter((s) => s !== "");
 }
 
-/** An import decision in the review queue (F-IMPORT-UI IMPORT-UI-15). */
+/** An import decision in the review queue (F-IMPORT-UI IMPORT-UI-15; layout and colors
+ * F-UI-REFRESH UI-REFRESH-6 .. -9): candidates on the left, the selected one's track
+ * table on the right, the main actions in the item's header. */
 export function ImportDecisionView({ decision }: { decision: ImportDecision }) {
   const queryClient = useQueryClient();
   const candidates = [...(decision.candidates ?? [])].sort((a, b) => a.distance - b.distance);
   const [selected, setSelected] = useState<string | null>(candidates[0]?.id ?? null);
   const [note, setNote] = useState("");
   const chosen = candidates.find((c) => c.id === selected) ?? null;
+  const thresholds = decision.match_thresholds ?? null;
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ["review"] });
 
   const decide = useMutation({
@@ -83,57 +93,66 @@ export function ImportDecisionView({ decision }: { decision: ImportDecision }) {
   const busy = decide.isPending || lookup.isPending;
 
   return (
-    <Stack gap="sm" data-testid="import-decision">
-      <Text size="sm" ff="monospace" data-testid="import-path">
-        {decision.path}
-      </Text>
-      {decision.deadline && (
-        <Text size="sm" data-testid="deadline">
-          If nobody decides by {time(decision.deadline)}, it will{" "}
-          {decision.on_timeout === "asis" && decision.kind === "match" ? "import as-is" : "skip"}{" "}
-          automatically.
+    <Stack gap={6} data-testid="import-decision">
+      <Group gap="xs" wrap="wrap">
+        <Text size="sm" ff="monospace" data-testid="import-path">
+          {decision.path}
         </Text>
-      )}
+        {decision.deadline && (
+          <Text size="xs" c="dimmed" data-testid="deadline">
+            If nobody decides by {time(decision.deadline)}, it will{" "}
+            {decision.on_timeout === "asis" && decision.kind === "match" ? "import as-is" : "skip"}{" "}
+            automatically.
+          </Text>
+        )}
+      </Group>
       {decision.error && (
-        <Alert color="red" data-testid="import-error">
-          <Stack gap="xs">
+        <Alert color="red" data-testid="import-error" p="xs">
+          <Group gap="xs" justify="space-between">
             <Text size="sm">{decision.error}</Text>
-            <Group>
-              <Button
-                size="xs"
-                variant="light"
-                loading={lookup.isPending}
-                disabled={busy}
-                onClick={() => {
-                  lookup.mutate({});
-                }}
-              >
-                Look up again
-              </Button>
-            </Group>
-          </Stack>
+            <Button
+              size="xs"
+              variant="light"
+              loading={lookup.isPending}
+              disabled={busy}
+              onClick={() => {
+                lookup.mutate({});
+              }}
+            >
+              Look up again
+            </Button>
+          </Group>
         </Alert>
       )}
       <FolderItems decision={decision} />
       {decision.kind === "duplicate" ? (
         <Duplicates decision={decision} />
       ) : (
-        <Candidates
-          candidates={candidates}
-          selected={selected}
-          onSelect={setSelected}
-          lookupProblem={decision.lookup_problem ?? null}
-        />
-      )}
-      {decision.kind === "match" && chosen && <TrackTable candidate={chosen} />}
-      {decision.kind === "match" && (
-        <Search
-          busy={busy}
-          pending={lookup.isPending}
-          onSearch={(body) => {
-            lookup.mutate(body);
-          }}
-        />
+        <Grid gap="md">
+          <Grid.Col span={{ base: 12, md: chosen ? 5 : 12 }}>
+            <Stack gap={6}>
+              <Candidates
+                candidates={candidates}
+                selected={selected}
+                onSelect={setSelected}
+                thresholds={thresholds}
+                lookupProblem={decision.lookup_problem ?? null}
+              />
+              <Search
+                busy={busy}
+                pending={lookup.isPending}
+                onSearch={(body) => {
+                  lookup.mutate(body);
+                }}
+              />
+            </Stack>
+          </Grid.Col>
+          {chosen && (
+            <Grid.Col span={{ base: 12, md: 7 }}>
+              <TrackTable candidate={chosen} />
+            </Grid.Col>
+          )}
+        </Grid>
       )}
       {(decide.error ?? lookup.error) && (
         <Alert color="red">{(decide.error ?? lookup.error)?.message}</Alert>
@@ -143,122 +162,131 @@ export function ImportDecisionView({ decision }: { decision: ImportDecision }) {
           Looking it up; new candidates appear here.
         </Text>
       )}
-      {decide.isSuccess ? (
-        <Text size="sm" c="dimmed" data-testid="decision-sent">
-          {decide.variables === "skip" ? "Skipping it." : "Importing it."}
+      <Group justify="space-between" gap="xs">
+        {decide.isSuccess ? <span /> : <NoteField value={note} onChange={setNote} />}
+        <Text size="xs" c="dimmed">
+          How beets matches albums:{" "}
+          <Anchor href={BEETS_DOCS.importer} target="_blank" rel="noreferrer" size="xs">
+            the beets importer
+          </Anchor>
         </Text>
-      ) : (
-        <Group justify="space-between" align="flex-end">
-          <TextInput
-            size="xs"
-            label="Note (optional)"
-            value={note}
-            onChange={(e) => {
-              setNote(e.currentTarget.value);
-            }}
-            w={260}
-          />
-          <Group gap="xs">
-            {decision.kind === "match" ? (
-              <>
-                <Button
-                  size="xs"
-                  disabled={busy || chosen === null}
-                  loading={decide.isPending && decide.variables === "candidate"}
-                  onClick={() => {
-                    decide.mutate("candidate");
-                  }}
-                >
-                  Import this match
-                </Button>
-                <Button
-                  size="xs"
-                  variant="light"
-                  disabled={busy}
-                  loading={decide.isPending && decide.variables === "asis"}
-                  onClick={() => {
-                    decide.mutate("asis");
-                  }}
-                >
-                  Import as-is
-                </Button>
-                <Button
-                  size="xs"
-                  variant="light"
-                  color="gray"
-                  disabled={busy}
-                  loading={decide.isPending && decide.variables === "skip"}
-                  onClick={() => {
-                    decide.mutate("skip");
-                  }}
-                >
-                  Skip
-                </Button>
-              </>
-            ) : (
-              DUPLICATE_CHOICES.map((c) => (
-                <Button
-                  key={c.action}
-                  size="xs"
-                  variant={c.action === "skip" ? "light" : "filled"}
-                  color={c.action === "remove" ? "red" : undefined}
-                  title={c.says}
-                  disabled={busy}
-                  loading={decide.isPending && decide.variables === c.action}
-                  onClick={() => {
-                    decide.mutate(c.action);
-                  }}
-                >
-                  {c.label}
-                </Button>
-              ))
-            )}
-          </Group>
-        </Group>
-      )}
-      <Text size="xs" c="dimmed">
-        How beets matches albums:{" "}
-        <Anchor href={BEETS_DOCS.importer} target="_blank" rel="noreferrer" size="xs">
-          the beets importer
-        </Anchor>
-      </Text>
+      </Group>
+      <HeaderActions>
+        {decide.isSuccess ? (
+          <Text size="sm" c="dimmed" data-testid="decision-sent">
+            {decide.variables === "skip" ? "Skipping it." : "Importing it."}
+          </Text>
+        ) : decision.kind === "match" ? (
+          <>
+            <Button
+              size="xs"
+              disabled={busy || chosen === null}
+              loading={decide.isPending && decide.variables === "candidate"}
+              onClick={() => {
+                decide.mutate("candidate");
+              }}
+            >
+              Import this match
+            </Button>
+            <Button
+              size="xs"
+              variant="light"
+              disabled={busy}
+              loading={decide.isPending && decide.variables === "asis"}
+              onClick={() => {
+                decide.mutate("asis");
+              }}
+            >
+              Import as-is
+            </Button>
+            <Button
+              size="xs"
+              variant="light"
+              color="gray"
+              disabled={busy}
+              loading={decide.isPending && decide.variables === "skip"}
+              onClick={() => {
+                decide.mutate("skip");
+              }}
+            >
+              Skip
+            </Button>
+          </>
+        ) : (
+          DUPLICATE_CHOICES.map((c) => (
+            <Button
+              key={c.action}
+              size="xs"
+              variant={c.action === "skip" ? "light" : "filled"}
+              color={c.action === "remove" ? "red" : undefined}
+              title={c.says}
+              disabled={busy}
+              loading={decide.isPending && decide.variables === c.action}
+              onClick={() => {
+                decide.mutate(c.action);
+              }}
+            >
+              {c.label}
+            </Button>
+          ))
+        )}
+      </HeaderActions>
     </Stack>
   );
 }
 
+/** The folder's files as they are now, collapsed by default (UI-REFRESH-9). */
 function FolderItems({ decision }: { decision: ImportDecision }) {
   const items = decision.items ?? [];
+  const [open, setOpen] = useState(false);
+  const fold = useFold(items);
   if (items.length === 0) return null;
   return (
-    <Stack gap={4}>
-      <Text size="sm" fw={500}>
-        Files now
-      </Text>
-      <Table fz="sm" withRowBorders={false} data-testid="import-items">
-        <Table.Thead>
-          <Table.Tr>
-            <Table.Th>#</Table.Th>
-            <Table.Th>Title</Table.Th>
-            <Table.Th>Artist</Table.Th>
-            <Table.Th>Album</Table.Th>
-            <Table.Th>Length</Table.Th>
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {items.map((item) => {
-            const tags = item.tags ?? {};
-            return (
-              <Table.Tr key={item.path}>
-                <Table.Td>{String(tags.track ?? "")}</Table.Td>
-                <Table.Td>{String(tags.title ?? item.path.split("/").pop() ?? "")}</Table.Td>
-                <Table.Td>{String(tags.artist ?? "")}</Table.Td>
-                <Table.Td>{String(tags.album ?? "")}</Table.Td>
-                <Table.Td>{seconds(item.length)}</Table.Td>
+    <Stack gap={2}>
+      <Group>
+        <Button
+          variant="subtle"
+          size="compact-xs"
+          aria-expanded={open}
+          onClick={() => {
+            setOpen((o) => !o);
+          }}
+        >
+          {open
+            ? "Hide the folder's files"
+            : `Show the folder's ${String(items.length)} file${items.length === 1 ? "" : "s"}`}
+        </Button>
+      </Group>
+      {open && (
+        <>
+          <Table fz="sm" withRowBorders={false} verticalSpacing={2} data-testid="import-items">
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>#</Table.Th>
+                <Table.Th>Title</Table.Th>
+                <Table.Th>Artist</Table.Th>
+                <Table.Th>Album</Table.Th>
+                <Table.Th>Length</Table.Th>
               </Table.Tr>
-            );
-          })}
-        </Table.Tbody>
-      </Table>
+            </Table.Thead>
+            <Table.Tbody>
+              {fold.shown.map((item) => {
+                const tags = item.tags ?? {};
+                return (
+                  <Table.Tr key={item.path}>
+                    <Table.Td>{String(tags.track ?? "")}</Table.Td>
+                    <Table.Td>{String(tags.title ?? item.path.split("/").pop() ?? "")}</Table.Td>
+                    <Table.Td>{String(tags.artist ?? "")}</Table.Td>
+                    <Table.Td>{String(tags.album ?? "")}</Table.Td>
+                    <Table.Td>{seconds(item.length)}</Table.Td>
+                  </Table.Tr>
+                );
+              })}
+            </Table.Tbody>
+          </Table>
+          {fold.control}
+        </>
+      )}
     </Stack>
   );
 }
@@ -267,13 +295,16 @@ function Candidates({
   candidates,
   selected,
   onSelect,
+  thresholds,
   lookupProblem,
 }: {
   candidates: ImportCandidate[];
   selected: string | null;
   onSelect: (id: string) => void;
+  thresholds: MatchThresholds | null;
   lookupProblem: string | null;
 }) {
+  const fold = useFold(candidates);
   if (candidates.length === 0 && lookupProblem) {
     // IMPORT-UI-20: say why there can't be candidates, not just that there are none
     return (
@@ -290,64 +321,68 @@ function Candidates({
     );
   }
   return (
-    <Radio.Group
-      value={selected}
-      onChange={onSelect}
-      label="Candidates (lower distance is a closer match)"
-    >
-      <Stack gap={6} mt={4}>
-        {candidates.map((c) => (
+    <Radio.Group value={selected} onChange={onSelect} label="Candidates (best match first)">
+      <Stack gap={4} mt={4}>
+        {fold.shown.map((c) => (
           <div key={c.id} data-testid="candidate" data-candidate={c.id}>
             <Radio
               value={c.id}
+              size="xs"
               label={
-                <Group gap="xs" wrap="wrap">
-                  <Text size="sm" fw={500}>
-                    {c.artist} - {c.album}
-                  </Text>
-                  <Badge variant="light" size="sm">
-                    distance {distancePercent(c.distance)}
-                  </Badge>
-                  <Text size="xs" c="dimmed">
-                    {[
-                      c.source,
-                      c.year,
-                      c.country,
-                      c.label,
-                      c.catalognum,
-                      c.media,
-                      `${String(c.tracks)} tracks`,
-                    ]
-                      .filter((v) => v !== null && v !== undefined && v !== "")
-                      .join(" · ")}
-                  </Text>
-                  {webUrl(c.url) && (
-                    <Anchor
-                      href={webUrl(c.url) ?? undefined}
-                      target="_blank"
-                      rel="noreferrer"
-                      size="xs"
-                    >
-                      open on {c.source}
-                    </Anchor>
-                  )}
-                </Group>
+                <Stack gap={0}>
+                  <Group gap="xs" wrap="wrap">
+                    <MatchBadge distance={c.distance} thresholds={thresholds} />
+                    <Text size="sm" fw={500}>
+                      {c.artist} - {c.album}
+                    </Text>
+                  </Group>
+                  <Group gap="xs" wrap="wrap">
+                    <Text size="xs" c="dimmed">
+                      {[
+                        c.source,
+                        c.year,
+                        c.country,
+                        c.label,
+                        c.catalognum,
+                        c.media,
+                        `${String(c.tracks)} tracks`,
+                      ]
+                        .filter((v) => v !== null && v !== undefined && v !== "")
+                        .join(" · ")}
+                    </Text>
+                    {webUrl(c.url) && (
+                      <Anchor
+                        href={webUrl(c.url) ?? undefined}
+                        target="_blank"
+                        rel="noreferrer"
+                        size="xs"
+                      >
+                        open on {c.source}
+                      </Anchor>
+                    )}
+                  </Group>
+                  <Penalties names={c.penalties ?? []} />
+                </Stack>
               }
             />
           </div>
         ))}
+        {fold.control}
       </Stack>
     </Radio.Group>
   );
 }
 
+const WARNING = { color: tc("warning") } as const;
+
 function TrackTable({ candidate }: { candidate: ImportCandidate }) {
   const mapping = [...(candidate.mapping ?? [])].sort((a, b) => (a.track ?? 0) - (b.track ?? 0));
   const missing = candidate.missing ?? [];
   const unmatched = candidate.unmatched ?? [];
+  const fold = useFold(mapping);
   return (
     <Stack gap={4} data-testid="track-table">
-      <Table fz="sm" withRowBorders={false}>
+      <Table fz="sm" withRowBorders={false} verticalSpacing={2}>
         <Table.Thead>
           <Table.Tr>
             <Table.Th>#</Table.Th>
@@ -357,29 +392,37 @@ function TrackTable({ candidate }: { candidate: ImportCandidate }) {
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
-          {mapping.map((m) => (
-            <Table.Tr key={m.item}>
-              <Table.Td>{m.track ?? ""}</Table.Td>
-              <Table.Td>{m.title_before ?? ""}</Table.Td>
-              <Table.Td
-                fw={m.title_before === m.title_after ? undefined : 500}
-                c={m.title_before === m.title_after ? undefined : "blue"}
+          {fold.shown.map((m) => {
+            const before = m.title_before ?? "";
+            const after = m.title_after ?? "";
+            return (
+              <Table.Tr
+                key={m.item}
+                data-testid="track"
+                data-changed={before === after ? undefined : "true"}
               >
-                {m.title_after ?? ""}
-              </Table.Td>
-              <Table.Td>{seconds(m.length)}</Table.Td>
-            </Table.Tr>
-          ))}
+                <Table.Td c="dimmed">{m.track ?? ""}</Table.Td>
+                <Table.Td>
+                  <Diff old={before} new={after} side="old" empty="" />
+                </Table.Td>
+                <Table.Td>
+                  <Diff old={before} new={after} side="new" empty="" />
+                </Table.Td>
+                <Table.Td c="dimmed">{seconds(m.length)}</Table.Td>
+              </Table.Tr>
+            );
+          })}
         </Table.Tbody>
       </Table>
+      {fold.control}
       {missing.length > 0 && (
-        <Text size="sm" c="orange" data-testid="missing-tracks">
-          Missing tracks (no file): {missing.join(", ")}
+        <Text size="sm" style={WARNING} data-testid="missing-tracks">
+          ⚠ Missing tracks (no file): {missing.join(", ")}
         </Text>
       )}
       {unmatched.length > 0 && (
-        <Text size="sm" c="orange" data-testid="unmatched-files">
-          Unmatched files (no track): {unmatched.map((p) => p.split("/").pop()).join(", ")}
+        <Text size="sm" style={WARNING} data-testid="unmatched-files">
+          ⚠ Unmatched files (no track): {unmatched.map((p) => p.split("/").pop()).join(", ")}
         </Text>
       )}
     </Stack>
@@ -399,7 +442,7 @@ function Search({
   const [artist, setArtist] = useState("");
   const [album, setAlbum] = useState("");
   return (
-    <Stack gap="xs">
+    <Group align="flex-end" gap="xs" wrap="wrap">
       <Group align="flex-end" gap="xs">
         <TextInput
           size="xs"
@@ -417,7 +460,7 @@ function Search({
           onChange={(e) => {
             setIds(e.currentTarget.value);
           }}
-          w={320}
+          w={220}
         />
         <Button
           size="xs"
@@ -439,7 +482,7 @@ function Search({
           onChange={(e) => {
             setArtist(e.currentTarget.value);
           }}
-          w={200}
+          w={150}
         />
         <TextInput
           size="xs"
@@ -448,7 +491,7 @@ function Search({
           onChange={(e) => {
             setAlbum(e.currentTarget.value);
           }}
-          w={200}
+          w={150}
         />
         <Button
           size="xs"
@@ -462,7 +505,7 @@ function Search({
           Search by artist and album
         </Button>
       </Group>
-    </Stack>
+    </Group>
   );
 }
 

@@ -44,7 +44,11 @@ function decision(over: Partial<S["ImportDecision"]> = {}): S["ImportDecision"] 
     path: "/in/Live",
     fingerprint: "fp",
     items: [{ path: "/in/Live/01.flac", length: 61, tags: { title: "one", track: 1 } }],
-    candidates: [candidate("c2", 0.4), candidate("c1", 0.125, { missing: ["Three"] })],
+    candidates: [
+      candidate("c2", 0.4),
+      candidate("c1", 0.125, { missing: ["Three"], penalties: ["missing_tracks", "year"] }),
+    ],
+    match_thresholds: { strong: 0.04, medium: 0.25 },
     duplicates: [],
     options: {},
     set_fields: {},
@@ -97,12 +101,21 @@ test("IMPORT_UI_15 helpers", () => {
 test("IMPORT_UI_15 candidates best first, track table, import this match", async () => {
   const { calls } = setup(decision());
   renderApp("/review?profile=main");
-  const card = await screen.findByTestId("import-decision");
+  const card = await screen.findByTestId("queue-item");
   expect(within(card).getByTestId("import-path")).toHaveTextContent("/in/Live");
+  // The folder's files are collapsed by default (UI-REFRESH-9).
+  expect(within(card).queryByTestId("import-items")).toBeNull();
+  fireEvent.click(within(card).getByRole("button", { name: "Show the folder's 1 file" }));
   expect(within(card).getByTestId("import-items")).toHaveTextContent("one");
   const listed = within(card).getAllByTestId("candidate");
   expect(listed.map((c) => c.dataset.candidate)).toEqual(["c1", "c2"]);
-  expect(listed[0]).toHaveTextContent("distance 12.5 %");
+  // Similarity colored by the profile's thresholds (UI-REFRESH-6), penalties (-7).
+  expect(listed[0]).toHaveTextContent("similarity 87.5 %");
+  expect(listed[0]?.querySelector("[data-token]")).toHaveAttribute("data-token", "warning");
+  expect(listed[1]?.querySelector("[data-token]")).toHaveAttribute("data-token", "danger");
+  expect(within(listed[0] as HTMLElement).getByTestId("penalties")).toHaveTextContent(
+    "missing tracks, year",
+  );
   expect(listed[0]).toHaveTextContent("MusicBrainz · 2001 · XE · Label · CAT-1 · CD · 2 tracks");
   expect(within(card).getAllByRole("link", { name: "open on MusicBrainz" })[0]).toHaveAttribute(
     "href",
@@ -114,6 +127,11 @@ test("IMPORT_UI_15 candidates best first, track table, import this match", async
   expect(within(card).getByTestId("missing-tracks")).toHaveTextContent("Three");
   fireEvent.click(within(card).getByRole("radio", { name: /Live c2/ }));
   expect(within(card).queryByTestId("missing-tracks")).not.toBeInTheDocument();
+  // A changed title is marked, a matching one dimmed (UI-REFRESH-8).
+  const rows = within(tracks).getAllByTestId("track");
+  expect(rows[0]).toHaveAttribute("data-changed", "true");
+  expect(rows[1]).not.toHaveAttribute("data-changed");
+  fireEvent.click(within(card).getByRole("button", { name: "Add note" }));
   fireEvent.change(within(card).getByLabelText("Note (optional)"), { target: { value: "ok" } });
   fireEvent.click(within(card).getByRole("button", { name: "Import this match" }));
   expect(await within(card).findByTestId("decision-sent")).toHaveTextContent("Importing it.");
@@ -125,7 +143,7 @@ test("IMPORT_UI_15 candidates best first, track table, import this match", async
 test("IMPORT_UI_15 import as-is and skip", async () => {
   const { calls } = setup(decision());
   renderApp("/review?profile=main");
-  const card = await screen.findByTestId("import-decision");
+  const card = await screen.findByTestId("queue-item");
   fireEvent.click(within(card).getByRole("button", { name: "Skip" }));
   expect(await within(card).findByTestId("decision-sent")).toHaveTextContent("Skipping it.");
   expect(bodies(calls, "/api/imports/d1/decision")).toEqual([
@@ -136,7 +154,7 @@ test("IMPORT_UI_15 import as-is and skip", async () => {
 test("IMPORT_UI_15 search by ID and by artist and album", async () => {
   const { calls } = setup(decision({ candidates: [] }));
   renderApp("/review?profile=main");
-  const card = await screen.findByTestId("import-decision");
+  const card = await screen.findByTestId("queue-item");
   expect(within(card).getByTestId("no-candidates")).toBeInTheDocument();
   expect(within(card).getByRole("button", { name: "Import this match" })).toBeDisabled();
   expect(within(card).getByRole("link", { name: "search_ids" })).toHaveAttribute(
@@ -168,7 +186,7 @@ test("IMPORT_UI_20 no metadata source says why there are no candidates", async (
   const problem = "beets has no metadata source plugin loaded <b>x</b>";
   setup(decision({ candidates: [], lookup_problem: problem }));
   renderApp("/review?profile=main");
-  const card = await screen.findByTestId("import-decision");
+  const card = await screen.findByTestId("queue-item");
   expect(within(card).getByTestId("lookup-problem")).toHaveTextContent(problem);
   expect(within(card).queryByTestId("no-candidates")).not.toBeInTheDocument();
   expect(within(card).getByRole("button", { name: "Import as-is" })).toBeEnabled();
@@ -179,7 +197,7 @@ test("IMPORT_UI_15 an error shows with look up again", async () => {
     "POST /api/imports/d1/decision": () => err(409, "busy", "being worked on"),
   });
   renderApp("/review?profile=main");
-  const card = await screen.findByTestId("import-decision");
+  const card = await screen.findByTestId("queue-item");
   expect(within(card).getByTestId("import-error")).toHaveTextContent("the folder changed");
   fireEvent.click(within(card).getByRole("button", { name: "Look up again" }));
   await waitFor(() => {
@@ -215,4 +233,12 @@ test("IMPORT_UI_15 a duplicate shows the existing album and the four choices", a
       { action: "keep", candidate_id: null, note: null },
     ]);
   });
+});
+
+test("UI_REFRESH_6_no_thresholds_means_an_uncolored_badge", async () => {
+  setup(decision({ match_thresholds: null }));
+  renderApp("/review?profile=main");
+  const card = await screen.findByTestId("queue-item");
+  const first = within(card).getAllByTestId("candidate")[0] as HTMLElement;
+  expect(first.querySelector("[data-token]")).toHaveAttribute("data-token", "none");
 });
