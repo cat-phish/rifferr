@@ -135,8 +135,10 @@ class _RunState:
         notify: NotifyTargets | None = None,
         profile_settings: ProfileFile | None = None,
         busy: Callable[[], list[BusyFolder]] | None = None,
+        imported: Callable[[str], None] | None = None,
     ) -> None:
         self.run = run
+        self.imported = imported
         self.notify = notify
         self.profile_settings = profile_settings
         self.busy = busy
@@ -234,6 +236,7 @@ class Engine:
         profile_settings: ProfileFile | None = None,
         busy: Callable[[], list[BusyFolder]] | None = None,
         calls: Calls | None = None,
+        imported: Callable[[str], None] | None = None,
     ) -> Run:
         """Validate and create a queued run (RUN-10, RUN-11).
 
@@ -244,6 +247,8 @@ class Engine:
         ``notify``: the profile's notification targets (S-NOTIFY), for ``ctx.notify``.
         ``profile_settings``: ``profile.yaml`` as loaded, for ``ctx.profile_settings``.
         ``busy``: folders other work still needs (FILES-CLEANUP-7), for ``ctx.busy_folders``.
+        ``imported``: called with each folder a step imported, for ``ctx.imported_folder``
+        (IMPORT-UI-19).
         ``calls``: the workflow files ``wf`` calls, as stored with the job; the run's
         steps are ``wf`` with every call expanded (S-SUBWORKFLOW).
         ``run_input`` / ``trigger``: ``{{ run.input }}`` / ``{{ run.trigger }}``
@@ -302,6 +307,7 @@ class Engine:
             notify,
             profile_settings,
             busy,
+            imported,
         )
         self._state[run.id].run_supplied = run_supplied
         return run
@@ -719,6 +725,7 @@ class Engine:
                 base_url=state.notify.base_url if state.notify is not None else None,
                 profile_settings=state.profile_settings,
                 busy_folders=state.busy,
+                imported_folder=state.imported,
                 request_cleanup=lambda request: self._request_cleanup(state, spec, request),
                 request_cover=lambda request: self._request_cover(state, spec, request),
                 request_move_conflict=lambda plan, settings: self._request_move_conflict(

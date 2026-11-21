@@ -41,11 +41,16 @@ from rifferr.backends.loader import load_backend
 from rifferr.core.changeset import ChangeSet, ChangeSource, FieldChange, TargetChange, TargetRef
 from rifferr.core.covers import ART_FIELD
 from rifferr.core.ids import new_ulid
-from rifferr.core.imports import ImportAction, ImportApplyError, merge_candidates
+from rifferr.core.imports import (
+    ImportAction,
+    ImportApplyError,
+    ImportDecision,
+    merge_candidates,
+)
 from rifferr.core.profile import Profile, ProfileError, ProfileLoadError, Redactor
 from rifferr.core.review import ReviewGate
 from rifferr.core.selection import Selection
-from rifferr.core.snapshot import label
+from rifferr.core.snapshot import AlbumSnapshot, label
 from rifferr.core.workflow import WorkflowLoadError, load_workflow
 from rifferr.credentials import ProfileSecrets, SecretResolver
 from rifferr.engine import (
@@ -360,6 +365,7 @@ class Worker:
                 notify=self.notify,
                 profile_settings=self._current_settings(),
                 busy=lambda: busy_folders(self.db, self.profile.name, job.run),
+                imported=lambda path: self._supersede_imports(path, job.run),
                 calls=stored_calls(wf, doc, payload),
                 last_seq=self._next_seq(job.run) - 1 if resume_after else 0,
             )
@@ -514,13 +520,38 @@ class Worker:
             self._finish_job(job, "failed", message)
             return
         album = result.imported[0] if result.imported else None
+        self._resolve_import(
+            decision,
+            cast(ImportAction, action),
+            candidate_id=candidate_id if isinstance(candidate_id, str) else None,
+            by=by if isinstance(by, str) else None,
+            note=note if isinstance(note, str) else None,
+            album=album,
+        )
+        self._finish_job(job, "succeeded", result={"album_id": decision.album_id})
+        self._settle(decision.run_id)
+        if album is not None:
+            self._supersede_imports(decision.path, decision.run_id)
+
+    def _resolve_import(
+        self,
+        decision: ImportDecision,
+        action: ImportAction,
+        *,
+        candidate_id: str | None,
+        by: str | None,
+        note: str | None,
+        album: AlbumSnapshot | None,
+    ) -> None:
+        """Record a decided import and end or rename its lane (IMPORT-UI-12, -17)."""
+        emit = self._changeset_emitter(decision.run_id, decision.step_id)
         decision.state = "skipped" if action == "skip" else "applied"
-        decision.action = cast(ImportAction, action)
-        decision.candidate_id = candidate_id if isinstance(candidate_id, str) else None
+        decision.action = action
+        decision.candidate_id = candidate_id
         decision.error = None
-        decision.decided_by = by if isinstance(by, str) else None
+        decision.decided_by = by
         decision.decided_at = datetime.now(UTC)
-        decision.note = note if isinstance(note, str) else None
+        decision.note = note
         decision.album_id = album.id if album is not None else None
         self.imports.release(decision)
         data: dict[str, JsonValue] = {"decision_id": decision.id, "action": action}
@@ -539,12 +570,32 @@ class Worker:
         else:
             self.lanes.rename(decision.run_id, key, album.id, label(album))  # LANES-14
             self.lanes.resolve_hold(decision.run_id, decision.id)
-        self._finish_job(job, "succeeded", result={"album_id": decision.album_id})
+
+    def _settle(self, run_id: str) -> None:
         settle(
             self.db,
-            decision.run_id,
-            lambda type, step, d: self._changeset_emitter(decision.run_id, step)(type, d),
+            run_id,
+            lambda type, step, d: self._changeset_emitter(run_id, step)(type, d),
         )
+
+    def _supersede_imports(self, path: str, run_id: str) -> None:
+        """IMPORT-UI-19: ``run_id`` imported the folder ``path``, so other runs' pending,
+        unclaimed decisions for that same folder are stale. Skip them."""
+        folder = Path(path)
+        for old in self.imports.pending(profile=self.profile.name):
+            if old.run_id == run_id or Path(old.path) != folder:
+                continue
+            if self.imports.claimed(old.id):  # a person is answering it right now
+                continue
+            self._resolve_import(
+                old,
+                "skip",
+                candidate_id=None,
+                by="rifferr",
+                note=f"superseded: run {run_id} imported this folder",
+                album=None,
+            )
+            self._settle(old.run_id)
 
     def _apply_cleanup(self, job: Job) -> None:
         """Clean a folder a person (or the timeout) chose Delete for (FILES-CLEANUP-14)."""

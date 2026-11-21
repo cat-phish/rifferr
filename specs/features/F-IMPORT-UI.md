@@ -94,6 +94,7 @@ and C-LANES (a `skipped` lane state, IMPORT-UI-17).
   An error from IMPORT-UI-11 or -13 MUST be shown on the item with "Look up again". Labels use beets' terms (candidate, as-is, distance, `search_ids`) and link the beets importer docs.
 - IMPORT-UI-16: The run page lane table (LANES-15) MUST show a pending lane's hold as "import decision", linked to the queue item.
 - IMPORT-UI-18: `ImportCandidate.url` MUST be null unless it is an http(s) URL; the UI re-checks.
+- IMPORT-UI-19: When a run imports an album folder (by its `beets.import` step or by an applied decision), every other run's pending, unclaimed import decision in the same profile for that same folder MUST be resolved as `skipped`, with `decided_by: rifferr` and the note "superseded: run <id> imported this folder". `import.resolved` is emitted and the lane ends `skipped` (IMPORT-UI-17), as for a manual skip. A decision a job holds is left alone. Folders are compared as the backend reports them: beets reports an imported album's folder, which is the source folder only for in-place imports (`copy: no`, `move: no`). (B-071, 2026-11-20: a stale decision made FILES-CLEANUP-7 treat the folder as busy.)
 
 Implementation notes (2026-11-13, added while implementing; not new behavior):
 - Questions come back in `ImportResult.questions`, not through the `decide` callback: the backend's import returns them, and the step calls `ctx.request_import` for each. `DecisionCallback` stays in the protocol, reserved. The old `backends.base.ImportDecision` (a per-folder outcome) is renamed `ImportOutcome`; `ImportDecision` is now the stored decision (`core.imports`).
@@ -149,6 +150,7 @@ class ImportDecision(BaseModel):
     album_id: str | None
 ```
 - Step API, public like `ctx.open_gate` (non-negotiable 7): `ctx.request_import(decision) -> id`. The engine stores the decision through an `ImportDecisionStore` and calls `ctx.hold("pending:<id>", "import", id)`.
+- Step API: `ctx.imported_folder(path)` tells the engine a step imported that album folder (IMPORT-UI-19). `beets.import` calls it for each `imported` outcome.
 - Backend: `LibraryBackend.import_folder(..., mode="auto" | "interactive", decide=...)`. The `decide` callback gets a structured question and returns "defer" (lookup). A new `import_decided(path, action, *, candidate_id=None, duplicate_action=None, run_id, options, set_fields)` does the apply. A `lookup(path, *, ids=(), artist=None, album=None) -> list[ImportCandidate]` serves IMPORT-UI-9. Capability `import_decisions`.
 - beets in-process (architecture §8): an `ImportSession` subclass using `choose_match`, `resolve_duplicate`/`get_duplicate_action`, `task.candidates`, `task.rec`, and the `import.search_ids`, `search_artist` and `search_album` config. Contract tests pin them with recorded MusicBrainz responses.
 - App DB: `import_decisions` (id, profile, run_id, step_id, kind, state, body JSON, created_at, deadline, decided_at, decided_by, note, error). Worker job kinds `import_decision`, `import_lookup`.
@@ -218,3 +220,4 @@ Strong matches import unattended (line 1); the rest wait as import decisions (li
 - [x] Review queue UI for import decisions; run page hold link; Playwright: weak match → search by ID → import → lane continues (IMPORT-UI-15, -16).
 - [x] `skipped` lane state (IMPORT-UI-17, C-LANES amendment): engine, API `LaneStateOut`, UI colors.
 - [x] `foobar-style.yaml` uses `mode: auto`; `docs/coverage.md` line 2; S-BEETS-IMPORT and F-REVIEW-QUEUE notes; mark Implemented.
+- [x] Supersede other runs' stale decisions for an imported folder (IMPORT-UI-19, B-071).

@@ -163,5 +163,7 @@ def _escaping_links(folder: Path) -> str | None:
 def _log_decision(ctx: StepContext, decision: ImportOutcome) -> None:
     reason = f": {decision.reason}" if decision.reason else ""
     ctx.log(f"{decision.outcome} {decision.path}{reason}")
+    if decision.outcome == "imported":
+        ctx.imported_folder(decision.path)  # IMPORT-UI-19
     if decision.outcome == "skipped":
         ctx.emit("run.step.import.skipped", path=decision.path, reason=decision.reason or "")

@@ -204,6 +204,10 @@ def _no_import(question: ImportQuestion, options: ImportOptions) -> str:
     raise StepFailure("this run can't ask for import decisions")
 
 
+def _no_imported(path: str) -> None:
+    """Nothing else tracks import decisions (tests, runs without a worker)."""
+
+
 async def _no_notify(targets: list[str] | None, n: Notification) -> list[SendResult]:
     raise StepFailure("this profile has no notification targets (notify.targets)")
 
@@ -261,6 +265,7 @@ class StepContext:
         base_url: str | None = None,
         profile_settings: ProfileFile | None = None,
         busy_folders: Callable[[], list[BusyFolder]] | None = None,
+        imported_folder: Callable[[str], None] | None = None,
         request_cleanup: RequestCleanup | None = None,
         hold_pass: HoldPass | None = None,
         request_cover: RequestCover | None = None,
@@ -303,6 +308,7 @@ class StepContext:
         self.profile_settings = profile_settings
         """The run's profile settings (``profile.yaml``), when the worker knows them."""
         self._busy_folders: Callable[[], list[BusyFolder]] = busy_folders or list[BusyFolder]
+        self._imported_folder: Callable[[str], None] = imported_folder or _no_imported
         self._request_cleanup = request_cleanup or _no_cleanup
         self._hold_pass = hold_pass or _no_hold_pass
         self._request_cover = request_cover or _no_cover
@@ -426,6 +432,11 @@ class StepContext:
         """Folders other work still needs: pending import decisions of this profile and
         the inputs of its other queued, running or waiting runs (FILES-CLEANUP-7)."""
         return self._busy_folders()
+
+    def imported_folder(self, path: str) -> None:
+        """Tell the engine this step imported the album folder ``path``, so other runs'
+        pending import decisions for that folder are superseded (IMPORT-UI-19)."""
+        self._imported_folder(path)
 
     def hold_pass(self, kind: str, ref: str, label: str) -> None:
         """Hold every lane of this pass on ``ref`` (C-LANES LANES-16, run-level steps). A
