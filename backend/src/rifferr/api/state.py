@@ -40,12 +40,16 @@ REVIEW_EVENTS = frozenset(
 )
 #: Lane state changes (C-LANES LANES-2) go on ``/api/events`` too.
 LANE_EVENTS = frozenset({"lane.started", "lane.waiting", "lane.resumed", "lane.finished"})
+#: Step starts and ends (not their logs), so the review queue can say what an album's
+#: lane is doing (F-UI-REFRESH UI-REFRESH-14).
+STEP_EVENTS = frozenset({"run.step.started", "run.step.finished"})
 
 
 def on_all_stream(event: Event) -> bool:
     """Whether ``GET /api/events`` carries ``event`` (API-9, REVIEW-QUEUE-10): run-level
     and review-level events and the ``changeset.*`` events of runs, plus the
-    ``trigger.*`` events of profile streams (TRIGGERS-24) and ``lane.*`` (LANES-2)."""
+    ``trigger.*`` events of profile streams (TRIGGERS-24), ``lane.*`` (LANES-2) and step
+    starts and ends (UI-REFRESH-14)."""
     if event.type.startswith(
         ("trigger.", "notify.", "inbox.", "covers.")
     ):  # TRIGGERS-24, NOTIFY-4, DASHBOARD-15, COVERS-SEARCH-19
@@ -56,6 +60,7 @@ def on_all_stream(event: Event) -> bool:
         event.type in RUN_LEVEL_EVENTS
         or event.type in REVIEW_EVENTS
         or event.type in LANE_EVENTS
+        or event.type in STEP_EVENTS
         or event.type.startswith("changeset.")
     )
 

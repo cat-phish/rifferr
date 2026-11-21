@@ -371,7 +371,16 @@ async def test_API_9_dashboard_stream_has_run_level_events_only(api: Api) -> Non
             text = (await asyncio.wait_for(chunks.get(), 15)).decode()
             for msg in parse_sse(text):
                 seen.append((msg["event"], msg["data"]["run_id"]))
-        assert seen == [("run.started", run_id), ("run.finished", run_id)]
+        # Step starts and ends ride along since UI-REFRESH-14; logs never do.
+        assert [t for t, _ in seen if not t.startswith("run.step.")] == [
+            "run.started",
+            "run.finished",
+        ]
+        assert {t for t, _ in seen if t.startswith("run.step.")} <= {
+            "run.step.started",
+            "run.step.finished",
+        }
+        assert {r for _, r in seen} == {run_id}
     finally:
         disconnect.set()
         task.cancel()

@@ -596,3 +596,60 @@ test("REVIEW_QUEUE_15 no undo for a run without applied changes", async () => {
   expect(screen.queryByRole("button", { name: "Undo this run" })).not.toBeInTheDocument();
   expect(screen.queryByTestId("waiting-review")).not.toBeInTheDocument();
 });
+
+// -- F-UI-REFRESH album blocks ---------------------------------------------------------------
+
+function laneOf(
+  key: string,
+  state: S["LaneOut"]["state"],
+  refs: string[],
+  position: string | null,
+) {
+  return {
+    key,
+    label: `Band - ${key}`,
+    state,
+    position,
+    holds: refs.map((ref) => ({ kind: "changeset" as const, ref })),
+    steps: {},
+  } satisfies S["LaneOut"];
+}
+
+test("UI_REFRESH_13_UI_REFRESH_14_album_blocks_with_a_live_status_line", async () => {
+  let queue = [csItem("cs1", NEW_RUN), csItem("cs2", NEW_RUN)];
+  let lanes = [
+    laneOf("A", "waiting", ["cs1"], "suffix"),
+    laneOf("B", "waiting", ["cs2"], "suffix"),
+    laneOf("C", "done", [], null),
+  ];
+  setup({
+    queue: () => queue,
+    extra: { [`GET /api/runs/${NEW_RUN}`]: () => runDetail({ lanes }) },
+  });
+  renderApp("/review?profile=main");
+  const blocks = await screen.findAllByTestId("album-block");
+  expect(blocks.map((b) => b.dataset.lane)).toEqual(["A", "B"]); // finished C only counts
+  expect(within(nth(blocks, 0)).getByTestId("album-status")).toHaveTextContent("waiting on you");
+  expect(screen.getByTestId("lane-counts")).toHaveTextContent("2 waiting · 1 done");
+
+  // Album A's ChangeSet is applied and its lane moves on to the next step.
+  queue = [csItem("cs2", NEW_RUN)];
+  lanes = [
+    laneOf("A", "active", [], "covers"),
+    laneOf("B", "waiting", ["cs2"], "suffix"),
+    laneOf("C", "done", [], null),
+  ];
+  await act(async () => {
+    const es = FakeEventSource.last("/api/events");
+    es.emit("changeset.applied", { seq: 6, run_id: NEW_RUN, type: "changeset.applied", data: {} });
+    es.emit("lane.resumed", { seq: 7, run_id: NEW_RUN, type: "lane.resumed", data: {} });
+    await Promise.resolve();
+  });
+  await waitFor(() => {
+    const a = screen
+      .getAllByTestId("album-block")
+      .find((b) => b.dataset.lane === "A") as HTMLElement;
+    expect(within(a).getByTestId("album-status")).toHaveTextContent("running covers");
+  });
+  expect(screen.getByTestId("lane-counts")).toHaveTextContent("1 waiting · 1 active · 1 done");
+});

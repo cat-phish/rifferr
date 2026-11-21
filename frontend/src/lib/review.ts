@@ -1,4 +1,4 @@
-import type { ChangeSet, CurrentTarget, QueueItem, TargetRef } from "../api/types";
+import type { ChangeSet, CurrentTarget, LaneOut, QueueItem, TargetRef } from "../api/types";
 
 export type Value = boolean | number | string | string[] | null | undefined;
 
@@ -84,4 +84,106 @@ export function reviewLink(profile: string | null, key: "item" | "run", value: s
   if (profile !== null) params.set("profile", profile);
   params.set(key, value);
   return `/review?${params.toString()}`;
+}
+
+// -- album blocks (F-UI-REFRESH UI-REFRESH-13 .. -15) ---------------------------------------
+
+/** Lane states after which a lane does nothing more (C-LANES). */
+const FINAL_LANE_STATES: ReadonlySet<string> = new Set([
+  "done",
+  "skipped",
+  "failed",
+  "rejected",
+  "gone",
+  "cancelled",
+]);
+
+export interface AlbumBlock {
+  /** Lane key; `"*several"` for items several lanes hold, `"*other"` for items none holds. */
+  key: string;
+  label: string;
+  lane: LaneOut | null;
+  items: QueueItem[];
+}
+
+/**
+ * Group one run's queue items by album lane (UI-REFRESH-13): a block per lane that holds
+ * a queue item or is still working (finished lanes only count, UI-REFRESH-15), in lane
+ * order; items in workflow step order, then oldest first. Items held by several lanes (a
+ * gate over several albums) and items no lane holds come last.
+ */
+export function groupByLane(
+  items: QueueItem[],
+  lanes: readonly LaneOut[],
+  stepOrder: readonly string[],
+): AlbumBlock[] {
+  const holders = new Map<string, LaneOut[]>();
+  for (const lane of lanes) {
+    for (const hold of lane.holds) {
+      const list = holders.get(hold.ref) ?? [];
+      list.push(lane);
+      holders.set(hold.ref, list);
+    }
+  }
+  const byLane = new Map<string, QueueItem[]>();
+  const several: QueueItem[] = [];
+  const other: QueueItem[] = [];
+  for (const item of items) {
+    const held = holders.get(item.id) ?? [];
+    if (held.length === 1) {
+      const key = (held[0] as LaneOut).key;
+      byLane.set(key, [...(byLane.get(key) ?? []), item]);
+    } else if (held.length > 1) several.push(item);
+    else other.push(item);
+  }
+  const position = (step: string | null | undefined) => {
+    const i = step ? stepOrder.indexOf(step) : -1;
+    return i < 0 ? stepOrder.length : i;
+  };
+  const order = (list: QueueItem[]) =>
+    [...list].sort(
+      (a, b) =>
+        position(a.step_id) - position(b.step_id) ||
+        (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0),
+    );
+  const blocks: AlbumBlock[] = [];
+  for (const lane of lanes) {
+    const held = byLane.get(lane.key) ?? [];
+    if (held.length === 0 && FINAL_LANE_STATES.has(lane.state)) continue;
+    blocks.push({ key: lane.key, label: lane.label, lane, items: order(held) });
+  }
+  if (several.length > 0) {
+    blocks.push({ key: "*several", label: "Several albums", lane: null, items: order(several) });
+  }
+  if (other.length > 0) {
+    blocks.push({ key: "*other", label: "Other", lane: null, items: order(other) });
+  }
+  return blocks;
+}
+
+export type LaneStatusToken = "warning" | "success" | "danger" | null;
+
+/** A block's status line (UI-REFRESH-14). */
+export function laneStatus(block: AlbumBlock): { text: string; token: LaneStatusToken } {
+  const lane = block.lane;
+  if (block.items.length > 0) return { text: "waiting on you", token: "warning" };
+  if (lane === null) return { text: "", token: null };
+  if (lane.state === "active") {
+    return { text: lane.position ? `running ${lane.position}` : "running", token: null };
+  }
+  if (lane.state === "waiting") return { text: "waiting", token: null };
+  if (lane.state === "done") return { text: "done", token: "success" };
+  if (lane.state === "failed") return { text: "failed", token: "danger" };
+  return { text: lane.state, token: null };
+}
+
+/** "2 waiting · 1 active · 5 done" (UI-REFRESH-15). */
+export function laneCounts(lanes: readonly LaneOut[]): string {
+  const counts = new Map<string, number>();
+  for (const lane of lanes) counts.set(lane.state, (counts.get(lane.state) ?? 0) + 1);
+  const order = ["waiting", "active", "done", "skipped", "failed", "rejected", "cancelled", "gone"];
+  return order
+    .filter((s) => counts.has(s))
+    .map((s) => `${String(counts.get(s))} ${s}`)
+    .join(" · ");
 }

@@ -26,6 +26,13 @@ export const APP_EVENTS = [
   "changeset.conflicted",
   "changeset.undone",
   "job.finished",
+  // An album's lane and step progress, for the queue's album blocks (UI-REFRESH-14).
+  "lane.started",
+  "lane.waiting",
+  "lane.resumed",
+  "lane.finished",
+  "run.step.started",
+  "run.step.finished",
   "trigger.fired",
   "trigger.skipped",
   "trigger.error",
@@ -49,6 +56,14 @@ export function useAppEvents(onEvent?: (event: RunEvent) => void): void {
   useEventStream<RunEvent>("/api/events", {
     types: APP_EVENTS,
     onEvent: (_type, event) => {
+      // The review queue's album blocks follow their run's lanes (UI-REFRESH-14).
+      if (event.type.startsWith("lane.") || event.type.startsWith("run.")) {
+        void queryClient.invalidateQueries({ queryKey: ["run", event.run_id] });
+      }
+      if (event.type.startsWith("lane.") || event.type.startsWith("run.step.")) {
+        onEvent?.(event);
+        return;
+      }
       if (event.type.startsWith("run.") || event.type === "trigger.fired") {
         void queryClient.invalidateQueries({ queryKey: ["runs"] });
       }

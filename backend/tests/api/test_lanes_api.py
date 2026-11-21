@@ -59,3 +59,17 @@ def test_LANES_2_lane_events_go_on_the_all_runs_stream() -> None:
     for type in ("lane.started", "lane.waiting", "lane.resumed", "lane.finished"):
         event = Event(seq=1, ts=datetime.now(UTC), run_id="r", type=type, step_id=None, data={})
         assert on_all_stream(event)
+
+
+def test_UI_REFRESH_14_step_starts_and_ends_go_on_the_all_runs_stream_logs_do_not() -> None:
+    from datetime import UTC, datetime
+
+    from rifferr.api.state import on_all_stream
+    from rifferr.engine import Event
+
+    def event(type: str) -> Event:
+        return Event(seq=1, ts=datetime.now(UTC), run_id="r", type=type, step_id="s", data={})
+
+    assert on_all_stream(event("run.step.started"))
+    assert on_all_stream(event("run.step.finished"))
+    assert not on_all_stream(event("run.step.log"))

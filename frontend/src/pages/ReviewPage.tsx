@@ -36,7 +36,11 @@ import {
   currentOf,
   fieldRows,
   formatValue,
+  groupByLane,
   groupByRun,
+  laneCounts,
+  laneStatus,
+  type AlbumBlock,
   reviewLink,
   sameValue,
   targetKey,
@@ -194,6 +198,21 @@ function RunCard({ group, focus }: { group: RunGroup; focus: string | null }) {
   const queryClient = useQueryClient();
   const [confirm, setConfirm] = useState<"accept" | "reject" | null>(null);
   const proposed = group.items.filter((i) => i.kind === "changeset" && i.state === "proposed");
+  // The run's lanes, to group its items by album (UI-REFRESH-13). Same query as the run
+  // page; lane and step events refresh it (useAppEvents).
+  const run = useQuery({
+    queryKey: ["run", group.runId],
+    retry: false,
+    queryFn: async () =>
+      ok(await api.GET("/api/runs/{run_id}", { params: { path: { run_id: group.runId } } })),
+  });
+  const blocks = run.data
+    ? groupByLane(
+        group.items,
+        run.data.lanes ?? [],
+        run.data.steps.map((st) => st.id),
+      )
+    : null;
   const bulk = useMutation({
     mutationFn: async (decision: "accept" | "reject") =>
       ok(
@@ -218,6 +237,11 @@ function RunCard({ group, focus }: { group: RunGroup; focus: string | null }) {
             <Text size="xs" c="dimmed" ff="monospace">
               {group.runId}
             </Text>
+            {run.data && (run.data.lanes?.length ?? 0) > 0 && (
+              <Text size="xs" c="dimmed" data-testid="lane-counts">
+                {laneCounts(run.data.lanes ?? [])}
+              </Text>
+            )}
           </Group>
           {proposed.length > 0 && (
             <Group gap="xs">
@@ -244,103 +268,9 @@ function RunCard({ group, focus }: { group: RunGroup; focus: string | null }) {
           )}
         </Group>
         {bulk.error && <Alert color="red">{bulk.error.message}</Alert>}
-        {group.items.map((item) =>
-          item.kind === "gate" && item.gate ? (
-            <GateCard key={item.id} item={item} gate={item.gate} focused={focus === item.id} />
-          ) : item.kind === "import" && item.import_decision ? (
-            <ItemCard
-              key={item.id}
-              item={item}
-              focused={focus === item.id}
-              title={
-                <Group gap="xs">
-                  <Text fw={500}>
-                    {item.import_decision.kind === "duplicate"
-                      ? "Duplicate album"
-                      : "Import decision"}
-                  </Text>
-                  <Text size="sm" c="dimmed">
-                    step {item.step_id}
-                  </Text>
-                </Group>
-              }
-            >
-              <ImportDecisionView decision={item.import_decision} />
-            </ItemCard>
-          ) : item.kind === "cleanup" && item.cleanup_decision ? (
-            <ItemCard
-              key={item.id}
-              item={item}
-              focused={focus === item.id}
-              title={
-                <Group gap="xs">
-                  <Text fw={500}>Folder cleanup</Text>
-                  <Text size="sm" c="dimmed">
-                    step {item.step_id}
-                  </Text>
-                </Group>
-              }
-            >
-              <CleanupDecisionView decision={item.cleanup_decision} />
-            </ItemCard>
-          ) : item.kind === "move" && item.move_conflict ? (
-            <ItemCard
-              key={item.id}
-              item={item}
-              focused={focus === item.id}
-              title={
-                <Group gap="xs">
-                  <Text fw={500}>Move conflict</Text>
-                  <Text size="sm" c="dimmed">
-                    step {item.step_id}
-                  </Text>
-                </Group>
-              }
-            >
-              <MoveConflictView conflict={item.move_conflict} />
-            </ItemCard>
-          ) : item.kind === "cover" && item.cover_review ? (
-            <ItemCard
-              key={item.id}
-              item={item}
-              focused={focus === item.id}
-              title={
-                <Group gap="xs">
-                  <Text fw={500}>Cover choice</Text>
-                  <Text size="sm" c="dimmed">
-                    step {item.step_id}
-                  </Text>
-                </Group>
-              }
-            >
-              <CoverPicker
-                profile={item.cover_review.profile}
-                mode={{ kind: "review", review: item.cover_review }}
-              />
-            </ItemCard>
-          ) : item.kind === "changeset" &&
-            item.changeset &&
-            (item.changeset.files?.length ?? 0) > 0 &&
-            item.state === "proposed" ? (
-            <ItemCard
-              key={item.id}
-              item={item}
-              focused={focus === item.id}
-              title={
-                <Group gap="xs">
-                  <Text fw={500}>Library move</Text>
-                  <Text size="sm" c="dimmed">
-                    from step {item.step_id}
-                  </Text>
-                </Group>
-              }
-            >
-              <FileChangeSetView id={item.id} changeset={item.changeset} />
-            </ItemCard>
-          ) : (
-            <ChangeSetCard key={item.id} item={item} focused={focus === item.id} />
-          ),
-        )}
+        {blocks === null
+          ? group.items.map((item) => <QueueItemCard key={item.id} item={item} focus={focus} />)
+          : blocks.map((block) => <AlbumBlockView key={block.key} block={block} focus={focus} />)}
       </Stack>
       <Modal
         opened={confirm !== null}
@@ -376,6 +306,137 @@ function RunCard({ group, focus }: { group: RunGroup; focus: string | null }) {
         </Stack>
       </Modal>
     </Card>
+  );
+}
+
+/** One album's items and what its lane is doing (UI-REFRESH-13, -14). */
+function AlbumBlockView({ block, focus }: { block: AlbumBlock; focus: string | null }) {
+  const status = laneStatus(block);
+  const color = status.token ? tc(status.token) : "var(--mantine-color-default-border)";
+  return (
+    <Stack
+      gap={6}
+      pl="xs"
+      data-testid="album-block"
+      data-lane={block.key}
+      style={{ borderLeft: `3px solid ${color}` }}
+    >
+      <Group gap="xs" justify="space-between" wrap="wrap">
+        <Text fw={600} size="sm">
+          {block.label}
+        </Text>
+        {status.text !== "" && (
+          <Text
+            size="xs"
+            data-testid="album-status"
+            c={status.token ? undefined : "dimmed"}
+            style={status.token ? { color: tc(status.token) } : undefined}
+          >
+            {status.text}
+          </Text>
+        )}
+      </Group>
+      {block.items.map((item) => (
+        <QueueItemCard key={item.id} item={item} focus={focus} />
+      ))}
+    </Stack>
+  );
+}
+
+/** The card for one queue item, by kind. */
+function QueueItemCard({ item, focus }: { item: QueueItem; focus: string | null }) {
+  return item.kind === "gate" && item.gate ? (
+    <GateCard key={item.id} item={item} gate={item.gate} focused={focus === item.id} />
+  ) : item.kind === "import" && item.import_decision ? (
+    <ItemCard
+      key={item.id}
+      item={item}
+      focused={focus === item.id}
+      title={
+        <Group gap="xs">
+          <Text fw={500}>
+            {item.import_decision.kind === "duplicate" ? "Duplicate album" : "Import decision"}
+          </Text>
+          <Text size="sm" c="dimmed">
+            step {item.step_id}
+          </Text>
+        </Group>
+      }
+    >
+      <ImportDecisionView decision={item.import_decision} />
+    </ItemCard>
+  ) : item.kind === "cleanup" && item.cleanup_decision ? (
+    <ItemCard
+      key={item.id}
+      item={item}
+      focused={focus === item.id}
+      title={
+        <Group gap="xs">
+          <Text fw={500}>Folder cleanup</Text>
+          <Text size="sm" c="dimmed">
+            step {item.step_id}
+          </Text>
+        </Group>
+      }
+    >
+      <CleanupDecisionView decision={item.cleanup_decision} />
+    </ItemCard>
+  ) : item.kind === "move" && item.move_conflict ? (
+    <ItemCard
+      key={item.id}
+      item={item}
+      focused={focus === item.id}
+      title={
+        <Group gap="xs">
+          <Text fw={500}>Move conflict</Text>
+          <Text size="sm" c="dimmed">
+            step {item.step_id}
+          </Text>
+        </Group>
+      }
+    >
+      <MoveConflictView conflict={item.move_conflict} />
+    </ItemCard>
+  ) : item.kind === "cover" && item.cover_review ? (
+    <ItemCard
+      key={item.id}
+      item={item}
+      focused={focus === item.id}
+      title={
+        <Group gap="xs">
+          <Text fw={500}>Cover choice</Text>
+          <Text size="sm" c="dimmed">
+            step {item.step_id}
+          </Text>
+        </Group>
+      }
+    >
+      <CoverPicker
+        profile={item.cover_review.profile}
+        mode={{ kind: "review", review: item.cover_review }}
+      />
+    </ItemCard>
+  ) : item.kind === "changeset" &&
+    item.changeset &&
+    (item.changeset.files?.length ?? 0) > 0 &&
+    item.state === "proposed" ? (
+    <ItemCard
+      key={item.id}
+      item={item}
+      focused={focus === item.id}
+      title={
+        <Group gap="xs">
+          <Text fw={500}>Library move</Text>
+          <Text size="sm" c="dimmed">
+            from step {item.step_id}
+          </Text>
+        </Group>
+      }
+    >
+      <FileChangeSetView id={item.id} changeset={item.changeset} />
+    </ItemCard>
+  ) : (
+    <ChangeSetCard key={item.id} item={item} focused={focus === item.id} />
   );
 }
 
