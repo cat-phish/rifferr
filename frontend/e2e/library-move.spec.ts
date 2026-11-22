@@ -29,6 +29,7 @@ test("LIBRARY_MOVE_16 a move waits for review with old and new folders; acceptin
     .filter({ has: page.getByTestId("file-changeset") });
   await expect(item.getByTestId("old-folder")).toHaveText(src);
   await expect(item.getByTestId("new-folder")).toHaveText(dst);
+  await item.getByRole("button", { name: /^Show the \d+ files?$/ }).click();
   await expect(item.getByTestId("file-stamp")).toContainText("date_added");
   const rows = item.getByTestId("file-effect");
   await expect(rows).toHaveCount(3);

@@ -42,6 +42,7 @@ Album-grouped queue (extends REVIEW-QUEUE-11)
 - UI-REFRESH-16: Sections MUST keep REVIEW-QUEUE-14 (Accept all / Reject all, now per section) and REVIEW-QUEUE-16 (`?item=` opens and scrolls to the item; `?run=` shows one run's items) working.
 
 - UI-REFRESH-20: Once a decision is sent (the API accepted it), its item MUST leave the list at once, with nothing in its place, so the next item is right there. The item MUST come back when it changes (an error, a conflict) or when the job carrying out the decision fails (`job.finished` with that job id and a state other than `succeeded`) while the item still waits. A succeeded job does not bring it back: the run may still be carrying the decision out (a library move applies when the run resumes), and the item leaves once it has (author, 2026-11-21: a moved album flashed back as new items arrived). A decision the API refuses keeps the item where it is, with the error (author, 2026-11-21: clicking import left the item "waiting on you" for a long time).
+- UI-REFRESH-21: (Added by the author, 2026-11-21.) A library move (S-LIBRARY-MOVE LIBRARY-MOVE-16) MUST show as one line per album: the old and new folder and its actions. The file list, the date note and the note field sit behind "Show the N files". When every proposed item of a stage is a file move, the stage's accept-all button MUST read "Move all N" ("Copy all N" when any copies), and its confirmation counts albums. Conflicts stay separate items (LIBRARY-MOVE-5a).
 
 Tests
 - UI-REFRESH-17: A Playwright test MUST cover, against the e2e temp profile: a run with two albums that both wait for an import decision. Both items are in the "import" section with their album labels; candidate badges and penalties are colored by the fixture profile's thresholds; importing one album removes its item at once while the other still waits.
@@ -120,3 +121,4 @@ Album block:
 - [x] First-come order, working list, decided items leave at once (UI-REFRESH-13, -14, -20)
 - [x] Sections per workflow step instead of runs; no working list; section bulk (UI-REFRESH-13 .. -17, -20; REVIEW-QUEUE-11, -14)
 - [x] Playwright test (UI-REFRESH-17); update `review-queue.spec.ts` and `imports.spec.ts`
+- [x] Stage tabs (UI-REFRESH-13); compact library moves and "Move all N" (UI-REFRESH-21)

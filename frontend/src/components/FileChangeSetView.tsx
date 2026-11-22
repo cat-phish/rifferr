@@ -76,68 +76,79 @@ export function FileChangeSetView({ id, changeset }: { id: string; changeset: Ch
   const copy = files.some((f) => f.mode === "copy");
   const stamp = changeset.stamp;
   const fold = useFold(files);
+  const [open, setOpen] = useState(false);
 
+  const n = `${String(files.length)} file${files.length === 1 ? "" : "s"}`;
+
+  // One line per album; the files behind "Show the N files" (UI-REFRESH-21).
   return (
     <Stack gap={6} data-testid="file-changeset">
-      <Group gap="xs">
+      <Group gap="xs" wrap="wrap" data-testid="file-folders">
         <TokenBadge token="changed">{copy ? "copy" : "move"}</TokenBadge>
-        <Text size="sm">
-          {String(files.length)} file{files.length === 1 ? "" : "s"}
+        <Text size="sm" ff="monospace" data-testid="old-folder">
+          <Diff old={from} new={to} side="old" />
         </Text>
+        <Text size="sm" c="dimmed" aria-label="to">
+          →
+        </Text>
+        <Text size="sm" ff="monospace" data-testid="new-folder">
+          <Diff old={from} new={to} side="new" />
+        </Text>
+        <Button
+          variant="subtle"
+          size="compact-xs"
+          aria-expanded={open}
+          onClick={() => {
+            setOpen((o) => !o);
+          }}
+        >
+          {open ? "Hide the files" : `Show the ${n}`}
+        </Button>
       </Group>
-      <Table withRowBorders={false} fz="sm" verticalSpacing={2} data-testid="file-folders">
-        <Table.Tbody>
-          <Table.Tr>
-            <Table.Td w={90} c="dimmed">
-              Old folder
-            </Table.Td>
-            <Table.Td ff="monospace" data-testid="old-folder">
-              <Diff old={from} new={to} side="old" />
-            </Table.Td>
-          </Table.Tr>
-          <Table.Tr>
-            <Table.Td c="dimmed">New folder</Table.Td>
-            <Table.Td ff="monospace" data-testid="new-folder">
-              <Diff old={from} new={to} side="new" />
-            </Table.Td>
-          </Table.Tr>
-        </Table.Tbody>
-      </Table>
-      {stamp && (
-        <Text size="sm" data-testid="file-stamp">
-          Sets{" "}
-          <Text span ff="monospace">
-            {stamp.field}
-          </Text>{" "}
-          to the day it {copy ? "is copied" : "moves"}.
-        </Text>
+      {open && (
+        <>
+          {stamp && (
+            <Text size="sm" data-testid="file-stamp">
+              Sets{" "}
+              <Text span ff="monospace">
+                {stamp.field}
+              </Text>{" "}
+              to the day it {copy ? "is copied" : "moves"}.
+            </Text>
+          )}
+          <Table data-testid="file-effects" fz="sm" verticalSpacing={2}>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Kind</Table.Th>
+                <Table.Th>Old name</Table.Th>
+                <Table.Th>New name</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {fold.shown.map((f) => (
+                <Table.Tr
+                  key={`${f.src}\u0000${f.dst}`}
+                  data-testid="file-effect"
+                  data-kind={f.kind}
+                >
+                  <Table.Td c="dimmed">{KIND_SAYS[f.kind]}</Table.Td>
+                  <Table.Td ff="monospace" data-testid="old-name">
+                    <Diff old={relative(f.src, from)} new={relative(f.dst, to)} side="old" />
+                  </Table.Td>
+                  <Table.Td ff="monospace" data-testid="new-name">
+                    <Diff old={relative(f.src, from)} new={relative(f.dst, to)} side="new" />
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+          {fold.control}
+          <Text size="xs" c="dimmed">
+            Accepted or rejected as a whole album, never file by file.
+          </Text>
+          {!decide.isSuccess && <NoteField value={note} onChange={setNote} />}
+        </>
       )}
-      <Table data-testid="file-effects" fz="sm" verticalSpacing={2}>
-        <Table.Thead>
-          <Table.Tr>
-            <Table.Th>Kind</Table.Th>
-            <Table.Th>Old name</Table.Th>
-            <Table.Th>New name</Table.Th>
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {fold.shown.map((f) => (
-            <Table.Tr key={`${f.src}\u0000${f.dst}`} data-testid="file-effect" data-kind={f.kind}>
-              <Table.Td c="dimmed">{KIND_SAYS[f.kind]}</Table.Td>
-              <Table.Td ff="monospace" data-testid="old-name">
-                <Diff old={relative(f.src, from)} new={relative(f.dst, to)} side="old" />
-              </Table.Td>
-              <Table.Td ff="monospace" data-testid="new-name">
-                <Diff old={relative(f.src, from)} new={relative(f.dst, to)} side="new" />
-              </Table.Td>
-            </Table.Tr>
-          ))}
-        </Table.Tbody>
-      </Table>
-      {fold.control}
-      <Text size="xs" c="dimmed">
-        Accepted or rejected as a whole album, never file by file.
-      </Text>
       {decide.error && <Alert color="red">{decide.error.message}</Alert>}
       {decide.isSuccess ? (
         <HeaderActions>
@@ -147,7 +158,6 @@ export function FileChangeSetView({ id, changeset }: { id: string; changeset: Ch
         </HeaderActions>
       ) : (
         <>
-          <NoteField value={note} onChange={setNote} />
           <HeaderActions>
             <Button
               size="xs"

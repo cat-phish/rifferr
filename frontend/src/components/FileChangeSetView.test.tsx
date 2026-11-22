@@ -86,6 +86,10 @@ test("LIBRARY_MOVE_16 old and new folder and names, accepted per album", async (
   const card = await screen.findByTestId("file-changeset");
   expect(within(card).getByTestId("old-folder")).toHaveTextContent(OLD);
   expect(within(card).getByTestId("new-folder")).toHaveTextContent(NEW);
+  // One line per album; the files and the date note fold away (UI-REFRESH-21).
+  expect(within(card).queryByTestId("file-effect")).toBeNull();
+  expect(within(card).queryByTestId("file-stamp")).toBeNull();
+  fireEvent.click(within(card).getByRole("button", { name: "Show the 4 files" }));
   expect(within(card).getByTestId("file-stamp")).toHaveTextContent("Sets date_added");
   const rows = within(card).getAllByTestId("file-effect");
   expect(rows.map((r) => r.dataset.kind)).toEqual(["item", "item", "art", "artifact"]);
@@ -108,5 +112,37 @@ test("LIBRARY_MOVE_16 old and new folder and names, accepted per album", async (
   await waitFor(() => {
     const posted = calls.filter((c: Call) => c.path === "/api/changesets/cs1/decision");
     expect(posted.map((c) => c.body)).toEqual([{ decision: "accept", note: null }]);
+  });
+});
+
+test("UI_REFRESH_21 a stage of library moves offers Move all N", async () => {
+  const move = (id: string): S["QueueItem"] => ({
+    kind: "changeset",
+    id,
+    profile: "main",
+    run_id: RUN,
+    workflow: "into-library",
+    step_id: "into-library",
+    created_at: T0,
+    changeset: { ...changeset(), id },
+    state: "proposed",
+  });
+  const { calls } = mockApi({
+    "GET /api/profiles": () => PROFILES,
+    "GET /api/review": () => [move("cs1"), move("cs2")],
+    "POST /api/changesets/cs1/decision": () => ({ job_id: "j1" }),
+    "POST /api/changesets/cs2/decision": () => ({ job_id: "j2" }),
+  });
+  renderApp("/review?profile=main");
+  fireEvent.click(await screen.findByRole("button", { name: "Move all 2" }));
+  expect(await screen.findByTestId("bulk-confirm")).toHaveTextContent(
+    "Move 2 albums of into-library?",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Move 2" }));
+  await waitFor(() => {
+    expect(calls.filter((c) => c.method === "POST").map((c) => c.path)).toEqual([
+      "/api/changesets/cs1/decision",
+      "/api/changesets/cs2/decision",
+    ]);
   });
 });

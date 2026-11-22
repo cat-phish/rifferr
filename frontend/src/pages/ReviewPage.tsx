@@ -344,6 +344,11 @@ export function ReviewPage() {
   );
 }
 
+/** A proposed ChangeSet that moves (or copies) an album's files (S-LIBRARY-MOVE). */
+function isFileMove(item: QueueItem): boolean {
+  return (item.changeset?.files?.length ?? 0) > 0;
+}
+
 /** A stage's value in the URL: `workflow/step`. */
 function stageOf(sec: StepSection): string {
   return `${sec.workflow ?? ""}/${sec.stepId ?? ""}`;
@@ -360,6 +365,11 @@ function StepSectionCard({ section, focus }: { section: StepSection; focus: stri
   const queryClient = useQueryClient();
   const [confirm, setConfirm] = useState<"accept" | "reject" | null>(null);
   const proposed = section.items.filter((i) => i.kind === "changeset" && i.state === "proposed");
+  // A stage of library moves reads "Move all N" (UI-REFRESH-21).
+  const moves = proposed.length > 0 && proposed.every(isFileMove);
+  const copies = moves && proposed.some((i) => i.changeset?.files?.some((f) => f.mode === "copy"));
+  const acceptVerb = moves ? (copies ? "Copy" : "Move") : "Accept";
+  const what = moves ? "album" : "ChangeSet";
   const [failures, setFailures] = useState<BulkFailure[]>([]);
   const bulk = useMutation({
     mutationFn: async (decision: "accept" | "reject") => decideAll(proposed, decision),
@@ -392,7 +402,7 @@ function StepSectionCard({ section, focus }: { section: StepSection; focus: stri
                   setConfirm("accept");
                 }}
               >
-                Accept all
+                {moves ? `${acceptVerb} all ${String(proposed.length)}` : "Accept all"}
               </Button>
               <Button
                 size="xs"
@@ -422,12 +432,13 @@ function StepSectionCard({ section, focus }: { section: StepSection; focus: stri
         onClose={() => {
           setConfirm(null);
         }}
-        title={confirm === "accept" ? "Accept all" : "Reject all"}
+        title={confirm === "accept" ? `${acceptVerb} all` : "Reject all"}
       >
         <Stack>
           <Text data-testid="bulk-confirm">
-            {confirm === "accept" ? "Accept" : "Reject"} {count(proposed.length, "ChangeSet")} of{" "}
-            {section.label}? Conflicted ChangeSets are left alone.
+            {confirm === "accept" ? acceptVerb : "Reject"} {count(proposed.length, what)} of{" "}
+            {section.label}? {moves ? "Albums with a conflict" : "Conflicted ChangeSets"} are left
+            alone.
           </Text>
           <Group justify="flex-end">
             <Button
@@ -445,7 +456,7 @@ function StepSectionCard({ section, focus }: { section: StepSection; focus: stri
                 if (confirm !== null) bulk.mutate(confirm);
               }}
             >
-              {confirm === "accept" ? "Accept" : "Reject"} {String(proposed.length)}
+              {confirm === "accept" ? acceptVerb : "Reject"} {String(proposed.length)}
             </Button>
           </Group>
         </Stack>
