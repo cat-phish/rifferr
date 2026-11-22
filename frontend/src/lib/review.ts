@@ -51,28 +51,6 @@ export function currentOf(row: FieldRow, current: CurrentTarget[] | undefined): 
   return t.fields?.[row.field] ?? null;
 }
 
-export interface RunGroup {
-  runId: string;
-  profile: string;
-  workflow: string | null;
-  items: QueueItem[];
-}
-
-/** Queue items grouped by run, newest run first; items stay oldest first (REVIEW-QUEUE-11).
- * Run ids are ULIDs, so they sort by creation time. */
-export function groupByRun(items: QueueItem[]): RunGroup[] {
-  const groups = new Map<string, RunGroup>();
-  for (const item of items) {
-    let g = groups.get(item.run_id);
-    if (g === undefined) {
-      g = { runId: item.run_id, profile: item.profile, workflow: item.workflow ?? null, items: [] };
-      groups.set(item.run_id, g);
-    }
-    g.items.push(item);
-  }
-  return [...groups.values()].sort((a, b) => (a.runId < b.runId ? 1 : a.runId > b.runId ? -1 : 0));
-}
-
 /** Plural helper for counts in messages. */
 export function count(n: number, one: string, many = `${one}s`): string {
   return `${String(n)} ${n === 1 ? one : many}`;
@@ -86,122 +64,67 @@ export function reviewLink(profile: string | null, key: "item" | "run", value: s
   return `/review?${params.toString()}`;
 }
 
-// -- album blocks (F-UI-REFRESH UI-REFRESH-13 .. -15) ---------------------------------------
+// -- step sections (F-REVIEW-QUEUE REVIEW-QUEUE-11, F-UI-REFRESH UI-REFRESH-13) ----------
 
-/** Lane states after which a lane does nothing more (C-LANES). */
-const FINAL_LANE_STATES: ReadonlySet<string> = new Set([
-  "done",
-  "skipped",
-  "failed",
-  "rejected",
-  "gone",
-  "cancelled",
-]);
-
-export interface AlbumBlock {
-  /** Lane key; `"*several"` for items several lanes hold, `"*other"` for items none holds. */
+export interface StepSection {
+  /** `workflow` + NUL + `step id`. */
   key: string;
+  workflow: string | null;
+  stepId: string | null;
   label: string;
-  lane: LaneOut | null;
-  /** Items that wait for the user. */
+  /** Oldest first: a new item joins the bottom. */
   items: QueueItem[];
-  /** Items the user decided whose result hasn't come back yet (UI-REFRESH-20). */
-  decided: QueueItem[];
 }
 
-export interface RunBlocks {
-  /** Albums with something to decide, first come first: an album whose next item
-   * arrives joins the bottom (UI-REFRESH-13). */
-  waiting: AlbumBlock[];
-  /** Albums still working: running a step, or busy with a decision (UI-REFRESH-20). */
-  working: AlbumBlock[];
-}
+const byTime = (a: QueueItem, b: QueueItem) =>
+  a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : a.id < b.id ? -1 : 1;
 
 /**
- * Group one run's queue items by album lane (UI-REFRESH-13, -20). Items in `decided`
- * left the waiting list the moment the user decided them. Items held by several lanes
- * (a gate over several albums) and items no lane holds form blocks of their own.
+ * Group queue items into one section per workflow step (REVIEW-QUEUE-11). Sections follow
+ * the workflow's step order (`stepOrders`, workflow name to step ids); steps not in it come
+ * last, by oldest item. Items in `decided` were just decided and are left out (UI-REFRESH-20);
+ * a section with nothing left is dropped.
  */
-export function groupByLane(
-  items: QueueItem[],
-  lanes: readonly LaneOut[],
-  stepOrder: readonly string[],
+export function groupByStep(
+  items: readonly QueueItem[],
+  stepOrders: ReadonlyMap<string, readonly string[]>,
   decided: ReadonlySet<string> = new Set(),
-): RunBlocks {
-  const holders = new Map<string, LaneOut[]>();
-  for (const lane of lanes) {
-    for (const hold of lane.holds) {
-      const list = holders.get(hold.ref) ?? [];
-      list.push(lane);
-      holders.set(hold.ref, list);
-    }
-  }
-  const blocks = new Map<string, AlbumBlock>();
-  const block = (key: string, label: string, lane: LaneOut | null): AlbumBlock => {
-    let b = blocks.get(key);
-    if (b === undefined) {
-      b = { key, label, lane, items: [], decided: [] };
-      blocks.set(key, b);
-    }
-    return b;
-  };
-  for (const lane of lanes) {
-    if (!FINAL_LANE_STATES.has(lane.state)) block(lane.key, lane.label, lane);
-  }
+): StepSection[] {
+  const sections = new Map<string, StepSection>();
   for (const item of items) {
-    const held = holders.get(item.id) ?? [];
-    const b =
-      held.length === 1
-        ? block((held[0] as LaneOut).key, (held[0] as LaneOut).label, held[0] as LaneOut)
-        : held.length > 1
-          ? block("*several", "Several albums", null)
-          : block("*other", "Other", null);
-    (decided.has(item.id) ? b.decided : b.items).push(item);
+    if (decided.has(item.id)) continue;
+    const workflow = item.workflow ?? null;
+    const stepId = item.step_id ?? null;
+    const key = `${workflow ?? ""}\u0000${stepId ?? ""}`;
+    let sec = sections.get(key);
+    if (sec === undefined) {
+      sec = { key, workflow, stepId, label: stepId ?? "Other", items: [] };
+      sections.set(key, sec);
+    }
+    sec.items.push(item);
   }
-  const position = (step: string | null | undefined) => {
-    const i = step ? stepOrder.indexOf(step) : -1;
-    return i < 0 ? stepOrder.length : i;
-  };
-  const byTime = (a: QueueItem, b: QueueItem) =>
-    a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0;
-  const all = [...blocks.values()];
-  for (const b of all) {
-    b.items.sort((x, y) => position(x.step_id) - position(y.step_id) || byTime(x, y));
+  const all = [...sections.values()];
+  for (const sec of all) sec.items.sort(byTime);
+  const workflows = new Set(all.map((sec) => sec.workflow));
+  if (workflows.size > 1) {
+    for (const sec of all) if (sec.workflow !== null) sec.label = `${sec.workflow} · ${sec.label}`;
   }
-  const oldest = (b: AlbumBlock) =>
-    b.items.reduce((t, i) => (i.created_at < t ? i.created_at : t), "\uffff");
-  return {
-    waiting: all
-      .filter((b) => b.items.length > 0)
-      .sort((x, y) => (oldest(x) < oldest(y) ? -1 : oldest(x) > oldest(y) ? 1 : 0)),
-    working: all.filter((b) => b.items.length === 0),
+  const index = (sec: StepSection) => {
+    const order = sec.workflow === null ? undefined : stepOrders.get(sec.workflow);
+    const i = order && sec.stepId !== null ? order.indexOf(sec.stepId) : -1;
+    return i < 0 ? Number.MAX_SAFE_INTEGER : i;
   };
+  const oldest = (sec: StepSection) => (sec.items[0] as QueueItem).created_at;
+  return all.sort(
+    (a, b) =>
+      (a.workflow ?? "\uffff").localeCompare(b.workflow ?? "\uffff") ||
+      index(a) - index(b) ||
+      (oldest(a) < oldest(b) ? -1 : oldest(a) > oldest(b) ? 1 : 0),
+  );
 }
 
-export type LaneStatusToken = "warning" | "success" | "danger" | null;
-
-/** A block's status line (UI-REFRESH-14). */
-export function laneStatus(block: AlbumBlock): { text: string; token: LaneStatusToken } {
-  const lane = block.lane;
-  if (block.items.length > 0) return { text: "waiting on you", token: "warning" };
-  if (lane?.state === "active") {
-    return { text: lane.position ? `running ${lane.position}` : "running", token: null };
-  }
-  if (block.decided.length > 0) return { text: "working on your decision", token: null };
-  if (lane === null) return { text: "", token: null };
-  if (lane.state === "waiting") return { text: "waiting", token: null };
-  if (lane.state === "done") return { text: "done", token: "success" };
-  if (lane.state === "failed") return { text: "failed", token: "danger" };
-  return { text: lane.state, token: null };
-}
-
-/** "2 waiting · 1 active · 5 done" (UI-REFRESH-15). */
-export function laneCounts(lanes: readonly LaneOut[]): string {
-  const counts = new Map<string, number>();
-  for (const lane of lanes) counts.set(lane.state, (counts.get(lane.state) ?? 0) + 1);
-  const order = ["waiting", "active", "done", "skipped", "failed", "rejected", "cancelled", "gone"];
-  return order
-    .filter((s) => counts.has(s))
-    .map((s) => `${String(counts.get(s))} ${s}`)
-    .join(" · ");
+/** The album lane holding a queue item, if exactly one does (C-LANES). */
+export function laneOf(item: QueueItem, lanes: readonly LaneOut[]): LaneOut | null {
+  const held = lanes.filter((lane) => lane.holds.some((h) => h.ref === item.id));
+  return held.length === 1 ? (held[0] as LaneOut) : null;
 }

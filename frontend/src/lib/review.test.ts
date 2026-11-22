@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { LaneOut, QueueItem } from "../api/types";
-import { type AlbumBlock, groupByLane, laneCounts, laneStatus } from "./review";
+import { groupByStep, laneOf } from "./review";
 
 function item(id: string, step: string, at: string): QueueItem {
   return {
@@ -32,77 +32,43 @@ function lane(
 
 const STEPS = ["import", "covers", "gate", "move"];
 
-describe("groupByLane", () => {
-  it("UI_REFRESH_13_waiting_albums_first_come_first_items_in_step_order", () => {
+const ORDERS = new Map([["wf", STEPS]]);
+const ids = (secs: ReturnType<typeof groupByStep>) =>
+  secs.map((sec) => [sec.label, sec.items.map((i) => i.id)]);
+
+describe("groupByStep", () => {
+  it("UI_REFRESH_13_sections_in_step_order_items_oldest_first", () => {
     const items = [
-      item("i2", "covers", "2026-01-01T00:00:02Z"),
-      item("i1", "import", "2026-01-01T00:00:03Z"),
-      item("i3", "import", "2026-01-01T00:00:01Z"),
+      item("m2", "move", "t5"),
+      item("i2", "import", "t3"),
+      item("m1", "move", "t2"),
+      item("i1", "import", "t4"),
     ];
-    const lanes = [lane("a", "waiting", ["i2", "i1"]), lane("b", "waiting", ["i3"])];
-    const { waiting } = groupByLane(items, lanes, STEPS);
-    // b's item is older than any of a's, so b comes first, whatever the lane order.
-    expect(waiting.map((b) => b.key)).toEqual(["b", "a"]);
-    expect(waiting[1]?.items.map((i) => i.id)).toEqual(["i1", "i2"]);
-  });
-
-  it("UI_REFRESH_13_an_album_whose_next_item_arrives_joins_the_bottom", () => {
-    const lanes = [lane("a", "waiting", ["move-a"]), lane("b", "waiting", ["imp-b"])];
-    const items = [item("imp-b", "import", "t1"), item("move-a", "move", "t5")];
-    expect(groupByLane(items, lanes, STEPS).waiting.map((b) => b.key)).toEqual(["b", "a"]);
-  });
-
-  it("UI_REFRESH_13_shared_and_unheld_items_get_blocks_of_their_own", () => {
-    const items = [item("g", "gate", "t1"), item("x", "move", "t2"), item("i", "import", "t3")];
-    const lanes = [lane("a", "waiting", ["g", "i"]), lane("b", "waiting", ["g"])];
-    const { waiting, working } = groupByLane(items, lanes, STEPS);
-    expect(waiting.map((b) => [b.key, b.items.map((i) => i.id)])).toEqual([
-      ["*several", ["g"]],
-      ["*other", ["x"]],
-      ["a", ["i"]],
+    // The newest import (t4) still goes below the older one; moves come after imports
+    // because the workflow runs import first, whatever arrived first.
+    expect(ids(groupByStep(items, ORDERS))).toEqual([
+      ["import", ["i2", "i1"]],
+      ["move", ["m1", "m2"]],
     ]);
-    expect(working.map((b) => b.key)).toEqual(["b"]);
   });
 
-  it("UI_REFRESH_15_finished_lanes_get_no_block_working_ones_are_listed", () => {
-    const lanes = [
-      lane("a", "done", []),
-      lane("b", "active", [], "covers"),
-      lane("c", "failed", []),
-    ];
-    const { waiting, working } = groupByLane([], lanes, STEPS);
-    expect(waiting).toEqual([]);
-    expect(working.map((b) => b.key)).toEqual(["b"]);
-    expect(laneCounts(lanes)).toBe("1 active · 1 done · 1 failed");
+  it("UI_REFRESH_13_unknown_steps_last_and_workflow_prefix_with_several_workflows", () => {
+    const other = { ...item("x", "tag", "t1"), workflow: "other" };
+    const secs = groupByStep([item("i", "import", "t2"), item("z", "zzz", "t0"), other], ORDERS);
+    expect(secs.map((sec) => sec.label)).toEqual(["other · tag", "wf · import", "wf · zzz"]);
   });
 
-  it("UI_REFRESH_20_decided_items_leave_the_waiting_list", () => {
-    const lanes = [lane("a", "waiting", ["i1"]), lane("b", "waiting", ["i2"])];
-    const items = [item("i1", "import", "t1"), item("i2", "import", "t2")];
-    const { waiting, working } = groupByLane(items, lanes, STEPS, new Set(["i1"]));
-    expect(waiting.map((b) => b.key)).toEqual(["b"]);
-    expect(working.map((b) => [b.key, b.decided.map((i) => i.id)])).toEqual([["a", ["i1"]]]);
-    expect(laneStatus(working[0] as AlbumBlock).text).toBe("working on your decision");
+  it("UI_REFRESH_20_decided_items_leave_and_empty_sections_go", () => {
+    const items = [item("i1", "import", "t1"), item("m1", "move", "t2"), item("m2", "move", "t3")];
+    expect(ids(groupByStep(items, ORDERS, new Set(["i1", "m1"])))).toEqual([["move", ["m2"]]]);
   });
 });
 
-describe("laneStatus", () => {
-  const block = (l: LaneOut, items: QueueItem[] = []): AlbumBlock => ({
-    key: l.key,
-    label: l.label,
-    lane: l,
-    items,
-    decided: [],
-  });
-  it("UI_REFRESH_14_status_line", () => {
-    expect(laneStatus(block(lane("a", "waiting", ["i"]), [item("i", "import", "t")]))).toEqual({
-      text: "waiting on you",
-      token: "warning",
-    });
-    expect(laneStatus(block(lane("a", "active", [], "covers")))).toEqual({
-      text: "running covers",
-      token: null,
-    });
-    expect(laneStatus(block(lane("a", "done", [])))).toEqual({ text: "done", token: "success" });
+describe("laneOf", () => {
+  it("REVIEW_QUEUE_11_album_label_from_the_one_lane_holding_the_item", () => {
+    const lanes = [lane("a", "waiting", ["i1", "g"]), lane("b", "waiting", ["g"])];
+    expect(laneOf(item("i1", "import", "t"), lanes)?.label).toBe("Album a");
+    expect(laneOf(item("g", "gate", "t"), lanes)).toBeNull();
+    expect(laneOf(item("x", "import", "t"), lanes)).toBeNull();
   });
 });

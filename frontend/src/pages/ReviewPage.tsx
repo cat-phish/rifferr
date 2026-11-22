@@ -11,7 +11,7 @@ import {
   Text,
   Title,
 } from "@mantine/core";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { api, ok } from "../api/client";
@@ -38,16 +38,13 @@ import {
   currentOf,
   fieldRows,
   formatValue,
-  groupByLane,
-  groupByRun,
-  laneCounts,
-  laneStatus,
-  type AlbumBlock,
+  groupByStep,
+  laneOf,
   reviewLink,
   sameValue,
   targetKey,
   type FieldRow,
-  type RunGroup,
+  type StepSection,
 } from "../lib/review";
 
 interface Selection {
@@ -71,9 +68,6 @@ interface DecidedEntry {
   finishedAt: number | null;
 }
 
-/** Ids of the items decided on this page whose result hasn't come back yet. */
-const DecidedSetContext = createContext<ReadonlySet<string>>(new Set());
-
 /** The review queue: ChangeSets, review gates, import and cleanup decisions that wait for a decision, grouped by
  * run (F-REVIEW-QUEUE). Updates come from ``/api/events`` via the app shell. Several items
  * of one kind can be decided together (F-DASHBOARD DASHBOARD-13). */
@@ -84,7 +78,26 @@ export function ReviewPage() {
   const runFilter = params.get("run");
   const queue = useReviewQueue(profile);
   const items = (queue.data ?? []).filter((i) => runFilter === null || i.run_id === runFilter);
-  const groups = groupByRun(items);
+  // One run per workflow gives that workflow's step order for the sections (same query and
+  // cache as the run page; lane and step events refresh it).
+  const firstRuns = [...new Map(items.map((i) => [i.workflow ?? "", i.run_id])).entries()];
+  const runs = useQueries({
+    queries: firstRuns.map(([, runId]) => ({
+      queryKey: ["run", runId],
+      retry: false,
+      queryFn: async () =>
+        ok(await api.GET("/api/runs/{run_id}", { params: { path: { run_id: runId } } })),
+    })),
+  });
+  const stepOrders = new Map<string, string[]>();
+  firstRuns.forEach(([workflow], i) => {
+    const data = runs[i]?.data;
+    if (data)
+      stepOrders.set(
+        workflow,
+        data.steps.map((st) => st.id),
+      );
+  });
   const queryClient = useQueryClient();
   const [picked, setPicked] = useState<Map<string, QueueItem>>(new Map());
   const [failures, setFailures] = useState<BulkFailure[]>([]);
@@ -145,6 +158,7 @@ export function ReviewPage() {
       })
       .map(([id]) => id),
   );
+  const sections = groupByStep(items, stepOrders, decided);
   const bulk = useMutation({
     mutationFn: async (action: string) => decideAll([...selected.values()], action),
     onSuccess: (failed) => {
@@ -240,68 +254,42 @@ export function ReviewPage() {
       )}
       <SelectionContext.Provider value={selection}>
         <DecidedContext.Provider value={markDecided}>
-          <DecidedSetContext.Provider value={decided}>
-            {groups.map((g) => (
-              <RunCard key={g.runId} group={g} focus={focus} />
-            ))}
-          </DecidedSetContext.Provider>
+          {sections.map((sec) => (
+            <StepSectionCard key={sec.key} section={sec} focus={focus} />
+          ))}
         </DecidedContext.Provider>
       </SelectionContext.Provider>
     </Stack>
   );
 }
 
-function RunCard({ group, focus }: { group: RunGroup; focus: string | null }) {
-  const { profile } = useProfile();
+/** One workflow step's waiting items, oldest first (REVIEW-QUEUE-11, UI-REFRESH-13). */
+function StepSectionCard({ section, focus }: { section: StepSection; focus: string | null }) {
   const queryClient = useQueryClient();
   const [confirm, setConfirm] = useState<"accept" | "reject" | null>(null);
-  const proposed = group.items.filter((i) => i.kind === "changeset" && i.state === "proposed");
-  // The run's lanes, to group its items by album (UI-REFRESH-13). Same query as the run
-  // page; lane and step events refresh it (useAppEvents).
-  const run = useQuery({
-    queryKey: ["run", group.runId],
-    retry: false,
-    queryFn: async () =>
-      ok(await api.GET("/api/runs/{run_id}", { params: { path: { run_id: group.runId } } })),
-  });
-  const decided = useContext(DecidedSetContext);
-  const blocks = run.data
-    ? groupByLane(
-        group.items,
-        run.data.lanes ?? [],
-        run.data.steps.map((st) => st.id),
-        decided,
-      )
-    : null;
+  const proposed = section.items.filter((i) => i.kind === "changeset" && i.state === "proposed");
+  const [failures, setFailures] = useState<BulkFailure[]>([]);
   const bulk = useMutation({
-    mutationFn: async (decision: "accept" | "reject") =>
-      ok(
-        await api.POST("/api/runs/{run_id}/decisions", {
-          params: { path: { run_id: group.runId } },
-          body: { decision },
-        }),
-      ),
+    mutationFn: async (decision: "accept" | "reject") => decideAll(proposed, decision),
+    onSuccess: (failed) => {
+      setFailures(failed);
+    },
     onSettled: () => {
       setConfirm(null);
       void queryClient.invalidateQueries({ queryKey: ["review"] });
     },
   });
   return (
-    <Card withBorder data-testid="run-group" data-run={group.runId}>
+    <Card withBorder data-testid="step-section" data-step={section.stepId ?? ""}>
       <Stack gap="sm">
         <Group justify="space-between">
           <Group gap="xs">
-            <Anchor component={Link} to={withProfile(`/runs/${group.runId}`, profile)} fw={600}>
-              {group.workflow ?? group.runId}
-            </Anchor>
-            <Text size="xs" c="dimmed" ff="monospace">
-              {group.runId}
+            <Text fw={600} data-testid="step-label">
+              {section.label}
             </Text>
-            {run.data && (run.data.lanes?.length ?? 0) > 0 && (
-              <Text size="xs" c="dimmed" data-testid="lane-counts">
-                {laneCounts(run.data.lanes ?? [])}
-              </Text>
-            )}
+            <Text size="xs" c="dimmed" data-testid="step-count">
+              {count(section.items.length, "item")}
+            </Text>
           </Group>
           {proposed.length > 0 && (
             <Group gap="xs">
@@ -328,18 +316,14 @@ function RunCard({ group, focus }: { group: RunGroup; focus: string | null }) {
           )}
         </Group>
         {bulk.error && <Alert color="red">{bulk.error.message}</Alert>}
-        {blocks === null ? (
-          group.items
-            .filter((item) => !decided.has(item.id))
-            .map((item) => <QueueItemCard key={item.id} item={item} focus={focus} />)
-        ) : (
-          <>
-            {blocks.waiting.map((block) => (
-              <AlbumBlockView key={block.key} block={block} focus={focus} />
-            ))}
-            {blocks.working.length > 0 && <WorkingList blocks={blocks.working} />}
-          </>
+        {failures.length > 0 && (
+          <Alert color="red" data-testid="section-failures">
+            {count(failures.length, "item")} could not be decided.
+          </Alert>
         )}
+        {section.items.map((item) => (
+          <QueueItemCard key={item.id} item={item} focus={focus} />
+        ))}
       </Stack>
       <Modal
         opened={confirm !== null}
@@ -350,8 +334,8 @@ function RunCard({ group, focus }: { group: RunGroup; focus: string | null }) {
       >
         <Stack>
           <Text data-testid="bulk-confirm">
-            {confirm === "accept" ? "Accept" : "Reject"} {count(proposed.length, "ChangeSet")} of
-            this run? Conflicted ChangeSets are left alone.
+            {confirm === "accept" ? "Accept" : "Reject"} {count(proposed.length, "ChangeSet")} of{" "}
+            {section.label}? Conflicted ChangeSets are left alone.
           </Text>
           <Group justify="flex-end">
             <Button
@@ -378,64 +362,33 @@ function RunCard({ group, focus }: { group: RunGroup; focus: string | null }) {
   );
 }
 
-/** One album's items and what its lane is doing (UI-REFRESH-13, -14). */
-function AlbumBlockView({ block, focus }: { block: AlbumBlock; focus: string | null }) {
-  const status = laneStatus(block);
-  const color = status.token ? tc(status.token) : "var(--mantine-color-default-border)";
+/** The item's album (its lane label) and a link to its run (REVIEW-QUEUE-11). */
+function AlbumLabel({ item }: { item: QueueItem }) {
+  const { profile } = useProfile();
+  const run = useQuery({
+    queryKey: ["run", item.run_id],
+    retry: false,
+    queryFn: async () =>
+      ok(await api.GET("/api/runs/{run_id}", { params: { path: { run_id: item.run_id } } })),
+  });
+  const lane = run.data ? laneOf(item, run.data.lanes ?? []) : null;
   return (
-    <Stack
-      gap={6}
-      pl="xs"
-      data-testid="album-block"
-      data-lane={block.key}
-      style={{ borderLeft: `3px solid ${color}` }}
-    >
-      <Group gap="xs" justify="space-between" wrap="wrap">
-        <Text fw={600} size="sm">
-          {block.label}
+    <Group gap={6} wrap="nowrap">
+      {lane !== null && (
+        <Text size="sm" fw={500} data-testid="item-album">
+          {lane.label}
         </Text>
-        {status.text !== "" && (
-          <Text
-            size="xs"
-            data-testid="album-status"
-            c={status.token ? undefined : "dimmed"}
-            style={status.token ? { color: tc(status.token) } : undefined}
-          >
-            {status.text}
-          </Text>
-        )}
-      </Group>
-      {block.items.map((item) => (
-        <QueueItemCard key={item.id} item={item} focus={focus} />
-      ))}
-    </Stack>
-  );
-}
-
-/** Albums still working, one line each, below the ones that wait (UI-REFRESH-20). */
-function WorkingList({ blocks }: { blocks: AlbumBlock[] }) {
-  return (
-    <Stack gap={2} data-testid="working">
-      <Text size="xs" c="dimmed" fw={600}>
-        Working
-      </Text>
-      {blocks.map((block) => {
-        const status = laneStatus(block);
-        return (
-          <Group key={block.key} gap="xs" data-testid="working-album" data-lane={block.key}>
-            <Text size="sm">{block.label}</Text>
-            <Text
-              size="xs"
-              data-testid="album-status"
-              c={status.token ? undefined : "dimmed"}
-              style={status.token ? { color: tc(status.token) } : undefined}
-            >
-              {status.text}
-            </Text>
-          </Group>
-        );
-      })}
-    </Stack>
+      )}
+      <Anchor
+        component={Link}
+        to={withProfile(`/runs/${item.run_id}`, profile)}
+        size="xs"
+        c="dimmed"
+        data-testid="item-run"
+      >
+        run
+      </Anchor>
+    </Group>
   );
 }
 
@@ -576,6 +529,7 @@ function ItemCard({
               />
             )}
             {title}
+            <AlbumLabel item={item} />
             <Text size="xs" c="dimmed">
               {time(item.created_at)}
             </Text>

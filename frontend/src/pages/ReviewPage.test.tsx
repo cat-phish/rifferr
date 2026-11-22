@@ -143,26 +143,43 @@ const item = (id: string) =>
 
 // -- REVIEW-QUEUE-11 ----------------------------------------------------------------------
 
-test("REVIEW_QUEUE_11 queue grouped by run, newest run first, with a nav count", async () => {
+test("REVIEW_QUEUE_11 queue in one section per step, oldest first, with album, run link and nav count", async () => {
+  const later = { ...csItem("cs1", NEW_RUN), created_at: "2026-11-13T12:05:00Z" };
   setup({
-    queue: () => [csItem("cs3", OLD_RUN), csItem("cs1", NEW_RUN), gateItem()],
+    queue: () => [later, csItem("cs3", NEW_RUN), gateItem()],
+    extra: {
+      [`GET /api/runs/${NEW_RUN}`]: () =>
+        runDetail({
+          steps: [step("suffix"), step("check")],
+          lanes: [laneOf("A", "waiting", ["cs1"], "suffix")],
+        }),
+    },
   });
   renderApp("/review?profile=main");
   const nav = await screen.findByRole("link", { name: /Review/ });
   await waitFor(() => {
     expect(within(nav).getByTestId("review-count")).toHaveTextContent("3");
   });
-  const groups = await screen.findAllByTestId("run-group");
-  expect(groups.map((g) => g.dataset.run)).toEqual([NEW_RUN, OLD_RUN]);
-  expect(within(nth(groups, 0)).getByRole("link", { name: "tagging" })).toHaveAttribute(
+  await waitFor(() => {
+    expect(screen.getAllByTestId("step-section").map((g) => g.dataset.step)).toEqual([
+      "suffix",
+      "check",
+    ]);
+  });
+  const first = nth(screen.getAllByTestId("step-section"), 0);
+  // The newer cs1 goes below cs3.
+  expect(
+    within(first)
+      .getAllByTestId("queue-item")
+      .map((e) => e.dataset.item),
+  ).toEqual(["cs3", "cs1"]);
+  await waitFor(() => {
+    expect(within(item("cs1")).getByTestId("item-album")).toHaveTextContent("Band - A");
+  });
+  expect(within(item("cs1")).getByTestId("item-run")).toHaveAttribute(
     "href",
     `/runs/${NEW_RUN}?profile=main`,
   );
-  expect(
-    within(nth(groups, 0))
-      .getAllByTestId("queue-item")
-      .map((e) => e.dataset.kind),
-  ).toEqual(["changeset", "gate"]);
 });
 
 test("REVIEW_QUEUE_11 the queue updates from /api/events", async () => {
@@ -365,33 +382,36 @@ test("REVIEW_QUEUE_13 reject with on_reject stop, and a gate that can't be decid
 
 // -- REVIEW-QUEUE-14 ----------------------------------------------------------------------
 
-test("REVIEW_QUEUE_14 accept all asks for confirmation with the count", async () => {
+test("REVIEW_QUEUE_14 accept all per section asks for confirmation with the count", async () => {
   const { calls } = setup({
     queue: () => [
       csItem("cs1", NEW_RUN),
-      csItem("cs3", NEW_RUN),
+      csItem("cs3", OLD_RUN),
       csItem("cs2", NEW_RUN, "conflicted"),
     ],
     extra: {
-      [`POST /api/runs/${NEW_RUN}/decisions`]: () => ({
-        status: 202,
-        body: { job_ids: ["j1", "j2"] },
-      }),
+      "POST /api/changesets/cs1/decision": () => ({ job_id: "j1" }),
+      "POST /api/changesets/cs3/decision": () => ({ job_id: "j2" }),
     },
   });
   renderApp("/review?profile=main");
   await screen.findAllByTestId("queue-item");
-  fireEvent.click(screen.getByRole("button", { name: "Reject all" }));
+  // Two workflows wait, so the step sections are named with their workflow.
+  const sec = screen
+    .getAllByTestId("step-section")
+    .find((e) => within(e).queryByText("tagging · suffix")) as HTMLElement;
+  fireEvent.click(within(sec).getByRole("button", { name: "Reject all" }));
   expect(await screen.findByTestId("bulk-confirm")).toHaveTextContent(
-    "Reject 2 ChangeSets of this run? Conflicted ChangeSets are left alone.",
+    "Reject 1 ChangeSet of tagging · suffix? Conflicted ChangeSets are left alone.",
   );
-  expect(posts(calls, `/api/runs/${NEW_RUN}/decisions`)).toHaveLength(0);
-  fireEvent.click(screen.getByRole("button", { name: "Reject 2" }));
+  expect(posts(calls, "/api/changesets/cs1/decision")).toHaveLength(0);
+  fireEvent.click(screen.getByRole("button", { name: "Reject 1" }));
   await waitFor(() => {
-    expect(posts(calls, `/api/runs/${NEW_RUN}/decisions`)[0]?.body).toEqual({
+    expect(posts(calls, "/api/changesets/cs1/decision")[0]?.body).toMatchObject({
       decision: "reject",
     });
   });
+  expect(posts(calls, "/api/changesets/cs3/decision")).toHaveLength(0);
 });
 
 // -- REVIEW-QUEUE-16 ----------------------------------------------------------------------
@@ -408,7 +428,7 @@ test("REVIEW_QUEUE_16 ?run= filters, and a gone item says so", async () => {
   setup({ queue: () => [csItem("cs3", OLD_RUN), csItem("cs1", NEW_RUN)] });
   renderApp(`/review?profile=main&run=${OLD_RUN}&item=gone`);
   await screen.findByTestId("queue-item");
-  expect(screen.getAllByTestId("run-group").map((g) => g.dataset.run)).toEqual([OLD_RUN]);
+  expect(screen.getAllByTestId("queue-item").map((g) => g.dataset.item)).toEqual(["cs3"]);
   expect(screen.getByTestId("focus-gone")).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Show every run" })).toBeInTheDocument();
 });
@@ -456,6 +476,10 @@ function runDetail(over: Partial<S["RunDetail"]> = {}): S["RunDetail"] {
     undoable: 0,
     ...over,
   };
+}
+
+function step(id: string): S["StepState"] {
+  return { id, uses: "tags.script", status: "succeeded", outputs: {}, passes: 1 };
 }
 
 const runEvent = (seq: number, type: string, data: Record<string, unknown> = {}) => ({
@@ -604,7 +628,7 @@ test("REVIEW_QUEUE_15 no undo for a run without applied changes", async () => {
   expect(screen.queryByTestId("waiting-review")).not.toBeInTheDocument();
 });
 
-// -- F-UI-REFRESH album blocks ---------------------------------------------------------------
+// -- F-UI-REFRESH step sections ---------------------------------------------------------------
 
 function laneOf(
   key: string,
@@ -621,46 +645,6 @@ function laneOf(
     steps: {},
   } satisfies S["LaneOut"];
 }
-
-test("UI_REFRESH_13_UI_REFRESH_14_album_blocks_with_a_live_status_line", async () => {
-  let queue = [csItem("cs1", NEW_RUN), csItem("cs2", NEW_RUN)];
-  let lanes = [
-    laneOf("A", "waiting", ["cs1"], "suffix"),
-    laneOf("B", "waiting", ["cs2"], "suffix"),
-    laneOf("C", "done", [], null),
-  ];
-  setup({
-    queue: () => queue,
-    extra: { [`GET /api/runs/${NEW_RUN}`]: () => runDetail({ lanes }) },
-  });
-  renderApp("/review?profile=main");
-  const blocks = await screen.findAllByTestId("album-block");
-  expect(blocks.map((b) => b.dataset.lane)).toEqual(["A", "B"]); // finished C only counts
-  expect(within(nth(blocks, 0)).getByTestId("album-status")).toHaveTextContent("waiting on you");
-  expect(screen.getByTestId("lane-counts")).toHaveTextContent("2 waiting · 1 done");
-
-  // Album A's ChangeSet is applied and its lane moves on to the next step.
-  queue = [csItem("cs2", NEW_RUN)];
-  lanes = [
-    laneOf("A", "active", [], "covers"),
-    laneOf("B", "waiting", ["cs2"], "suffix"),
-    laneOf("C", "done", [], null),
-  ];
-  await act(async () => {
-    const es = FakeEventSource.last("/api/events");
-    es.emit("changeset.applied", { seq: 6, run_id: NEW_RUN, type: "changeset.applied", data: {} });
-    es.emit("lane.resumed", { seq: 7, run_id: NEW_RUN, type: "lane.resumed", data: {} });
-    await Promise.resolve();
-  });
-  await waitFor(() => {
-    // Album A has nothing to decide now: it moves to the working list (UI-REFRESH-20).
-    const a = screen
-      .getAllByTestId("working-album")
-      .find((b) => b.dataset.lane === "A") as HTMLElement;
-    expect(within(a).getByTestId("album-status")).toHaveTextContent("running covers");
-  });
-  expect(screen.getByTestId("lane-counts")).toHaveTextContent("1 waiting · 1 active · 1 done");
-});
 
 test("UI_REFRESH_10_main_actions_sit_in_the_header_row", async () => {
   setup({ queue: () => [csItem("cs1", NEW_RUN)] });
@@ -700,24 +684,26 @@ test("UI_REFRESH_12_long_tables_fold_after_8_rows", async () => {
   expect(screen.getAllByTestId("field-change")).toHaveLength(11);
 });
 
-test("UI_REFRESH_16_item_links_and_accept_all_work_inside_album_blocks", async () => {
+test("UI_REFRESH_16_item_links_and_accept_all_work_inside_step_sections", async () => {
+  setup({ queue: () => [csItem("cs1", NEW_RUN), csItem("cs3", NEW_RUN)] });
+  renderApp("/review?profile=main&item=cs3");
+  const sec = await screen.findByTestId("step-section");
+  expect(item("cs3")).toHaveAttribute("data-focused", "true");
+  expect(within(sec).getByRole("button", { name: "Accept all" })).toBeInTheDocument();
+});
+
+test("UI_REFRESH_14_UI_REFRESH_20_a_decided_item_leaves_no_working_row", async () => {
   setup({
-    queue: () => [csItem("cs1", NEW_RUN), csItem("cs2", NEW_RUN)],
-    extra: {
-      [`GET /api/runs/${NEW_RUN}`]: () =>
-        runDetail({
-          lanes: [
-            laneOf("A", "waiting", ["cs1"], "suffix"),
-            laneOf("B", "waiting", ["cs2"], "suffix"),
-          ],
-        }),
-    },
+    queue: () => [csItem("cs1", NEW_RUN)],
+    extra: { "POST /api/changesets/cs1/decision": () => ({ job_id: "job-1" }) },
   });
-  renderApp("/review?profile=main&item=cs2");
-  await screen.findAllByTestId("album-block");
-  const b = screen.getAllByTestId("album-block").find((x) => x.dataset.lane === "B") as HTMLElement;
-  expect(within(b).getByTestId("queue-item")).toHaveAttribute("data-focused", "true");
-  expect(screen.getByRole("button", { name: "Accept all" })).toBeInTheDocument();
+  renderApp("/review?profile=main");
+  await screen.findByTestId("queue-item");
+  fireEvent.click(within(item("cs1")).getByRole("button", { name: "Accept" }));
+  await waitFor(() => {
+    expect(screen.queryByTestId("step-section")).not.toBeInTheDocument();
+  });
+  expect(screen.queryByText("Working")).not.toBeInTheDocument();
 });
 
 test("UI_REFRESH_20_a_decided_item_leaves_at_once_and_comes_back_if_its_job_ends_without_it", async () => {
@@ -750,4 +736,12 @@ test("UI_REFRESH_20_a_decided_item_leaves_at_once_and_comes_back_if_its_job_ends
         .sort(),
     ).toEqual(["cs1", "cs3"]);
   });
+});
+
+test("UI_REFRESH_15_withdrawn_no_run_lane_counts_on_the_review_page", async () => {
+  setup({ queue: () => [csItem("cs1", NEW_RUN)] });
+  renderApp("/review?profile=main");
+  await screen.findByTestId("queue-item");
+  expect(screen.queryByTestId("lane-counts")).not.toBeInTheDocument();
+  expect(screen.queryByTestId("run-group")).not.toBeInTheDocument();
 });

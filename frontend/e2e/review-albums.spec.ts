@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("UI_REFRESH_17 two albums wait as album blocks; deciding one updates it live", async ({
+test("UI_REFRESH_17 two albums wait in the import section; a decided one disappears at once", async ({
   page,
 }) => {
   const token = process.env.RIFFERR_E2E_TOKEN ?? "";
@@ -18,35 +18,39 @@ test("UI_REFRESH_17 two albums wait as album blocks; deciding one updates it liv
   const runId = /\/runs\/([0-9A-Z]{26})/.exec(page.url())?.[1] ?? "";
   await expect(page.getByTestId("waiting-review")).toBeVisible({ timeout: 30_000 });
 
-  // Neither album has a candidate: both wait, each in its own block (UI-REFRESH-13, -14).
+  // Neither album has a candidate: both wait in the import step's section, oldest first,
+  // each with its album label (REVIEW-QUEUE-11, UI-REFRESH-13).
   await page
     .getByRole("navigation")
     .getByRole("link", { name: /Review/ })
     .click();
-  const run = page.locator(`[data-testid=run-group][data-run="${runId}"]`);
-  const flac = run.getByTestId("album-block").filter({ hasText: "album-flac" });
-  const mp3 = run.getByTestId("album-block").filter({ hasText: "single-mp3" });
-  await expect(flac.getByTestId("album-status")).toHaveText("waiting on you", { timeout: 30_000 });
-  await expect(mp3.getByTestId("album-status")).toHaveText("waiting on you");
-  await expect(run.getByTestId("lane-counts")).toContainText("2 waiting");
+  const ofRun = page
+    .locator("[data-testid=queue-item]")
+    .filter({ has: page.locator(`a[href^="/runs/${runId}"]`) });
+  const flac = ofRun.filter({ hasText: "album-flac" });
+  const mp3 = ofRun.filter({ hasText: "single-mp3" });
+  await expect(flac).toBeVisible({ timeout: 30_000 });
+  await expect(mp3).toBeVisible();
+  const section = page.getByTestId("step-section").filter({ has: flac });
+  await expect(section.getByTestId("step-label")).toHaveText("import");
+  await expect(section).toContainText("single-mp3");
 
   // A candidate found by ID gets a match badge colored by beets' thresholds (UI-REFRESH-6).
-  const item = flac.locator('[data-testid=queue-item][data-kind="import"]');
-  await item.getByPlaceholder("release ID or URL").fill("e2e-release");
-  await item.getByRole("button", { name: "Search by ID" }).click();
-  const found = item.locator('[data-candidate="RifferrFixture:e2e-release"]');
+  await flac.getByPlaceholder("release ID or URL").fill("e2e-release");
+  await flac.getByRole("button", { name: "Search by ID" }).click();
+  const found = flac.locator('[data-candidate="RifferrFixture:e2e-release"]');
   await expect(found).toContainText("similarity", { timeout: 30_000 });
   await expect(found.locator("[data-token]")).not.toHaveAttribute("data-token", "none");
 
-  // Importing one album updates the run's blocks and counts without a reload.
+  // Importing one album makes its item disappear at once; nothing takes its place
+  // (UI-REFRESH-20), and the other album still waits.
   await found.getByRole("radio").check();
-  await item.getByRole("button", { name: "Import this match" }).click();
-  await expect(flac).toBeHidden({ timeout: 30_000 });
-  await expect(run.getByTestId("lane-counts")).toContainText("1 waiting");
-  await expect(run.getByTestId("lane-counts")).toContainText("1 done", { timeout: 30_000 });
-  await expect(mp3.getByTestId("album-status")).toHaveText("waiting on you");
+  await flac.getByRole("button", { name: "Import this match" }).click();
+  await expect(flac).toBeHidden({ timeout: 5_000 });
+  await expect(page.getByText("Working")).toHaveCount(0);
+  await expect(mp3).toBeVisible();
 
   // Leave the queue empty for the other tests.
   await mp3.getByRole("button", { name: "Skip" }).click();
-  await expect(run).toBeHidden({ timeout: 30_000 });
+  await expect(ofRun).toHaveCount(0, { timeout: 30_000 });
 });
