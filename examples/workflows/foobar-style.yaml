@@ -46,24 +46,11 @@ steps:
       # untouched files. Tags are written once the album is in staging (`write-tags`).
       # The profile's beets config needs `import: {copy: no, move: no}`.
       options: { write: no }
-  # Checklist line 4: delete leftover junk from the imported album's folder in the
-  # inbox, so it doesn't travel along. Music beets could import is never deleted (an
-  # unmatched album stays for line 5), nor is a folder that still waits as an import
-  # decision: it is cleaned by the pass that runs once the decision is made. Rip logs and
-  # cue sheets are kept and move with the album.
-  - id: cleanup
-    uses: files.cleanup
-    with:
-      path: "{{ run.input }}"
-      mode: delete
-      delete: ["*.nfo", "*.m3u", "*.m3u8", "*.sfv", "*.url", "Thumbs.db", ".DS_Store"]
-      keep: ["*.log", "*.cue"]
-      # A manual run's input is the whole inbox, which must stay; the album folder of a
-      # watch run is left empty instead (BACKLOG B-055).
-      remove_root: false
-  # Move each imported album out of the inbox into staging at once, with its rip logs,
-  # cue sheets and scans (`artifacts` defaults to every other file). It is journaled and
-  # undoable like any move, and needs no review: staging is not the library.
+  # Move each imported album out of the inbox into staging at once, with every other
+  # file in its folder (`artifacts` defaults to all of them): nothing is deleted, so
+  # .nfo, .m3u, rip logs, cue sheets and scans all travel with the album (author,
+  # 2026-11-22). It is journaled and undoable like any move, and needs no review:
+  # staging is not the library.
   - id: to-staging
     uses: library.move
     apply: auto
