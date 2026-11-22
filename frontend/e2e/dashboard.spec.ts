@@ -9,7 +9,7 @@ test("DASHBOARD_17 inbox, run in progress, review from the dashboard, undo the i
   const inbox = process.env.RIFFERR_E2E_DASHBOARD ?? "";
   const fixture = process.env.RIFFERR_E2E_FIXTURE ?? "";
   await page.goto(`/auth/exchange?token=${token}`);
-  await page.getByRole("navigation").getByRole("link", { name: "Dashboard" }).click();
+  await page.getByRole("navigation").getByRole("link", { name: "Dashboard", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
 
   // A dropped folder shows in the inbox while it settles (DASHBOARD-1, -15).
@@ -39,7 +39,7 @@ test("DASHBOARD_17 inbox, run in progress, review from the dashboard, undo the i
   await expect(gate).toHaveCount(0, { timeout: 15_000 }); // decided: it leaves the queue
 
   // The run finishes; its import shows under Recent imports and is undone (DASHBOARD-6 .. -10).
-  await page.getByRole("navigation").getByRole("link", { name: "Dashboard" }).click();
+  await page.getByRole("navigation").getByRole("link", { name: "Dashboard", exact: true }).click();
   const imported = page.locator(`[data-testid="recent-import"][data-run="${runId}"]`);
   await expect(imported).toContainText("succeeded", { timeout: 30_000 });
   await expect(imported).toContainText("Dashboard Sessions");

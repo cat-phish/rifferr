@@ -221,7 +221,9 @@ test("UI_REFRESH_13 switching tabs; an emptied tab stays until another is picked
     await Promise.resolve();
   });
   // The open stage has nothing left; it stays until another tab is picked.
-  expect(await screen.findByTestId("stage-empty")).toHaveTextContent("Nothing left in this stage.");
+  expect(await screen.findByTestId("stage-empty")).toHaveTextContent(
+    "Nothing waiting at this step.",
+  );
   expect(screen.getByRole("tab", { name: /check/ })).toHaveAttribute("aria-selected", "true");
   fireEvent.click(screen.getByRole("tab", { name: /suffix/ }));
   await screen.findByTestId("queue-item");
@@ -230,10 +232,120 @@ test("UI_REFRESH_13 switching tabs; an emptied tab stays until another is picked
 
 test("UI_REFRESH_13 ?stage= opens that stage's tab", async () => {
   setup({ queue: () => [csItem("cs1", NEW_RUN), gateItem()] });
-  renderApp("/review?profile=main&stage=tagging/check");
+  renderApp("/review?profile=main&workflow=tagging&stage=check");
   await screen.findByTestId("queue-item");
   expect(screen.getByRole("tab", { name: /check/ })).toHaveAttribute("aria-selected", "true");
   expect(screen.getAllByTestId("queue-item").map((e) => e.dataset.item)).toEqual(["g1"]);
+});
+
+function summary(name: string): S["WorkflowSummary"] {
+  return {
+    name,
+    path: `/w/${name}.yaml`,
+    sha256: "x",
+    valid: true,
+    trusted: true,
+    vars: [],
+    missing_vars: [],
+  };
+}
+
+function detail(name: string, steps: [string, boolean][]): S["WorkflowDetail"] {
+  return {
+    ...summary(name),
+    yaml: "",
+    errors: [],
+    called: [],
+    steps: steps.map(([id, may_wait]) => ({ id, uses: "x.y", may_wait })),
+  };
+}
+
+const WORKFLOWS = {
+  "GET /api/workflows": () => [summary("older"), summary("tagging")],
+  "GET /api/workflows/tagging": () =>
+    detail("tagging", [
+      ["import", true],
+      ["suffix", true],
+      ["write", false],
+      ["check", true],
+    ]),
+  "GET /api/workflows/older": () => detail("older", [["suffix", true]]),
+};
+
+test("UI_REFRESH_13 a tab per step that can wait, always there; new items never switch tabs", async () => {
+  let queue = [csItem("cs1", NEW_RUN)];
+  setup({ queue: () => queue, extra: WORKFLOWS });
+  renderApp("/review?profile=main");
+  await screen.findByTestId("queue-item");
+  await waitFor(() => {
+    expect(screen.getAllByTestId("stage-tab").map((t) => t.textContent)).toEqual([
+      "import0",
+      "suffix1",
+      "check0",
+    ]);
+  });
+  expect(screen.getByRole("tab", { name: /suffix/ })).toHaveAttribute("aria-selected", "true");
+  queue = [csItem("cs1", NEW_RUN), gateItem()];
+  await act(async () => {
+    FakeEventSource.last("/api/events").emit("review.requested", {
+      seq: 7,
+      run_id: NEW_RUN,
+      type: "review.requested",
+      data: { gate_id: "g1" },
+    });
+    await Promise.resolve();
+  });
+  await waitFor(() => {
+    expect(screen.getAllByTestId("stage-tab").map((t) => t.textContent)).toEqual([
+      "import0",
+      "suffix1",
+      "check1",
+    ]);
+  });
+  expect(screen.getByRole("tab", { name: /suffix/ })).toHaveAttribute("aria-selected", "true");
+  fireEvent.click(screen.getByRole("tab", { name: /import/ }));
+  expect(await screen.findByTestId("stage-empty")).toHaveTextContent(
+    "Nothing waiting at this step.",
+  );
+});
+
+test("UI_REFRESH_13 items of a step that isn't in the workflow get an Other tab", async () => {
+  setup({
+    queue: () => [{ ...csItem("cs1", NEW_RUN), step_id: null }],
+    extra: WORKFLOWS,
+  });
+  renderApp("/review?profile=main");
+  await screen.findByTestId("queue-item");
+  await waitFor(() => {
+    expect(screen.getAllByTestId("stage-tab").map((t) => t.textContent)).toEqual([
+      "import0",
+      "suffix0",
+      "check0",
+      "Other1",
+    ]);
+  });
+  expect(screen.getByRole("tab", { name: /Other/ })).toHaveAttribute("aria-selected", "true");
+});
+
+// -- UI-REFRESH-22 ------------------------------------------------------------------------
+
+test("UI_REFRESH_22 the Review nav lists each workflow with its count; a link opens it", async () => {
+  setup({ queue: () => [csItem("cs1", NEW_RUN), csItem("cs3", NEW_RUN)], extra: WORKFLOWS });
+  renderApp("/review?profile=main");
+  await screen.findAllByTestId("queue-item");
+  await waitFor(() => {
+    expect(screen.getAllByTestId("review-workflow-link").map((l) => l.textContent)).toEqual([
+      "older0",
+      "tagging2",
+    ]);
+  });
+  expect(screen.getByTestId("review-workflow")).toHaveTextContent("tagging");
+  fireEvent.click(screen.getByRole("link", { name: /older/ }));
+  await waitFor(() => {
+    expect(screen.getByTestId("review-workflow")).toHaveTextContent("older");
+  });
+  expect(screen.getAllByTestId("stage-tab").map((t) => t.textContent)).toEqual(["suffix0"]);
+  expect(screen.queryByTestId("queue-item")).toBeNull();
 });
 
 // -- REVIEW-QUEUE-12 ----------------------------------------------------------------------
@@ -432,13 +544,13 @@ test("REVIEW_QUEUE_14 accept all per section asks for confirmation with the coun
   });
   renderApp("/review?profile=main");
   await screen.findAllByTestId("queue-item");
-  // Two workflows wait, so the stage tabs are named with their workflow.
-  fireEvent.click(screen.getByRole("tab", { name: /tagging · suffix/ }));
+  // Two workflows wait; the first with items opens, one workflow at a time (UI-REFRESH-22).
   const sec = await screen.findByTestId("step-section");
-  expect(within(sec).getByTestId("step-label")).toHaveTextContent("tagging · suffix");
+  expect(within(sec).getByTestId("step-label")).toHaveTextContent("suffix");
+  expect(screen.getByTestId("review-workflow")).toHaveTextContent("tagging");
   fireEvent.click(within(sec).getByRole("button", { name: "Reject all" }));
   expect(await screen.findByTestId("bulk-confirm")).toHaveTextContent(
-    "Reject 1 ChangeSet of tagging · suffix? Conflicted ChangeSets are left alone.",
+    "Reject 1 ChangeSet of suffix? Conflicted ChangeSets are left alone.",
   );
   expect(posts(calls, "/api/changesets/cs1/decision")).toHaveLength(0);
   fireEvent.click(screen.getByRole("button", { name: "Reject 1" }));

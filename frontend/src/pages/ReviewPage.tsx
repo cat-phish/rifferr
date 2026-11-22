@@ -33,7 +33,7 @@ import { tc } from "../theme";
 import { ImportDecisionView } from "../components/ImportDecisionView";
 import type { GateAlbum, QueueItem, ReviewGate } from "../api/types";
 import { useProfile, withProfile } from "../hooks/useProfile";
-import { useReviewQueue } from "../hooks/useReviewQueue";
+import { useReviewQueue, useWorkflowSteps } from "../hooks/useReviewQueue";
 import { BULK_ACTIONS, bulkKind, decideAll, type BulkFailure, type BulkKind } from "../lib/bulk";
 import { useAppEventListener } from "../lib/appEvents";
 import { time } from "../lib/format";
@@ -44,6 +44,8 @@ import {
   formatValue,
   groupByStep,
   laneOf,
+  reviewWorkflows,
+  stageTabs,
   reviewLink,
   sameValue,
   targetKey,
@@ -165,26 +167,55 @@ export function ReviewPage() {
       })
       .map(([id]) => id),
   );
-  const sections = groupByStep(items, stepOrders, decided);
-  // One tab per stage (UI-REFRESH-13). A deep-linked item picks its tab; otherwise the
-  // URL's `stage`, else the first stage. The chosen stage goes into the URL, so a tab
-  // whose items are all decided stays (empty) until the user picks another.
-  const focusStage = sections.find((sec) => sec.items.some((i) => i.id === focus));
+  // One workflow at a time (UI-REFRESH-22): a deep-linked item's, else the URL's, else the
+  // first with items. Its stage tabs are permanent: one per step that can wait, with its
+  // count (UI-REFRESH-13). A deep-linked item picks its tab; otherwise the URL's `stage`,
+  // else the first tab with items. Both go into the URL, so nothing switches on its own.
+  const details = useWorkflowSteps(profile);
+  for (const d of details)
+    if ((d.steps ?? []).length > 0)
+      stepOrders.set(
+        d.name,
+        (d.steps ?? []).map((st) => st.id),
+      );
+  const workflows = reviewWorkflows(details, items);
+  const focusItem = items.find((i) => i.id === focus);
+  const urlWorkflow = params.get("workflow");
+  const workflowName =
+    (focusItem && (focusItem.workflow ?? "")) ??
+    urlWorkflow ??
+    (workflows.find((w) => w.count > 0) ?? workflows[0])?.name;
+  const workflow = workflows.find((w) => w.name === workflowName) ?? {
+    name: workflowName ?? "",
+    steps: [],
+    waits: [],
+    count: 0,
+  };
+  const sections = groupByStep(
+    items.filter((i) => (i.workflow ?? "") === workflowName),
+    stepOrders,
+    decided,
+  );
+  const tabs = stageTabs(workflow, sections);
+  const focusTab = tabs.find((t) => t.section?.items.some((i) => i.id === focus));
   const urlStage = params.get("stage");
-  const stage =
-    (focusStage && stageOf(focusStage)) ?? urlStage ?? (sections[0] && stageOf(sections[0]));
-  const shown = sections.find((sec) => stageOf(sec) === stage);
+  const stage = focusTab?.value ?? urlStage ?? (tabs.find((t) => t.section) ?? tabs[0])?.value;
+  const shown = tabs.find((t) => t.value === stage)?.section;
   useEffect(() => {
-    if (stage === undefined || stage === urlStage) return;
+    const want: [string, string | undefined][] = [
+      ["workflow", workflowName],
+      ["stage", stage],
+    ];
+    if (want.every(([k, v]) => v === undefined || params.get(k) === v)) return;
     setParams(
       (old) => {
         const next = new URLSearchParams(old);
-        next.set("stage", stage);
+        for (const [k, v] of want) if (v !== undefined) next.set(k, v);
         return next;
       },
       { replace: true },
     );
-  }, [stage, urlStage, setParams]);
+  }, [workflowName, stage, params, setParams]);
   const pickStage = (value: string | null) => {
     if (value === null) return;
     setPicked(new Map());
@@ -219,7 +250,14 @@ export function ReviewPage() {
   return (
     <Stack>
       <Group justify="space-between">
-        <Title order={2}>Review</Title>
+        <Group gap="xs" align="baseline">
+          <Title order={2}>Review</Title>
+          {workflows.length > 1 && workflowName && (
+            <Text c="dimmed" data-testid="review-workflow">
+              {workflowName}
+            </Text>
+          )}
+        </Group>
         {runFilter !== null && (
           <Anchor component={Link} to={withProfile("/review", profile)}>
             Show every run
@@ -290,41 +328,19 @@ export function ReviewPage() {
       )}
       <SelectionContext.Provider value={selection}>
         <DecidedContext.Provider value={markDecided}>
-          {stage !== undefined && items.length > 0 && (
+          {stage !== undefined && (tabs.length > 0 || items.length > 0) && (
             <Tabs value={stage} onChange={pickStage} keepMounted={false}>
               <Tabs.List data-testid="stage-tabs">
-                {sections.map((sec) => (
-                  <Tabs.Tab
-                    key={sec.key}
-                    value={stageOf(sec)}
-                    data-testid="stage-tab"
-                    rightSection={
-                      <Badge size="sm" variant="light" circle data-testid="stage-count">
-                        {String(sec.items.length)}
-                      </Badge>
-                    }
-                  >
-                    {sec.label}
-                  </Tabs.Tab>
+                {tabs.map((t) => (
+                  <StageTabButton
+                    key={t.value}
+                    value={t.value}
+                    label={t.label}
+                    n={t.section?.items.length ?? 0}
+                  />
                 ))}
-                {shown === undefined && (
-                  <Tabs.Tab
-                    value={stage}
-                    data-testid="stage-tab"
-                    rightSection={
-                      <Badge
-                        size="sm"
-                        variant="light"
-                        circle
-                        color="gray"
-                        data-testid="stage-count"
-                      >
-                        0
-                      </Badge>
-                    }
-                  >
-                    {stageLabel(stage)}
-                  </Tabs.Tab>
+                {!tabs.some((t) => t.value === stage) && (
+                  <StageTabButton value={stage} label={stage} n={0} />
                 )}
               </Tabs.List>
               <Box pt="sm">
@@ -332,7 +348,7 @@ export function ReviewPage() {
                   <StepSectionCard key={shown.key} section={shown} focus={focus} />
                 ) : (
                   <Text c="dimmed" data-testid="stage-empty">
-                    Nothing left in this stage.
+                    Nothing waiting at this step.
                   </Text>
                 )}
               </Box>
@@ -349,15 +365,28 @@ function isFileMove(item: QueueItem): boolean {
   return (item.changeset?.files?.length ?? 0) > 0;
 }
 
-/** A stage's value in the URL: `workflow/step`. */
-function stageOf(sec: StepSection): string {
-  return `${sec.workflow ?? ""}/${sec.stepId ?? ""}`;
-}
-
-/** The tab label of a stage that has nothing left. */
-function stageLabel(stage: string): string {
-  const cut = stage.indexOf("/");
-  return (cut < 0 ? stage : stage.slice(cut + 1)) || "Other";
+/** One stage tab with its count; dimmed while nothing waits there (UI-REFRESH-13). */
+function StageTabButton({ value, label, n }: { value: string; label: string; n: number }) {
+  return (
+    <Tabs.Tab
+      value={value}
+      data-testid="stage-tab"
+      c={n === 0 ? "dimmed" : undefined}
+      rightSection={
+        <Badge
+          size="sm"
+          variant="light"
+          circle
+          color={n === 0 ? "gray" : undefined}
+          data-testid="stage-count"
+        >
+          {String(n)}
+        </Badge>
+      }
+    >
+      {label}
+    </Tabs.Tab>
+  );
 }
 
 /** One workflow step's waiting items, oldest first (REVIEW-QUEUE-11, UI-REFRESH-13). */

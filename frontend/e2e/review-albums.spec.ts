@@ -20,11 +20,8 @@ test("UI_REFRESH_17 two albums wait in the import section; a decided one disappe
 
   // Neither album has a candidate: both wait in the import step's section, oldest first,
   // each with its album label (REVIEW-QUEUE-11, UI-REFRESH-13).
-  await page
-    .getByRole("navigation")
-    .getByRole("link", { name: /Review/ })
-    .click();
-  // One tab per stage (UI-REFRESH-13).
+  // Review lists each workflow (UI-REFRESH-22); one tab per stage (UI-REFRESH-13).
+  await page.getByTestId("review-workflow-link").filter({ hasText: "import-flow" }).click();
   await page
     .getByRole("tab", { name: /import/ })
     .first()

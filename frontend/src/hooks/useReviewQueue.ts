@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ok } from "../api/client";
 import type { RunEvent } from "../api/types";
 import { publishAppEvent } from "../lib/appEvents";
@@ -48,6 +48,32 @@ export function useReviewQueue(profile: string | null) {
     queryFn: async () =>
       ok(await api.GET("/api/review", { params: { query: { profile: profile ?? undefined } } })),
   });
+}
+
+/** The profile's workflows with their steps (`may_wait` per step), for the review
+ * page's workflows and stage tabs (UI-REFRESH-13, -22). Same queries and cache as the
+ * workflows pages. */
+export function useWorkflowSteps(profile: string | null) {
+  const list = useQuery({
+    queryKey: ["workflows", profile],
+    enabled: profile !== null,
+    queryFn: async () =>
+      ok(await api.GET("/api/workflows", { params: { query: { profile: profile ?? "" } } })),
+  });
+  const names = (list.data ?? []).filter((w) => w.valid).map((w) => w.name);
+  const details = useQueries({
+    queries: names.map((name) => ({
+      queryKey: ["workflow", profile, name],
+      retry: false,
+      queryFn: async () =>
+        ok(
+          await api.GET("/api/workflows/{name}", {
+            params: { path: { name }, query: { profile: profile ?? "" } },
+          }),
+        ),
+    })),
+  });
+  return details.flatMap((d) => (d.data ? [d.data] : []));
 }
 
 /** Keep the runs list and the review queue (and the ChangeSets shown in it) current from

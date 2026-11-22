@@ -128,3 +128,69 @@ export function laneOf(item: QueueItem, lanes: readonly LaneOut[]): LaneOut | nu
   const held = lanes.filter((lane) => lane.holds.some((h) => h.ref === item.id));
   return held.length === 1 ? (held[0] as LaneOut) : null;
 }
+
+/** A workflow the review page offers (UI-REFRESH-22): one that has a step that can wait,
+ * or that has items waiting. `name` is "" for items with no workflow. */
+export interface ReviewWorkflow {
+  name: string;
+  /** Every step id, in run order (calls expanded). */
+  steps: readonly string[];
+  /** The steps that can put something in the queue (`may_wait`); each gets a tab. */
+  waits: readonly string[];
+  /** Items waiting in it. */
+  count: number;
+}
+
+interface WorkflowSteps {
+  name: string;
+  steps?: readonly { id: string; may_wait: boolean }[];
+}
+
+export function reviewWorkflows(
+  details: readonly WorkflowSteps[],
+  items: readonly QueueItem[],
+): ReviewWorkflow[] {
+  const counts = new Map<string, number>();
+  for (const i of items) counts.set(i.workflow ?? "", (counts.get(i.workflow ?? "") ?? 0) + 1);
+  const out = details
+    .map((d) => ({
+      name: d.name,
+      steps: (d.steps ?? []).map((s) => s.id),
+      waits: (d.steps ?? []).filter((s) => s.may_wait).map((s) => s.id),
+      count: counts.get(d.name) ?? 0,
+    }))
+    .filter((w) => w.waits.length > 0 || w.count > 0);
+  for (const [name, count] of counts)
+    if (!out.some((w) => w.name === name)) out.push({ name, steps: [], waits: [], count });
+  return out;
+}
+
+/** A stage tab of the review page (UI-REFRESH-13). */
+export interface StageTab {
+  /** Its `?stage=` value: the step id, or {@link OTHER_STAGE}. */
+  value: string;
+  label: string;
+  /** Its waiting items; undefined while none wait. */
+  section: StepSection | undefined;
+}
+
+export const OTHER_STAGE = "~other";
+
+/** One tab per step of `wf` that can wait, whether or not anything waits there, plus one
+ * per other step that has items, in run order; items with no step go last ("Other").
+ * `sections` are this workflow's (from {@link groupByStep}). */
+export function stageTabs(wf: ReviewWorkflow, sections: readonly StepSection[]): StageTab[] {
+  const tabs: StageTab[] = wf.waits.map((id) => ({
+    value: id,
+    label: id,
+    section: sections.find((s) => s.stepId === id),
+  }));
+  for (const sec of sections)
+    if (!tabs.some((t) => t.section === sec))
+      tabs.push({ value: sec.stepId ?? OTHER_STAGE, label: sec.stepId ?? "Other", section: sec });
+  const index = (t: StageTab) => {
+    const i = t.value === OTHER_STAGE ? -1 : wf.steps.indexOf(t.value);
+    return i < 0 ? Number.MAX_SAFE_INTEGER : i;
+  };
+  return tabs.sort((a, b) => index(a) - index(b));
+}

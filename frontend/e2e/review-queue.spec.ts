@@ -34,10 +34,10 @@ test("REVIEW_QUEUE_18 review queue: partial accept, continue the gate, undo the 
   await changeset.getByRole("button", { name: "Accept selected" }).click();
 
   // The run resumes and stops at its review gate, which shows the folded change. The gate
-  // is in its own stage tab; the emptied one stays open until another is picked
+  // is in its own stage tab (one per step that can wait); the emptied one stays open
   // (UI-REFRESH-13).
   await expect(page.getByTestId("stage-empty")).toBeVisible({ timeout: 30_000 });
-  await page.getByRole("tab", { selected: false }).click({ timeout: 30_000 });
+  await page.getByRole("tab", { name: /check/ }).click({ timeout: 30_000 });
   const gate = page.locator('[data-testid=queue-item][data-kind="gate"]');
   await expect(gate).toBeVisible({ timeout: 30_000 });
   await expect(changeset).toHaveCount(0);
