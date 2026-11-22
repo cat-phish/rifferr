@@ -8,7 +8,7 @@ test("UI_REFRESH_17 two albums wait in the import section; a decided one disappe
   await page.goto(`/auth/exchange?token=${token}`);
 
   await page.getByRole("navigation").getByRole("link", { name: "Workflows" }).click();
-  await page.getByRole("link", { name: "import-flow" }).click();
+  await page.getByRole("main").getByRole("link", { name: "import-flow" }).click();
   // imports.spec.ts may have trusted it already.
   const trust = page.getByRole("button", { name: "Trust this workflow" });
   if (await trust.isVisible()) await trust.click();

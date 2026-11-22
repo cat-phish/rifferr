@@ -81,12 +81,15 @@ steps:
     uses: workflow
     with:
       workflow: release-suffixes.yaml
-  # Checklist line 6, album art: albums without art get the best cover from the
-  # providers in the profile's `covers` settings (Cover Art Archive, local images,
-  # iTunes and Deezer by default). When none scores well enough, only that album waits
-  # in the review queue for a cover choice. The cover is a ChangeSet, so undo removes it.
+  # Checklist line 6, album art: albums without art get a cover from the providers in
+  # the profile's `covers` settings (Cover Art Archive, local images, iTunes and Deezer
+  # by default). Every such album waits in the review queue with the ranked covers, best
+  # first, so each added cover is seen before it's used (author, 2026-11-22); only that
+  # album's lane waits. The cover is a ChangeSet, so undo removes it.
   - id: art
     uses: covers.search
+    with:
+      choose: review
   # The album's folder in the inbox is empty now (or holds only what beets couldn't
   # import, which stays for checklist line 5): remove the empty folders.
   - id: empty-inbox

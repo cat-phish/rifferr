@@ -9,7 +9,7 @@ test("REVIEW_QUEUE_18 review queue: partial accept, continue the gate, undo the 
 
   // Start the run: import, a tags.script step with apply: review, then a review gate.
   await page.getByRole("navigation").getByRole("link", { name: "Workflows" }).click();
-  await page.getByRole("link", { name: "review-flow" }).click();
+  await page.getByRole("main").getByRole("link", { name: "review-flow" }).click();
   // Every workflow file from outside Rifferr is reviewed and trusted first (SECURITY-12).
   await page.getByRole("button", { name: "Trust this workflow" }).click();
   await page.getByRole("textbox", { name: /inbox/ }).fill(inbox);

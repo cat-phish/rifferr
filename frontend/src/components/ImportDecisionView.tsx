@@ -154,7 +154,7 @@ export function ImportDecisionView({ decision }: { decision: ImportDecision }) {
           </Grid.Col>
           {chosen && (
             <Grid.Col span={{ base: 12, md: 7 }}>
-              <TrackTable candidate={chosen} />
+              <TrackTable candidate={chosen} thresholds={thresholds} />
             </Grid.Col>
           )}
         </Grid>
@@ -434,7 +434,13 @@ function AlbumFields({ candidate }: { candidate: ImportCandidate }) {
   );
 }
 
-function TrackTable({ candidate }: { candidate: ImportCandidate }) {
+function TrackTable({
+  candidate,
+  thresholds,
+}: {
+  candidate: ImportCandidate;
+  thresholds: MatchThresholds | null;
+}) {
   const mapping = [...(candidate.mapping ?? [])].sort((a, b) => (a.track ?? 0) - (b.track ?? 0));
   const missing = candidate.missing ?? [];
   const unmatched = candidate.unmatched ?? [];
@@ -443,6 +449,13 @@ function TrackTable({ candidate }: { candidate: ImportCandidate }) {
   const artists = mapping.some((m) => (m.penalties ?? []).includes("track_artist"));
   return (
     <Stack gap={4} data-testid="track-table">
+      {/* The chosen candidate's match, above its comparison (UI-REFRESH-18). */}
+      <Group gap="xs" wrap="wrap" data-testid="chosen-match">
+        <MatchBadge distance={candidate.distance} thresholds={thresholds} />
+        <Text size="sm" fw={500}>
+          {candidate.artist} - {candidate.album}
+        </Text>
+      </Group>
       <AlbumFields candidate={candidate} />
       <Table fz="sm" withRowBorders={false} verticalSpacing={2}>
         <Table.Thead>

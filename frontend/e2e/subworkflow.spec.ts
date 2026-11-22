@@ -5,7 +5,7 @@ test("SUBWORKFLOW_13 the trust prompt lists the called file and trusts both", as
   await page.goto(`/auth/exchange?token=${token}`);
 
   await page.getByRole("navigation").getByRole("link", { name: "Workflows" }).click();
-  await page.getByRole("link", { name: "call-flow" }).click();
+  await page.getByRole("main").getByRole("link", { name: "call-flow" }).click();
 
   const review = page.getByTestId("review");
   const called = review.getByTestId("called-call-shared.yaml");

@@ -156,7 +156,7 @@ test("REVIEW_QUEUE_11 queue in one section per step, oldest first, with album, r
     },
   });
   renderApp("/review?profile=main");
-  const nav = await screen.findByRole("link", { name: /Review/ });
+  const nav = await within(screen.getByRole("navigation")).findByRole("link", { name: /^Review/ });
   await waitFor(() => {
     expect(within(nav).getByTestId("review-count")).toHaveTextContent("3");
   });
@@ -329,23 +329,54 @@ test("UI_REFRESH_13 items of a step that isn't in the workflow get an Other tab"
 
 // -- UI-REFRESH-22 ------------------------------------------------------------------------
 
-test("UI_REFRESH_22 the Review nav lists each workflow with its count; a link opens it", async () => {
+test("UI_REFRESH_22 /review lists each workflow with its stages; nav and cards open one", async () => {
   setup({ queue: () => [csItem("cs1", NEW_RUN), csItem("cs3", NEW_RUN)], extra: WORKFLOWS });
   renderApp("/review?profile=main");
-  await screen.findAllByTestId("queue-item");
+  // Two workflows: the overview, one card per workflow with its stage counts.
   await waitFor(() => {
-    expect(screen.getAllByTestId("review-workflow-link").map((l) => l.textContent)).toEqual([
-      "older0",
-      "tagging2",
-    ]);
+    expect(screen.getAllByTestId("review-workflow-card")).toHaveLength(2);
   });
+  const tagging = nth(screen.getAllByTestId("review-workflow-card"), 1);
+  expect(within(tagging).getByTestId("workflow-waiting")).toHaveTextContent("2 items waiting");
+  expect(
+    within(tagging)
+      .getAllByTestId("overview-stage")
+      .map((t) => t.textContent),
+  ).toEqual(["import 0", "suffix 2", "check 0"]);
+  expect(screen.queryByTestId("queue-item")).toBeNull();
+  expect(screen.getAllByTestId("review-workflow-link").map((l) => l.textContent)).toEqual([
+    "older0",
+    "tagging2",
+  ]);
+  fireEvent.click(within(tagging).getByRole("link", { name: /suffix/ }));
+  await screen.findAllByTestId("queue-item");
   expect(screen.getByTestId("review-workflow")).toHaveTextContent("tagging");
+  expect(screen.getByRole("tab", { name: /suffix/ })).toHaveAttribute("aria-selected", "true");
   fireEvent.click(screen.getByRole("link", { name: /older/ }));
   await waitFor(() => {
     expect(screen.getByTestId("review-workflow")).toHaveTextContent("older");
   });
   expect(screen.getAllByTestId("stage-tab").map((t) => t.textContent)).toEqual(["suffix0"]);
   expect(screen.queryByTestId("queue-item")).toBeNull();
+});
+
+test("UI_REFRESH_22 the workflow list under Review folds away", async () => {
+  setup({ queue: () => [csItem("cs1", NEW_RUN)], extra: WORKFLOWS });
+  renderApp("/review?profile=main&workflow=tagging");
+  await screen.findAllByTestId("review-workflow-link");
+  const toggle = screen.getByTestId("review-toggle");
+  expect(toggle).toHaveAccessibleName("Hide workflows");
+  fireEvent.click(toggle);
+  expect(toggle).toHaveAccessibleName("Show workflows");
+  await waitFor(() => {
+    for (const l of screen.queryAllByTestId("review-workflow-link")) expect(l).not.toBeVisible();
+  });
+  // Folding doesn't leave the page.
+  expect(screen.getByTestId("review-workflow")).toHaveTextContent("tagging");
+  fireEvent.click(toggle);
+  await waitFor(() => {
+    expect(nth(screen.getAllByTestId("review-workflow-link"), 0)).toBeVisible();
+  });
 });
 
 // -- REVIEW-QUEUE-12 ----------------------------------------------------------------------
@@ -542,9 +573,9 @@ test("REVIEW_QUEUE_14 accept all per section asks for confirmation with the coun
       "POST /api/changesets/cs3/decision": () => ({ job_id: "j2" }),
     },
   });
-  renderApp("/review?profile=main");
+  renderApp("/review?profile=main&workflow=tagging");
   await screen.findAllByTestId("queue-item");
-  // Two workflows wait; the first with items opens, one workflow at a time (UI-REFRESH-22).
+  // One workflow at a time (UI-REFRESH-22).
   const sec = await screen.findByTestId("step-section");
   expect(within(sec).getByTestId("step-label")).toHaveTextContent("suffix");
   expect(screen.getByTestId("review-workflow")).toHaveTextContent("tagging");

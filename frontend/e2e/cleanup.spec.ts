@@ -10,7 +10,7 @@ test("FILES_CLEANUP_14 a cleanup waits for review; Delete removes the listed fil
   await page.goto(`/auth/exchange?token=${token}`);
 
   await page.getByRole("navigation").getByRole("link", { name: "Workflows" }).click();
-  await page.getByRole("link", { name: "cleanup-flow" }).click();
+  await page.getByRole("main").getByRole("link", { name: "cleanup-flow" }).click();
   await page.getByRole("button", { name: "Trust this workflow" }).click();
   await page.getByRole("textbox", { name: /inbox/ }).fill(inbox);
   await page.getByRole("button", { name: "Start run" }).click();

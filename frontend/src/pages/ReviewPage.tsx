@@ -46,6 +46,7 @@ import {
   laneOf,
   reviewWorkflows,
   stageTabs,
+  type ReviewWorkflow,
   reviewLink,
   sameValue,
   targetKey,
@@ -179,6 +180,10 @@ export function ReviewPage() {
         (d.steps ?? []).map((st) => st.id),
       );
   const workflows = reviewWorkflows(details, items);
+  // Plain /review is the overview: every workflow with its stages (UI-REFRESH-22). With
+  // only one workflow there is nothing to choose, so it opens at once.
+  const overview =
+    params.get("workflow") === null && focus === null && runFilter === null && workflows.length > 1;
   const focusItem = items.find((i) => i.id === focus);
   const urlWorkflow = params.get("workflow");
   const workflowName =
@@ -202,6 +207,7 @@ export function ReviewPage() {
   const stage = focusTab?.value ?? urlStage ?? (tabs.find((t) => t.section) ?? tabs[0])?.value;
   const shown = tabs.find((t) => t.value === stage)?.section;
   useEffect(() => {
+    if (overview) return;
     const want: [string, string | undefined][] = [
       ["workflow", workflowName],
       ["stage", stage],
@@ -215,7 +221,7 @@ export function ReviewPage() {
       },
       { replace: true },
     );
-  }, [workflowName, stage, params, setParams]);
+  }, [overview, workflowName, stage, params, setParams]);
   const pickStage = (value: string | null) => {
     if (value === null) return;
     setPicked(new Map());
@@ -247,14 +253,29 @@ export function ReviewPage() {
     el?.scrollIntoView?.({ block: "center" });
   }, [focus, focusShown]);
 
+  if (overview)
+    return (
+      <ReviewOverview
+        workflows={workflows}
+        items={items}
+        stepOrders={stepOrders}
+        loaded={queue.data !== undefined}
+        error={queue.error?.message ?? null}
+      />
+    );
+
   return (
     <Stack>
       <Group justify="space-between">
         <Group gap="xs" align="baseline">
-          <Title order={2}>Review</Title>
-          {workflows.length > 1 && workflowName && (
+          <Title order={2}>
+            <Anchor component={Link} to={withProfile("/review", profile)} inherit c="inherit">
+              Review
+            </Anchor>
+          </Title>
+          {workflowName !== undefined && (
             <Text c="dimmed" data-testid="review-workflow">
-              {workflowName}
+              › {workflowName || "Other"}
             </Text>
           )}
         </Group>
@@ -363,6 +384,80 @@ export function ReviewPage() {
 /** A proposed ChangeSet that moves (or copies) an album's files (S-LIBRARY-MOVE). */
 function isFileMove(item: QueueItem): boolean {
   return (item.changeset?.files?.length ?? 0) > 0;
+}
+
+/** Every workflow that can wait for review, with its stages and counts (UI-REFRESH-22). */
+function ReviewOverview({
+  workflows,
+  items,
+  stepOrders,
+  loaded,
+  error,
+}: {
+  workflows: readonly ReviewWorkflow[];
+  items: readonly QueueItem[];
+  stepOrders: ReadonlyMap<string, readonly string[]>;
+  loaded: boolean;
+  error: string | null;
+}) {
+  const { profile } = useProfile();
+  const link = (name: string, stage?: string) => {
+    const q = new URLSearchParams(profile === null ? {} : { profile });
+    q.set("workflow", name);
+    if (stage !== undefined) q.set("stage", stage);
+    return `/review?${q.toString()}`;
+  };
+  return (
+    <Stack>
+      <Title order={2}>Review</Title>
+      {error !== null && <Alert color="red">{error}</Alert>}
+      {loaded && workflows.length === 0 && (
+        <Text c="dimmed" data-testid="queue-empty">
+          Nothing waits for review.
+        </Text>
+      )}
+      {workflows.map((w) => {
+        const mine = items.filter((i) => (i.workflow ?? "") === w.name);
+        const tabs = stageTabs(w, groupByStep(mine, stepOrders));
+        const oldest = mine.map((i) => i.created_at).sort()[0];
+        return (
+          <Card key={w.name} withBorder padding="sm" data-testid="review-workflow-card">
+            <Group justify="space-between" align="baseline">
+              <Group gap="xs" align="baseline">
+                <Anchor component={Link} to={link(w.name)} fw={600}>
+                  {w.name || "Other"}
+                </Anchor>
+                <Text size="sm" c="dimmed" data-testid="workflow-waiting">
+                  {w.count === 0 ? "nothing waiting" : `${count(w.count, "item")} waiting`}
+                  {oldest !== undefined && ` · oldest ${time(oldest)}`}
+                </Text>
+              </Group>
+            </Group>
+            <Group gap="xs" mt={6} wrap="wrap">
+              {tabs.map((t) => {
+                const n = t.section?.items.length ?? 0;
+                return (
+                  <Anchor
+                    key={t.value}
+                    component={Link}
+                    to={link(w.name, t.value)}
+                    size="sm"
+                    c={n === 0 ? "dimmed" : undefined}
+                    data-testid="overview-stage"
+                  >
+                    {t.label}{" "}
+                    <Badge size="sm" variant="light" circle color={n === 0 ? "gray" : undefined}>
+                      {String(n)}
+                    </Badge>
+                  </Anchor>
+                );
+              })}
+            </Group>
+          </Card>
+        );
+      })}
+    </Stack>
+  );
 }
 
 /** One stage tab with its count; dimmed while nothing waits there (UI-REFRESH-13). */

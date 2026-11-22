@@ -284,6 +284,10 @@ test("UI_REFRESH_18_album_fields_beets_compares_now_and_candidate", async () => 
   expect(rows[1]).toHaveTextContent("—");
   expect(rows[2]).toHaveTextContent("data source");
   expect(rows[2]).not.toHaveAttribute("data-penalized");
+  // The chosen candidate's similarity sits above the comparison.
+  const match = within(card).getByTestId("chosen-match");
+  expect(match).toHaveTextContent("similarity 90.0 %");
+  expect(within(card).getByTestId("track-table").firstElementChild).toBe(match);
 });
 
 test("UI_REFRESH_19_track_penalties_show_index_length_and_the_rest", async () => {

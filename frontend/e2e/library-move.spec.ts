@@ -13,7 +13,7 @@ test("LIBRARY_MOVE_16 a move waits for review with old and new folders; acceptin
   await page.goto(`/auth/exchange?token=${token}`);
 
   await page.getByRole("navigation").getByRole("link", { name: "Workflows" }).click();
-  await page.getByRole("link", { name: "move-flow" }).click();
+  await page.getByRole("main").getByRole("link", { name: "move-flow" }).click();
   await page.getByRole("button", { name: "Trust this workflow" }).click();
   await page.getByRole("textbox", { name: /inbox/ }).fill(inbox);
   await page.getByRole("textbox", { name: /library/ }).fill(library);
