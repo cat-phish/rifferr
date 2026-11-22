@@ -5,6 +5,8 @@ Hypothesis idempotence property (AGENTS.md testing rules). The same table runs o
 beets in tests/backends/beets/test_reference_scripts.py.
 """
 
+# ruff: noqa: RUF001  # path-characters.yaml swaps in lookalike characters on purpose
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -22,7 +24,7 @@ from rifferr.tagscript.loader import parse_script
 from rifferr.tagscript.models import TagScript
 
 SCRIPTS = Path(__file__).parents[3] / "examples" / "scripts"
-TYPES: dict[str, type] = {"albumtypes": list}
+TYPES: dict[str, type] = {"albumtypes": list, "albumartists": list, "artists": list}
 
 
 def load(name: str) -> TagScript:
@@ -62,6 +64,44 @@ COMPILATIONS: list[tuple[dict[str, Any], dict[str, Any]]] = [
 ]
 
 
+#: (album fields, item fields, expected changes {(scope, field): new}).
+PATH_CHARACTERS: list[tuple[dict[str, Any], dict[str, Any], dict[tuple[str, str], Any]]] = [
+    (
+        {"album": "Funk You / Tell Me"},
+        {"title": "Funk You / Tell Me"},
+        {("album", "album"): "Funk You ／ Tell Me", ("item", "title"): "Funk You ／ Tell Me"},
+    ),
+    (
+        {"album": "Highway", "albumartist": "AC/DC", "albumartists": ["AC/DC"]},
+        {"title": "t", "artist": "AC/DC", "artists": ["AC/DC", "Q: B?"]},
+        {
+            ("album", "albumartist"): "AC／DC",
+            ("album", "albumartists"): ["AC／DC"],
+            ("item", "artist"): "AC／DC",
+            ("item", "artists"): ["AC／DC", "Q꞉ B？"],
+        },
+    ),
+    (
+        {"album": "Q: Are We Not Men? A: We Are Devo!"},
+        {"title": "Why?"},
+        {
+            ("album", "album"): "Q꞉ Are We Not Men？ A꞉ We Are Devo!",
+            ("item", "title"): "Why？",
+        },
+    ),
+    ({"album": "Plain"}, {"title": "Plain"}, {}),
+    ({"album": "Funk You ／ Tell Me"}, {"title": "Why？"}, {}),  # already replaced
+]
+
+
+def all_changes(backend: LibraryBackend, script: TagScript) -> dict[tuple[str, str], Any]:
+    (album,) = backend.query(Selection())
+    result = run_script(script, album, backend)
+    assert result.error is None, result.error
+    assert check_idempotence(script, result, backend).ok
+    return {(d.target.scope, d.field): d.after for d in result.diffs()}
+
+
 def changes(backend: LibraryBackend, script: TagScript) -> dict[str, Any]:
     (album,) = backend.query(Selection())
     result = run_script(script, album, backend)
@@ -86,14 +126,29 @@ def test_TAGSCRIPT_3_compilation_script(fields: dict[str, Any], expected: dict[s
     assert changes(fake(fields), load("compilation.yaml")) == expected
 
 
+@pytest.mark.parametrize(("album", "item", "expected"), PATH_CHARACTERS)
+def test_TAGSCRIPT_8_path_characters_script(
+    album: dict[str, Any], item: dict[str, Any], expected: dict[tuple[str, str], Any]
+) -> None:
+    backend = FakeBackend.from_fixture(
+        {"albums": [{**album, "items": [{"track": 1, **item}]}]}, field_types=TYPES
+    )
+    assert all_changes(backend, load("path-characters.yaml")) == expected
+
+
 # -- idempotence (TAGSCRIPT-19) -----------------------------------------------------------
 
 words = st.text(st.characters(categories=("L", "N"), max_codepoint=0x24F), min_size=1, max_size=8)
 endings = st.sampled_from(
     ["", " EP", " ep", " (EP)", " [Ep]", " Single", " (single)", " (Compilation)", " (Anthology)"]
 )
+#: Word separators, including the characters path-characters.yaml replaces.
+separators = st.sampled_from([" ", " / ", "/", ": ", "?", " ／ ", "？"])
 names = st.builds(
-    lambda ws, end: " ".join(ws) + end, st.lists(words, min_size=1, max_size=3), endings
+    lambda first, rest, end: first + "".join(sep + w for sep, w in rest) + end,
+    words,
+    st.lists(st.tuples(separators, words), max_size=2),
+    endings,
 )
 albums = st.fixed_dictionaries(
     {"album": names},
@@ -108,7 +163,7 @@ SETTINGS = settings(max_examples=200, deadline=None, suppress_health_check=[Heal
 
 
 @SETTINGS
-@given(albums, st.sampled_from(["release-types.yaml", "compilation.yaml"]))
+@given(albums, st.sampled_from(["release-types.yaml", "compilation.yaml", "path-characters.yaml"]))
 def test_TAGSCRIPT_19_reference_scripts_are_idempotent(fields: dict[str, Any], name: str) -> None:
     backend = fake(fields)
     script = load(name)

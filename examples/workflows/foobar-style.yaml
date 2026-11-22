@@ -108,6 +108,14 @@ steps:
       path: "{{ run.input }}"
       mode: delete
       remove_root: false
+  # Checklist line 11: "/", ":" and "?" in album, title, artist and album artist become
+  # lookalike characters (／ ꞉ ？), so folder and file names keep them instead of beets'
+  # "_". Runs on its own before the move, so the move's preview shows the new names.
+  - id: path-characters
+    uses: tags.script
+    apply: auto
+    with:
+      script: path-characters.yaml
   # Checklist lines 5, 13, 15, 17, 18, 19: rename and move each album from staging into
   # the library, only once a person accepts the move in the review queue (`apply`
   # defaults to review): one decision per album, showing the old and new

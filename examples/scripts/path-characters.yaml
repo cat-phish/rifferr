@@ -1,0 +1,31 @@
+# Lookalike characters for "/", ":" and "?" in names (docs/original-checklist.md:
+# 'Check for "/", ":", "?" in album, title, artist, and album artist field and run
+# replacement scripts').
+#
+# beets turns these into "_" in folder and file names. Swapping them in the tags for
+# similar Unicode characters keeps names readable in a file browser and on players that
+# show tags or filenames (e.g. Rockbox). The author's choices (2026-11-22):
+# - "/" -> "／" (U+FF0F FULLWIDTH SOLIDUS); only the character changes, so "A / B"
+#   becomes "A ／ B" and "AC/DC" becomes "AC／DC".
+# - ":" -> "꞉" (U+A789 MODIFIER LETTER COLON).
+# - "?" -> "？" (U+FF1F FULLWIDTH QUESTION MARK).
+# Pick other characters by editing the `with:` values. Each replacement leaves nothing
+# for a second pass to find, so the script is idempotent.
+scope: album
+idempotence: fail
+actions:
+  - name: album-slash
+    replace: { fields: [album, albumartist, albumartists], find: "/", with: "／" }
+  - name: album-colon
+    replace: { fields: [album, albumartist, albumartists], find: ":", with: "꞉" }
+  - name: album-question
+    replace: { fields: [album, albumartist, albumartists], find: "?", with: "？" }
+  - name: track-slash
+    scope: item
+    replace: { fields: [title, artist, artists], find: "/", with: "／" }
+  - name: track-colon
+    scope: item
+    replace: { fields: [title, artist, artists], find: ":", with: "꞉" }
+  - name: track-question
+    scope: item
+    replace: { fields: [title, artist, artists], find: "?", with: "？" }

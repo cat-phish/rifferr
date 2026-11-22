@@ -20,7 +20,7 @@ workflow gains a capability (agent loop step 6).
 | 8 | Dates: ORIGINALDATE, ORIGINALYEAR, DATE, RELEASEDATE | — (copy actions exist; the rules and manual cases aren't written yet) | S-TAGSCRIPT | Not yet (M5) |
 | 9 | Album Artist → Album Artists, splits and collabs | — | — | Not yet (M5) |
 | 10 | Splits and collabs carry the artists in the album name | — | — | Not yet (M5) |
-| 11 | Replace "/", ":", "?" in album, title, artist, album artist | — (a `replace` action can do it) | S-TAGSCRIPT | Not yet (M5) |
+| 11 | Replace "/", ":", "?" in album, title, artist, album artist | `path-characters` / `tags.script` with `examples/scripts/path-characters.yaml` (`apply: auto`): "/" → "／", ":" → "꞉", "?" → "？", spacing kept | S-TAGSCRIPT | Done (M1) |
 | 12 | Singles, EPs, Anthologies, Compilations, 24-bit and Vinyl in names and tags | Singles, EPs, Compilations: rows 6.1, 6.3. Vinyl: B-045. 24-bit: B-046 | S-TAGSCRIPT | Partly (M1) |
 | 13 | DATE ADDED tag as YYYY-MM-DD | `into-library` / `library.move` `stamp: { field: date_added }`: set to the day the album moves into the library, journaled and undone with the move | S-LIBRARY-MOVE | Done (M5) |
 | 14 | Genres: copy to Sub Genre, resolve into broad categories | — (AI genre step) | S-AI-TAG | Planned (M4) |
