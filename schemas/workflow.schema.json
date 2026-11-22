@@ -389,6 +389,75 @@
               "type": "string"
             },
             "uses": {
+              "const": "library.prune",
+              "title": "Uses"
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Backend condition (a beets query).",
+              "title": "When"
+            },
+            "with": {
+              "$ref": "#/$defs/With_library_prune"
+            }
+          },
+          "required": [
+            "id",
+            "uses"
+          ],
+          "title": "Step: library.prune",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One entry of ``steps:`` (WORKFLOW-2, WORKFLOW-3).",
+          "properties": {
+            "apply": {
+              "default": "review",
+              "description": "Whether this step's ChangeSets apply automatically or wait for review. Ignored by steps that don't produce ChangeSets.",
+              "enum": [
+                "auto",
+                "review"
+              ],
+              "title": "Apply",
+              "type": "string"
+            },
+            "id": {
+              "pattern": "^[a-z][a-z0-9_-]*$",
+              "title": "Id",
+              "type": "string"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Name"
+            },
+            "on_error": {
+              "default": "stop",
+              "enum": [
+                "stop",
+                "skip",
+                "continue"
+              ],
+              "title": "On Error",
+              "type": "string"
+            },
+            "uses": {
               "const": "notify",
               "title": "Uses"
             },
@@ -1457,6 +1526,26 @@
         "field"
       ],
       "title": "Stamp",
+      "type": "object"
+    },
+    "With_library_prune": {
+      "additionalProperties": false,
+      "properties": {
+        "max_albums": {
+          "default": 50,
+          "description": "Fail without removing anything when more albums than this look gone",
+          "minimum": 1,
+          "title": "Max Albums",
+          "type": "integer"
+        },
+        "query": {
+          "default": "",
+          "description": "A beets query; default all albums",
+          "title": "Query",
+          "type": "string"
+        }
+      },
+      "title": "PruneParams",
       "type": "object"
     },
     "With_notify": {

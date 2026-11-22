@@ -32,6 +32,8 @@ from rifferr.appdb import (
     AppJournal,
     AppLanes,
     AppMoveConflicts,
+    AppPruneDecisions,
+    AppRemovalJournal,
     AppReviewGates,
     Job,
     JobState,
@@ -82,6 +84,7 @@ from rifferr.notify import ProfileTargets, default_notifier
 from rifferr.profile_store import app_db_path, config_root, load_profile
 from rifferr.steps.cleanup_plan import CleanupError
 from rifferr.steps.files_cleanup import apply_reviewed, outcome_counts
+from rifferr.steps.library_prune import drop_albums, file_exists
 from rifferr.steps.registry import load_step_types
 from rifferr.worker.cleanup import busy_folders
 from rifferr.worker.gates import gate_albums, reject_gate_lanes, settle
@@ -178,6 +181,7 @@ class Worker:
         self.cleanups = AppCleanupDecisions(db)
         self.covers = AppCoverReviews(db)
         self.moves = AppMoveConflicts(db)
+        self.prunes = AppPruneDecisions(db)
 
     async def serve(self, commands: Commands) -> None:
         """Run jobs until stopped, the server goes away, or idle too long (WORKER-7)."""
@@ -324,6 +328,9 @@ class Worker:
         if job.kind == "move_retry":
             self._retry_move(job)
             return
+        if job.kind == "prune_apply":
+            self._apply_prune(job)
+            return
         payload = job.payload
         source = str(payload.get("source", ""))
         source_name = str(payload.get("source_name", "<workflow>"))
@@ -344,6 +351,8 @@ class Worker:
             cleanups=self.cleanups,
             covers=self.covers,
             moves=self.moves,
+            prunes=self.prunes,
+            removals=AppRemovalJournal(self.db, self.profile.name),
         )
         try:
             wf, doc = load_workflow(source, source_name)
@@ -391,6 +400,7 @@ class Worker:
                 self.cleanups.cancel_for_run(job.run)
                 self.covers.cancel_for_run(job.run)
                 self.moves.cancel_for_run(job.run)
+                self.prunes.cancel_for_run(job.run)
         except Exception as exc:  # an engine bug: still end the run cleanly
             log.exception("run %s crashed", run.id)
             self.db.finish(job.run, "failed", f"{type(exc).__name__}: {exc}")
@@ -644,6 +654,60 @@ class Worker:
         # and the decision's result.
         self.lanes.resolve_hold(decision.run_id, decision.id)
         self._finish_job(job, "succeeded", result=cast(dict[str, JsonValue], dict(result)))
+        settle(
+            self.db,
+            decision.run_id,
+            lambda type, step, d: self._changeset_emitter(decision.run_id, step)(type, d),
+        )
+
+    def _apply_prune(self, job: Job) -> None:
+        """Drop the albums a person accepted (LIBRARY-PRUNE-3 .. -6), then let the held
+        lane go on."""
+        payload = job.payload
+        decision_id = str(payload.get("decision_id"))
+        decision = self.prunes.get(decision_id)
+        if decision is None:
+            self._finish_job(job, "failed", f"no prune decision {decision_id}")
+            return
+        emit = self._changeset_emitter(decision.run_id, decision.step_id)
+        by, note = payload.get("by"), payload.get("note")
+        try:
+            dropped = drop_albums(
+                self.backend,
+                AppRemovalJournal(self.db, self.profile.name),
+                decision.run_id,
+                [a.album_id for a in decision.albums],
+                file_exists(self.backend.library_dirs()),
+            )
+        except Exception as exc:  # the library couldn't be read: nothing was dropped
+            emit("run.step.log", {"stream": "error", "line": f"prune: {type(exc).__name__}: {exc}"})
+            result = {"removed": [], "skipped": [], "failed": [a.album_id for a in decision.albums]}
+        else:
+            for stream, line in dropped.lines:
+                emit("run.step.log", {"stream": stream, "line": line})
+            result = {
+                "removed": dropped.removed,
+                "skipped": dropped.skipped,
+                "failed": dropped.failed,
+            }
+        decision.state = "accepted"
+        decision.decided_by = by if isinstance(by, str) else None
+        decision.decided_at = datetime.now(UTC)
+        decision.note = note if isinstance(note, str) else None
+        decision.result = result
+        self.prunes.release(decision)
+        counts: dict[str, JsonValue] = {k: len(v) for k, v in result.items()}
+        emit(
+            "prune.resolved",
+            {
+                "decision_id": decision.id,
+                "decision": "accept",
+                "decided_by": decision.decided_by,
+                "result": counts,
+            },
+        )
+        self.lanes.resolve_hold(decision.run_id, decision.id)
+        self._finish_job(job, "succeeded", result=counts)
         settle(
             self.db,
             decision.run_id,

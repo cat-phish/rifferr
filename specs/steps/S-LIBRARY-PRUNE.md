@@ -1,5 +1,5 @@
 # S-LIBRARY-PRUNE: Drop library entries whose files are gone
-Status: Draft
+Status: Implemented
 Milestone: M2
 
 ## Context
@@ -34,9 +34,11 @@ removal records (`album_removals`), so it never touches a file. It is meant to r
   delete_files=False)`, writing an `album_removals` record (`pending` before and
   `removed` or `failed` after, with the album's snapshot) so the removal is journaled.
   The step MUST NOT delete, move or write any file.
-- LIBRARY-PRUNE-5: The step's output MUST be `{removed: [album ids], partial: [album ids],
-  skipped: [album ids]}`. `skipped` are albums rejected in review or whose files came
-  back before the removal.
+- LIBRARY-PRUNE-5: The step's outputs MUST be the counts `removed`, `partial` and
+  `skipped` (step outputs are scalars), and the run log MUST name each album. `skipped`
+  are albums whose files came back, or that left the library, before the removal.
+  With review, the output also has `decision` (the decision id), and the counts are the
+  decision's `result` once applied.
 - LIBRARY-PRUNE-6: Right before removing, each album's files MUST be checked again; an
   album with any file present by then is skipped (LIBRARY-PRUNE-5).
 - LIBRARY-PRUNE-7: The static safety report MUST list the step as `destructive`:
@@ -53,7 +55,7 @@ removal records (`album_removals`), so it never touches a file. It is meant to r
     max_albums: 50
 ```
 
-Output: `{removed: list[str], partial: list[str], skipped: list[str]}`. Queue kind:
+Outputs: `removed`, `partial`, `skipped` (counts), plus `decision` with review. Queue kind:
 `prune` (REVIEW-QUEUE-1, additive), decided by
 `POST /api/prunes/{id}/decision {decision: accept | reject, note?}`. The backend method
 is the existing `remove_album`. It needs no new protocol method, only a read of the
@@ -92,17 +94,26 @@ at validation with "backend cannot remove albums".
   that re-adds entries is not part of this spec.
 
 ## Open questions
-1. Name: `library.prune` or `beets.prune`? Recommendation: `library.prune`, since it goes
+1. ~~Name: `library.prune` or `beets.prune`?~~ Resolved 2026-11-21 (author): as recommended. Recommendation: `library.prune`, since it goes
    through the backend protocol like `library.move`.
-2. Default `apply`? Recommendation: `review`. The author's test profile sets `auto`.
-3. `max_albums` default 50? Recommendation: yes. A test profile can raise it.
-4. Should singletons (items without an album) be pruned too? Recommendation: not in this
+2. ~~Default `apply`?~~ Resolved 2026-11-21 (author): as recommended. Recommendation: `review`. The author's test profile sets `auto`.
+3. ~~`max_albums` default 50?~~ Resolved 2026-11-21 (author): as recommended. Recommendation: yes. A test profile can raise it.
+4. ~~Should singletons (items without an album) be pruned too?~~ Resolved 2026-11-21 (author): as recommended. Recommendation: not in this
    spec. The import flow is album-based.
 
+Implementation notes (filled in while building):
+- Queue kind `prune` (QueueItem `prune_decision`), lane hold kind `prune`, job kind
+  `prune_apply`, events `prune.requested` and `prune.resolved`. Decisions live in
+  `prune_decisions` (migration 017); `album_removals` gains a `snapshot` column.
+- "Can't be checked": a permission error, or the backend library folder holding the path
+  is missing. Paths outside the library folders are checked as they are.
+- The review item holds the pass like a cleanup decision (LANES-16): before the import
+  there are no album lanes, so it waits in its own pending lane.
+
 ## Tasks
-- [ ] Step model, finder (pure part over snapshots plus an injected existence check)
-- [ ] Review item kind `prune`, decision route, card
-- [ ] Removal through `remove_album(delete_files=False)` with `album_removals` records
-- [ ] Safety report findings
-- [ ] Tests per behavior ID; schemas and TS client regenerated
-- [ ] Add it to the author's test profile only (not the example workflow)
+- [x] Step model, finder (pure part over snapshots plus an injected existence check)
+- [x] Review item kind `prune`, decision route, card
+- [x] Removal through `remove_album(delete_files=False)` with `album_removals` records
+- [x] Safety report findings
+- [x] Tests per behavior ID; schemas and TS client regenerated
+- [x] Add it to the author's test profile only (not the example workflow)

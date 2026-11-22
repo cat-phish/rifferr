@@ -29,6 +29,7 @@ from rifferr.appdb import (
     AppJournal,
     AppLanes,
     AppMoveConflicts,
+    AppPruneDecisions,
     AppReviewGates,
     GateAlbumsError,
     GateResolvedError,
@@ -39,6 +40,7 @@ from rifferr.core.covers import CoverChoice
 from rifferr.core.files import CleanupChoice
 from rifferr.core.imports import ImportAction
 from rifferr.core.moves import MoveChoice
+from rifferr.core.prune import PruneChoice
 from rifferr.core.review import GateDecision
 from rifferr.engine.events import Event, EventSink, profile_stream
 from rifferr.engine.undo import run_entries, undoable
@@ -575,6 +577,60 @@ class WorkerSupervisor:
             await self._wake(claimed.profile)
         return None
 
+    # -- prune decisions (S-LIBRARY-PRUNE) -------------------------------------------
+
+    async def decide_prune(
+        self,
+        decision_id: str,
+        decision: PruneChoice,
+        *,
+        by: str | None = None,
+        note: str | None = None,
+    ) -> str | None:
+        """Answer a prune decision (LIBRARY-PRUNE-3). ``accept`` queues the worker job that
+        drops the albums and returns its id; ``reject`` drops nothing and lets the held lane
+        go on at once (returns ``None``). Raises ``KeyError`` (unknown),
+        ``PruneResolvedError`` (decided already), ``PruneBusyError`` (a job holds it) or
+        ``ValueError`` while its run isn't waiting yet."""
+        if self._shutting_down:
+            raise RuntimeError("server is shutting down")
+        store = AppPruneDecisions(self.db)
+        found = store.get(decision_id)
+        if found is None:
+            raise KeyError(decision_id)
+        job = self.db.job_for_run(found.run_id)
+        if found.state == "pending" and (job is None or job.state != "waiting_review"):
+            state = job.state if job is not None else "missing"
+            raise ValueError(f"run {found.run_id} is {state}; the prune can't be decided yet")
+        claimed = store.claim(decision_id, "pending-job")
+        if decision == "accept":
+            payload: dict[str, JsonValue] = {"decision_id": decision_id, "by": by, "note": note}
+            queued = self.db.submit_job(claimed.profile, "prune_apply", payload, claimed.run_id)
+            store.set_claim(decision_id, queued.id)
+            await self._wake(claimed.profile)
+            return queued.id
+        claimed.state = "rejected"
+        claimed.decided_by = by
+        claimed.decided_at = self._clock()
+        claimed.note = note
+        claimed.result = {"removed": [], "skipped": [a.album_id for a in claimed.albums]}
+        store.release(claimed)
+        run_id = claimed.run_id
+        data: dict[str, JsonValue] = {
+            "decision_id": decision_id,
+            "decision": "reject",
+            "decided_by": by,
+        }
+        if note is not None:
+            data["note"] = note
+        self._emit_run(run_id, "prune.resolved", claimed.step_id, data)
+        AppLanes(self.db).resolve_hold(run_id, decision_id)
+        if settle(self.db, run_id, lambda t, step, d: self._emit_run(run_id, t, step, d)) == (
+            "requeued"
+        ):
+            await self._wake(claimed.profile)
+        return None
+
     # -- cover reviews (S-COVERS-SEARCH) ---------------------------------------------
 
     async def decide_cover(
@@ -767,6 +823,7 @@ class WorkerSupervisor:
             AppCleanupDecisions(self.db).cancel_for_run(run_id)  # FILES-CLEANUP-14
             AppCoverReviews(self.db).cancel_for_run(run_id)  # COVERS-SEARCH-14
             AppMoveConflicts(self.db).cancel_for_run(run_id)  # LIBRARY-MOVE-5a
+            AppPruneDecisions(self.db).cancel_for_run(run_id)  # LIBRARY-PRUNE-3
             seq = self.db.last_seq(run_id) + 1
             self._persist(self._event(run_id, seq, "run.finished", {"status": "cancelled"}))
             return

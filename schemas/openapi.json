@@ -2827,13 +2827,14 @@
               "import",
               "cleanup",
               "cover",
-              "move"
+              "move",
+              "prune"
             ],
             "title": "Kind",
             "type": "string"
           },
           "ref": {
-            "description": "ChangeSet id, review gate id, import decision id, cleanup decision id, cover review id or move conflict id",
+            "description": "ChangeSet id, review gate id, import decision id, cleanup decision id, prune decision id, cover review id or move conflict id",
             "title": "Ref",
             "type": "string"
           }
@@ -3848,6 +3849,208 @@
         "title": "ProfileSummary",
         "type": "object"
       },
+      "PruneAlbum": {
+        "description": "One album listed by the step (LIBRARY-PRUNE-1, -3).",
+        "properties": {
+          "album_id": {
+            "title": "Album Id",
+            "type": "string"
+          },
+          "items": {
+            "default": 0,
+            "title": "Items",
+            "type": "integer"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "missing": {
+            "default": 0,
+            "title": "Missing",
+            "type": "integer"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          }
+        },
+        "required": [
+          "album_id",
+          "label"
+        ],
+        "title": "PruneAlbum",
+        "type": "object"
+      },
+      "PruneDecided": {
+        "additionalProperties": false,
+        "description": "``job_id`` is the worker job that drops the albums (``accept``); ``None`` for\n``reject``.",
+        "properties": {
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          }
+        },
+        "title": "PruneDecided",
+        "type": "object"
+      },
+      "PruneDecision": {
+        "description": "Library entries waiting for Accept or Reject in the review queue (LIBRARY-PRUNE-3).",
+        "properties": {
+          "albums": {
+            "items": {
+              "$ref": "#/components/schemas/PruneAlbum"
+            },
+            "title": "Albums",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "decided_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided By"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "partial": {
+            "items": {
+              "$ref": "#/components/schemas/PruneAlbum"
+            },
+            "title": "Partial",
+            "type": "array"
+          },
+          "profile": {
+            "title": "Profile",
+            "type": "string"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "state": {
+            "default": "pending",
+            "enum": [
+              "pending",
+              "accepted",
+              "rejected",
+              "cancelled"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "step_id": {
+            "title": "Step Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "profile",
+          "run_id",
+          "step_id",
+          "albums",
+          "created_at"
+        ],
+        "title": "PruneDecision",
+        "type": "object"
+      },
+      "PruneDecisionBody": {
+        "additionalProperties": false,
+        "description": "Answer a prune decision (LIBRARY-PRUNE-3): ``accept`` drops the listed albums'\nlibrary entries, ``reject`` keeps them all.",
+        "properties": {
+          "decision": {
+            "enum": [
+              "accept",
+              "reject"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "title": "PruneDecisionBody",
+        "type": "object"
+      },
       "QueueItem": {
         "additionalProperties": false,
         "description": "One thing that waits for a decision (REVIEW-QUEUE-1). ``kind`` says which of\n``changeset`` / ``gate`` / ``import_decision`` / ``cleanup_decision`` /\n``cover_review`` / ``move_conflict`` is set (IMPORT-UI-7, FILES-CLEANUP-14,\nCOVERS-SEARCH-21, LIBRARY-MOVE-5a).",
@@ -3918,7 +4121,8 @@
               "import",
               "cleanup",
               "cover",
-              "move"
+              "move",
+              "prune"
             ],
             "title": "Kind",
             "type": "string"
@@ -3936,6 +4140,16 @@
           "profile": {
             "title": "Profile",
             "type": "string"
+          },
+          "prune_decision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PruneDecision"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "run_id": {
             "title": "Run Id",
@@ -9237,6 +9451,89 @@
         "summary": "Create Webhook Secret",
         "tags": [
           "triggers"
+        ]
+      }
+    },
+    "/api/prunes/{decision_id}/decision": {
+      "post": {
+        "description": "Answer a prune decision, once (LIBRARY-PRUNE-3). ``accept`` queues a worker job that\ndrops the albums' library entries (files are never touched; the result arrives as\n``job.finished`` and ``prune.resolved``); ``reject`` keeps them and lets the run go on.",
+        "operationId": "decide_prune_api_prunes__decision_id__decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "decision_id",
+            "required": true,
+            "schema": {
+              "title": "Decision Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PruneDecisionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PruneDecided"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Decide Prune",
+        "tags": [
+          "review"
         ]
       }
     },

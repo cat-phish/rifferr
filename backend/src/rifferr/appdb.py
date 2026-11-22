@@ -24,7 +24,9 @@ from rifferr.core.ids import new_ulid
 from rifferr.core.imports import ImportDecision, ImportDecisionState
 from rifferr.core.moves import MoveConflict
 from rifferr.core.notify import Notification, QueueRef
+from rifferr.core.prune import PruneDecision
 from rifferr.core.review import GateState, ReviewGate
+from rifferr.core.snapshot import AlbumSnapshot
 from rifferr.core.triggers import DedupRecord
 from rifferr.engine.changesets import StoredChangeSet
 from rifferr.engine.events import Event
@@ -57,6 +59,7 @@ JobKind = Literal[
     "import_undo",
     "cover_apply",
     "move_retry",
+    "prune_apply",
 ]
 
 #: ChangeSet states that still hold a suspended run (CHANGESET-7).
@@ -1832,6 +1835,8 @@ class AlbumRemoval(BaseModel):
     error: str | None = None
     created_at: datetime
     completed_at: datetime | None = None
+    snapshot: AlbumSnapshot | None = None
+    """The album as it was before (LIBRARY-PRUNE-4); ``None`` for import undo records."""
 
 
 class AppRemovals:
@@ -1845,7 +1850,13 @@ class AppRemovals:
         return self.db._conn  # pyright: ignore[reportPrivateUsage]
 
     def begin(
-        self, profile: str, run_id: str, album_id: str, label: str, delete_files: bool
+        self,
+        profile: str,
+        run_id: str,
+        album_id: str,
+        label: str,
+        delete_files: bool,
+        snapshot: AlbumSnapshot | None = None,
     ) -> AlbumRemoval:
         removal = AlbumRemoval(
             id=new_ulid(),
@@ -1856,10 +1867,11 @@ class AppRemovals:
             delete_files=delete_files,
             state="pending",
             created_at=datetime.now(UTC),
+            snapshot=snapshot,
         )
         self._conn.execute(
             "INSERT INTO album_removals (id, profile, run_id, album_id, label, delete_files,"
-            " state, created_at) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)",
+            " state, created_at, snapshot) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)",
             (
                 removal.id,
                 profile,
@@ -1868,6 +1880,7 @@ class AppRemovals:
                 label,
                 int(delete_files),
                 removal.created_at.isoformat(),
+                snapshot.model_dump_json() if snapshot is not None else None,
             ),
         )
         return removal
@@ -1905,4 +1918,127 @@ def _removal(row: sqlite3.Row) -> AlbumRemoval:
     data = dict(row)
     data["delete_files"] = bool(data["delete_files"])
     data["deleted"] = json.loads(data["deleted"])
+    raw = data.pop("snapshot", None)
+    data["snapshot"] = AlbumSnapshot.model_validate_json(raw) if raw else None
     return AlbumRemoval.model_validate(data)
+
+
+class AppRemovalJournal:
+    """``RemovalJournal`` over ``album_removals`` for one profile (LIBRARY-PRUNE-4)."""
+
+    def __init__(self, db: AppDB, profile: str) -> None:
+        self.removals = AppRemovals(db)
+        self.profile = profile
+
+    def begin(self, run_id: str, album: AlbumSnapshot, label: str, *, delete_files: bool) -> str:
+        return self.removals.begin(
+            self.profile, run_id, album.id, label, delete_files, snapshot=album
+        ).id
+
+    def finish(
+        self,
+        record_id: str,
+        state: Literal["removed", "failed"],
+        *,
+        deleted: list[str] | None = None,
+        error: str | None = None,
+    ) -> None:
+        self.removals.finish(record_id, state, deleted=deleted, error=error)
+
+
+class PruneResolvedError(ValueError):
+    """The prune decision isn't pending any more (decided once)."""
+
+    def __init__(self, decision_id: str, state: str) -> None:
+        super().__init__(f"prune decision {decision_id} is already {state}")
+        self.decision_id = decision_id
+        self.state = state
+
+
+class PruneBusyError(ValueError):
+    """A job is applying this prune decision right now."""
+
+    def __init__(self, decision_id: str) -> None:
+        super().__init__(f"prune decision {decision_id} is being applied; try again shortly")
+        self.decision_id = decision_id
+
+
+class AppPruneDecisions:
+    """``PruneDecisionStore`` backed by ``prune_decisions`` (S-LIBRARY-PRUNE)."""
+
+    def __init__(self, db: AppDB) -> None:
+        self.db = db
+
+    @property
+    def _conn(self) -> sqlite3.Connection:
+        return self.db._conn  # pyright: ignore[reportPrivateUsage]
+
+    def add(self, decision: PruneDecision) -> None:
+        self._conn.execute(
+            "INSERT INTO prune_decisions (id, profile, run_id, step_id, state, body,"
+            " created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                decision.id,
+                decision.profile,
+                decision.run_id,
+                decision.step_id,
+                decision.state,
+                decision.model_dump_json(),
+                decision.created_at.isoformat(),
+            ),
+        )
+
+    def get(self, decision_id: str) -> PruneDecision | None:
+        row = self._conn.execute(
+            "SELECT body FROM prune_decisions WHERE id = ?", (decision_id,)
+        ).fetchone()
+        return PruneDecision.model_validate_json(row["body"]) if row else None
+
+    def pending(self, profile: str | None = None, run_id: str | None = None) -> list[PruneDecision]:
+        """Pending decisions, oldest first."""
+        sql, args = "SELECT body FROM prune_decisions WHERE state = 'pending'", list[Any]()
+        if profile is not None:
+            sql, args = sql + " AND profile = ?", [*args, profile]
+        if run_id is not None:
+            sql, args = sql + " AND run_id = ?", [*args, run_id]
+        rows = self._conn.execute(sql + " ORDER BY created_at, id", args).fetchall()
+        return [PruneDecision.model_validate_json(r["body"]) for r in rows]
+
+    def claim(self, decision_id: str, job: str) -> PruneDecision:
+        """Reserve a pending decision for one job. Raises ``KeyError`` (unknown),
+        ``PruneResolvedError`` (not pending) or ``PruneBusyError`` (claimed)."""
+        cur = self._conn.execute(
+            "UPDATE prune_decisions SET claim = ? WHERE id = ? AND state = 'pending'"
+            " AND claim IS NULL",
+            (job, decision_id),
+        )
+        decision = self.get(decision_id)
+        if decision is None:
+            raise KeyError(decision_id)
+        if cur.rowcount != 1:
+            if decision.state != "pending":
+                raise PruneResolvedError(decision_id, decision.state)
+            raise PruneBusyError(decision_id)
+        return decision
+
+    def set_claim(self, decision_id: str, job: str) -> None:
+        self._conn.execute(
+            "UPDATE prune_decisions SET claim = ? WHERE id = ? AND claim IS NOT NULL",
+            (job, decision_id),
+        )
+
+    def release(self, decision: PruneDecision) -> None:
+        """Save ``decision`` and drop the claim."""
+        self._conn.execute(
+            "UPDATE prune_decisions SET state = ?, body = ?, claim = NULL WHERE id = ?",
+            (decision.state, decision.model_dump_json(), decision.id),
+        )
+
+    def cancel_for_run(self, run_id: str) -> list[str]:
+        """Cancel the run's pending decisions (a cancelled or finished run). Returns ids."""
+        cancelled: list[str] = []
+        for decision in self.pending(run_id=run_id):
+            decision.state = "cancelled"
+            self.release(decision)
+            cancelled.append(decision.id)
+        return cancelled

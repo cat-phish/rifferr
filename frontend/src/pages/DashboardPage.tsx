@@ -34,6 +34,7 @@ const KIND_LABEL: Record<QueueItem["kind"], string> = {
   cleanup: "folder cleanups",
   cover: "cover choices",
   move: "move conflicts",
+  prune: "library entries to drop",
 };
 
 const INBOX_COLOR: Record<InboxEntry["state"], string> = {

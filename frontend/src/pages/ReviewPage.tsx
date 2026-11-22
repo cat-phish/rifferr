@@ -19,6 +19,7 @@ import { CoverPicker } from "../components/CoverPicker";
 import { CleanupDecisionView } from "../components/CleanupDecisionView";
 import { FileChangeSetView } from "../components/FileChangeSetView";
 import { MoveConflictView } from "../components/MoveConflictView";
+import { PruneDecisionView } from "../components/PruneDecisionView";
 import { ActionsSlotContext, HeaderActions } from "../components/HeaderActions";
 import { DecidedContext, ItemIdContext, jobOf } from "../components/Decided";
 import { Diff } from "../components/Diff";
@@ -413,6 +414,22 @@ function QueueItemCard({ item, focus }: { item: QueueItem; focus: string | null 
       }
     >
       <ImportDecisionView decision={item.import_decision} />
+    </ItemCard>
+  ) : item.kind === "prune" && item.prune_decision ? (
+    <ItemCard
+      key={item.id}
+      item={item}
+      focused={focus === item.id}
+      title={
+        <Group gap="xs">
+          <Text fw={500}>Library entries without files</Text>
+          <Text size="sm" c="dimmed">
+            step {item.step_id}
+          </Text>
+        </Group>
+      }
+    >
+      <PruneDecisionView decision={item.prune_decision} />
     </ItemCard>
   ) : item.kind === "cleanup" && item.cleanup_decision ? (
     <ItemCard

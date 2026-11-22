@@ -130,6 +130,15 @@ def _report(wf: Workflow, beets_plugins: frozenset[str] = frozenset()) -> Safety
         if step.uses == "beets.command":
             findings += _library_command_findings(step.id, step.with_)
             continue
+        if step.uses == "library.prune":  # LIBRARY-PRUNE-7
+            findings.append(
+                Finding(
+                    step_id=step.id,
+                    kind="destructive",
+                    detail="removes library entries whose files are missing "
+                    "(files are not touched)",
+                )
+            )
         if step.uses == "files.cleanup":
             findings += _cleanup_findings(step.id, step.with_)
             continue

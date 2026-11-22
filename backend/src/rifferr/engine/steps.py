@@ -18,12 +18,14 @@ from rifferr.core.imports import ImportQuestion, TimeoutAction
 from rifferr.core.moves import MovePlan, MoveSettings
 from rifferr.core.notify import Notification, SendResult
 from rifferr.core.profile import ProfileFile, Secret
+from rifferr.core.prune import PruneAlbum
 from rifferr.core.review import GateDecision, GateRequest, OnReject
 from rifferr.core.selection import Scope, Selection
 from rifferr.core.snapshot import AlbumSnapshot
 from rifferr.core.workflow import StepSpec, StepTypeInfo
 from rifferr.engine.changesets import SnapshotIndex
 from rifferr.engine.events import ENGINE_EVENTS
+from rifferr.engine.prune import InMemoryRemovals, RemovalJournal
 from rifferr.engine.run import FailedTarget, Scalar
 
 
@@ -154,6 +156,14 @@ class CleanupRequest:
 
 
 @dataclass(frozen=True)
+class PruneRequest:
+    """Albums whose files are gone, to leave in the review queue (LIBRARY-PRUNE-3)."""
+
+    albums: list[PruneAlbum]
+    partial: list[PruneAlbum]
+
+
+@dataclass(frozen=True)
 class CoverRequest:
     """An album waiting for a person to pick its cover (COVERS-SEARCH-14)."""
 
@@ -176,6 +186,8 @@ RequestMoveConflict = Callable[[MovePlan, MoveSettings], str]
 
 #: The engine's side of ``ctx.request_cleanup``: request -> decision id.
 RequestCleanup = Callable[[CleanupRequest], str]
+#: The engine's side of ``ctx.request_prune``: request -> decision id.
+RequestPrune = Callable[[PruneRequest], str]
 #: The engine's side of ``ctx.hold_pass``: kind, ref, label for a pass without lanes.
 HoldPass = Callable[[str, str, str], None]
 
@@ -214,6 +226,10 @@ async def _no_notify(targets: list[str] | None, n: Notification) -> list[SendRes
 
 def _no_cleanup(request: CleanupRequest) -> str:
     raise StepFailure("this run can't leave cleanup decisions")
+
+
+def _no_prune(request: PruneRequest) -> str:
+    raise StepFailure("this run can't leave prune decisions")
 
 
 def _no_cover(request: CoverRequest) -> str:
@@ -271,6 +287,8 @@ class StepContext:
         request_cover: RequestCover | None = None,
         request_move_conflict: RequestMoveConflict | None = None,
         run_input: str = "",
+        request_prune: RequestPrune | None = None,
+        removals: RemovalJournal | None = None,
     ) -> None:
         self.run_id = run_id
         self.run_input = run_input
@@ -313,6 +331,9 @@ class StepContext:
         self._hold_pass = hold_pass or _no_hold_pass
         self._request_cover = request_cover or _no_cover
         self._request_move_conflict = request_move_conflict or _no_move_conflict
+        self._request_prune = request_prune or _no_prune
+        self.removals: RemovalJournal = removals or InMemoryRemovals()
+        """Where album removals are recorded before and after (LIBRARY-PRUNE-4)."""
         """The profile's ``notify.base_url``, for links in notifications (NOTIFY-6)."""
         self._snapshots = SnapshotIndex()
         self.proposed: list[ChangeSet] = []
@@ -447,6 +468,11 @@ class StepContext:
         """Leave a cleanup listing in the review queue and hold the pass until it is
         decided (FILES-CLEANUP-14). Returns the decision id."""
         return self._request_cleanup(request)
+
+    def request_prune(self, request: PruneRequest) -> str:
+        """Leave the albums to drop in the review queue and hold the pass until it is
+        decided (LIBRARY-PRUNE-3). Returns the decision id."""
+        return self._request_prune(request)
 
     def request_cover(self, request: CoverRequest) -> str:
         """Leave an album in the review queue to pick its cover; only that album's lane

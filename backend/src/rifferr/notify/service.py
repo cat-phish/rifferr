@@ -30,6 +30,7 @@ from rifferr.appdb import (
     AppLanes,
     AppMoveConflicts,
     AppNotifications,
+    AppPruneDecisions,
     AppReviewGates,
     StoredNotification,
 )
@@ -483,6 +484,9 @@ class NotificationService:
         if item.kind == "move":
             move = AppMoveConflicts(self.db).get(item.ref)
             return move is not None and move.state == "pending"
+        if item.kind == "prune":
+            prune = AppPruneDecisions(self.db).get(item.ref)
+            return prune is not None and prune.state == "pending"
         stored = AppChangeSets(self.db).get(item.ref)
         return stored is not None and stored.state in HOLDING_STATES
 

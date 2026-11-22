@@ -806,6 +806,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/prunes/{decision_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decide Prune
+         * @description Answer a prune decision, once (LIBRARY-PRUNE-3). ``accept`` queues a worker job that
+         *     drops the albums' library entries (files are never touched; the result arrives as
+         *     ``job.finished`` and ``prune.resolved``); ``reject`` keeps them and lets the run go on.
+         */
+        post: operations["decide_prune_api_prunes__decision_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/review": {
         parameters: {
             query?: never;
@@ -2190,10 +2212,10 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "changeset" | "gate" | "import" | "cleanup" | "cover" | "move";
+            kind: "changeset" | "gate" | "import" | "cleanup" | "cover" | "move" | "prune";
             /**
              * Ref
-             * @description ChangeSet id, review gate id, import decision id, cleanup decision id, cover review id or move conflict id
+             * @description ChangeSet id, review gate id, import decision id, cleanup decision id, prune decision id, cover review id or move conflict id
              */
             ref: string;
         };
@@ -2596,6 +2618,90 @@ export interface components {
             vars?: string[];
         };
         /**
+         * PruneAlbum
+         * @description One album listed by the step (LIBRARY-PRUNE-1, -3).
+         */
+        PruneAlbum: {
+            /** Album Id */
+            album_id: string;
+            /**
+             * Items
+             * @default 0
+             */
+            items: number;
+            /** Label */
+            label: string;
+            /**
+             * Missing
+             * @default 0
+             */
+            missing: number;
+            /** Path */
+            path?: string | null;
+        };
+        /**
+         * PruneDecided
+         * @description ``job_id`` is the worker job that drops the albums (``accept``); ``None`` for
+         *     ``reject``.
+         */
+        PruneDecided: {
+            /** Job Id */
+            job_id?: string | null;
+        };
+        /**
+         * PruneDecision
+         * @description Library entries waiting for Accept or Reject in the review queue (LIBRARY-PRUNE-3).
+         */
+        PruneDecision: {
+            /** Albums */
+            albums: components["schemas"]["PruneAlbum"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Decided At */
+            decided_at?: string | null;
+            /** Decided By */
+            decided_by?: string | null;
+            /** Id */
+            id: string;
+            /** Note */
+            note?: string | null;
+            /** Partial */
+            partial?: components["schemas"]["PruneAlbum"][];
+            /** Profile */
+            profile: string;
+            /** Result */
+            result?: {
+                [key: string]: string[];
+            } | null;
+            /** Run Id */
+            run_id: string;
+            /**
+             * State
+             * @default pending
+             * @enum {string}
+             */
+            state: "pending" | "accepted" | "rejected" | "cancelled";
+            /** Step Id */
+            step_id: string;
+        };
+        /**
+         * PruneDecisionBody
+         * @description Answer a prune decision (LIBRARY-PRUNE-3): ``accept`` drops the listed albums'
+         *     library entries, ``reject`` keeps them all.
+         */
+        PruneDecisionBody: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "accept" | "reject";
+            /** Note */
+            note?: string | null;
+        };
+        /**
          * QueueItem
          * @description One thing that waits for a decision (REVIEW-QUEUE-1). ``kind`` says which of
          *     ``changeset`` / ``gate`` / ``import_decision`` / ``cleanup_decision`` /
@@ -2619,10 +2725,11 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "changeset" | "gate" | "import" | "cleanup" | "cover" | "move";
+            kind: "changeset" | "gate" | "import" | "cleanup" | "cover" | "move" | "prune";
             move_conflict?: components["schemas"]["MoveConflict"] | null;
             /** Profile */
             profile: string;
+            prune_decision?: components["schemas"]["PruneDecision"] | null;
             /** Run Id */
             run_id: string;
             /** State */
@@ -5817,6 +5924,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WebhookSecret"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    decide_prune_api_prunes__decision_id__decision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                decision_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PruneDecisionBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PruneDecided"];
                 };
             };
             /** @description Bad Request */

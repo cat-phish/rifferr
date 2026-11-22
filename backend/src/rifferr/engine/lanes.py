@@ -16,7 +16,7 @@ from pydantic import JsonValue
 LaneState = Literal[
     "active", "waiting", "done", "skipped", "failed", "rejected", "gone", "cancelled"
 ]
-HoldKind = Literal["changeset", "gate", "import", "cleanup", "cover", "move"]
+HoldKind = Literal["changeset", "gate", "import", "cleanup", "cover", "move", "prune"]
 
 FINAL_LANE_STATES: Final = frozenset({"done", "skipped", "failed", "rejected", "gone", "cancelled"})
 """``skipped``: an album the user chose not to import (F-IMPORT-UI IMPORT-UI-17)."""

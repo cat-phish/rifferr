@@ -36,6 +36,7 @@ from rifferr.core.imports import ImportDecision, ImportQuestion
 from rifferr.core.moves import MoveConflict, MovePlan, MoveSettings
 from rifferr.core.notify import Notification, SendResult
 from rifferr.core.profile import ProfileFile, Redactor, env_var_name, merged_vars
+from rifferr.core.prune import PruneDecision
 from rifferr.core.review import GateAlbum, GateRequest, ReviewGate
 from rifferr.core.selection import Selection
 from rifferr.core.snapshot import label
@@ -80,6 +81,12 @@ from rifferr.engine.lanes import (
     lane_json,
 )
 from rifferr.engine.moves import InMemoryMoveConflictStore, MoveConflictStore
+from rifferr.engine.prune import (
+    InMemoryPruneStore,
+    InMemoryRemovals,
+    PruneDecisionStore,
+    RemovalJournal,
+)
 from rifferr.engine.review import GateStore, InMemoryGateStore, conflicted_for, fold_changes
 from rifferr.engine.run import PassRecord, Run, RunState, Scalar, StepRecord
 from rifferr.engine.steps import (
@@ -89,6 +96,7 @@ from rifferr.engine.steps import (
     ImportOptions,
     NoSecrets,
     NotifyTargets,
+    PruneRequest,
     SecretAccess,
     StepContext,
     StepFailure,
@@ -186,8 +194,12 @@ class Engine:
         cleanups: CleanupDecisionStore | None = None,
         covers: CoverReviewStore | None = None,
         moves: MoveConflictStore | None = None,
+        prunes: PruneDecisionStore | None = None,
+        removals: RemovalJournal | None = None,
     ) -> None:
         self.registry = registry
+        self.prunes: PruneDecisionStore = prunes or InMemoryPruneStore()
+        self.removals: RemovalJournal = removals or InMemoryRemovals()
         self.moves: MoveConflictStore = moves or InMemoryMoveConflictStore()
         self.covers: CoverReviewStore = covers or InMemoryCoverStore()
         self.cleanups: CleanupDecisionStore = cleanups or InMemoryCleanupStore()
@@ -526,7 +538,7 @@ class Engine:
     def _hold(
         self, state: _RunState, key: str, kind: str, ref: str, label: str | None = None
     ) -> None:
-        if kind not in ("changeset", "gate", "import", "cleanup", "cover", "move"):
+        if kind not in ("changeset", "gate", "import", "cleanup", "cover", "move", "prune"):
             raise ValueError(f"unknown hold kind {kind!r}")
         state.lane_holds.setdefault(key, []).append(Hold(cast(Any, kind), ref))
         if label is not None:
@@ -569,6 +581,28 @@ class Engine:
         if decision.deadline is not None:
             data["deadline"] = decision.deadline.isoformat()
         self._emit(run, "cleanup.requested", spec.id, _redact(data, state.redactor))
+        return decision.id
+
+    def _request_prune(self, state: _RunState, spec: StepSpec, request: PruneRequest) -> str:
+        """LIBRARY-PRUNE-3: store the decision and hold the pass until it is decided."""
+        run = state.run
+        decision = PruneDecision(
+            id=new_ulid(),
+            profile=run.profile,
+            run_id=run.id,
+            step_id=spec.id,
+            albums=list(request.albums),
+            partial=list(request.partial),
+            created_at=self.clock.now(),
+        )
+        self.prunes.add(decision)
+        self._hold_pass(state, "prune", decision.id, "library entries to drop")
+        self._emit(
+            run,
+            "prune.requested",
+            spec.id,
+            {"decision_id": decision.id, "albums": len(decision.albums)},
+        )
         return decision.id
 
     def _request_cover(self, state: _RunState, spec: StepSpec, request: CoverRequest) -> str:
@@ -732,6 +766,8 @@ class Engine:
                     state, spec, plan, settings
                 ),
                 hold_pass=lambda kind, ref, label: self._hold_pass(state, kind, ref, label),
+                request_prune=lambda request: self._request_prune(state, spec, request),
+                removals=self.removals,
             )
             result = await self._run_cancellable(state, step_type.run(ctx))
             if state.cancel.is_set():

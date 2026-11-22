@@ -26,6 +26,8 @@ from rifferr.api.models import (
     JobsQueued,
     MoveDecided,
     MoveDecisionBody,
+    PruneDecided,
+    PruneDecisionBody,
     QueueItem,
     RunDecision,
     UndoBody,
@@ -40,6 +42,7 @@ from rifferr.appdb import (
     AppImportDecisions,
     AppJournal,
     AppMoveConflicts,
+    AppPruneDecisions,
     AppReviewGates,
     CleanupBusyError,
     CleanupResolvedError,
@@ -49,6 +52,8 @@ from rifferr.appdb import (
     ImportResolvedError,
     MoveBusyError,
     MoveResolvedError,
+    PruneBusyError,
+    PruneResolvedError,
 )
 from rifferr.core.files import CleanupDecision
 from rifferr.core.imports import ImportDecision
@@ -137,6 +142,19 @@ async def review_queue(
                 step_id=cleanup.step_id,
                 created_at=cleanup.created_at,
                 cleanup_decision=cleanup,
+            )
+        )
+    for prune in AppPruneDecisions(state.db).pending(profile=profile, run_id=run):
+        items.append(
+            QueueItem(
+                kind="prune",
+                id=prune.id,
+                profile=prune.profile,
+                run_id=prune.run_id,
+                workflow=workflow(prune.run_id),
+                step_id=prune.step_id,
+                created_at=prune.created_at,
+                prune_decision=prune,
             )
         )
     for cover in AppCoverReviews(state.db).pending(profile=profile, run_id=run):
@@ -430,6 +448,34 @@ async def decide_cleanup(
     except ValueError as exc:
         raise ApiError(409, "not_waiting", str(exc)) from None
     return CleanupDecided(job_id=job_id)
+
+
+# -- prune decisions (S-LIBRARY-PRUNE) ----------------------------------------------
+
+
+@router.post(
+    "/prunes/{decision_id}/decision",
+    status_code=202,
+    response_model=PruneDecided,
+    responses=ERROR_RESPONSES,
+)
+async def decide_prune(decision_id: str, body: PruneDecisionBody, state: State) -> PruneDecided:
+    """Answer a prune decision, once (LIBRARY-PRUNE-3). ``accept`` queues a worker job that
+    drops the albums' library entries (files are never touched; the result arrives as
+    ``job.finished`` and ``prune.resolved``); ``reject`` keeps them and lets the run go on."""
+    try:
+        job_id = await state.supervisor.decide_prune(
+            decision_id, body.decision, by=DECIDER, note=body.note
+        )
+    except KeyError:
+        raise not_found(f"prune decision {decision_id}") from None
+    except PruneResolvedError as exc:
+        raise ApiError(409, "already_resolved", str(exc)) from None
+    except PruneBusyError as exc:
+        raise ApiError(409, "busy", str(exc)) from None
+    except ValueError as exc:
+        raise ApiError(409, "not_waiting", str(exc)) from None
+    return PruneDecided(job_id=job_id)
 
 
 # -- move conflicts (S-LIBRARY-MOVE LIBRARY-MOVE-5a) ------------------------------------

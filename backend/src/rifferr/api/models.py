@@ -15,6 +15,7 @@ from rifferr.core.files import CleanupChoice, CleanupDecision
 from rifferr.core.imports import MAX_LOOKUP_IDS, MAX_LOOKUP_TEXT, ImportAction, ImportDecision
 from rifferr.core.moves import MoveChoice, MoveConflict
 from rifferr.core.profile import GridColumns
+from rifferr.core.prune import PruneChoice, PruneDecision
 from rifferr.core.review import ReviewGate
 from rifferr.engine.changesets import CurrentTarget
 
@@ -196,9 +197,10 @@ LaneStateOut = Literal[
 
 
 class LaneHold(_Model):
-    kind: Literal["changeset", "gate", "import", "cleanup", "cover", "move"]
+    kind: Literal["changeset", "gate", "import", "cleanup", "cover", "move", "prune"]
     ref: str = Field(
         description="ChangeSet id, review gate id, import decision id, cleanup decision id,"
+        " prune decision id,"
         " cover review id or move conflict id"
     )
 
@@ -334,7 +336,7 @@ class QueueItem(_Model):
     ``cover_review`` / ``move_conflict`` is set (IMPORT-UI-7, FILES-CLEANUP-14,
     COVERS-SEARCH-21, LIBRARY-MOVE-5a)."""
 
-    kind: Literal["changeset", "gate", "import", "cleanup", "cover", "move"]
+    kind: Literal["changeset", "gate", "import", "cleanup", "cover", "move", "prune"]
     id: str
     profile: str
     run_id: str
@@ -348,6 +350,7 @@ class QueueItem(_Model):
     cleanup_decision: CleanupDecision | None = None
     cover_review: CoverReview | None = None
     move_conflict: MoveConflict | None = None
+    prune_decision: PruneDecision | None = None
 
 
 class ChangeSetDetail(_Model):
@@ -392,6 +395,21 @@ class CleanupDecisionBody(_Model):
 
     decision: CleanupChoice
     note: str | None = Field(default=None, max_length=2000)
+
+
+class PruneDecisionBody(_Model):
+    """Answer a prune decision (LIBRARY-PRUNE-3): ``accept`` drops the listed albums'
+    library entries, ``reject`` keeps them all."""
+
+    decision: PruneChoice
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class PruneDecided(_Model):
+    """``job_id`` is the worker job that drops the albums (``accept``); ``None`` for
+    ``reject``."""
+
+    job_id: str | None = None
 
 
 class CleanupDecided(_Model):
