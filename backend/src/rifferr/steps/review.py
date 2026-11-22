@@ -54,6 +54,7 @@ class ReviewParams(BaseModel):
 
 class ReviewStep:
     name = "review"
+    waits = "always"  # may put items in the review queue (UI-REFRESH-13)
     params_model = ReviewParams
     requires = BackendCapabilities(query=True, templates=True)
 

@@ -144,6 +144,7 @@ class _Collector:
 
 class ShellStep:
     name = "shell"
+    waits = "apply"  # may put items in the review queue (UI-REFRESH-13)
     params_model = ShellParams
     requires = BackendCapabilities(query=True, templates=True)
 

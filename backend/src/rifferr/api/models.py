@@ -96,9 +96,21 @@ class CalledWorkflow(_Model):
     yaml: str
 
 
+class WorkflowStepInfo(_Model):
+    id: str = Field(description="Step id; a called workflow's steps as <call id>/<step id>")
+    uses: str
+    may_wait: bool = Field(
+        description="The step can put something in the review queue (UI-REFRESH-13)"
+    )
+
+
 class WorkflowDetail(WorkflowSummary):
     yaml: str
     errors: list[WorkflowError]
+    steps: list[WorkflowStepInfo] = Field(
+        default_factory=list[WorkflowStepInfo],
+        description="Steps in run order, calls expanded; empty when the file doesn't load",
+    )
     called: list[CalledWorkflow] = Field(
         default_factory=list[CalledWorkflow],
         description="Files it calls; 'trusted' is true only when they all are (SUBWORKFLOW-13)",

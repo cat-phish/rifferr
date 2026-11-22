@@ -98,3 +98,13 @@ async def test_SUBWORKFLOW_1_run_start_refuses_a_missing_called_file(api: Api) -
     r = await api.client.post("/api/runs", json={"profile": "main", "workflow": "caller"})
     assert r.status_code == 422
     assert "not found in the profile's workflows/ folder" in r.text
+
+
+async def test_UI_REFRESH_13_detail_lists_steps_with_calls_expanded(api: Api) -> None:
+    setup(api)
+    detail = (await api.client.get("/api/workflows/caller", params=Q)).json()
+    assert [(s["id"], s["uses"], s["may_wait"]) for s in detail["steps"]] == [
+        ("first", "test.echo", False),
+        ("sub/say", "test.echo", False),
+        ("sub/fetch", "shell", True),
+    ]

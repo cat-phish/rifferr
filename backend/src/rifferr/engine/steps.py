@@ -85,6 +85,12 @@ class StepType(Protocol):
     Optional attribute ``run_level``: ``True``, or a function of the step's raw ``with:``
     mapping returning a bool (default False). A run-level step runs once per pass even
     before any lane exists, e.g. an import or a ``per: run`` command (C-LANES LANES-6).
+
+    Optional attribute ``waits`` (``"apply"`` or ``"always"``, default: never): whether the
+    step can put something in the review queue. ``"apply"``: when its ``apply`` is
+    ``review`` (or it has ``force_review``). ``"always"``: whatever ``apply`` says, e.g. an
+    import decision or a move conflict. The review page gives such steps a tab
+    (UI-REFRESH-13, ``may_wait``).
     """
 
     name: str

@@ -102,6 +102,7 @@ HttpFactory = Callable[[], httpx.AsyncClient]
 
 class CoversSearchStep:
     name = "covers.search"
+    waits = "always"  # may put items in the review queue (UI-REFRESH-13)
     params_model = CoversSearchParams
     requires = BackendCapabilities(query=True, templates=True, apply=True, art=True)
     default_apply = "auto"  # COVERS-SEARCH-15, Open question 5

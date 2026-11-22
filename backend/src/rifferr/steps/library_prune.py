@@ -104,6 +104,7 @@ def drop_albums(
 
 class LibraryPruneStep:
     name = "library.prune"
+    waits = "apply"  # may put items in the review queue (UI-REFRESH-13)
     params_model = PruneParams
     requires = BackendCapabilities(query=True, remove=True)
     run_level = True  # about the library, not about the run's albums

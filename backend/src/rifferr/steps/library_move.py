@@ -100,6 +100,7 @@ class LibraryMoveParams(BaseModel):
 
 class LibraryMoveStep:
     name = "library.move"
+    waits = "always"  # may put items in the review queue (UI-REFRESH-13)
     params_model = LibraryMoveParams
     requires = BackendCapabilities(query=True, move=True)
 

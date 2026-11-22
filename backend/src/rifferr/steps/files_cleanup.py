@@ -96,6 +96,7 @@ class CleanupParams(BaseModel):
 
 class FilesCleanupStep:
     name = "files.cleanup"
+    waits = "always"  # may put items in the review queue (UI-REFRESH-13)
     params_model = CleanupParams
     requires = BackendCapabilities(files=True)
     run_level = True  # FILES-CLEANUP-2: about a folder, not about albums

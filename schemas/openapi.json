@@ -5880,6 +5880,14 @@
             "title": "Sha256",
             "type": "string"
           },
+          "steps": {
+            "description": "Steps in run order, calls expanded; empty when the file doesn't load",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowStepInfo"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
           "trusted": {
             "title": "Trusted",
             "type": "boolean"
@@ -5951,6 +5959,32 @@
           "message"
         ],
         "title": "WorkflowError",
+        "type": "object"
+      },
+      "WorkflowStepInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "Step id; a called workflow's steps as <call id>/<step id>",
+            "title": "Id",
+            "type": "string"
+          },
+          "may_wait": {
+            "description": "The step can put something in the review queue (UI-REFRESH-13)",
+            "title": "May Wait",
+            "type": "boolean"
+          },
+          "uses": {
+            "title": "Uses",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "uses",
+          "may_wait"
+        ],
+        "title": "WorkflowStepInfo",
         "type": "object"
       },
       "WorkflowSummary": {

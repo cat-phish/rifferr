@@ -104,6 +104,7 @@ def proposal(result: ScriptResult, source: str) -> ChangeSetProposal | None:
 
 class TagScriptStep:
     name = "tags.script"
+    waits = "apply"  # may put items in the review queue (UI-REFRESH-13)
     params_model = TagScriptParams
     requires = BackendCapabilities(query=True, templates=True, apply=True)
 

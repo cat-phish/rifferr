@@ -3413,6 +3413,11 @@ export interface components {
             path: string;
             /** Sha256 */
             sha256: string;
+            /**
+             * Steps
+             * @description Steps in run order, calls expanded; empty when the file doesn't load
+             */
+            steps?: components["schemas"]["WorkflowStepInfo"][];
             /** Trusted */
             trusted: boolean;
             /** Valid */
@@ -3432,6 +3437,21 @@ export interface components {
             message: string;
             /** Path */
             path: string;
+        };
+        /** WorkflowStepInfo */
+        WorkflowStepInfo: {
+            /**
+             * Id
+             * @description Step id; a called workflow's steps as <call id>/<step id>
+             */
+            id: string;
+            /**
+             * May Wait
+             * @description The step can put something in the review queue (UI-REFRESH-13)
+             */
+            may_wait: boolean;
+            /** Uses */
+            uses: string;
         };
         /** WorkflowSummary */
         WorkflowSummary: {

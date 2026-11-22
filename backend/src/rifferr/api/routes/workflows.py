@@ -16,6 +16,7 @@ from rifferr.api.models import (
     VarInfo,
     WorkflowDetail,
     WorkflowError,
+    WorkflowStepInfo,
     WorkflowSummary,
 )
 from rifferr.api.state import ServerState, State
@@ -27,12 +28,14 @@ from rifferr.core.workflow import (
     ValidationError,
     Workflow,
     WorkflowLoadError,
+    expand,
     load_workflow,
     safety_report,
     validate,
 )
 from rifferr.core.workflow.yamldoc import YamlSyntaxError
 from rifferr.core.workflow.yamldoc import parse as parse_yaml
+from rifferr.engine.executor import may_wait
 from rifferr.profile_store import WORKFLOWS_DIR, load_profile, profile_dir
 from rifferr.trust import WorkflowFileError, read_workflow_file
 from rifferr.workflow_calls import called_trust, read_calls
@@ -206,7 +209,22 @@ async def get_workflow(name: str, profile: Annotated[str, Query()], state: State
         vars=c.vars,
         missing_vars=c.missing_vars,
         called=c.called(state),
+        steps=steps_info(state, c),
     )
+
+
+def steps_info(state: ServerState, c: Checked) -> list[WorkflowStepInfo]:
+    if c.workflow is None:
+        return []
+    wf = expand(c.workflow, c.calls) if c.calls is not None else c.workflow
+    return [
+        WorkflowStepInfo(
+            id=step.id,
+            uses=step.uses,
+            may_wait=may_wait(step, state.registry.step_type(step.uses)),
+        )
+        for step in wf.steps
+    ]
 
 
 @router.post("/{name}/validate", response_model=ValidateResult, responses=ERROR_RESPONSES)

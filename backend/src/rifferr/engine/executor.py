@@ -1266,6 +1266,19 @@ def _redact(value: Any, redactor: Redactor) -> Any:
 __all__ = ["Clock", "Engine", "RunValidationError", "Scalar", "SystemClock"]
 
 
+def may_wait(spec: StepSpec, step_type: object) -> bool:
+    """Whether the step can put something in the review queue (the step type's
+    ``waits``; UI-REFRESH-13). A type without ``waits`` never does."""
+    waits = getattr(step_type, "waits", None)
+    if waits == "always":
+        return True
+    if waits != "apply":
+        return False
+    return bool(getattr(step_type, "force_review", False)) or (
+        apply_policy(spec, step_type) == "review"
+    )
+
+
 def apply_policy(spec: StepSpec, step_type: object) -> str:
     """The step's ``apply``, or its type's ``default_apply`` when the workflow doesn't
     say (CHANGESET-6; ``covers.search`` defaults to ``auto``, COVERS-SEARCH-15)."""
