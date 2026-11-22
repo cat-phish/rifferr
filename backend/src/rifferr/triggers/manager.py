@@ -643,7 +643,7 @@ class TriggerManager:
                 else None
             )
             reason = dedup_skip(record, fp, force=force or kind == "manual", mode=mode)
-            if reason is None and kind == "webhook" and input_path:  # SEC-82
+            if reason is None and kind != "manual" and input_path:  # SEC-82, TRIGGERS-27
                 busy = self._active_related(armed, input_path)
                 if busy is not None:
                     self._skipped(armed, kind, input_path, "in_progress", busy)
@@ -671,8 +671,9 @@ class TriggerManager:
         return FireResult(run_id)
 
     def _active_related(self, armed: Armed, input_path: str) -> str | None:
-        """SEC-82: the run id of an active run of this workflow whose input is a parent
-        or child folder of ``input_path``."""
+        """SEC-82, TRIGGERS-27: the run id of an active run of this workflow whose input is
+        a parent or child folder of ``input_path``. Checked for every trigger kind, even
+        when forced: one folder never has two runs at once."""
         here = Path(input_path)
         for other, rec in self.store.records(armed.profile, armed.name).items():
             if rec.run_state not in ACTIVE_STATES:

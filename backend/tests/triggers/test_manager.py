@@ -318,6 +318,36 @@ async def test_TRIGGERS_26_in_progress_mode_still_skips_a_folder_with_a_run_goin
     assert len(env.runs) == 1
 
 
+@pytest.mark.parametrize("dedupe", ["fingerprint", "in_progress"])
+async def test_TRIGGERS_27_watch_skips_a_folder_inside_an_active_manual_run(
+    env: Env, dedupe: str
+) -> None:
+    env.write("w", watch_wf(settle="30s", dedupe=dedupe))
+    await env.manager.start()
+    folder = env.album("A")
+    # A manual run on the whole inbox, still going.
+    job = env.db.submit("main", {}, workflow="w", trigger="manual", input=str(env.inbox))
+    env.manager.remember_manual("main", "w", str(env.inbox), job.run)
+    armed = env.manager.armed[("main", "w")]
+    result = await env.manager.fire(armed, "watch", str(folder))
+    assert (result.skipped, result.run_id) == ("in_progress", job.run)
+    forced = await env.manager.fire(armed, "watch", str(folder), force=True)
+    assert forced.skipped == "in_progress"  # force never makes two runs of one folder
+
+
+async def test_TRIGGERS_27_a_parent_folder_waits_for_a_child_run(env: Env) -> None:
+    env.write("w", watch_wf(settle="30s"))
+    await env.manager.start()
+    folder = env.album("A")
+    (folder / "CD1").mkdir()
+    (folder / "CD1" / "x.flac").write_bytes(b"x")
+    armed = env.manager.armed[("main", "w")]
+    child = await env.manager.fire(armed, "watch", str(folder / "CD1"))
+    assert child.skipped is None
+    parent = await env.manager.fire(armed, "watch", str(folder))
+    assert (parent.skipped, parent.run_id) == ("in_progress", child.run_id)
+
+
 async def test_TRIGGERS_21_manual_run_records_its_fingerprint(env: Env) -> None:
     env.write("w", watch_wf(settle="30s"))
     await env.manager.start()
@@ -462,3 +492,15 @@ async def test_TRIGGERS_15_duplicate_webhook_name_is_an_error(env: Env) -> None:
     await env.manager.start()
     states = {i.workflow: i.state for i in env.manager.list("main")}
     assert states == {"h": "armed", "h2": "error"}
+
+
+def test_TRIGGERS_21_a_blank_manual_input_resolves_to_the_workflows_input() -> None:
+    from rifferr.api.routes.runs import _default_input  # pyright: ignore[reportPrivateUsage]
+    from rifferr.core.workflow import load_workflow
+
+    wf, _ = load_workflow(
+        "name: w\ninput: '{{ vars.inbox }}/x'\nsteps: [{id: a, uses: shell}]\n", "wf.yaml"
+    )
+    assert _default_input(wf, {"inbox": "/music/in"}) == "/music/in/x"
+    bare, _ = load_workflow("name: w\nsteps: [{id: a, uses: shell}]\n", "wf.yaml")
+    assert _default_input(bare, {}) is None

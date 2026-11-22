@@ -65,6 +65,18 @@ def _confine_manual_input(wf: Any, profile_vars: Any, value: str) -> None:
         )
 
 
+def _default_input(wf: Any, profile_vars: Any) -> str | None:
+    """The workflow's ``input:`` interpolated with the profile's variables, or ``None``."""
+    raw = getattr(wf, "input", None)
+    if not raw:
+        return None
+    try:
+        ctx = InterpolationContext(vars=merged_vars(profile_vars, wf.vars), profile={"name": ""})
+        return str(Path(interpolate(raw, ctx)))
+    except (InterpolationError, OSError, ValueError):
+        return None
+
+
 @router.post("/runs", status_code=201, response_model=RunCreated, responses=ERROR_RESPONSES)
 async def create_run(body: RunCreate, state: State) -> RunCreated:
     """Validate and queue a run (API-5). Trust is decided by the supervisor from the hash."""
@@ -90,8 +102,11 @@ async def create_run(body: RunCreate, state: State) -> RunCreated:
         run_input=body.input,
         called=c.calls.texts() if c.calls is not None else None,
     )
-    if state.triggers is not None and body.input:  # TRIGGERS-21
-        state.triggers.remember_manual(body.profile, body.workflow, body.input, run_id)
+    # TRIGGERS-21, -27: record the resolved input (the workflow's default ``input:`` when
+    # the form left it blank) so triggers see the run and never overlap it.
+    recorded = body.input or _default_input(c.workflow, profile.vars)
+    if state.triggers is not None and recorded:
+        state.triggers.remember_manual(body.profile, body.workflow, recorded, run_id)
     return RunCreated(id=run_id)
 
 
