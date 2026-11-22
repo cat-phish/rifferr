@@ -24,6 +24,11 @@ test("UI_REFRESH_17 two albums wait in the import section; a decided one disappe
     .getByRole("navigation")
     .getByRole("link", { name: /Review/ })
     .click();
+  // One tab per stage (UI-REFRESH-13).
+  await page
+    .getByRole("tab", { name: /import/ })
+    .first()
+    .click();
   const ofRun = page
     .locator("[data-testid=queue-item]")
     .filter({ has: page.locator(`a[href^="/runs/${runId}"]`) });
@@ -32,7 +37,7 @@ test("UI_REFRESH_17 two albums wait in the import section; a decided one disappe
   await expect(flac).toBeVisible({ timeout: 30_000 });
   await expect(mp3).toBeVisible();
   const section = page.getByTestId("step-section").filter({ has: flac });
-  await expect(section.getByTestId("step-label")).toHaveText("import");
+  await expect(section.getByTestId("step-label")).toHaveText(/import$/);
   await expect(section).toContainText("single-mp3");
 
   // A candidate found by ID gets a match badge colored by beets' thresholds (UI-REFRESH-6).

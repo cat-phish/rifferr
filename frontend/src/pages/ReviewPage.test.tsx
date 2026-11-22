@@ -160,12 +160,14 @@ test("REVIEW_QUEUE_11 queue in one section per step, oldest first, with album, r
   await waitFor(() => {
     expect(within(nav).getByTestId("review-count")).toHaveTextContent("3");
   });
+  // One tab per stage, in step order, with its count (UI-REFRESH-13); the first is open.
   await waitFor(() => {
-    expect(screen.getAllByTestId("step-section").map((g) => g.dataset.step)).toEqual([
-      "suffix",
-      "check",
+    expect(screen.getAllByTestId("stage-tab").map((t) => t.textContent)).toEqual([
+      "suffix2",
+      "check1",
     ]);
   });
+  expect(screen.getAllByTestId("step-section").map((g) => g.dataset.step)).toEqual(["suffix"]);
   const first = nth(screen.getAllByTestId("step-section"), 0);
   // The newer cs1 goes below cs3.
   expect(
@@ -198,6 +200,40 @@ test("REVIEW_QUEUE_11 the queue updates from /api/events", async () => {
     await Promise.resolve();
   });
   expect(await screen.findByTestId("queue-empty")).toBeInTheDocument();
+});
+
+test("UI_REFRESH_13 switching tabs; an emptied tab stays until another is picked", async () => {
+  let queue = [csItem("cs1", NEW_RUN), gateItem()];
+  setup({ queue: () => queue });
+  renderApp("/review?profile=main");
+  await screen.findByTestId("queue-item");
+  expect(screen.getByRole("tab", { name: /suffix/ })).toHaveAttribute("aria-selected", "true");
+  fireEvent.click(screen.getByRole("tab", { name: /check/ }));
+  expect(screen.getAllByTestId("queue-item").map((e) => e.dataset.item)).toEqual(["g1"]);
+  queue = [csItem("cs1", NEW_RUN)];
+  await act(async () => {
+    FakeEventSource.last("/api/events").emit("review.resolved", {
+      seq: 6,
+      run_id: NEW_RUN,
+      type: "review.resolved",
+      data: { gate_id: "g1" },
+    });
+    await Promise.resolve();
+  });
+  // The open stage has nothing left; it stays until another tab is picked.
+  expect(await screen.findByTestId("stage-empty")).toHaveTextContent("Nothing left in this stage.");
+  expect(screen.getByRole("tab", { name: /check/ })).toHaveAttribute("aria-selected", "true");
+  fireEvent.click(screen.getByRole("tab", { name: /suffix/ }));
+  await screen.findByTestId("queue-item");
+  expect(screen.queryByRole("tab", { name: /check/ })).toBeNull();
+});
+
+test("UI_REFRESH_13 ?stage= opens that stage's tab", async () => {
+  setup({ queue: () => [csItem("cs1", NEW_RUN), gateItem()] });
+  renderApp("/review?profile=main&stage=tagging/check");
+  await screen.findByTestId("queue-item");
+  expect(screen.getByRole("tab", { name: /check/ })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getAllByTestId("queue-item").map((e) => e.dataset.item)).toEqual(["g1"]);
 });
 
 // -- REVIEW-QUEUE-12 ----------------------------------------------------------------------
@@ -396,10 +432,10 @@ test("REVIEW_QUEUE_14 accept all per section asks for confirmation with the coun
   });
   renderApp("/review?profile=main");
   await screen.findAllByTestId("queue-item");
-  // Two workflows wait, so the step sections are named with their workflow.
-  const sec = screen
-    .getAllByTestId("step-section")
-    .find((e) => within(e).queryByText("tagging · suffix")) as HTMLElement;
+  // Two workflows wait, so the stage tabs are named with their workflow.
+  fireEvent.click(screen.getByRole("tab", { name: /tagging · suffix/ }));
+  const sec = await screen.findByTestId("step-section");
+  expect(within(sec).getByTestId("step-label")).toHaveTextContent("tagging · suffix");
   fireEvent.click(within(sec).getByRole("button", { name: "Reject all" }));
   expect(await screen.findByTestId("bulk-confirm")).toHaveTextContent(
     "Reject 1 ChangeSet of tagging · suffix? Conflicted ChangeSets are left alone.",
@@ -420,8 +456,10 @@ test("REVIEW_QUEUE_16 ?item= opens that item; ?run= shows one run", async () => 
   setup({ queue: () => [csItem("cs3", OLD_RUN), csItem("cs1", NEW_RUN), gateItem()] });
   renderApp("/review?profile=main&item=g1");
   await screen.findAllByTestId("queue-item");
+  // The item's stage tab opens (UI-REFRESH-13).
+  expect(screen.getByRole("tab", { name: /check/ })).toHaveAttribute("aria-selected", "true");
   expect(item("g1")).toHaveAttribute("data-focused", "true");
-  expect(item("cs1")).not.toHaveAttribute("data-focused");
+  expect(screen.getAllByTestId("queue-item").map((e) => e.dataset.item)).toEqual(["g1"]);
 });
 
 test("REVIEW_QUEUE_16 ?run= filters, and a gone item says so", async () => {
@@ -451,7 +489,9 @@ test("REVIEW_QUEUE_17 values and messages are text, never HTML", async () => {
   await screen.findAllByTestId("queue-item");
   expect(screen.getByText(html)).toBeInTheDocument();
   expect(screen.getByText("<script>bad()</script>")).toBeInTheDocument();
-  expect(screen.getByText("<b>check the suffix</b>")).toBeInTheDocument();
+  expect(container.querySelector("img")).toBeNull();
+  fireEvent.click(screen.getByRole("tab", { name: /check/ }));
+  expect(await screen.findByText("<b>check the suffix</b>")).toBeInTheDocument();
   expect(container.querySelector("img")).toBeNull();
   expect(container.querySelector("script")).toBeNull();
   expect(container.querySelector("b")).toBeNull();

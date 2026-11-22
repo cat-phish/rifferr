@@ -1,6 +1,8 @@
 import {
   Alert,
   Anchor,
+  Badge,
+  Box,
   Button,
   Card,
   Checkbox,
@@ -8,6 +10,7 @@ import {
   Modal,
   Stack,
   Table,
+  Tabs,
   Text,
   Title,
 } from "@mantine/core";
@@ -74,7 +77,7 @@ interface DecidedEntry {
  * of one kind can be decided together (F-DASHBOARD DASHBOARD-13). */
 export function ReviewPage() {
   const { profile } = useProfile();
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const focus = params.get("item");
   const runFilter = params.get("run");
   const queue = useReviewQueue(profile);
@@ -163,6 +166,35 @@ export function ReviewPage() {
       .map(([id]) => id),
   );
   const sections = groupByStep(items, stepOrders, decided);
+  // One tab per stage (UI-REFRESH-13). A deep-linked item picks its tab; otherwise the
+  // URL's `stage`, else the first stage. The chosen stage goes into the URL, so a tab
+  // whose items are all decided stays (empty) until the user picks another.
+  const focusStage = sections.find((sec) => sec.items.some((i) => i.id === focus));
+  const urlStage = params.get("stage");
+  const stage =
+    (focusStage && stageOf(focusStage)) ?? urlStage ?? (sections[0] && stageOf(sections[0]));
+  const shown = sections.find((sec) => stageOf(sec) === stage);
+  useEffect(() => {
+    if (stage === undefined || stage === urlStage) return;
+    setParams(
+      (old) => {
+        const next = new URLSearchParams(old);
+        next.set("stage", stage);
+        return next;
+      },
+      { replace: true },
+    );
+  }, [stage, urlStage, setParams]);
+  const pickStage = (value: string | null) => {
+    if (value === null) return;
+    setPicked(new Map());
+    setParams((old) => {
+      const next = new URLSearchParams(old);
+      next.set("stage", value);
+      next.delete("item");
+      return next;
+    });
+  };
   const bulk = useMutation({
     mutationFn: async (action: string) => decideAll([...selected.values()], action),
     onSuccess: (failed) => {
@@ -258,13 +290,69 @@ export function ReviewPage() {
       )}
       <SelectionContext.Provider value={selection}>
         <DecidedContext.Provider value={markDecided}>
-          {sections.map((sec) => (
-            <StepSectionCard key={sec.key} section={sec} focus={focus} />
-          ))}
+          {stage !== undefined && items.length > 0 && (
+            <Tabs value={stage} onChange={pickStage} keepMounted={false}>
+              <Tabs.List data-testid="stage-tabs">
+                {sections.map((sec) => (
+                  <Tabs.Tab
+                    key={sec.key}
+                    value={stageOf(sec)}
+                    data-testid="stage-tab"
+                    rightSection={
+                      <Badge size="sm" variant="light" circle data-testid="stage-count">
+                        {String(sec.items.length)}
+                      </Badge>
+                    }
+                  >
+                    {sec.label}
+                  </Tabs.Tab>
+                ))}
+                {shown === undefined && (
+                  <Tabs.Tab
+                    value={stage}
+                    data-testid="stage-tab"
+                    rightSection={
+                      <Badge
+                        size="sm"
+                        variant="light"
+                        circle
+                        color="gray"
+                        data-testid="stage-count"
+                      >
+                        0
+                      </Badge>
+                    }
+                  >
+                    {stageLabel(stage)}
+                  </Tabs.Tab>
+                )}
+              </Tabs.List>
+              <Box pt="sm">
+                {shown ? (
+                  <StepSectionCard key={shown.key} section={shown} focus={focus} />
+                ) : (
+                  <Text c="dimmed" data-testid="stage-empty">
+                    Nothing left in this stage.
+                  </Text>
+                )}
+              </Box>
+            </Tabs>
+          )}
         </DecidedContext.Provider>
       </SelectionContext.Provider>
     </Stack>
   );
+}
+
+/** A stage's value in the URL: `workflow/step`. */
+function stageOf(sec: StepSection): string {
+  return `${sec.workflow ?? ""}/${sec.stepId ?? ""}`;
+}
+
+/** The tab label of a stage that has nothing left. */
+function stageLabel(stage: string): string {
+  const cut = stage.indexOf("/");
+  return (cut < 0 ? stage : stage.slice(cut + 1)) || "Other";
 }
 
 /** One workflow step's waiting items, oldest first (REVIEW-QUEUE-11, UI-REFRESH-13). */
