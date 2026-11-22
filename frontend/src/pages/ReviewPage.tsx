@@ -136,7 +136,10 @@ export function ReviewPage() {
     [queue.data],
   );
   useAppEventListener((event) => {
-    if (event.type !== "job.finished") return;
+    // Only a job that failed brings its item back: after a successful decision job the
+    // run still has to carry the decision out (a library move applies when the run
+    // resumes), and the item leaves once it has (UI-REFRESH-20).
+    if (event.type !== "job.finished" || event.data.state === "succeeded") return;
     const job = event.data.job_id;
     setDecided((old) => {
       let changed = false;

@@ -745,3 +745,36 @@ test("UI_REFRESH_15_withdrawn_no_run_lane_counts_on_the_review_page", async () =
   expect(screen.queryByTestId("lane-counts")).not.toBeInTheDocument();
   expect(screen.queryByTestId("run-group")).not.toBeInTheDocument();
 });
+
+test("UI_REFRESH_20_a_succeeded_decision_job_does_not_bring_the_item_back", async () => {
+  setup({
+    queue: () => [csItem("cs1", NEW_RUN), csItem("cs3", NEW_RUN)],
+    extra: { "POST /api/changesets/cs1/decision": () => ({ job_id: "job-1" }) },
+  });
+  renderApp("/review?profile=main");
+  await screen.findAllByTestId("queue-item");
+  fireEvent.click(within(item("cs1")).getByRole("button", { name: "Accept" }));
+  await waitFor(() => {
+    expect(screen.getAllByTestId("queue-item").map((e) => e.dataset.item)).toEqual(["cs3"]);
+  });
+  // The decision job is done, but the run applies the move afterwards: cs1 still waits
+  // in the queue for a moment and must stay hidden, whatever else arrives meanwhile.
+  await act(async () => {
+    const es = FakeEventSource.last("/api/events");
+    es.emit("job.finished", {
+      seq: 9,
+      run_id: NEW_RUN,
+      type: "job.finished",
+      data: { job_id: "job-1", state: "succeeded" },
+    });
+    es.emit("changeset.proposed", {
+      seq: 10,
+      run_id: NEW_RUN,
+      type: "changeset.proposed",
+      data: {},
+    });
+    await Promise.resolve();
+  });
+  await new Promise((r) => setTimeout(r, 50));
+  expect(screen.getAllByTestId("queue-item").map((e) => e.dataset.item)).toEqual(["cs3"]);
+});
