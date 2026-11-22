@@ -7,7 +7,7 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from rifferr.appdb import AppChangeSets, AppDB, AppJournal, AppReviewGates, Job
+from rifferr.appdb import AppChangeSets, AppDB, AppJournal, AppLanes, AppReviewGates, Job
 from rifferr.core.changeset import (
     ApplyResult,
     ChangeSet,
@@ -20,6 +20,7 @@ from rifferr.core.changeset import (
 )
 from rifferr.core.review import GateAlbum, ReviewGate
 from rifferr.engine import Event
+from rifferr.engine.lanes import Hold, Lane
 from tests.api.conftest import ECHO, Api
 from tests.api.test_library import stream
 
@@ -127,6 +128,19 @@ async def test_REVIEW_QUEUE_1_lists_waiting_changesets_and_gates_oldest_first(ap
     only = (await api.client.get("/api/review", params={"run": second})).json()
     assert [i["id"] for i in only] == ["g1"]
     assert (await api.client.get("/api/review", params={"profile": "other"})).json() == []
+
+
+async def test_REVIEW_QUEUE_1_auto_apply_in_flight_not_listed(api: Api) -> None:
+    """A step that applies on its own proposes its ChangeSet for a moment before applying
+    it; the queue lists a proposed ChangeSet only once a lane holds on it."""
+    db = api.state.db
+    job = db.submit("main", {"source": ECHO, "vars": {}}, workflow="tagging")
+    assert db.claim_next("main") is not None
+    AppChangeSets(db).add(changeset("flying", job.run))
+    assert (await api.client.get("/api/review")).json() == []
+    lane = Lane("a1", "Band - Live", "waiting", "q", holds=[Hold("changeset", "flying")])
+    AppLanes(db).save(job.run, [lane])
+    assert [i["id"] for i in (await api.client.get("/api/review")).json()] == ["flying"]
 
 
 # -- REVIEW-QUEUE-2 -----------------------------------------------------------------------

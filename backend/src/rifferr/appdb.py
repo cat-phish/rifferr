@@ -642,8 +642,22 @@ class AppChangeSets:
         self, profile: str | None = None, run_id: str | None = None
     ) -> list[StoredChangeSet]:
         """ChangeSets of runs that wait for a decision (proposed or conflicted), oldest
-        first (REVIEW-QUEUE-1)."""
-        sql = f"SELECT * FROM changesets WHERE run_id IS NOT NULL AND state IN {HOLDING_CHANGESETS}"
+        first (REVIEW-QUEUE-1).
+
+        A proposed ChangeSet waits only once its run holds on it: a lane hold (LANES-5) or,
+        for a run suspended before C-LANES, the job's ``holds``. One its step is about to
+        apply on its own is proposed for a moment too, and never listed.
+        """
+        sql = (
+            "SELECT * FROM changesets WHERE run_id IS NOT NULL"
+            f" AND state IN {HOLDING_CHANGESETS} AND (state != 'proposed' OR EXISTS ("
+            "SELECT 1 FROM run_lanes AS l, json_each(l.holds) AS h"
+            " WHERE l.run_id = changesets.run_id"
+            " AND json_extract(h.value, '$.ref') = changesets.id) OR EXISTS ("
+            "SELECT 1 FROM jobs AS j, json_each(j.payload, '$.holds') AS h"
+            " WHERE j.run_id = changesets.run_id AND j.kind = 'run'"
+            " AND h.value = changesets.id))"
+        )
         args: list[Any] = []
         if profile is not None:
             sql, args = sql + " AND profile = ?", [*args, profile]
