@@ -50,6 +50,7 @@ from rifferr.core.workflow import (
     load_workflow,
     validate,
 )
+from rifferr.core.workflow.models import DedupeMode
 from rifferr.core.workflow.registry import StepRegistry
 from rifferr.engine.events import Event, profile_stream
 from rifferr.profile_store import (
@@ -138,6 +139,18 @@ class Armed:
 
 
 #: Inputs listed per watched folder (DASHBOARD-2).
+
+
+def _dedupe_mode(armed: Armed, kind: str) -> DedupeMode:
+    """The firing trigger's ``dedupe`` (TRIGGERS-26); manual and schedule runs use the
+    default."""
+    on = armed.workflow.on if armed.workflow is not None else None
+    if on is None:
+        return "fingerprint"
+    trigger = on.watch if kind == "watch" else on.webhook if kind == "webhook" else None
+    return trigger.dedupe if trigger is not None else "fingerprint"
+
+
 INBOX_LIMIT = 200
 
 
@@ -622,8 +635,14 @@ class TriggerManager:
             fp = None
             if input_path:
                 fp = await asyncio.to_thread(fs.input_fingerprint, Path(input_path))
-            record = self.store.record(armed.profile, armed.name, input_path) if fp else None
-            reason = dedup_skip(record, fp, force=force or kind == "manual")
+            mode = _dedupe_mode(armed, kind)
+            known = fp is not None or mode == "in_progress"
+            record = (
+                self.store.record(armed.profile, armed.name, input_path)
+                if known and input_path
+                else None
+            )
+            reason = dedup_skip(record, fp, force=force or kind == "manual", mode=mode)
             if reason is None and kind == "webhook" and input_path:  # SEC-82
                 busy = self._active_related(armed, input_path)
                 if busy is not None:

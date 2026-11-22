@@ -102,6 +102,28 @@ def test_TRIGGERS_20_force_bypasses_dedup() -> None:
     assert dedup_skip(DedupRecord("fp", "r1", "succeeded"), "fp", force=True) is None
 
 
+@pytest.mark.parametrize(
+    ("state", "reason"),
+    [
+        ("queued", "in_progress"),
+        ("running", "in_progress"),
+        ("waiting_review", "in_progress"),
+        ("succeeded", None),
+        ("failed", None),
+        ("cancelled", None),
+        (None, None),
+    ],
+)
+def test_TRIGGERS_26_in_progress_mode_blocks_only_active_runs(
+    state: str | None, reason: str | None
+) -> None:
+    for current in ("fp", "other", None):
+        record = DedupRecord("fp", "r1", state)
+        assert dedup_skip(record, current, mode="in_progress") == reason
+    undone = DedupRecord("fp", "r1", "succeeded", undone=True)
+    assert dedup_skip(undone, "fp", mode="in_progress") is None
+
+
 def test_TRIGGERS_19_no_record_or_empty_input_runs() -> None:
     assert dedup_skip(None, "fp") is None
     assert dedup_skip(DedupRecord("fp", "r1", "succeeded"), None) is None

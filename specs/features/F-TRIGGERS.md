@@ -61,6 +61,7 @@ Origin check; trust), F-WORKER (job queue), F-API (routes, events), F-CLI (`riff
 - TRIGGERS-20: A failed or cancelled run does not block a new run of the same input once its fingerprint changes; with the same fingerprint it is skipped with `reason: previously_failed` (open question 8). `rifferr run --force` and the UI's "Run again" bypass dedup.
 - TRIGGERS-21: Manual runs MUST NOT be deduplicated, but they record their fingerprint, so a later trigger for the same unchanged input is skipped.
 - TRIGGERS-22: Dedup records live in the app DB per profile, workflow (by name) and input path, and MUST survive restarts.
+- TRIGGERS-26: `on.watch` and `on.webhook` MUST accept `dedupe: fingerprint | in_progress`, default `fingerprint` (TRIGGERS-19 .. -21 as written). With `in_progress`, a finished run never blocks a new one, whether it succeeded, failed, was cancelled or its import was undone: the trigger is skipped only with `reason: in_progress` while a run of the same workflow for the same input path is queued, running or waiting for review, whatever its fingerprint, so one folder never has two runs at once (TRIGGERS-23). Fingerprints are still recorded. The static safety report MUST list `dedupe: in_progress` as a `rerun` note on `on.watch` / `on.webhook` ("an album that reappears in the inbox is imported again"). The setting belongs to the inbox: today an inbox is a workflow's watch trigger, and per-inbox settings (B-075) take it over unchanged. A re-imported album that beets finds already in the library is handled by beets' duplicate handling (IMPORT-UI-3; `%aunique{}` in the path format appends a disambiguator to the folder name), not by Rifferr renaming folders (approved by the author 2026-11-21).
 
 ### Concurrency and events
 - TRIGGERS-23: At most one run per profile MUST be running at a time; triggered runs queue in submission order behind it (the F-WORKER job queue). A second trigger for an input that is already queued is skipped by dedup rather than queued twice.
@@ -78,6 +79,7 @@ on:
     path: "{{ vars.inbox }}"
     settle: 10m                    # default 2m
     poll: 30s                      # optional; omit for native events
+    dedupe: fingerprint            # or in_progress (TRIGGERS-26); default fingerprint
   schedule: "0 4 * * *"
   webhook:
     name: lidarr                   # POST /hooks/<profile>/lidarr
@@ -89,15 +91,19 @@ steps:
 ```
 
 ```python
+DedupeMode = Literal["fingerprint", "in_progress"]   # TRIGGERS-26
+
 class WatchTrigger(_Strict):
     path: str
     settle: Duration = "2m"
     poll: Duration | None = None
+    dedupe: DedupeMode = "fingerprint"
 
 class WebhookTrigger(_Strict):
     name: Annotated[str, Field(pattern=NAME_PATTERN)]
     input: str                      # dotted path
     within: str | None = None
+    dedupe: DedupeMode = "fingerprint"
 
 class Workflow(_Strict):
     ...
@@ -168,6 +174,9 @@ and filesystem so they're tested without real time or files.
   a caller with the secret can only start runs on folders under the inbox.
 - Body size and content-type limits (TRIGGERS-15). No rate limit in M2 (B-048).
 - Remote binding still requires real auth (SECURITY-9); webhooks don't change that.
+- `dedupe: in_progress` (TRIGGERS-26) lets an unchanged album be imported again.
+  It is opt-in per trigger, shown in the safety report, and changing it changes the workflow's
+  hash, so it needs trusting again. It never allows two runs of one folder at once.
 
 ## Non-goals
 - Lanes and per-album parallelism (C-RUN, M2, next spec).
@@ -200,6 +209,11 @@ and filesystem so they're tested without real time or files.
 12. ~~Sample payloads?~~ Resolved 2026-11-13 (author): deferred to B-049. The author doesn't
     use Lidarr or slskd; the webhook trigger stays general (`input`, `within`) and is tested
     with synthetic payloads.
+13. ~~`dedupe: in_progress`?~~ Resolved 2026-11-21 (author): as recommended (TRIGGERS-26),
+    drafted at the author's request. Alternatives considered: `dedupe: off` (rejected: two runs of the same
+    folder at once would race on its files); a profile-wide setting (rejected: dedup belongs to
+    each trigger, and a test profile can set it on its own workflow copy). Schedules are left out:
+    they already skip while their previous run is going (TRIGGERS-14) and have no per-input dedup.
 
 ## Tasks
 Note (2026-11-13, implementation): TRIGGERS-12 first said DST-skipped times don't fire;
@@ -251,3 +265,5 @@ As implemented:
 - [x] `examples/workflows/foobar-style.yaml`: `on.watch` on the inbox, steps use
       `{{ run.input }}`.
 - [x] `docs/coverage.md`; mark Implemented.
+- [x] TRIGGERS-26 `dedupe: in_progress` on watch and webhook triggers: model, dedup check,
+      safety-report note, tests, schemas

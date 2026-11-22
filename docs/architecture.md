@@ -63,7 +63,7 @@ steps: [...]
 - **schedule:** cron syntax, evaluated in the profile's time zone.
 - **webhook:** an authenticated endpoint for download managers and other tools. Lidarr's Connect webhooks and slskd are the first documented examples, and the payload's path becomes the run's input. Each webhook has its own secret, separate from the UI login.
 - **manual:** from the UI or `rifferr run`.
-- **Deduplication:** each input folder is fingerprinted (paths, sizes, mtimes). A folder that is already in progress or already imported isn't started again unless it changes or the user forces it.
+- **Deduplication:** each input folder is fingerprinted (paths, sizes, mtimes). A folder that is already in progress or already imported isn't started again unless it changes or the user forces it. A trigger can set `dedupe: in_progress` to run every folder that appears again (for a test inbox refilled with the same sample); a folder with a run still going is still skipped (F-TRIGGERS TRIGGERS-26).
 - **Concurrency:** one active run per profile by default, and further triggers queue up. Within a run, lanes run in parallel up to a limit.
 - **Unattended policy:**
   - `beets.import` defaults to `mode: auto`. Strong matches are applied; ambiguous albums are routed to the review queue as import decisions, and their lanes pause.

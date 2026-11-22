@@ -117,9 +117,11 @@ async def env(tmp_path: Path) -> AsyncIterator[Env]:
     db.close()
 
 
-def watch_wf(settle: str = "1s", extra: str = "") -> str:
-    return f"name: w\non:\n  watch: {{path: '{{{{ vars.inbox }}}}', settle: {settle}}}\n{extra}" + (
-        STEPS
+def watch_wf(settle: str = "1s", extra: str = "", dedupe: str | None = None) -> str:
+    more = f", dedupe: {dedupe}" if dedupe else ""
+    return (
+        f"name: w\non:\n  watch: {{path: '{{{{ vars.inbox }}}}', settle: {settle}{more}}}\n{extra}"
+        + STEPS
     )
 
 
@@ -285,6 +287,35 @@ async def test_TRIGGERS_19_same_input_is_skipped(env: Env, state: str, reason: s
     forced = await env.manager.fire(armed, "webhook", str(folder), force=True)
     assert forced.skipped is None
     assert len(env.runs) == 2
+
+
+@pytest.mark.parametrize("state", ["succeeded", "failed", "cancelled"])
+async def test_TRIGGERS_26_in_progress_mode_runs_an_unchanged_folder_again(
+    env: Env, state: str
+) -> None:
+    env.write("w", watch_wf(dedupe="in_progress"))
+    await env.manager.start()
+    folder = env.album("A")
+    armed = env.manager.armed[("main", "w")]
+    await wait_for(lambda: len(env.runs) == 1)
+    env.finish(env.runs[0].run_id, state)
+    result = await env.manager.fire(armed, "watch", str(folder))
+    assert result.skipped is None
+    assert len(env.runs) == 2
+
+
+async def test_TRIGGERS_26_in_progress_mode_still_skips_a_folder_with_a_run_going(
+    env: Env,
+) -> None:
+    env.write("w", watch_wf(dedupe="in_progress"))
+    await env.manager.start()
+    folder = env.album("A")
+    armed = env.manager.armed[("main", "w")]
+    await wait_for(lambda: len(env.runs) == 1)
+    (folder / "bonus.flac").write_bytes(b"changed")  # even a changed fingerprint waits
+    result = await env.manager.fire(armed, "watch", str(folder))
+    assert result.skipped == "in_progress"
+    assert len(env.runs) == 1
 
 
 async def test_TRIGGERS_21_manual_run_records_its_fingerprint(env: Env) -> None:

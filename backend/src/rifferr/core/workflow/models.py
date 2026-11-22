@@ -47,6 +47,16 @@ class VarDecl(_Strict):
     description: str | None = None
 
 
+DedupeMode = Literal["fingerprint", "in_progress"]
+"""``fingerprint``: an unchanged input already run is skipped (TRIGGERS-19 .. -21).
+``in_progress``: only an input with a run still going is skipped (TRIGGERS-26)."""
+
+_DEDUPE_DESCRIPTION = (
+    "fingerprint: skip an input whose unchanged content already ran. in_progress: run every "
+    "input that appears again; skip it only while a run for it is still going."
+)
+
+
 class WatchTrigger(_Strict):
     """``on.watch`` (F-TRIGGERS TRIGGERS-8 to -11)."""
 
@@ -57,6 +67,7 @@ class WatchTrigger(_Strict):
     poll: Duration | None = Field(
         default=None, description="Poll at this interval instead of using file events."
     )
+    dedupe: DedupeMode = Field(default="fingerprint", description=_DEDUPE_DESCRIPTION)
 
     @field_validator("poll")
     @classmethod
@@ -77,6 +88,7 @@ class WebhookTrigger(_Strict):
         default=None,
         description="Inputs must lie inside this folder (default: on.watch.path).",
     )
+    dedupe: DedupeMode = Field(default="fingerprint", description=_DEDUPE_DESCRIPTION)
 
 
 class Triggers(_Strict):

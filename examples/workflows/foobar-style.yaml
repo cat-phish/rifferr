@@ -32,6 +32,8 @@ on:
   watch:
     path: "{{ vars.inbox }}"
     settle: 5m
+    # A test inbox refilled with the same sample can add `dedupe: in_progress`, so a
+    # folder seen before runs again (TRIGGERS-26). The default skips unchanged folders.
 steps:
   - id: import
     uses: beets.import

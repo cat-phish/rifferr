@@ -83,11 +83,20 @@ class DedupRecord:
 
 
 def dedup_skip(
-    record: DedupRecord | None, current: str | None, *, force: bool = False
+    record: DedupRecord | None,
+    current: str | None,
+    *,
+    force: bool = False,
+    mode: Literal["fingerprint", "in_progress"] = "fingerprint",
 ) -> SkipReason | None:
     """Why a trigger for an input with fingerprint ``current`` must not start a run, or
-    ``None`` if it may (TRIGGERS-19, -20)."""
-    if force or current is None or record is None or record.fingerprint != current:
+    ``None`` if it may (TRIGGERS-19, -20). With ``mode="in_progress"`` only a run still
+    going blocks, whatever the fingerprint (TRIGGERS-26)."""
+    if force or record is None:
+        return None
+    if mode == "in_progress":
+        return "in_progress" if record.run_state in ACTIVE_STATES else None
+    if current is None or record.fingerprint != current:
         return None
     if record.undone:
         return "undone"

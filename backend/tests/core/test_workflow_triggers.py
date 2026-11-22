@@ -42,3 +42,30 @@ def test_WORKFLOW_13_webhook_name_pattern() -> None:
             "steps: [{id: a, uses: shell}]\n",
             "wf.yaml",
         )
+
+
+def test_TRIGGERS_26_dedupe_defaults_to_fingerprint_and_accepts_in_progress() -> None:
+    from rifferr.core.workflow import safety_report
+
+    plain, _ = load_workflow(
+        "name: x\non:\n  watch: { path: /in }\nsteps: [{id: a, uses: shell}]\n", "wf.yaml"
+    )
+    assert plain.on is not None
+    assert plain.on.watch is not None
+    assert plain.on.watch.dedupe == "fingerprint"
+    assert not [f for f in safety_report(plain).findings if f.kind == "rerun"]
+
+    wf, _ = load_workflow(
+        "name: x\non:\n  watch: { path: /in, dedupe: in_progress }\n"
+        "  webhook: { name: hook, input: a.path, dedupe: in_progress }\n"
+        "steps: [{id: a, uses: shell}]\n",
+        "wf.yaml",
+    )
+    notes = [f for f in safety_report(wf).findings if f.kind == "rerun"]
+    assert [f.step_id for f in notes] == ["on.watch", "on.webhook"]
+    assert "imported again" in notes[0].detail
+    with pytest.raises(WorkflowLoadError):
+        load_workflow(
+            "name: x\non:\n  watch: { path: /in, dedupe: off }\nsteps: [{id: a, uses: shell}]\n",
+            "wf.yaml",
+        )

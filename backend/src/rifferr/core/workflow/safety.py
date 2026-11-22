@@ -53,6 +53,7 @@ FindingKind = Literal[
     "auto_apply",
     "tag_field",
     "file_move",
+    "rerun",
 ]
 #: beets plugins that copy or move extra files on beets' own move events. ``library.move``
 #: moves files itself, so they don't fire (S-LIBRARY-MOVE LIBRARY-MOVE-6a).
@@ -104,6 +105,19 @@ def safety_report(
 
 def _report(wf: Workflow, beets_plugins: frozenset[str] = frozenset()) -> SafetyReport:
     findings: list[Finding] = []
+    for name, trigger in (
+        ("on.watch", wf.on and wf.on.watch),
+        ("on.webhook", wf.on and wf.on.webhook),
+    ):
+        if trigger is not None and trigger.dedupe == "in_progress":  # TRIGGERS-26
+            findings.append(
+                Finding(
+                    step_id=name,
+                    kind="rerun",
+                    detail="dedupe: in_progress: an album that reappears in the inbox is "
+                    "imported again",
+                )
+            )
     for step in wf.steps:
         if step.apply == "auto":  # TAGSCRIPT-18; any step that proposes ChangeSets (SEC-65)
             findings.append(

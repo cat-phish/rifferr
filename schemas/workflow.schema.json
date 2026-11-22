@@ -774,6 +774,16 @@
       "additionalProperties": false,
       "description": "``on.watch`` (F-TRIGGERS TRIGGERS-8 to -11).",
       "properties": {
+        "dedupe": {
+          "default": "fingerprint",
+          "description": "fingerprint: skip an input whose unchanged content already ran. in_progress: run every input that appears again; skip it only while a run for it is still going.",
+          "enum": [
+            "fingerprint",
+            "in_progress"
+          ],
+          "title": "Dedupe",
+          "type": "string"
+        },
         "path": {
           "description": "Folder to watch; each top-level folder in it is one input.",
           "title": "Path",
@@ -812,6 +822,16 @@
       "additionalProperties": false,
       "description": "``on.webhook`` (F-TRIGGERS TRIGGERS-15 to -18).",
       "properties": {
+        "dedupe": {
+          "default": "fingerprint",
+          "description": "fingerprint: skip an input whose unchanged content already ran. in_progress: run every input that appears again; skip it only while a run for it is still going.",
+          "enum": [
+            "fingerprint",
+            "in_progress"
+          ],
+          "title": "Dedupe",
+          "type": "string"
+        },
         "input": {
           "description": "Dotted path to the input path in the JSON body, e.g. trackFiles.0.path.",
           "pattern": "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_-]+)*$",
