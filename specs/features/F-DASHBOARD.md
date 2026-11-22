@@ -29,6 +29,7 @@ Inbox:
 - DASHBOARD-1: `GET /api/profiles/{profile}/inbox` MUST list, for each armed or failing `watch` trigger, the watched folder and its candidate inputs (the same top-level entries the watcher would fire for, F-TRIGGERS), each with a state: `settling` (changed less than `settle` ago), `waiting` (settled, not started yet, or queued behind another run), `running`, `waiting_review`, `imported` (the dedup record's fingerprint matches and its run succeeded or is waiting), `failed` (the last run for it failed or was cancelled), `changed` (imported before, changed since), or `undone` (its run's import was undone, DASHBOARD-9). Each entry carries its last run id when there is one.
 - DASHBOARD-2: The inbox listing MUST read only the filesystem and the app DB (never beets), MUST stay inside the watched folder (symbolic links out of it are listed as `outside` and not followed), and MUST cap the entries per folder (open question 3), saying how many were left out.
 - DASHBOARD-3: An entry in `failed`, `changed` or `undone` MUST offer "Import again", which fires the trigger's workflow for that input with `force` (F-TRIGGERS dedup override), going through the same trust and concurrency checks as a manual run.
+- DASHBOARD-19: (Added by the author, 2026-11-21.) For each armed watch, the inbox MUST offer "Import all now". After a confirmation naming the folder count, it fires the watch's workflow once per candidate folder listed for it, without waiting for the settle period and with `force` (dedup bypassed). F-TRIGGERS TRIGGERS-27 still holds: a folder with a run going, or inside or around one, is skipped, and the result lists the skipped folders with their reason. API: `POST /api/profiles/{profile}/inbox/import-all {workflow}` returns `{started: [run ids], skipped: [{input, reason}]}`.
 
 Runs in progress:
 - DASHBOARD-4: The dashboard MUST show the profile's queued, running and `waiting_review` runs, newest first, with workflow, trigger, input, state, started time, and for `waiting_review` the number of waiting lanes and queue items. Rows link to the run page.
@@ -215,3 +216,4 @@ decisions (DASHBOARD-11) let the user continue some albums and reject others.
 - [x] dashboard page on `/`; nav "Runs" to `/runs`
 - [x] multi-select decisions on `/review`
 - [x] Playwright test (DASHBOARD-17)
+- [x] "Import all now" route and inbox button (DASHBOARD-19)

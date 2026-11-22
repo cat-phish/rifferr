@@ -85,6 +85,10 @@ function setup() {
     "GET /api/profiles/main/inbox": () => inbox,
     "GET /api/profiles/main/imports": () => IMPORTS,
     "POST /api/runs": () => ({ status: 201, body: { id: "R9" } }),
+    "POST /api/profiles/main/inbox/import-all": () => ({
+      started: ["R10", "R11"],
+      skipped: [{ input: "/music/inbox/C", reason: "in_progress" }],
+    }),
     "POST /api/runs/R1/import-undo": () => ({ status: 202, body: { job_id: "J1" } }),
   });
 }
@@ -127,6 +131,19 @@ test("DASHBOARD_1 DASHBOARD_3 DASHBOARD_16 inbox entries show their state as tex
     workflow: "foobar-style",
     input: "/music/inbox/B",
   });
+});
+
+test("DASHBOARD_19 Import all now asks first, then starts every folder and reports skips", async () => {
+  const { calls } = setup();
+  renderApp("/?profile=main");
+  fireEvent.click(await screen.findByRole("button", { name: "Import all now" }));
+  const confirm = await screen.findByRole("button", { name: "Import 3 folders" });
+  expect(calls.some((c) => c.path.endsWith("/import-all"))).toBe(false);
+  fireEvent.click(confirm);
+  const result = await screen.findByTestId("import-all-result");
+  expect(result).toHaveTextContent("Started 2 runs; skipped /music/inbox/C (in progress).");
+  const post = calls.find((c) => c.path === "/api/profiles/main/inbox/import-all");
+  expect(post?.body).toEqual({ workflow: "foobar-style" });
 });
 
 test("DASHBOARD_15 inbox refetches on inbox.changed", async () => {

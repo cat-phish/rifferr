@@ -17,6 +17,9 @@ from rifferr.api.models import (
     ImportUndoBody,
     InboxEntry,
     InboxFolder,
+    InboxImportAll,
+    InboxImportAllBody,
+    InboxSkipped,
     JobQueued,
     RecentImport,
 )
@@ -58,6 +61,28 @@ async def inbox(profile: str, state: State) -> list[InboxFolder]:
         )
         for f in folders
     ]
+
+
+@router.post(
+    "/profiles/{profile}/inbox/import-all",
+    response_model=InboxImportAll,
+    responses=ERROR_RESPONSES,
+)
+async def import_all(profile: str, body: InboxImportAllBody, state: State) -> InboxImportAll:
+    """Start a run for every folder in ``workflow``'s watched inbox now (DASHBOARD-19):
+    no settle wait, dedup bypassed, but never a second run of a folder (TRIGGERS-27)."""
+    get_profile(state, profile)
+    result = (
+        await state.triggers.import_all(profile, body.workflow)
+        if state.triggers is not None
+        else None
+    )
+    if result is None:
+        raise not_found(f"armed watch of workflow {body.workflow}")
+    started, skipped = result
+    return InboxImportAll(
+        started=started, skipped=[InboxSkipped(input=i, reason=r) for i, r in skipped]
+    )
 
 
 def _album(raw: dict[str, Any], run: Job, dirs: list[Path], source: Originals) -> ImportedAlbum:

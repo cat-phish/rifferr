@@ -644,6 +644,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/profiles/{profile}/inbox/import-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import All
+         * @description Start a run for every folder in ``workflow``'s watched inbox now (DASHBOARD-19):
+         *     no settle wait, dedup bypassed, but never a second run of a folder (TRIGGERS-27).
+         */
+        post: operations["import_all_api_profiles__profile__inbox_import_all_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/profiles/{profile}/journal/{entry_id}/undo": {
         parameters: {
             query?: never;
@@ -2180,6 +2201,34 @@ export interface components {
             trigger_state: "armed" | "disabled" | "error";
             /** Workflow */
             workflow: string;
+        };
+        /** InboxImportAll */
+        InboxImportAll: {
+            /** Skipped */
+            skipped: components["schemas"]["InboxSkipped"][];
+            /**
+             * Started
+             * @description Run ids, one per folder
+             */
+            started: string[];
+        };
+        /**
+         * InboxImportAllBody
+         * @description Start every folder of this workflow's watched inbox now (DASHBOARD-19).
+         */
+        InboxImportAllBody: {
+            /** Workflow */
+            workflow: string;
+        };
+        /** InboxSkipped */
+        InboxSkipped: {
+            /** Input */
+            input: string;
+            /**
+             * Reason
+             * @description in_progress (a run is going on it or a folder around it), empty, outside (a link out of the inbox) or not_started (the workflow can't run now)
+             */
+            reason: string;
         };
         /**
          * ItemSnapshot
@@ -5333,6 +5382,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InboxFolder"][];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    import_all_api_profiles__profile__inbox_import_all_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InboxImportAllBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InboxImportAll"];
                 };
             };
             /** @description Bad Request */

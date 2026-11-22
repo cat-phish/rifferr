@@ -285,8 +285,12 @@ async def test_TRIGGERS_19_same_input_is_skipped(env: Env, state: str, reason: s
     assert result.skipped == reason
     assert result.run_id == env.runs[0].run_id
     forced = await env.manager.fire(armed, "webhook", str(folder), force=True)
-    assert forced.skipped is None
-    assert len(env.runs) == 2
+    if state == "running":  # TRIGGERS-27: never two runs of one folder, even forced
+        assert forced.skipped == "in_progress"
+        assert len(env.runs) == 1
+    else:
+        assert forced.skipped is None
+        assert len(env.runs) == 2
 
 
 @pytest.mark.parametrize("state", ["succeeded", "failed", "cancelled"])

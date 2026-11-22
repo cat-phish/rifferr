@@ -245,6 +245,9 @@ function InboxFolderView({ folder }: { folder: InboxFolder }) {
             {folder.detail}
           </Text>
         )}
+        {folder.trigger_state === "armed" && folder.entries.length > 0 && (
+          <ImportAll folder={folder} />
+        )}
       </Group>
       {folder.entries.length === 0 && (
         <Text size="sm" c="dimmed">
@@ -266,6 +269,88 @@ function InboxFolderView({ folder }: { folder: InboxFolder }) {
         </Text>
       )}
     </Stack>
+  );
+}
+
+/** "Import all now": one forced run per folder, no settle wait (DASHBOARD-19). */
+function ImportAll({ folder }: { folder: InboxFolder }) {
+  const { profile } = useProfile();
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const total = folder.entries.length + folder.omitted;
+  const go = useMutation({
+    mutationFn: async () =>
+      ok(
+        await api.POST("/api/profiles/{profile}/inbox/import-all", {
+          params: { path: { profile: profile ?? "" } },
+          body: { workflow: folder.workflow },
+        }),
+      ),
+    onSuccess: () => {
+      setOpen(false);
+      void queryClient.invalidateQueries({ queryKey: ["inbox"] });
+      void queryClient.invalidateQueries({ queryKey: ["runs"] });
+    },
+  });
+  return (
+    <>
+      <Button
+        size="compact-xs"
+        variant="light"
+        ml="auto"
+        onClick={() => {
+          go.reset();
+          setOpen(true);
+        }}
+      >
+        Import all now
+      </Button>
+      {go.data && (
+        <Text size="xs" c="dimmed" data-testid="import-all-result">
+          Started {count(go.data.started.length, "run")}
+          {go.data.skipped.length > 0 &&
+            `; skipped ${go.data.skipped.map((s) => `${s.input} (${s.reason.replace("_", " ")})`).join(", ")}`}
+          .
+        </Text>
+      )}
+      <Modal
+        opened={open}
+        onClose={() => {
+          setOpen(false);
+        }}
+        title="Import all now"
+      >
+        <Stack gap="sm">
+          <Text size="sm">
+            Start {folder.workflow} now on {count(total, "folder")} in{" "}
+            <Text span ff="monospace">
+              {folder.folder}
+            </Text>
+            , one run each, without waiting for them to settle and even if they were imported
+            before. Folders with a run still going are skipped.
+          </Text>
+          {go.error && <Alert color="red">{go.error.message}</Alert>}
+          <Group justify="flex-end">
+            <Button
+              variant="default"
+              onClick={() => {
+                setOpen(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              loading={go.isPending}
+              onClick={() => {
+                go.mutate();
+              }}
+            >
+              Import {count(total, "folder")}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+    </>
   );
 }
 

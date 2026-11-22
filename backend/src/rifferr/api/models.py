@@ -412,6 +412,25 @@ class PruneDecided(_Model):
     job_id: str | None = None
 
 
+class InboxImportAllBody(_Model):
+    """Start every folder of this workflow's watched inbox now (DASHBOARD-19)."""
+
+    workflow: str = Field(max_length=200)
+
+
+class InboxSkipped(_Model):
+    input: str
+    reason: str = Field(
+        description="in_progress (a run is going on it or a folder around it), empty, "
+        "outside (a link out of the inbox) or not_started (the workflow can't run now)"
+    )
+
+
+class InboxImportAll(_Model):
+    started: list[str] = Field(description="Run ids, one per folder")
+    skipped: list[InboxSkipped]
+
+
 class CleanupDecided(_Model):
     """``job_id`` is the worker job that cleans the folder (``delete``); ``None`` for
     ``keep``, which needs no job."""

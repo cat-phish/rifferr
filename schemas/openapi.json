@@ -2735,6 +2735,68 @@
         "title": "InboxFolder",
         "type": "object"
       },
+      "InboxImportAll": {
+        "additionalProperties": false,
+        "properties": {
+          "skipped": {
+            "items": {
+              "$ref": "#/components/schemas/InboxSkipped"
+            },
+            "title": "Skipped",
+            "type": "array"
+          },
+          "started": {
+            "description": "Run ids, one per folder",
+            "items": {
+              "type": "string"
+            },
+            "title": "Started",
+            "type": "array"
+          }
+        },
+        "required": [
+          "started",
+          "skipped"
+        ],
+        "title": "InboxImportAll",
+        "type": "object"
+      },
+      "InboxImportAllBody": {
+        "additionalProperties": false,
+        "description": "Start every folder of this workflow's watched inbox now (DASHBOARD-19).",
+        "properties": {
+          "workflow": {
+            "maxLength": 200,
+            "title": "Workflow",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workflow"
+        ],
+        "title": "InboxImportAllBody",
+        "type": "object"
+      },
+      "InboxSkipped": {
+        "additionalProperties": false,
+        "properties": {
+          "input": {
+            "title": "Input",
+            "type": "string"
+          },
+          "reason": {
+            "description": "in_progress (a run is going on it or a folder around it), empty, outside (a link out of the inbox) or not_started (the workflow can't run now)",
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "input",
+          "reason"
+        ],
+        "title": "InboxSkipped",
+        "type": "object"
+      },
       "ItemSnapshot": {
         "additionalProperties": false,
         "description": "One track. ``id`` is opaque and assigned by the backend.",
@@ -8582,6 +8644,89 @@
           }
         },
         "summary": "Inbox",
+        "tags": [
+          "dashboard"
+        ]
+      }
+    },
+    "/api/profiles/{profile}/inbox/import-all": {
+      "post": {
+        "description": "Start a run for every folder in ``workflow``'s watched inbox now (DASHBOARD-19):\nno settle wait, dedup bypassed, but never a second run of a folder (TRIGGERS-27).",
+        "operationId": "import_all_api_profiles__profile__inbox_import_all_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InboxImportAllBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxImportAll"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Import All",
         "tags": [
           "dashboard"
         ]

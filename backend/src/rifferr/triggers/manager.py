@@ -672,14 +672,15 @@ class TriggerManager:
 
     def _active_related(self, armed: Armed, input_path: str) -> str | None:
         """SEC-82, TRIGGERS-27: the run id of an active run of this workflow whose input is
-        a parent or child folder of ``input_path``. Checked for every trigger kind, even
-        when forced: one folder never has two runs at once."""
+        ``input_path`` itself (even with another fingerprint) or a parent or child folder.
+        Checked for every trigger kind, even when forced: one folder never has two runs at
+        once."""
         here = Path(input_path)
         for other, rec in self.store.records(armed.profile, armed.name).items():
             if rec.run_state not in ACTIVE_STATES:
                 continue
             there = Path(other)
-            if there != here and (here.is_relative_to(there) or there.is_relative_to(here)):
+            if here.is_relative_to(there) or there.is_relative_to(here):
                 return rec.run_id
         return None
 
@@ -715,6 +716,40 @@ class TriggerManager:
 
     def _inbox_changed(self, armed: Armed, path: Path) -> None:
         self._emit(armed.profile, "inbox.changed", {"workflow": armed.name, "path": str(path)})
+
+    async def import_all(
+        self, profile: str, workflow: str
+    ) -> tuple[list[str], list[tuple[str, str]]] | None:
+        """DASHBOARD-19: fire ``workflow``'s watch for every folder in its inbox now,
+        without waiting to settle and with dedup bypassed (``force``). TRIGGERS-27 still
+        holds: a folder with a run going is skipped. Returns (started run ids,
+        [(input, reason)] skipped), or ``None`` when the workflow has no armed watch."""
+        armed = self.armed.get((profile, workflow))
+        if armed is None or armed.watch_path is None or "watch" not in armed.triggers:
+            return None
+        listed = await asyncio.to_thread(_list_inputs, armed.watch_path, INBOX_LIMIT)
+        if listed is None:
+            return [], []
+        started: list[str] = []
+        skipped: list[tuple[str, str]] = []
+        for name, inside, current in listed[0]:
+            path = str(armed.watch_path / name)
+            if not inside:
+                skipped.append((path, "outside"))
+                continue
+            if current is None:
+                skipped.append((path, "empty"))
+                continue
+            if armed.tracker is not None:
+                armed.tracker.discard(name)  # started now: the settle timer has nothing to do
+            result = await self.fire(armed, "watch", path, force=True)
+            if result.skipped is not None:
+                skipped.append((path, result.skipped))
+            elif result.run_id is not None:
+                started.append(result.run_id)
+            else:
+                skipped.append((path, "not_started"))
+        return started, skipped
 
     async def inbox(self, profile: str, *, limit: int = INBOX_LIMIT) -> list[InboxFolder]:
         """Each watch trigger's folder and its candidate inputs (DASHBOARD-1, -2). The

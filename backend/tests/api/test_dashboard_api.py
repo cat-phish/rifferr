@@ -62,6 +62,41 @@ async def test_DASHBOARD_1_inbox_route_lists_watched_inputs(watched: tuple[Api, 
     assert (await api.client.get("/api/profiles/nosuch/inbox")).status_code == 404
 
 
+async def test_DASHBOARD_19_import_all_now_starts_every_folder_at_once(
+    watched: tuple[Api, Path],
+) -> None:
+    api, inbox = watched
+    a = album(inbox, "A")
+    album(inbox, "B")
+    (inbox / "Empty").mkdir()
+    busy = album(inbox, "C")
+    assert api.state.triggers is not None
+    await api.state.triggers.reconcile()
+    # A run already going on C: never a second one (TRIGGERS-27).
+    store = AppTriggers(api.state.db)
+    going = waiting_run(api.state.db)
+    fp = fs.input_fingerprint(busy)
+    assert fp is not None
+    store.remember("main", "w", str(busy), fp, going.run)
+    # A was imported before: Import all now runs it again anyway (forced).
+    done = api.state.db.submit("main", {"source": "", "vars": {}}, workflow="w")
+    assert api.state.db.claim_next("main") is not None
+    assert api.state.db.finish(done.run, "succeeded")
+    fa = fs.input_fingerprint(a)
+    assert fa is not None
+    store.remember("main", "w", str(a), fa, done.run)
+    r = await post(api, "/api/profiles/main/inbox/import-all", {"workflow": "w"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert len(body["started"]) == 2  # A and B, without waiting the 1h settle
+    assert sorted((Path(x["input"]).name, x["reason"]) for x in body["skipped"]) == [
+        ("C", "in_progress"),
+        ("Empty", "empty"),
+    ]
+    missing = await post(api, "/api/profiles/main/inbox/import-all", {"workflow": "nope"})
+    assert missing.status_code == 404
+
+
 async def test_DASHBOARD_3_import_again_starts_a_manual_run_for_an_undone_input(
     watched: tuple[Api, Path],
 ) -> None:
