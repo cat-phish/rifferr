@@ -89,6 +89,8 @@ export function useAppEvents(onEvent?: (event: RunEvent) => void): void {
       // The review queue's album blocks follow their run's lanes (UI-REFRESH-14).
       if (event.type.startsWith("lane.") || event.type.startsWith("run.")) {
         void queryClient.invalidateQueries({ queryKey: ["run", event.run_id] });
+        // Albums move between the Pipeline tab's stages (UI-REFRESH-24).
+        void queryClient.invalidateQueries({ queryKey: ["pipeline"] });
       }
       if (event.type.startsWith("lane.") || event.type.startsWith("run.step.")) {
         onEvent?.(event);
@@ -120,5 +122,19 @@ export function useAppEvents(onEvent?: (event: RunEvent) => void): void {
       }
       onEvent?.(event);
     },
+  });
+}
+
+/** A workflow's live albums by step (UI-REFRESH-24), refreshed by the app's event stream. */
+export function usePipeline(profile: string | null, workflow: string | undefined) {
+  return useQuery({
+    queryKey: ["pipeline", profile, workflow ?? null],
+    enabled: profile !== null && workflow !== undefined && workflow !== "",
+    queryFn: async () =>
+      ok(
+        await api.GET("/api/pipeline", {
+          params: { query: { profile: profile ?? undefined, workflow } },
+        }),
+      ),
   });
 }

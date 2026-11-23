@@ -235,6 +235,27 @@ class LaneOut(_Model):
     steps: dict[str, str] = Field(description="Step id -> this lane's status in that step")
 
 
+class PipelineLane(LaneOut):
+    """A live album of a workflow and the step it is at (UI-REFRESH-24)."""
+
+    run_id: str
+    updated_at: datetime = Field(description="When the lane last changed (reached its step)")
+
+
+class PipelineStart(_Model):
+    """A queued or running run with no lanes yet (UI-REFRESH-24)."""
+
+    run_id: str
+    state: JobState
+    input: str | None
+    created_at: datetime
+
+
+class PipelineOut(_Model):
+    lanes: list[PipelineLane]
+    starting: list[PipelineStart]
+
+
 StepStatusOut = Literal["pending", "running", "succeeded", "failed", "skipped", "cancelled"]
 
 

@@ -305,7 +305,7 @@ const WORKFLOWS = {
   "GET /api/workflows/older": () => detail("older", [["suffix", true]]),
 };
 
-test("UI_REFRESH_13 a tab per step that can wait, always there; new items never switch tabs", async () => {
+test("UI_REFRESH_13 UI_REFRESH_24 a tab per step, always there; new items never switch tabs", async () => {
   let queue = [csItem("cs1", NEW_RUN)];
   setup({ queue: () => queue, extra: WORKFLOWS });
   renderApp("/workflows/tagging?profile=main");
@@ -314,6 +314,7 @@ test("UI_REFRESH_13 a tab per step that can wait, always there; new items never 
     expect(screen.getAllByTestId("stage-tab").map((t) => t.textContent)).toEqual([
       "import0",
       "suffix1",
+      "write0",
       "check0",
     ]);
   });
@@ -332,6 +333,7 @@ test("UI_REFRESH_13 a tab per step that can wait, always there; new items never 
     expect(screen.getAllByTestId("stage-tab").map((t) => t.textContent)).toEqual([
       "import0",
       "suffix1",
+      "write0",
       "check1",
     ]);
   });
@@ -353,11 +355,88 @@ test("UI_REFRESH_13 items of a step that isn't in the workflow get an Other tab"
     expect(screen.getAllByTestId("stage-tab").map((t) => t.textContent)).toEqual([
       "import0",
       "suffix0",
+      "write0",
       "check0",
       "Other1",
     ]);
   });
   expect(screen.getByRole("tab", { name: /Other/ })).toHaveAttribute("aria-selected", "true");
+});
+
+// -- UI-REFRESH-24 ------------------------------------------------------------------------
+
+function pipelineLane(
+  key: string,
+  position: string | null,
+  holds: S["LaneHold"][] = [],
+): S["PipelineLane"] {
+  return {
+    run_id: NEW_RUN,
+    key,
+    label: `Artist - ${key}`,
+    state: holds.length > 0 ? "waiting" : "active",
+    position,
+    holds,
+    steps: {},
+    updated_at: new Date().toISOString(),
+  };
+}
+
+test("UI_REFRESH_24 albums at a step that doesn't wait; review items first and in the bar", async () => {
+  let lanes = [
+    pipelineLane("A", "write"),
+    pipelineLane("B", "suffix", [{ kind: "changeset", ref: "cs1" }]),
+  ];
+  setup({
+    queue: () => [csItem("cs1", NEW_RUN)],
+    extra: {
+      ...WORKFLOWS,
+      "GET /api/pipeline": () => ({
+        lanes,
+        starting: [
+          {
+            run_id: "R2",
+            state: "queued",
+            input: "/in/New Album",
+            created_at: new Date().toISOString(),
+          },
+        ],
+      }),
+    },
+  });
+  renderApp("/workflows/tagging?profile=main");
+  await screen.findByTestId("queue-item");
+  // The waiting item's tab opens first; its held lane isn't listed again under it.
+  expect(screen.getByRole("tab", { name: /suffix/ })).toHaveAttribute("aria-selected", "true");
+  expect(screen.queryByTestId("at-this-step")).toBeNull();
+  expect(screen.getAllByTestId("waiting-chip").map((c) => c.textContent)).toEqual(["suffix · 1"]);
+  await waitFor(() => {
+    expect(screen.getAllByTestId("stage-albums").map((c) => c.textContent)).toEqual(["+1", "+1"]);
+  });
+  fireEvent.click(screen.getByRole("tab", { name: /write/ }));
+  const rows = await screen.findAllByTestId("pipeline-album");
+  expect(rows.map((r) => r.textContent)).toEqual([expect.stringContaining("Artist - A")]);
+  fireEvent.click(screen.getByRole("tab", { name: /import/ }));
+  expect((await screen.findByTestId("pipeline-album")).textContent).toContain(
+    "Run starting: New Album",
+  );
+  // A lane past the last step gets a trailing Finishing tab.
+  lanes = [...lanes, pipelineLane("C", null)];
+  await act(async () => {
+    FakeEventSource.last("/api/events").emit("lane.finished", {
+      seq: 8,
+      run_id: NEW_RUN,
+      type: "lane.finished",
+      data: {},
+    });
+    await Promise.resolve();
+  });
+  await waitFor(() => {
+    expect(screen.getAllByTestId("stage-tab").map((t) => t.textContent)).toContain("Finishing0+1");
+  });
+  // The bar opens a waiting stage from any tab.
+  fireEvent.click(screen.getByTestId("waiting-chip"));
+  expect(screen.getByRole("tab", { name: /suffix/ })).toHaveAttribute("aria-selected", "true");
 });
 
 // -- UI-REFRESH-22 ------------------------------------------------------------------------
@@ -393,7 +472,7 @@ test("UI_REFRESH_23 /workflows lists each workflow with its stages; nav and card
   expect(screen.queryByTestId("queue-item")).toBeNull();
 });
 
-test("UI_REFRESH_23 hub links to editing; a workflow page has Review, Runs and Details tabs", async () => {
+test("UI_REFRESH_23 hub links to editing; a workflow page has Pipeline, Runs and Details tabs", async () => {
   const { calls } = setup({
     queue: () => [csItem("cs1", NEW_RUN)],
     extra: { ...WORKFLOWS, "GET /api/runs": () => [] },
@@ -414,7 +493,7 @@ test("UI_REFRESH_23 hub links to editing; a workflow page has Review, Runs and D
     }),
   );
   await screen.findAllByTestId("queue-item");
-  expect(screen.getByRole("tab", { name: "Review" })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByRole("tab", { name: "Pipeline" })).toHaveAttribute("aria-selected", "true");
   fireEvent.click(screen.getByRole("tab", { name: "Runs" }));
   await waitFor(() => {
     const runs = calls.filter((c: Call) => c.method === "GET" && c.path === "/api/runs");

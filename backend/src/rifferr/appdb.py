@@ -1653,6 +1653,43 @@ class AppLanes:
                 moved.append(key)
         return moved
 
+    def live(
+        self, profile: str | None, workflow: str | None
+    ) -> tuple[list[tuple[str, Lane, datetime]], list[Job]]:
+        """UI-REFRESH-24: lanes in no final state of runs that are queued, running or
+        waiting (with when each last changed), oldest run first; and those runs that have
+        no lanes yet."""
+        sql = (
+            "SELECT * FROM jobs WHERE kind = 'run'"
+            " AND state IN ('queued', 'running', 'waiting_review')"
+        )
+        args: list[Any] = []
+        if profile is not None:
+            sql, args = sql + " AND profile = ?", [*args, profile]
+        if workflow is not None:
+            sql, args = sql + " AND workflow = ?", [*args, workflow]
+        jobs = [_job(r) for r in self._conn.execute(sql + " ORDER BY created_at, id", args)]
+        finals = sorted(FINAL_LANE_STATES)
+        marks = ",".join("?" for _ in finals)
+        lanes: list[tuple[str, Lane, datetime]] = []
+        starting: list[Job] = []
+        for job in jobs:
+            has = self._conn.execute(
+                "SELECT 1 FROM run_lanes WHERE run_id = ? LIMIT 1", (job.run,)
+            ).fetchone()
+            if has is None:
+                if job.state != "waiting_review":
+                    starting.append(job)
+                continue
+            rows = self._conn.execute(
+                f"SELECT * FROM run_lanes WHERE run_id = ? AND state NOT IN ({marks}) ORDER BY seq",
+                (job.run, *finals),
+            ).fetchall()
+            lanes += [
+                (job.run, _lane(row), datetime.fromisoformat(row["updated_at"])) for row in rows
+            ]
+        return lanes, starting
+
     def counts(self, run_ids: Iterable[str]) -> dict[str, dict[str, int]]:
         """Run id -> lane state -> count (LANES-9), in one query."""
         ids = list(run_ids)

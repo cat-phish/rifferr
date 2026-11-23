@@ -414,6 +414,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/pipeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Pipeline
+         * @description Every live album and the step it is at, plus runs with no lanes yet (UI-REFRESH-24).
+         */
+        get: operations["get_pipeline_api_pipeline_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/profiles": {
         parameters: {
             query?: never;
@@ -2566,6 +2586,73 @@ export interface components {
             format: string;
             /** Query */
             query: string;
+        };
+        /**
+         * PipelineLane
+         * @description A live album of a workflow and the step it is at (UI-REFRESH-24).
+         */
+        PipelineLane: {
+            /** Holds */
+            holds: components["schemas"]["LaneHold"][];
+            /**
+             * Key
+             * @description Backend album id, or pending:<id> before import
+             */
+            key: string;
+            /** Label */
+            label: string;
+            /**
+             * Position
+             * @description Id of the next step; null once final
+             */
+            position: string | null;
+            /** Run Id */
+            run_id: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "active" | "waiting" | "done" | "skipped" | "failed" | "rejected" | "gone" | "cancelled";
+            /**
+             * Steps
+             * @description Step id -> this lane's status in that step
+             */
+            steps: {
+                [key: string]: string;
+            };
+            /**
+             * Updated At
+             * Format: date-time
+             * @description When the lane last changed (reached its step)
+             */
+            updated_at: string;
+        };
+        /** PipelineOut */
+        PipelineOut: {
+            /** Lanes */
+            lanes: components["schemas"]["PipelineLane"][];
+            /** Starting */
+            starting: components["schemas"]["PipelineStart"][];
+        };
+        /**
+         * PipelineStart
+         * @description A queued or running run with no lanes yet (UI-REFRESH-24).
+         */
+        PipelineStart: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Input */
+            input: string | null;
+            /** Run Id */
+            run_id: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "running" | "waiting_review" | "succeeded" | "failed" | "cancelled";
         };
         /** PreviewError */
         PreviewError: {
@@ -4755,6 +4842,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_pipeline_api_pipeline_get: {
+        parameters: {
+            query?: {
+                profile?: string | null;
+                /** @description Only this workflow's albums */
+                workflow?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PipelineOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

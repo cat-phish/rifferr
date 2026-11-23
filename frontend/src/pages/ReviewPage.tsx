@@ -33,17 +33,21 @@ import { tc } from "../theme";
 import { ImportDecisionView } from "../components/ImportDecisionView";
 import type { GateAlbum, QueueItem, ReviewGate } from "../api/types";
 import { useProfile, withProfile } from "../hooks/useProfile";
-import { useReviewQueue, useWorkflowSteps } from "../hooks/useReviewQueue";
+import { usePipeline, useReviewQueue, useWorkflowSteps } from "../hooks/useReviewQueue";
 import { BULK_ACTIONS, bulkKind, decideAll, type BulkFailure, type BulkKind } from "../lib/bulk";
 import { useAppEventListener } from "../lib/appEvents";
-import { time } from "../lib/format";
+import { duration, time } from "../lib/format";
+import { StatusBadge } from "../components/StatusBadge";
 import {
   count,
   currentOf,
+  FINISHING_STAGE,
   fieldRows,
   formatValue,
   groupByStep,
   laneOf,
+  pipelineByStep,
+  type PipelineEntry,
   reviewWorkflows,
   stageTabs,
   type ReviewWorkflow,
@@ -207,10 +211,30 @@ export function ReviewPage({
     stepOrders,
     decided,
   );
-  const tabs = stageTabs(workflow, sections);
+  // The Pipeline tab (UI-REFRESH-24): a stage tab per step, with the albums at each step
+  // that don't wait on review; waiting items stay first.
+  const pipeline = usePipeline(profile, embedded ? workflowName : undefined);
+  const shownIds = new Set(
+    sections.flatMap((sec) => sec.items.map((i) => i.id)).filter((id) => !decided.has(id)),
+  );
+  const atStep = pipelineByStep(
+    workflow.steps,
+    pipeline.data?.lanes ?? [],
+    pipeline.data?.starting ?? [],
+    shownIds,
+  );
+  const tabs = stageTabs(workflow, sections, embedded);
+  if (embedded && (atStep.get(FINISHING_STAGE)?.length ?? 0) > 0)
+    tabs.push({ value: FINISHING_STAGE, label: "Finishing", section: undefined });
+  const albumsAt = (value: string) => atStep.get(value) ?? [];
   const focusTab = tabs.find((t) => t.section?.items.some((i) => i.id === focus));
   const urlStage = params.get("stage");
-  const stage = focusTab?.value ?? urlStage ?? (tabs.find((t) => t.section) ?? tabs[0])?.value;
+  const stage =
+    focusTab?.value ??
+    urlStage ??
+    (tabs.find((t) => t.section) ?? tabs.find((t) => albumsAt(t.value).length > 0) ?? tabs[0])
+      ?.value;
+  const waitingTabs = tabs.filter((t) => (t.section?.items.length ?? 0) > 0);
   const shown = tabs.find((t) => t.value === stage)?.section;
   useEffect(() => {
     if (!embedded) return;
@@ -362,6 +386,28 @@ export function ReviewPage({
           That item no longer waits for review.
         </Alert>
       )}
+      {embedded && waitingTabs.length > 0 && (
+        <Card withBorder padding="xs" data-testid="waiting-bar">
+          <Group gap="xs">
+            <Text size="sm" fw={600}>
+              Waiting for review
+            </Text>
+            {waitingTabs.map((t) => (
+              <Button
+                key={t.value}
+                size="compact-xs"
+                variant={t.value === stage ? "filled" : "light"}
+                data-testid="waiting-chip"
+                onClick={() => {
+                  pickStage(t.value);
+                }}
+              >
+                {t.label} · {String(t.section?.items.length ?? 0)}
+              </Button>
+            ))}
+          </Group>
+        </Card>
+      )}
       <SelectionContext.Provider value={selection}>
         <DecidedContext.Provider value={markDecided}>
           {stage !== undefined && (tabs.length > 0 || items.length > 0) && (
@@ -373,6 +419,7 @@ export function ReviewPage({
                     value={t.value}
                     label={t.label}
                     n={t.section?.items.length ?? 0}
+                    albums={embedded ? albumsAt(t.value).length : undefined}
                   />
                 ))}
                 {!tabs.some((t) => t.value === stage) && (
@@ -387,6 +434,7 @@ export function ReviewPage({
                     Nothing waiting at this step.
                   </Text>
                 )}
+                {embedded && albumsAt(stage).length > 0 && <AtThisStep entries={albumsAt(stage)} />}
               </Box>
             </Tabs>
           )}
@@ -481,27 +529,79 @@ function ReviewOverview({
   );
 }
 
-/** One stage tab with its count; dimmed while nothing waits there (UI-REFRESH-13). */
-function StageTabButton({ value, label, n }: { value: string; label: string; n: number }) {
+/** One stage tab with its count; dimmed while nothing waits there (UI-REFRESH-13). With
+ * `albums`, also the count of albums at that step not waiting on review (UI-REFRESH-24). */
+function StageTabButton({
+  value,
+  label,
+  n,
+  albums,
+}: {
+  value: string;
+  label: string;
+  n: number;
+  albums?: number;
+}) {
   return (
     <Tabs.Tab
       value={value}
       data-testid="stage-tab"
-      c={n === 0 ? "dimmed" : undefined}
+      c={n === 0 && !albums ? "dimmed" : undefined}
       rightSection={
-        <Badge
-          size="sm"
-          variant="light"
-          circle
-          color={n === 0 ? "gray" : undefined}
-          data-testid="stage-count"
-        >
-          {String(n)}
-        </Badge>
+        <Group gap={4} wrap="nowrap">
+          <Badge
+            size="sm"
+            variant="light"
+            circle
+            color={n === 0 ? "gray" : undefined}
+            data-testid="stage-count"
+          >
+            {String(n)}
+          </Badge>
+          {albums !== undefined && albums > 0 && (
+            <Text size="xs" c="dimmed" data-testid="stage-albums" title="Albums at this step">
+              +{String(albums)}
+            </Text>
+          )}
+        </Group>
       }
     >
       {label}
     </Tabs.Tab>
+  );
+}
+
+/** The albums at a step that don't wait on review (UI-REFRESH-24); read-only. */
+function AtThisStep({ entries }: { entries: readonly PipelineEntry[] }) {
+  const { profile } = useProfile();
+  return (
+    <Stack gap="xs" mt="md" data-testid="at-this-step">
+      <Text size="sm" fw={600}>
+        At this step
+      </Text>
+      <Table>
+        <Table.Tbody>
+          {entries.map((e) => (
+            <Table.Tr key={e.key} data-testid="pipeline-album">
+              <Table.Td>{e.label}</Table.Td>
+              <Table.Td>
+                <StatusBadge status={e.state} />
+              </Table.Td>
+              <Table.Td>
+                <Text size="xs" c="dimmed">
+                  {duration(e.since)}
+                </Text>
+              </Table.Td>
+              <Table.Td>
+                <Anchor component={Link} to={withProfile(`/runs/${e.runId}`, profile)} size="sm">
+                  Run
+                </Anchor>
+              </Table.Td>
+            </Table.Tr>
+          ))}
+        </Table.Tbody>
+      </Table>
+    </Stack>
   );
 }
 

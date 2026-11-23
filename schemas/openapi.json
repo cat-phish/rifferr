@@ -3562,6 +3562,155 @@
         "title": "PathFormat",
         "type": "object"
       },
+      "PipelineLane": {
+        "additionalProperties": false,
+        "description": "A live album of a workflow and the step it is at (UI-REFRESH-24).",
+        "properties": {
+          "holds": {
+            "items": {
+              "$ref": "#/components/schemas/LaneHold"
+            },
+            "title": "Holds",
+            "type": "array"
+          },
+          "key": {
+            "description": "Backend album id, or pending:<id> before import",
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Id of the next step; null once final",
+            "title": "Position"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "active",
+              "waiting",
+              "done",
+              "skipped",
+              "failed",
+              "rejected",
+              "gone",
+              "cancelled"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "steps": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Step id -> this lane's status in that step",
+            "title": "Steps",
+            "type": "object"
+          },
+          "updated_at": {
+            "description": "When the lane last changed (reached its step)",
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "state",
+          "position",
+          "holds",
+          "steps",
+          "run_id",
+          "updated_at"
+        ],
+        "title": "PipelineLane",
+        "type": "object"
+      },
+      "PipelineOut": {
+        "additionalProperties": false,
+        "properties": {
+          "lanes": {
+            "items": {
+              "$ref": "#/components/schemas/PipelineLane"
+            },
+            "title": "Lanes",
+            "type": "array"
+          },
+          "starting": {
+            "items": {
+              "$ref": "#/components/schemas/PipelineStart"
+            },
+            "title": "Starting",
+            "type": "array"
+          }
+        },
+        "required": [
+          "lanes",
+          "starting"
+        ],
+        "title": "PipelineOut",
+        "type": "object"
+      },
+      "PipelineStart": {
+        "additionalProperties": false,
+        "description": "A queued or running run with no lanes yet (UI-REFRESH-24).",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "input": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "queued",
+              "running",
+              "waiting_review",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "state",
+          "input",
+          "created_at"
+        ],
+        "title": "PipelineStart",
+        "type": "object"
+      },
       "PreviewError": {
         "additionalProperties": false,
         "properties": {
@@ -7793,6 +7942,75 @@
         "summary": "Decide Move",
         "tags": [
           "review"
+        ]
+      }
+    },
+    "/api/pipeline": {
+      "get": {
+        "description": "Every live album and the step it is at, plus runs with no lanes yet (UI-REFRESH-24).",
+        "operationId": "get_pipeline_api_pipeline_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "profile",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Profile"
+            }
+          },
+          {
+            "description": "Only this workflow's albums",
+            "in": "query",
+            "name": "workflow",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this workflow's albums",
+              "title": "Workflow"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PipelineOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Pipeline",
+        "tags": [
+          "runs"
         ]
       }
     },

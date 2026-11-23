@@ -27,8 +27,13 @@ test("REVIEW_QUEUE_18 review queue: partial accept, continue the gate, undo the 
   await expect(waiting).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId("review-count")).toHaveText("1");
   await waiting.getByRole("link").click();
-  // The old /review link goes on to the workflow's page, Review tab (UI-REFRESH-23).
-  await expect(page.getByRole("tab", { name: "Review" })).toHaveAttribute("aria-selected", "true");
+  // The old /review link goes on to the workflow's page, Pipeline tab (UI-REFRESH-23, -24),
+  // whose bar names the stage that waits.
+  await expect(page.getByRole("tab", { name: "Pipeline" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(page.getByTestId("waiting-chip")).toHaveCount(1);
 
   // Partially accept the ChangeSet: the album suffix, not the disambiguation.
   const changeset = page.locator('[data-testid=queue-item][data-kind="changeset"]');

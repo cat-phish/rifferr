@@ -8,9 +8,10 @@ import { WorkflowPage } from "./WorkflowPage";
 const TABS = ["review", "runs", "details"] as const;
 type Tab = (typeof TABS)[number];
 
-/** One workflow (UI-REFRESH-23): its review items by stage, its runs and its details (steps,
- * trust and safety report, start a run), one tab each, the tab kept in `?tab=`. Items of no
- * known workflow ("Other") have only the review tab. */
+/** One workflow (UI-REFRESH-23): its pipeline (every step as a stage tab, review items
+ * first, UI-REFRESH-24), its runs and its details (steps, trust and safety report, start a
+ * run), one tab each, the tab kept in `?tab=` (`review` is the pipeline). Items of no known
+ * workflow ("Other") have only the pipeline tab. */
 export function WorkflowHubPage() {
   const { name = "" } = useParams();
   const [params, setParams] = useSearchParams();
@@ -34,7 +35,7 @@ export function WorkflowHubPage() {
       </Title>
       <Tabs value={tab} onChange={pick} keepMounted={false}>
         <Tabs.List data-testid="workflow-tabs">
-          <Tabs.Tab value="review">Review</Tabs.Tab>
+          <Tabs.Tab value="review">Pipeline</Tabs.Tab>
           {!other && <Tabs.Tab value="runs">Runs</Tabs.Tab>}
           {!other && <Tabs.Tab value="details">Details</Tabs.Tab>}
         </Tabs.List>

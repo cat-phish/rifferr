@@ -13,6 +13,9 @@ from rifferr.api.models import (
     Accepted,
     LaneHold,
     LaneOut,
+    PipelineLane,
+    PipelineOut,
+    PipelineStart,
     RunCreate,
     RunCreated,
     RunDetail,
@@ -123,6 +126,39 @@ async def list_runs(
     jobs = state.db.list_runs(profile, limit, workflow)
     counts = AppLanes(state.db).counts(job.run for job in jobs)
     return [summary(job, counts.get(job.run)) for job in jobs]
+
+
+@router.get("/pipeline", response_model=PipelineOut)
+async def get_pipeline(
+    state: State,
+    profile: Annotated[str | None, Query()] = None,
+    workflow: Annotated[
+        str | None, Query(max_length=200, description="Only this workflow's albums")
+    ] = None,
+) -> PipelineOut:
+    """Every live album and the step it is at, plus runs with no lanes yet (UI-REFRESH-24)."""
+    lanes, starting = AppLanes(state.db).live(profile, workflow)
+    return PipelineOut(
+        lanes=[
+            PipelineLane(
+                run_id=run_id,
+                key=lane.key,
+                label=lane.label,
+                state=lane.state,
+                position=lane.position,
+                holds=[LaneHold(kind=h.kind, ref=h.ref) for h in lane.holds],
+                steps=dict(lane.steps),
+                updated_at=at,
+            )
+            for run_id, lane, at in lanes
+        ],
+        starting=[
+            PipelineStart(
+                run_id=job.run, state=job.state, input=job.input, created_at=job.created_at
+            )
+            for job in starting
+        ],
+    )
 
 
 @router.get("/runs/{run_id}", response_model=RunDetail, responses=ERROR_RESPONSES)

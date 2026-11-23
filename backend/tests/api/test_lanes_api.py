@@ -73,3 +73,40 @@ def test_UI_REFRESH_14_step_starts_and_ends_go_on_the_all_runs_stream_logs_do_no
     assert on_all_stream(event("run.step.started"))
     assert on_all_stream(event("run.step.finished"))
     assert not on_all_stream(event("run.step.log"))
+
+
+async def test_UI_REFRESH_24_pipeline_lists_live_lanes_and_starting_runs(api: Api) -> None:
+    db = api.state.db
+    lanes = AppLanes(db)
+    live = db.submit("main", {"source": ECHO, "vars": {}}, workflow="tagging").run
+    lanes.save(
+        live,
+        [
+            Lane("album-1", "Artist - A", "active", "tag", steps={"import": "succeeded"}),
+            Lane("album-2", "Artist - B", "waiting", "review", [Hold("gate", "G1")]),
+            Lane("album-3", "Artist - C", "done", None),
+        ],
+    )
+    starting = db.submit(
+        "main", {"source": ECHO, "vars": {}}, workflow="tagging", input="/in/New Album"
+    ).run
+    done = db.submit("main", {"source": ECHO, "vars": {}}, workflow="tagging").run
+    lanes.save(done, [Lane("album-9", "Old", "active", "tag")])
+    db._conn.execute(  # pyright: ignore[reportPrivateUsage]
+        "UPDATE jobs SET state = 'succeeded' WHERE run_id = ?", (done,)
+    )
+    other = db.submit("main", {"source": ECHO, "vars": {}}, workflow="other").run
+    lanes.save(other, [Lane("album-8", "Elsewhere", "active", "tag")])
+
+    out = (
+        await api.client.get("/api/pipeline", params={"profile": "main", "workflow": "tagging"})
+    ).json()
+    assert [(lane["run_id"], lane["key"], lane["position"]) for lane in out["lanes"]] == [
+        (live, "album-1", "tag"),
+        (live, "album-2", "review"),
+    ]
+    assert out["lanes"][1]["holds"] == [{"kind": "gate", "ref": "G1"}]
+    assert "updated_at" in out["lanes"][0]
+    assert [(s["run_id"], s["input"], s["state"]) for s in out["starting"]] == [
+        (starting, "/in/New Album", "queued")
+    ]

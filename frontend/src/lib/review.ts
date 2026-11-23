@@ -195,11 +195,17 @@ export interface StageTab {
 
 export const OTHER_STAGE = "~other";
 
-/** One tab per step of `wf` that can wait, whether or not anything waits there, plus one
- * per other step that has items, in run order; items with no step go last ("Other").
- * `sections` are this workflow's (from {@link groupByStep}). */
-export function stageTabs(wf: ReviewWorkflow, sections: readonly StepSection[]): StageTab[] {
-  const tabs: StageTab[] = wf.waits.map((id) => ({
+/** One tab per step of `wf` that can wait (every step with `all`, the Pipeline tab of
+ * UI-REFRESH-24), whether or not anything waits there, plus one per other step that has
+ * items, in run order; items with no step go last ("Other"). `sections` are this
+ * workflow's (from {@link groupByStep}). */
+export function stageTabs(
+  wf: ReviewWorkflow,
+  sections: readonly StepSection[],
+  all = false,
+): StageTab[] {
+  const ids = all ? [...new Set(wf.steps)] : wf.waits;
+  const tabs: StageTab[] = ids.map((id) => ({
     value: id,
     label: id,
     section: sections.find((s) => s.stepId === id),
@@ -212,4 +218,62 @@ export function stageTabs(wf: ReviewWorkflow, sections: readonly StepSection[]):
     return i < 0 ? Number.MAX_SAFE_INTEGER : i;
   };
   return tabs.sort((a, b) => index(a) - index(b));
+}
+
+/** The Pipeline tab's trailing tab: live lanes past the last step (UI-REFRESH-24). */
+export const FINISHING_STAGE = "~finishing";
+
+/** An album (or a run with no lanes yet) at a step, not waiting on review (UI-REFRESH-24). */
+export interface PipelineEntry {
+  key: string;
+  runId: string;
+  label: string;
+  /** Lane state, or the run's state for a run with no lanes yet. */
+  state: string;
+  /** When it reached the step. */
+  since: string;
+  starting: boolean;
+}
+
+/** Live lanes and starting runs by the step they are at (UI-REFRESH-24): a lane held by a
+ * shown queue item (`waiting`) is left out, as it is already listed above them; a lane at
+ * no known step goes to {@link FINISHING_STAGE}; starting runs go to the first step. */
+export function pipelineByStep(
+  steps: readonly string[],
+  lanes: readonly (LaneOut & { run_id: string; updated_at: string })[],
+  starting: readonly { run_id: string; state: string; input?: string | null; created_at: string }[],
+  waiting: ReadonlySet<string>,
+): Map<string, PipelineEntry[]> {
+  const out = new Map<string, PipelineEntry[]>();
+  const add = (step: string, e: PipelineEntry) => {
+    out.set(step, [...(out.get(step) ?? []), e]);
+  };
+  const first = steps[0] ?? FINISHING_STAGE;
+  for (const r of starting)
+    add(first, {
+      key: `run:${r.run_id}`,
+      runId: r.run_id,
+      label: `Run starting${r.input ? `: ${folderName(r.input)}` : ""}`,
+      state: r.state,
+      since: r.created_at,
+      starting: true,
+    });
+  for (const lane of lanes) {
+    if (lane.holds.some((h) => waiting.has(h.ref))) continue;
+    const step =
+      lane.position !== null && steps.includes(lane.position) ? lane.position : FINISHING_STAGE;
+    add(step, {
+      key: `${lane.run_id}:${lane.key}`,
+      runId: lane.run_id,
+      label: lane.label,
+      state: lane.state,
+      since: lane.updated_at,
+      starting: false,
+    });
+  }
+  return out;
+}
+
+function folderName(path: string): string {
+  return path.replace(/\/+$/, "").split("/").pop() ?? path;
 }
