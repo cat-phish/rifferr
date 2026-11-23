@@ -194,15 +194,22 @@ async def test_COVERS_SEARCH_21_queue_lists_cover_reviews(api: Api, shop: Shop) 
     assert (await api.client.get("/api/covers/reviews/nope")).status_code == 404
 
 
-async def test_COVERS_SEARCH_21_choose_checks_the_image_and_queues_the_job_once(
+async def test_COVERS_SEARCH_21_a_person_may_choose_a_filtered_image(
     api: Api, shop: Shop, images: respx.MockRouter
 ) -> None:
     seed(api.state.db)
-    tiny = review("v1", "x").candidates[0].id
+    tiny = review("v1", "x").candidates[0].id  # 100x100: under min_size
     r = await post(
         api, "/api/covers/reviews/v1/decision", {"decision": "choose", "candidate_id": tiny}
     )
-    assert (r.status_code, r.json()["error"]["message"]) == (422, "the image is 100x100: too small")
+    assert r.status_code == 202, r.text
+    assert api.state.covers.store("main").has(r.json()["sha256"])
+
+
+async def test_COVERS_SEARCH_21_choose_queues_the_job_once(
+    api: Api, shop: Shop, images: respx.MockRouter
+) -> None:
+    seed(api.state.db)
     await post(api, "/api/covers/search", {"profile": "main", "query": Q, "providers": ["shop"]})
     await until(lambda: events(api.state.db, "covers.done"))
     found = events(api.state.db, "covers.done")[0]["ranked"][1]["id"]  # from a new search

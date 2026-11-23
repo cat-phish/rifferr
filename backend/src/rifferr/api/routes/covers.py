@@ -379,7 +379,12 @@ async def decide_cover(review_id: str, body: CoverDecisionBody, state: State) ->
             raise ApiError(400, "bad_request", "a local image must be in the album's folder")
         try:
             image = await download(
-                found, p.covers, service.providers, service.client, cache=service.cache(p.covers)
+                found,
+                p.covers,
+                service.providers,
+                service.client,
+                cache=service.cache(p.covers),
+                check=False,  # a person may choose a filtered image (COVERS-SEARCH-21)
             )
         except DownloadError as exc:
             raise ApiError(422, "bad_image", str(exc)) from None
@@ -441,7 +446,12 @@ async def set_album_cover(
             raise ApiError(400, "bad_request", "a local image must be in the album's folder")
     try:
         image = await download(
-            found, p.covers, service.providers, service.client, cache=service.cache(p.covers)
+            found,
+            p.covers,
+            service.providers,
+            service.client,
+            cache=service.cache(p.covers),
+            check=False,  # a person may choose a filtered image (COVERS-SEARCH-21)
         )
     except DownloadError as exc:
         raise ApiError(422, "bad_image", str(exc)) from None

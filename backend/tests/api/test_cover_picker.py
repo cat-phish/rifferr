@@ -166,7 +166,7 @@ async def test_COVER_PICKER_14_refusals(
     tiny = CoverCandidate.make("shop", image_url="https://covers.test/tiny.jpg", match_confidence=1)
     api.state.covers.cache(CoverSettings()).remember(tiny)
     r = await post(api, url, {"candidate_id": tiny.id})
-    assert (r.status_code, r.json()["error"]["code"]) == (422, "bad_image")
+    assert r.status_code == 202, r.text  # filtered, but a person may choose it (COVERS-SEARCH-21)
 
 
 # -- COVER-PICKER-17, -18 -------------------------------------------------------------------

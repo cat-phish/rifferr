@@ -141,7 +141,9 @@ still run it as a `beets.command` step.
   and `Content-Security-Policy: default-src 'none'`. The route takes optional `review_id` and `album_id`; a local (path) candidate MUST be served only when its parent equals that review's or album's folder, else 400. The UI passes them.
 - COVERS-SEARCH-21: `POST /api/reviews/covers/{item_id}/decision {decision: choose|skip|fail,
   candidate_id?, query?}` MUST resolve a `cover` review item: `choose` downloads the candidate
-  if needed (COVERS-SEARCH-13 checks apply) and proposes its ChangeSet (COVERS-SEARCH-15),
+  if needed (it must be a JPEG or PNG within `covers.max_bytes`; the hard filters of
+  COVERS-SEARCH-9 don't apply, since a person chose it knowing it was filtered) and proposes
+  its ChangeSet (COVERS-SEARCH-15),
   `skip` resumes the lane without a cover, `fail` fails that album. A candidate from a new
   search with an edited `query` MUST be accepted. The review list (REVIEW-QUEUE-1) MUST include
   `cover` items.
