@@ -1,24 +1,14 @@
-import {
-  Alert,
-  Badge,
-  Button,
-  Code,
-  Group,
-  Paper,
-  Stack,
-  Text,
-  TextInput,
-  Title,
-} from "@mantine/core";
+import { Alert, Badge, Button, Code, Group, Paper, Stack, Text, Title } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { useNavigate, useParams } from "react-router";
+import { useParams } from "react-router";
 import { ApiError, api, ok } from "../api/client";
 import type { WorkflowDetail } from "../api/types";
 import { ErrorList } from "../components/ErrorList";
 import { SafetyReport } from "../components/SafetyReport";
+import { StartRun } from "../components/StartRun";
 import { Triggers } from "../components/Triggers";
-import { useProfile, withProfile } from "../hooks/useProfile";
+import { useProfile } from "../hooks/useProfile";
 
 export function WorkflowPage() {
   const { name = "" } = useParams();
@@ -57,7 +47,7 @@ export function WorkflowPage() {
       )}
       {!wf.trusted && <Review wf={wf} profile={profile} />}
       <Triggers profile={profile} workflow={wf.name} />
-      <Start wf={wf} profile={profile} />
+      <StartRun wf={wf} profile={profile} />
     </Stack>
   );
 }
@@ -156,102 +146,6 @@ function Review({ wf, profile }: { wf: WorkflowDetail; profile: string }) {
               ? "Trust this workflow"
               : `Trust this workflow and ${String(untrusted.length)} called file${untrusted.length === 1 ? "" : "s"}`}
           </Button>
-        </Group>
-      </Stack>
-    </Paper>
-  );
-}
-
-/** Vars form and Start (UI-SHELL-5, -6). Never asks about trust. */
-function Start({ wf, profile }: { wf: WorkflowDetail; profile: string }) {
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const [values, setValues] = useState<Record<string, string>>({});
-  const [input, setInput] = useState("");
-  const missing = new Set(wf.missing_vars ?? []);
-  const vars = wf.vars ?? [];
-  const reason = !wf.valid ? "Fix the errors first." : !wf.trusted ? "Review it first." : null;
-  const unset = [...missing].filter((n) => !(values[n] ?? "").trim());
-  const start = useMutation({
-    mutationFn: async () => {
-      const filled = Object.fromEntries(Object.entries(values).filter(([, v]) => v !== ""));
-      return ok(
-        await api.POST("/api/runs", {
-          body: {
-            profile,
-            workflow: wf.name,
-            vars: filled,
-            sha256: wf.sha256,
-            ...(input.trim() ? { input: input.trim() } : {}),
-          },
-        }),
-      );
-    },
-    onSuccess: async (created) => {
-      await queryClient.invalidateQueries({ queryKey: ["runs"] });
-      await navigate(withProfile(`/runs/${created.id}`, profile));
-    },
-    onError: async (err) => {
-      if (err instanceof ApiError && err.code === "hash_mismatch") {
-        await queryClient.invalidateQueries({ queryKey: ["workflow", profile, wf.name] });
-      }
-    },
-  });
-
-  return (
-    <Paper withBorder p="md" data-testid="start">
-      <Stack>
-        <Title order={3}>Start</Title>
-        {vars.map((v) => (
-          <TextInput
-            key={v.name}
-            label={v.name}
-            description={v.description}
-            required={missing.has(v.name)}
-            placeholder={v.profile_value ?? v.default ?? ""}
-            value={values[v.name] ?? ""}
-            onChange={(e) => {
-              const value = e.currentTarget.value;
-              setValues((prev) => ({ ...prev, [v.name]: value }));
-            }}
-          />
-        ))}
-        <TextInput
-          label="Input folder"
-          description="Absolute path for {{ run.input }}; leave empty for the workflow's input"
-          placeholder="/path/to/Artist - Album"
-          value={input}
-          onChange={(e) => {
-            setInput(e.currentTarget.value);
-          }}
-        />
-        {start.error && (
-          <Alert color="red">
-            {start.error instanceof ApiError && start.error.code === "hash_mismatch"
-              ? "The file changed since it was shown; it has been reloaded."
-              : start.error.message}
-          </Alert>
-        )}
-        <Group>
-          <Button
-            onClick={() => {
-              start.mutate();
-            }}
-            loading={start.isPending}
-            disabled={reason !== null || unset.length > 0}
-          >
-            Start run
-          </Button>
-          {reason !== null && (
-            <Text size="sm" c="dimmed">
-              {reason}
-            </Text>
-          )}
-          {reason === null && unset.length > 0 && (
-            <Text size="sm" c="dimmed">
-              Set {unset.join(", ")}.
-            </Text>
-          )}
         </Group>
       </Stack>
     </Paper>

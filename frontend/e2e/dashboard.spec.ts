@@ -43,6 +43,18 @@ test("DASHBOARD_17 inbox, run in progress, review from the dashboard, undo the i
   const imported = page.locator(`[data-testid="recent-import"][data-run="${runId}"]`);
   await expect(imported).toContainText("succeeded", { timeout: 30_000 });
   await expect(imported).toContainText("Dashboard Sessions");
+
+  // The workflow's Inbox tab (UI-REFRESH-26): the import copied the files, so the input stays
+  // in the folder, listed under "Already imported".
+  await page.goto("/workflows/dashboard-flow?tab=inbox");
+  await expect(
+    page
+      .getByTestId("inbox-imported")
+      .getByTestId("inbox-entry")
+      .filter({ hasText: "Dashboard Album" }),
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("start-run-open")).toBeVisible(); // UI-REFRESH-25
+  await page.getByRole("navigation").getByRole("link", { name: "Dashboard", exact: true }).click();
   await imported.getByRole("button", { name: "Undo import" }).click();
   await expect(page.getByTestId("undo-album")).toContainText(
     "its files are deleted from the library folder",
