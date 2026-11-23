@@ -34,7 +34,7 @@ from rifferr.core.profile import Redactor
 from rifferr.core.profile import Secret as SecretValue
 from rifferr.covers.base import MATCH_KEY, CoverProvider
 from rifferr.covers.cache import CoverCache
-from rifferr.covers.http import CoverHttp, CoverHttpError
+from rifferr.covers.http import CoverHttp, CoverHttpError, throttle
 
 log = logging.getLogger(__name__)
 
@@ -100,6 +100,9 @@ def http_for(
         max_bytes=parse_size(settings.max_bytes),
         timeout=parse_duration(settings.timeout).total_seconds(),
         contact=settings.contact,
+        throttle=throttle(provider.name),
+        min_interval=float(getattr(provider, "min_interval", 0) or 0),
+        secret_params=getattr(provider, "secret_params", frozenset[str]()),
     )
 
 

@@ -120,6 +120,30 @@ uv run rifferr trust-config test
 
 It asks before trusting (`--yes` skips the question).
 
+Optional: Discogs and fanart.tv covers. Each needs a key of your own: a Discogs
+personal access token (discogs.com → Settings → Developers) or a fanart.tv API key.
+Store it in the system keyring, or use an `env:` reference instead:
+
+```bash
+uv run keyring set rifferr discogs   # from backend/; paste the token when asked
+```
+
+Then name it in `profile.yaml` and add the provider:
+
+```yaml
+secrets:
+  discogs: keyring:rifferr/discogs
+covers:
+  providers:
+    - {name: coverartarchive, weight: 3}
+    - {name: local, weight: 2}
+    - {name: discogs, weight: 2, settings: {secret: discogs}}
+    - {name: itunes, weight: 1}
+```
+
+`uv run rifferr validate --profile test …` warns when a listed provider's key isn't
+set; at run time that provider is skipped.
+
 ## 3. Add the example workflow
 
 Copy the example workflow, the workflow it calls and the scripts they use into the

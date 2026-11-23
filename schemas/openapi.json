@@ -1118,6 +1118,17 @@
             ],
             "title": "Catalognum"
           },
+          "discogs_albumid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discogs Albumid"
+          },
           "folder": {
             "anyOf": [
               {

@@ -66,6 +66,8 @@ coverartarchive = "rifferr.covers.providers:CoverArtArchive"
 itunes = "rifferr.covers.providers:ITunes"
 deezer = "rifferr.covers.providers:Deezer"
 local = "rifferr.covers.providers:LocalFiles"
+discogs = "rifferr.covers.providers:Discogs"
+fanarttv = "rifferr.covers.providers:FanartTv"
 
 [project.entry-points."rifferr.image_resizers"]
 pillow = "rifferr.covers.resize:PillowResizer"

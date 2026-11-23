@@ -1,0 +1,11 @@
+{
+  "id": 1234567,
+  "title": "New Release Compilation NRC 8",
+  "year": 1982,
+  "uri": "https://www.discogs.com/release/1234567-Various-New-Release-Compilation-NRC-8",
+  "artists": [{"name": "Various", "id": 194}],
+  "images": [
+    {"type": "secondary", "uri": "https://i.discogs.com/back.jpg", "uri150": "https://i.discogs.com/back-150.jpg", "width": 600, "height": 600},
+    {"type": "primary", "uri": "https://i.discogs.com/front.jpg", "uri150": "https://i.discogs.com/front-150.jpg", "width": 1200, "height": 675}
+  ]
+}

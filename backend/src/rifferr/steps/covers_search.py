@@ -49,7 +49,14 @@ from rifferr.engine.steps import CoverRequest, StepFailure
 MAX_KEPT: Final = 60
 """Candidates stored with a cover review (COVERS-SEARCH-14)."""
 QueryField = Literal[
-    "artist", "album", "year", "catalognum", "barcode", "mb_albumid", "mb_releasegroupid"
+    "artist",
+    "album",
+    "year",
+    "catalognum",
+    "barcode",
+    "mb_albumid",
+    "mb_releasegroupid",
+    "discogs_albumid",
 ]
 #: Backend templates (beets syntax) that fill each query field by default (COVERS-SEARCH-2).
 DEFAULT_QUERY: Final[dict[str, str]] = {
@@ -60,6 +67,7 @@ DEFAULT_QUERY: Final[dict[str, str]] = {
     "barcode": "$barcode",
     "mb_albumid": "$mb_albumid",
     "mb_releasegroupid": "$mb_releasegroupid",
+    "discogs_albumid": "$discogs_albumid",
 }
 
 

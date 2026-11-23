@@ -1644,6 +1644,8 @@ export interface components {
             barcode?: string | null;
             /** Catalognum */
             catalognum?: string | null;
+            /** Discogs Albumid */
+            discogs_albumid?: string | null;
             /** Folder */
             folder?: string | null;
             /** Mb Albumid */

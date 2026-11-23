@@ -175,6 +175,7 @@ class CoverQuery(BaseModel):
     barcode: str | None = None
     mb_albumid: str | None = None
     mb_releasegroupid: str | None = None
+    discogs_albumid: str | None = None
     folder: str | None = None
 
     def key(self) -> str:
@@ -189,6 +190,8 @@ class CoverQuery(BaseModel):
             (self.mb_releasegroupid or "").strip().lower(),
             self.folder or "",
         ]
+        if self.discogs_albumid:  # added later: keys without it stay as they were
+            parts.append(self.discogs_albumid.strip())
         return hashlib.sha256("\x1f".join(parts).encode()).hexdigest()
 
 

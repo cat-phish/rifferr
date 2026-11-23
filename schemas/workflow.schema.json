@@ -1368,7 +1368,8 @@
               "catalognum",
               "barcode",
               "mb_albumid",
-              "mb_releasegroupid"
+              "mb_releasegroupid",
+              "discogs_albumid"
             ]
           },
           "title": "Query",

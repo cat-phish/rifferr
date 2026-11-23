@@ -1,0 +1,14 @@
+{
+  "name": "Boards of Canada",
+  "mbid_id": "aaaaaaaa-0000-0000-0000-000000000000",
+  "albums": {
+    "11111111-2222-3333-4444-555555555555": {
+      "albumcover": [
+        {"id": "1", "url": "http://assets.fanart.tv/fanart/music/x/albumcover/few.jpg", "likes": "1"},
+        {"id": "2", "url": "https://assets.fanart.tv/fanart/music/x/albumcover/many.jpg", "likes": "7"},
+        {"id": "3", "url": "https://elsewhere.example/evil.jpg", "likes": "9"}
+      ],
+      "cdart": []
+    }
+  }
+}

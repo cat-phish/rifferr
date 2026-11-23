@@ -23,7 +23,11 @@ class CoverProvider(Protocol):
     ``secret``, and the resolved value reaches ``search`` as ``settings["token"]``.
 
     ``settings`` are the provider's own settings from the profile, plus the profile's
-    matching rules under ``MATCH_KEY``; use ``confidence`` to score names with them."""
+    matching rules under ``MATCH_KEY``; use ``confidence`` to score names with them.
+
+    Optional attributes, read with defaults so older providers still match the protocol:
+    ``min_interval`` (seconds between this provider's requests, COVERS-SEARCH-26) and
+    ``secret_params`` (query parameters ``CoverHttp`` redacts, COVERS-SEARCH-27)."""
 
     name: str
     hosts: frozenset[str]

@@ -1,0 +1,8 @@
+{
+  "pagination": {"page": 1, "pages": 1, "per_page": 5, "items": 3},
+  "results": [
+    {"id": 111, "title": "Boards Of Canada - Geogaddi", "year": "2002", "uri": "/release/111-Boards-Of-Canada-Geogaddi", "cover_image": "https://i.discogs.com/geogaddi.jpg", "thumb": "https://i.discogs.com/geogaddi-150.jpg"},
+    {"id": 222, "title": "Boards Of Canada (2) - Geogaddi", "year": "2013", "uri": "/release/222-Geogaddi", "cover_image": "https://i.discogs.com/geogaddi-re.jpg", "thumb": ""},
+    {"id": 333, "title": "Boards Of Canada - Geogaddi", "year": "2002", "uri": "/release/333", "cover_image": "https://st.discogs.com/images/spacer.gif", "thumb": ""}
+  ]
+}

@@ -20,6 +20,8 @@ from rifferr.core.workflow import (
     safety_report,
     validate,
 )
+from rifferr.covers.registry import load_providers
+from rifferr.credentials import ProfileSecrets, SecretResolver
 from rifferr.engine import StepTypeRegistry
 from rifferr.profile_store import (
     WORKFLOWS_DIR,
@@ -143,12 +145,36 @@ def _profile(name: str | None, prog: str) -> Profile | int | None:
         return EXIT_USAGE
 
 
+def cover_secret_warnings(profile: Profile) -> list[str]:
+    """Enabled cover providers that need a secret the profile can't give them
+    (COVERS-SEARCH-30). They'd be skipped at run time; this says so before."""
+    providers, _ = load_providers()
+    secrets = ProfileSecrets(profile.secrets, SecretResolver())
+    out: list[str] = []
+    for p in profile.covers.providers:
+        provider = providers.get(p.name)
+        if not p.enabled or provider is None or not provider.needs:
+            continue
+        name = p.settings.get("secret")
+        if not isinstance(name, str) or not name:
+            out.append(f"cover provider {p.name} needs a secret: set settings.secret")
+            continue
+        try:
+            secrets.resolve(name)
+        except LookupError as exc:
+            out.append(f"cover provider {p.name} will be skipped: {exc}")
+    return out
+
+
 def cmd_validate(args: argparse.Namespace) -> int:
     profile = _profile(args.profile, "validate")
     if isinstance(profile, int):
         return profile
     if profile is None:
         print("note: no --profile given; profile variable checks skipped", file=sys.stderr)
+    else:
+        for warning in cover_secret_warnings(profile):
+            print(f"warning: {warning}", file=sys.stderr)
     registry = _registry()
     status = EXIT_OK
     for path in args.files:

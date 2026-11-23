@@ -1,7 +1,8 @@
 """Built-in cover providers (S-COVERS-SEARCH COVERS-SEARCH-4).
 
 Official APIs only: Cover Art Archive, the iTunes Search API, Deezer's public API, plus
-images already in the album folder. None of them needs a key.
+images already in the album folder need no key; Discogs and fanart.tv need one
+(COVERS-SEARCH-28, -29).
 """
 
 from __future__ import annotations
@@ -166,6 +167,173 @@ class Deezer:
             )
 
 
+_DISCOGS_API: Final = "https://api.discogs.com"
+_DISCOGS_ID: Final = re.compile(r"\d{1,12}")
+_DISCOGS_SUFFIX: Final = re.compile(r"\s*\(\d+\)$|\*$")
+"""Discogs' "Name (2)" disambiguation and "Name*" name-variation marks."""
+
+
+def _discogs_name(name: str) -> str:
+    return _DISCOGS_SUFFIX.sub("", name.strip()).strip()
+
+
+def _discogs_image(value: Any) -> str | None:
+    """An image URL on Discogs' image host; its "no image" spacer lives elsewhere."""
+    url = _str(value)
+    return url if url.startswith("https://i.discogs.com/") else None
+
+
+def _int(value: Any) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else None
+
+
+class Discogs:
+    """The Discogs API (COVERS-SEARCH-28), with a personal access token. The release
+    beets matched, by ``discogs_albumid``; else a release search by artist and title,
+    barcode and catalog number. Setting ``max_results`` (default 5)."""
+
+    name = "discogs"
+    hosts = frozenset({"api.discogs.com", "i.discogs.com"})
+    needs = True
+    min_interval = 1.0
+
+    async def search(
+        self, query: CoverQuery, settings: Mapping[str, JsonValue], http: CoverHttp
+    ) -> AsyncIterator[CoverCandidate]:
+        headers = {"Authorization": f"Discogs token={settings.get('token')}"}
+        release_id = (query.discogs_albumid or "").strip()
+        if _DISCOGS_ID.fullmatch(release_id):
+            data = await http.get_json(f"{_DISCOGS_API}/releases/{release_id}", headers=headers)
+            found = self._release(cast(dict[str, Any], data)) if isinstance(data, dict) else None
+            if found is not None:
+                yield found
+                return
+        limit = settings.get("max_results")
+        limit = limit if isinstance(limit, int) and limit > 0 else 5
+        searches: list[dict[str, str]] = []
+        if query.album:
+            by_name = {"release_title": query.album}
+            if query.artist:
+                by_name["artist"] = query.artist
+            searches.append(by_name)
+        if query.barcode:
+            searches.append({"barcode": query.barcode})
+        if query.catalognum:
+            searches.append({"catno": query.catalognum})
+        seen: set[int] = set()
+        for params in searches:
+            if len(seen) >= limit:
+                return
+            data = await http.get_json(
+                f"{_DISCOGS_API}/database/search",
+                {"type": "release", "per_page": str(limit), **params},
+                headers=headers,
+            )
+            for result in cast(list[Any], (data or {}).get("results") or []):
+                if not isinstance(result, dict):
+                    continue
+                r = cast(dict[str, Any], result)
+                rid = _int(r.get("id"))
+                url = _discogs_image(r.get("cover_image"))
+                if rid is None or rid in seen or url is None:
+                    continue
+                seen.add(rid)
+                title = _str(r.get("title"))
+                artist, sep, album = title.partition(" - ")
+                if not sep:
+                    artist, album = "", title
+                year = _year(str(r.get("year") or ""))
+                uri = _str(r.get("uri"))
+                yield CoverCandidate.make(
+                    self.name,
+                    image_url=url,
+                    thumb_url=_discogs_image(r.get("thumb")),
+                    match_confidence=confidence(
+                        query, _discogs_name(artist), album, year, settings
+                    ),
+                    source_url=f"https://www.discogs.com{uri}" if uri.startswith("/") else None,
+                    title=title + (f" ({year})" if year else ""),
+                )
+                if len(seen) >= limit:
+                    return
+
+    def _release(self, data: dict[str, Any]) -> CoverCandidate | None:
+        images = [
+            cast(dict[str, Any], i)
+            for i in cast(list[Any], data.get("images") or [])
+            if isinstance(i, dict) and _discogs_image(cast(dict[str, Any], i).get("uri"))
+        ]
+        if not images:
+            return None
+        image = next((i for i in images if i.get("type") == "primary"), images[0])
+        artists = [
+            _discogs_name(_str(cast(dict[str, Any], a).get("name")))
+            for a in cast(list[Any], data.get("artists") or [])
+            if isinstance(a, dict)
+        ]
+        title = " / ".join(a for a in artists if a) + " - " + _str(data.get("title"))
+        year = _int(data.get("year"))
+        return CoverCandidate.make(
+            self.name,
+            image_url=_discogs_image(image.get("uri")),
+            thumb_url=_discogs_image(image.get("uri150")),
+            width=_int(image.get("width")),
+            height=_int(image.get("height")),
+            match_confidence=1.0,
+            source_url=_str(data.get("uri")) or None,
+            title=title + (f" ({year})" if year else ""),
+        )
+
+
+class FanartTv:
+    """fanart.tv album covers by MusicBrainz release group (COVERS-SEARCH-29), with an
+    API key. Most liked first."""
+
+    name = "fanarttv"
+    hosts = frozenset({"webservice.fanart.tv", "assets.fanart.tv"})
+    needs = True
+    secret_params = frozenset({"api_key"})
+
+    async def search(
+        self, query: CoverQuery, settings: Mapping[str, JsonValue], http: CoverHttp
+    ) -> AsyncIterator[CoverCandidate]:
+        mbid = query.mb_releasegroupid
+        if not mbid or not _MBID.fullmatch(mbid):
+            return
+        mbid = mbid.lower()
+        data = await http.get_json(
+            f"https://webservice.fanart.tv/v3/music/albums/{mbid}",
+            {"api_key": str(settings.get("token") or "")},
+        )
+        albums = (
+            cast(dict[str, Any], (data or {}).get("albums") or {}) if isinstance(data, dict) else {}
+        )
+        group = albums.get(mbid)
+        if not isinstance(group, dict):
+            return
+        covers = [
+            cast(dict[str, Any], c)
+            for c in cast(list[Any], cast(dict[str, Any], group).get("albumcover") or [])
+            if isinstance(c, dict)
+        ]
+
+        def likes(c: dict[str, Any]) -> int:
+            value = _str(c.get("likes"))
+            return int(value) if value.isdigit() else 0
+
+        for c in sorted(covers, key=likes, reverse=True):
+            url = _str(c.get("url")).replace("http://", "https://", 1)
+            if not url.startswith("https://assets.fanart.tv/"):
+                continue
+            yield CoverCandidate.make(
+                self.name,
+                image_url=url,
+                match_confidence=1.0,
+                source_url=f"https://musicbrainz.org/release-group/{mbid}",
+                title=f"fanart.tv, {likes(c)} likes",
+            )
+
+
 DEFAULT_PATTERNS: Final = ("*.jpg", "*.jpeg", "*.png")
 
 
@@ -222,4 +390,4 @@ def local_images(
     return out
 
 
-BUILTINS: Final = (CoverArtArchive, ITunes, Deezer, LocalFiles)
+BUILTINS: Final = (CoverArtArchive, ITunes, Deezer, LocalFiles, Discogs, FanartTv)

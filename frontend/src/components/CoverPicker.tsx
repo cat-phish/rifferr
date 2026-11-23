@@ -85,7 +85,14 @@ const STREAM_TYPES = [
 
 type QueryFields = Pick<
   CoverQuery,
-  "artist" | "album" | "year" | "catalognum" | "barcode" | "mb_albumid" | "mb_releasegroupid"
+  | "artist"
+  | "album"
+  | "year"
+  | "catalognum"
+  | "barcode"
+  | "mb_albumid"
+  | "mb_releasegroupid"
+  | "discogs_albumid"
 >;
 
 const EMPTY_QUERY: QueryFields = { artist: "", album: "" };
@@ -99,6 +106,7 @@ function fields(q: CoverQuery): QueryFields {
     barcode: q.barcode ?? null,
     mb_albumid: q.mb_albumid ?? null,
     mb_releasegroupid: q.mb_releasegroupid ?? null,
+    discogs_albumid: q.discogs_albumid ?? null,
   };
 }
 
@@ -564,7 +572,7 @@ function PickerBody({
             Search again
           </Button>
         </Group>
-        {(query.mb_albumid || query.mb_releasegroupid) && (
+        {(query.mb_albumid || query.mb_releasegroupid || query.discogs_albumid) && (
           <Group gap="xs" mt={4}>
             {query.mb_albumid && (
               <Badge
@@ -602,6 +610,25 @@ function PickerBody({
                 }
               >
                 release group {query.mb_releasegroupid}
+              </Badge>
+            )}
+            {query.discogs_albumid && (
+              <Badge
+                variant="light"
+                rightSection={
+                  <ActionIcon
+                    size="xs"
+                    variant="transparent"
+                    aria-label="Clear the Discogs release id"
+                    onClick={() => {
+                      setQuery((q) => ({ ...q, discogs_albumid: null }));
+                    }}
+                  >
+                    ×
+                  </ActionIcon>
+                }
+              >
+                Discogs release {query.discogs_albumid}
               </Badge>
             )}
           </Group>

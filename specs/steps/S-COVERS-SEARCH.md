@@ -153,6 +153,40 @@ still run it as a `beets.command` step.
 - COVERS-SEARCH-23: The album art route MUST answer 502 `bad_image` for a file larger than 4 x `covers.max_bytes`, and MUST read it bounded.
 - COVERS-SEARCH-24: CoverArtArchive ids that are not UUID-shaped MUST be skipped (lower-cased otherwise).
 - COVERS-SEARCH-25: `CoverCandidate.source_url` MUST be null unless it is an http(s) URL; the UI re-checks.
+- COVERS-SEARCH-26: A provider MAY declare `min_interval` (seconds between its requests).
+  `CoverHttp` MUST space that provider's requests at least that far apart across all searches
+  of the server, waiting rather than failing, and the wait MUST stay cancellable
+  (COVERS-SEARCH-6). An HTTP 429 MUST end that provider's results for this search with the
+  note "rate limited", like any provider error (COVERS-SEARCH-5), and the next request to it
+  MUST wait for `Retry-After` when given (capped at 60 s).
+- COVERS-SEARCH-27: Secrets MUST never appear in logs, events, errors, cache keys or
+  candidate URLs. A provider that sends its key in the query string MUST mark that parameter
+  secret, and `CoverHttp` MUST redact it in every message. Cached results and image URLs MUST
+  be keyed without it.
+- COVERS-SEARCH-28: A built-in `discogs` provider (`needs: true`, a Discogs personal access
+  token sent as `Authorization: Discogs token=<token>`, hosts `api.discogs.com` and
+  `i.discogs.com`, `min_interval: 1`). With `query.discogs_albumid` it MUST look up that
+  release (`GET /releases/{id}`) and yield its `primary` image (else its first), with its
+  width and height, `match_confidence` 1.0 and `source_url` the release's page. Without it, it
+  MUST search releases (`GET /database/search`, `type=release`) by `artist` and
+  `release_title`, plus one search by `barcode` and one by `catno` when the query has them,
+  merge the results by release id, and yield each result's `cover_image` with size unknown.
+  `match_confidence` MUST come from `match_score` against the result's artist and title
+  (Discogs titles read "Artist - Title"), and a result found by barcode or catalog number
+  MUST also have a year that agrees with the query's, when both are known, or take the
+  `year_penalty`. The provider setting `max_results` (default 5) caps the search results it
+  yields.
+- COVERS-SEARCH-29: A built-in `fanarttv` provider (`needs: true`, a fanart.tv API key sent
+  as the secret `api_key` parameter, hosts `webservice.fanart.tv` and `assets.fanart.tv`). It
+  MUST run only when the query has `mb_releasegroupid`, fetch
+  `/v3/music/albums/{mb_releasegroupid}`, and yield that release group's `albumcover`
+  images, most likes first, with size unknown and `match_confidence` 1.0. Without the id it
+  yields nothing and makes no request.
+- COVERS-SEARCH-30: `CoverQuery` MUST gain `discogs_albumid`, filled by default from the
+  backend template `$discogs_albumid` (the field beets' `discogs` plugin sets), and it MUST be
+  part of the query's cache key. Neither new provider is in a profile's provider list until
+  the user adds it; adding one without its secret set is a validation warning, and at run
+  time it is skipped as COVERS-SEARCH-4 says.
 
 ## Interfaces
 ```yaml
@@ -174,6 +208,12 @@ covers:
     - {name: local, weight: 2, settings: {patterns: ["cover.*", "folder.*", "*.jpg"]}}
     - {name: itunes, weight: 1}
     - {name: deezer, weight: 1, enabled: false}
+    # COVERS-SEARCH-28, -29: opt-in; `secret` names one of the profile's secrets
+    - {name: discogs, weight: 2, settings: {secret: discogs, max_results: 5}}
+    - {name: fanarttv, weight: 2, settings: {secret: fanarttv}}
+secrets:                        # PROFILE-4 references
+  discogs: keyring:rifferr/discogs
+  fanarttv: env:FANARTTV_KEY
 ```
 ```yaml
 # workflow step
@@ -194,6 +234,7 @@ class CoverQuery(BaseModel, frozen=True):
     artist: str; album: str; year: int | None = None
     catalognum: str | None = None; barcode: str | None = None
     mb_albumid: str | None = None; mb_releasegroupid: str | None = None
+    discogs_albumid: str | None = None                          # COVERS-SEARCH-30
     folder: str | None = None
 
 class CoverCandidate(BaseModel, frozen=True):
@@ -207,6 +248,8 @@ class RankedCandidate(CoverCandidate):
 
 class CoverProvider(Protocol):
     name: str; hosts: frozenset[str]; needs: bool
+    min_interval: float = 0                 # COVERS-SEARCH-26
+    secret_params: frozenset[str] = frozenset()   # query parameters to redact (-27)
     def search(self, query: CoverQuery, settings: Mapping[str, object],
                http: CoverHttp) -> AsyncIterator[CoverCandidate]: ...
 
@@ -268,6 +311,18 @@ Where the build differs from the text above, and why (2026-11-14):
   the Playwright test.
 - Provider replies in `backend/tests/covers/replies/` are hand-written from the documented
   API shapes, since tests have no network.
+- **Keyed providers (2026-11-23, COVERS-SEARCH-26 to -30):**
+  - `min_interval` and `secret_params` aren't protocol members: `http_for` reads them with
+    defaults, so providers written before them still match the runtime-checkable protocol.
+  - Throttles live per process, keyed by provider name: the server and each profile's
+    worker each space their own requests. A 429 without `Retry-After` holds the provider for
+    its `min_interval`.
+  - A provider's `headers` (Discogs' `Authorization`) go only to the first request's host,
+    never to a redirect elsewhere.
+  - `discogs_albumid` joins the cache key only when set, so existing cached searches keep
+    their keys.
+  - The warning for a missing secret is printed by `rifferr validate --profile`; the picker
+    shows a Discogs release id as a clearable chip, like the MusicBrainz ids.
 
 ## Examples
 Query `{artist: "Boards of Canada", album: "Geogaddi", year: 2002}`, weights CAA 3, iTunes 1:
@@ -297,7 +352,7 @@ Auto mode takes the CAA image. Without an MBID, CAA yields nothing; iTunes's 0.6
 - The picker UI (F-COVER-PICKER).
 - Embedding art into files (Open question 3). Resizing and format conversion are
   S-COVERS-RESIZE (Open question 4).
-- Discogs, fanart.tv and Last.fm providers (Open question 2).
+- Last.fm (Open question 7).
 - Non-front art (back covers, booklets).
 - Scraping any site without an official API.
 
@@ -315,6 +370,14 @@ Resolved (author, 2026-11-14: "approved, go with your recommendations"):
 5. The step's `apply` defaults to `auto`.
 6. `local_counts: true` is the default: a folder image counts as art.
 
+7. Last.fm (2026-11-23, proposed): leave it out. Its API (`album.getInfo`) lists images of
+   at most 300 px, under the default `min_size`, so its candidates would nearly always be
+   hidden. Larger images need an undocumented URL rewrite, which the "official APIs only"
+   rule excludes. Recommendation: no provider; the note stays in B-059.
+8. Discogs' "Various" vs the query's "Various Artists" (2026-11-23): `match_score` may rate
+   compilations low. Recommendation: none in this spec; a profile's `covers.normalize` rule
+   can map one to the other, and barcode or catalog-number hits (-28) find them anyway.
+
 ## Tasks
 - [x] Core: `CoverQuery`, `CoverCandidate`, `match_score`, `rank`, filters (COVERS-SEARCH-2, -3,
       -7 to -10)
@@ -326,3 +389,11 @@ Resolved (author, 2026-11-14: "approved, go with your recommendations"):
 - [x] API: search, images, cover decisions, album art (COVERS-SEARCH-19 to -22)
 - [x] Profile `covers` settings and validation; regenerate schemas and TS client
 - [x] `docs/coverage.md` row 6; example workflow step
+- [x] `min_interval` and 429 handling in `CoverHttp`; secret query parameters redacted
+      (COVERS-SEARCH-26, -27)
+- [x] `discogs_albumid` on `CoverQuery`, its default template and cache key (COVERS-SEARCH-30)
+- [x] `discogs` provider with hand-written replies: release lookup, search, barcode/catno
+      (COVERS-SEARCH-28)
+- [x] `fanarttv` provider with hand-written replies (COVERS-SEARCH-29)
+- [x] Validation warning for a listed provider without its secret; regenerate schemas and TS
+      client; docs: how to set the token (`keyring set rifferr discogs` or an `env:` reference)
