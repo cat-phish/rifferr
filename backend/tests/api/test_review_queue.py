@@ -395,3 +395,13 @@ async def test_REVIEW_QUEUE_10_all_events_carry_review_and_changeset_events(api:
         "job.finished",
         "run.started",
     ]
+
+
+async def test_REVIEW_QUEUE_19_a_changeset_is_busy_while_its_decision_job_waits(
+    api: Api,
+) -> None:
+    seed(api)
+    assert "cs1" not in api.state.db.busy_ids()
+    r = await post(api, "/api/changesets/cs1/decision", {"decision": "accept", "accepted": [0]})
+    assert r.status_code == 202
+    assert "cs1" in api.state.db.busy_ids()

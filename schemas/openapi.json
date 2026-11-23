@@ -4117,6 +4117,12 @@
         "additionalProperties": false,
         "description": "One thing that waits for a decision (REVIEW-QUEUE-1). ``kind`` says which of\n``changeset`` / ``gate`` / ``import_decision`` / ``cleanup_decision`` /\n``cover_review`` / ``move_conflict`` is set (IMPORT-UI-7, FILES-CLEANUP-14,\nCOVERS-SEARCH-21, LIBRARY-MOVE-5a).",
         "properties": {
+          "busy": {
+            "default": false,
+            "description": "A decision job holds it; it isn't waiting any more (REVIEW-QUEUE-19)",
+            "title": "Busy",
+            "type": "boolean"
+          },
           "changeset": {
             "anyOf": [
               {
@@ -9718,7 +9724,7 @@
     },
     "/api/review": {
       "get": {
-        "description": "What waits for a decision, oldest first: run ChangeSets that are proposed or\nconflicted, pending review gates (REVIEW-QUEUE-1), pending import decisions\n(IMPORT-UI-7), pending cleanup decisions (FILES-CLEANUP-14), cover reviews\n(COVERS-SEARCH-14) and move conflicts (LIBRARY-MOVE-5a).",
+        "description": "What waits for a decision, oldest first: run ChangeSets that are proposed or\nconflicted, pending review gates (REVIEW-QUEUE-1), pending import decisions\n(IMPORT-UI-7), pending cleanup decisions (FILES-CLEANUP-14), cover reviews\n(COVERS-SEARCH-14) and move conflicts (LIBRARY-MOVE-5a). ``busy`` marks those a\ndecision job holds (REVIEW-QUEUE-19).",
         "operationId": "review_queue_api_review_get",
         "parameters": [
           {

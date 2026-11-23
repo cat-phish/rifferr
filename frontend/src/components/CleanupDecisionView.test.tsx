@@ -57,6 +57,7 @@ function decision(over: Partial<S["CleanupDecision"]> = {}): S["CleanupDecision"
 }
 
 const cleanupItem = (d: S["CleanupDecision"]): S["QueueItem"] => ({
+  busy: false,
   kind: "cleanup",
   id: d.id,
   profile: "main",

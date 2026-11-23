@@ -36,6 +36,7 @@ the M1 queue page it will grow from. Import decisions and cover picks join the q
 - REVIEW-QUEUE-16: `/review?item=<id>` MUST open and scroll to that ChangeSet or gate (M2 notifications link to it, architecture §2a).
 - REVIEW-QUEUE-17: Values and messages MUST be shown as text, never as HTML.
 - REVIEW-QUEUE-18: A Playwright test MUST cover, against the e2e temp profile: a run whose `tags.script` step proposes for review and then a `review` gate; partially accept the ChangeSet in the queue; continue the gate; see the run finish; undo the run from its page.
+- REVIEW-QUEUE-19: An item a decision job holds (a decision row claimed by any job but an import lookup, or a ChangeSet with a queued or running decision job) MUST be marked `busy` in `GET /api/review`, and the UI MUST NOT list or count it as waiting. A failed job releases it, so it waits again with its error (author, 2026-11-22: decided imports came back while their jobs queued).
 
 ## Interfaces
 ```python

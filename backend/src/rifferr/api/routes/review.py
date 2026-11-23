@@ -79,7 +79,8 @@ async def review_queue(
     """What waits for a decision, oldest first: run ChangeSets that are proposed or
     conflicted, pending review gates (REVIEW-QUEUE-1), pending import decisions
     (IMPORT-UI-7), pending cleanup decisions (FILES-CLEANUP-14), cover reviews
-    (COVERS-SEARCH-14) and move conflicts (LIBRARY-MOVE-5a)."""
+    (COVERS-SEARCH-14) and move conflicts (LIBRARY-MOVE-5a). ``busy`` marks those a
+    decision job holds (REVIEW-QUEUE-19)."""
     workflows: dict[str, str | None] = {}
 
     def workflow(run_id: str) -> str | None:
@@ -183,6 +184,9 @@ async def review_queue(
                 move_conflict=move,
             )
         )
+    busy = state.db.busy_ids()
+    for item in items:
+        item.busy = item.id in busy
     items.sort(key=lambda i: (i.created_at, i.id))
     return items
 

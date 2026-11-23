@@ -68,6 +68,7 @@ function decision(over: Partial<S["ImportDecision"]> = {}): S["ImportDecision"] 
 }
 
 const importItem = (d: S["ImportDecision"] = decision()): S["QueueItem"] => ({
+  busy: false,
   kind: "import",
   id: d.id,
   profile: "main",

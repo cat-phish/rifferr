@@ -861,7 +861,8 @@ export interface paths {
          * @description What waits for a decision, oldest first: run ChangeSets that are proposed or
          *     conflicted, pending review gates (REVIEW-QUEUE-1), pending import decisions
          *     (IMPORT-UI-7), pending cleanup decisions (FILES-CLEANUP-14), cover reviews
-         *     (COVERS-SEARCH-14) and move conflicts (LIBRARY-MOVE-5a).
+         *     (COVERS-SEARCH-14) and move conflicts (LIBRARY-MOVE-5a). ``busy`` marks those a
+         *     decision job holds (REVIEW-QUEUE-19).
          */
         get: operations["review_queue_api_review_get"];
         put?: never;
@@ -2758,6 +2759,12 @@ export interface components {
          *     COVERS-SEARCH-21, LIBRARY-MOVE-5a).
          */
         QueueItem: {
+            /**
+             * Busy
+             * @description A decision job holds it; it isn't waiting any more (REVIEW-QUEUE-19)
+             * @default false
+             */
+            busy: boolean;
             changeset?: components["schemas"]["ChangeSet"] | null;
             cleanup_decision?: components["schemas"]["CleanupDecision"] | null;
             cover_review?: components["schemas"]["CoverReview"] | null;

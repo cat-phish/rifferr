@@ -69,6 +69,7 @@ test("LIBRARY_MOVE_16 old and new folder and names, accepted per album", async (
     "GET /api/profiles": () => PROFILES,
     "GET /api/review": () => [
       {
+        busy: false,
         kind: "changeset",
         id: "cs1",
         profile: "main",
@@ -117,6 +118,7 @@ test("LIBRARY_MOVE_16 old and new folder and names, accepted per album", async (
 
 test("UI_REFRESH_21 a stage of library moves offers Move all N", async () => {
   const move = (id: string): S["QueueItem"] => ({
+    busy: false,
     kind: "changeset",
     id,
     profile: "main",

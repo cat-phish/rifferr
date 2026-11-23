@@ -122,3 +122,32 @@ def test_IMPORT_UI_6_import_events_go_on_the_all_stream() -> None:
     for type in ("import.requested", "import.resolved"):
         event = Event(seq=1, ts=datetime.now(UTC), run_id="r", type=type, step_id=None, data={})
         assert on_all_stream(event)
+
+
+async def test_REVIEW_QUEUE_19_a_decided_import_is_busy_until_released(api: Api) -> None:
+    seed(api.state.db)
+
+    async def busy() -> bool:
+        items = (await api.client.get("/api/review")).json()
+        (item,) = [i for i in items if i["kind"] == "import"]
+        return item["busy"]
+
+    assert not await busy()
+    r = await post(api, "/api/imports/d1/decision", {"action": "skip"})
+    assert r.status_code == 202
+    assert await busy()
+    # A failed job releases the claim: the item waits again.
+    store = AppImportDecisions(api.state.db)
+    held = store.get("d1")
+    assert held is not None
+    store.release(held)
+    assert not await busy()
+
+
+async def test_REVIEW_QUEUE_19_a_lookup_leaves_the_import_waiting(api: Api) -> None:
+    seed(api.state.db)
+    r = await post(api, "/api/imports/d1/lookup", {"ids": ["x"]})
+    assert r.status_code == 202
+    items = (await api.client.get("/api/review")).json()
+    (item,) = [i for i in items if i["kind"] == "import"]
+    assert item["busy"] is False

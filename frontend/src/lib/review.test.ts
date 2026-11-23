@@ -5,6 +5,7 @@ import { groupByStep, laneOf } from "./review";
 function item(id: string, step: string, at: string): QueueItem {
   return {
     id,
+    busy: false,
     kind: "import",
     run_id: "r1",
     profile: "main",

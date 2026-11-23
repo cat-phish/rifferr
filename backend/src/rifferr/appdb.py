@@ -409,6 +409,31 @@ class AppDB:
         ).fetchone()
         return _job(row) if row else None
 
+    def busy_ids(self) -> set[str]:
+        """Ids of waiting items a decision job holds right now (REVIEW-QUEUE-19): decision
+        rows claimed by any job but a lookup, and ChangeSets with a queued or running
+        decision job. A lookup leaves the item waiting, since nobody decided it yet."""
+        busy: set[str] = set()
+        for table in (
+            "import_decisions",
+            "cleanup_decisions",
+            "prune_decisions",
+            "cover_reviews",
+            "move_conflicts",
+        ):
+            rows = self._conn.execute(
+                f"SELECT d.id FROM {table} d LEFT JOIN jobs j ON j.id = d.claim"
+                " WHERE d.state = 'pending' AND d.claim IS NOT NULL"
+                " AND (j.kind IS NULL OR j.kind != 'import_lookup')"
+            ).fetchall()
+            busy.update(r[0] for r in rows)
+        rows = self._conn.execute(
+            "SELECT json_extract(payload, '$.changeset_id') FROM jobs"
+            " WHERE kind = 'review_decision' AND state IN ('queued', 'running')"
+        ).fetchall()
+        busy.update(r[0] for r in rows if r[0] is not None)
+        return busy
+
     def jobs(self, profile: str | None = None, state: JobState | None = None) -> list[Job]:
         sql, args = "SELECT * FROM jobs WHERE 1=1", list[Any]()
         if profile is not None:

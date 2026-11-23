@@ -38,6 +38,7 @@ function csItem(
   cs: S["ChangeSet"] = changeset(id, run),
 ): S["QueueItem"] {
   return {
+    busy: false,
     kind: "changeset",
     id,
     profile: "main",
@@ -89,6 +90,7 @@ function gate(over: Partial<S["ReviewGate"]> = {}): S["ReviewGate"] {
 }
 
 const gateItem = (g: S["ReviewGate"] = gate()): S["QueueItem"] => ({
+  busy: false,
   kind: "gate",
   id: g.id,
   profile: "main",
@@ -182,6 +184,24 @@ test("REVIEW_QUEUE_11 queue in one section per step, oldest first, with album, r
     "href",
     `/runs/${NEW_RUN}?profile=main`,
   );
+});
+
+test("REVIEW_QUEUE_19 an item a decision job holds is neither listed nor counted", async () => {
+  setup({
+    queue: () => [csItem("cs1", NEW_RUN), { ...csItem("cs3", NEW_RUN), busy: true }],
+    extra: {
+      [`GET /api/runs/${NEW_RUN}`]: () =>
+        runDetail({ steps: [step("suffix")], lanes: [laneOf("A", "waiting", ["cs1"], "suffix")] }),
+    },
+  });
+  renderApp("/review?profile=main");
+  const nav = await within(screen.getByRole("navigation")).findByRole("link", { name: /^Review/ });
+  await waitFor(() => {
+    expect(within(nav).getByTestId("review-count")).toHaveTextContent("1");
+  });
+  await waitFor(() => {
+    expect(screen.getAllByTestId("queue-item").map((e) => e.dataset.item)).toEqual(["cs1"]);
+  });
 });
 
 test("REVIEW_QUEUE_11 the queue updates from /api/events", async () => {

@@ -47,6 +47,7 @@ function gate(id: string, over: Partial<S["ReviewGate"]> = {}): S["ReviewGate"] 
 }
 
 const item = (g: S["ReviewGate"]): S["QueueItem"] => ({
+  busy: false,
   kind: "gate",
   id: g.id,
   profile: "main",

@@ -363,6 +363,10 @@ class QueueItem(_Model):
     cover_review: CoverReview | None = None
     move_conflict: MoveConflict | None = None
     prune_decision: PruneDecision | None = None
+    busy: bool = Field(
+        default=False,
+        description="A decision job holds it; it isn't waiting any more (REVIEW-QUEUE-19)",
+    )
 
 
 class ChangeSetDetail(_Model):

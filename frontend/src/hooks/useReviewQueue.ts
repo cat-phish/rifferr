@@ -40,13 +40,15 @@ export const APP_EVENTS = [
   "inbox.changed",
 ] as const;
 
-/** What waits for a decision in ``profile`` (REVIEW-QUEUE-1). */
+/** What waits for a decision in ``profile`` (REVIEW-QUEUE-1). Items a decision job
+ * holds aren't waiting any more, so they are left out (REVIEW-QUEUE-19). */
 export function useReviewQueue(profile: string | null) {
   return useQuery({
     queryKey: ["review", profile],
     enabled: profile !== null,
     queryFn: async () =>
       ok(await api.GET("/api/review", { params: { query: { profile: profile ?? undefined } } })),
+    select: (items) => items.filter((i) => !i.busy),
   });
 }
 

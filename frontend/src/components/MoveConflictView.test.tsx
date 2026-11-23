@@ -35,6 +35,7 @@ function setup(c: S["MoveConflict"], extra: Record<string, (call: Call) => unkno
     "GET /api/profiles": () => PROFILES,
     "GET /api/review": () => [
       {
+        busy: false,
         kind: "move",
         id: c.id,
         profile: "main",
