@@ -132,7 +132,7 @@ function StartRunButton({ name, onStarted }: { name: string; onStarted: () => vo
           setOpen(true);
         }}
       >
-        Start run…
+        New run
       </Button>
       <Modal
         opened={open}
