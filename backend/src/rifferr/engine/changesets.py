@@ -8,7 +8,7 @@ JOURNAL-1).
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Protocol, cast
@@ -600,21 +600,27 @@ def file_changeset(
     source: str,
     now: datetime,
     show: ShowFields | None = None,
+    changes: Sequence[FieldChange] = (),
+    rationale: str | None = None,
 ) -> ChangeSet:
     """One album's FileChangeSet (S-LIBRARY-MOVE), with the ``stamp`` change set to
-    ``now``'s local date (LIBRARY-MOVE-6b). ``old_stamp`` is the field's current value."""
-    targets: list[TargetChange] = []
+    ``now``'s local date (LIBRARY-MOVE-6b). ``old_stamp`` is the field's current value.
+    ``changes`` are more field changes to the album, applied after the files
+    (COVERS-RESIZE-1)."""
+    album_changes = [c for c in changes if c.old != c.new or c.op == "delete"]
     if stamp is not None:
         today = now.astimezone().strftime(stamp.format)
-        change = FieldChange(field=stamp.field, old=old_stamp, new=today)
-        targets.append(TargetChange(target=plan.album, changes=[change]))
+        album_changes.append(FieldChange(field=stamp.field, old=old_stamp, new=today))
+    targets: list[TargetChange] = []
+    if album_changes:
+        targets.append(TargetChange(target=plan.album, changes=album_changes))
     return ChangeSet(
         id=id,
         profile=profile,
         run_id=run_id,
         step_id=step_id,
         source=ChangeSource(kind="step", name=source),
-        rationale=f"{source}: {plan.src_dir} -> {plan.dst_dir}",
+        rationale=rationale or f"{source}: {plan.src_dir} -> {plan.dst_dir}",
         created_at=now,
         targets=targets,
         files=plan.files,

@@ -11,7 +11,14 @@ from typing import Any, Protocol, runtime_checkable
 from pydantic import BaseModel, JsonValue
 
 from rifferr.backends.base import BackendCapabilities, LibraryBackend
-from rifferr.core.changeset import ChangeSet, ChangeSetProposal, ShowFields, Stamp, TargetRef
+from rifferr.core.changeset import (
+    ChangeSet,
+    ChangeSetProposal,
+    ProposedFieldChange,
+    ShowFields,
+    Stamp,
+    TargetRef,
+)
 from rifferr.core.covers import CoverQuery, RankedCandidate
 from rifferr.core.files import BusyFolder, CleanupChoice, CleanupEntry, CleanupOptions
 from rifferr.core.imports import ImportQuestion, TimeoutAction
@@ -103,8 +110,22 @@ class StepType(Protocol):
 Emit = Callable[[str, dict[str, JsonValue]], None]
 #: The engine's side of ``ctx.propose``: proposal, current target -> the ChangeSets made.
 Propose = Callable[[ChangeSetProposal, TargetRef | None, SnapshotIndex], list[ChangeSet]]
+
+
 #: The engine's side of ``ctx.propose_files``: one album's plan, optional stamp -> ChangeSet.
-ProposeFiles = Callable[[MovePlan, Stamp | None, SnapshotIndex, ShowFields | None], ChangeSet]
+@dataclass(frozen=True)
+class FileExtras:
+    """What a FileChangeSet carries besides its files (S-COVERS-RESIZE COVERS-RESIZE-1):
+    field changes to the plan's album, applied once every file is done, and the review's
+    rationale (default: the folders)."""
+
+    changes: tuple[ProposedFieldChange, ...] = ()
+    rationale: str | None = None
+
+
+ProposeFiles = Callable[
+    [MovePlan, Stamp | None, SnapshotIndex, ShowFields | None, FileExtras], ChangeSet
+]
 
 
 @dataclass(frozen=True)
@@ -211,7 +232,11 @@ def _no_propose(
 
 
 def _no_propose_files(
-    plan: MovePlan, stamp: Stamp | None, s: SnapshotIndex, show: ShowFields | None
+    plan: MovePlan,
+    stamp: Stamp | None,
+    s: SnapshotIndex,
+    show: ShowFields | None,
+    extras: FileExtras,
 ) -> ChangeSet:
     raise StepFailure("this step can't propose file moves here")
 
@@ -416,13 +441,18 @@ class StepContext:
         return [cs.id for cs in made]
 
     def propose_files(
-        self, plan: MovePlan, stamp: Stamp | None = None, show: ShowFields | None = None
+        self,
+        plan: MovePlan,
+        stamp: Stamp | None = None,
+        show: ShowFields | None = None,
+        extras: FileExtras | None = None,
     ) -> str:
         """Propose one album's file moves (S-LIBRARY-MOVE) as a FileChangeSet, accepted or
-        rejected as a whole. ``plan.album`` must come from ``albums()``. The step's ``apply``
-        policy applies it now (``auto``; a file failure raises ``StepFailure``) or leaves it
-        for review. Returns its id."""
-        made = self._propose_files(plan, stamp, self._snapshots, show)
+        rejected as a whole. ``plan.album`` must come from ``albums()``. ``extras`` adds
+        field changes to that album, applied after the files, and a rationale. The step's
+        ``apply`` policy applies it now (``auto``; a file failure raises ``StepFailure``)
+        or leaves it for review. Returns its id."""
+        made = self._propose_files(plan, stamp, self._snapshots, show, extras or FileExtras())
         self.proposed.append(made)
         return made.id
 

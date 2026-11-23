@@ -25,6 +25,7 @@ from rifferr.core.changeset import (
     ChangeSet,
     ChangeSetProposal,
     ChangeSource,
+    FieldChange,
     JournalEntry,
     ShowFields,
     Stamp,
@@ -93,6 +94,7 @@ from rifferr.engine.run import PassRecord, Run, RunState, Scalar, StepRecord
 from rifferr.engine.steps import (
     CleanupRequest,
     CoverRequest,
+    FileExtras,
     GateOptions,
     ImportOptions,
     NoSecrets,
@@ -738,8 +740,8 @@ class Engine:
                 propose=lambda proposal, current, snapshots: self._propose(
                     state, spec, proposal, current, snapshots
                 ),
-                propose_files=lambda plan, stamp, snapshots, show: self._propose_files(
-                    state, spec, plan, stamp, snapshots, show
+                propose_files=lambda plan, stamp, snapshots, show, extras: self._propose_files(
+                    state, spec, plan, stamp, snapshots, show, extras
                 ),
                 profile_dir=state.profile_dir,
                 interpolate=lambda value: self._interpolate_text(state, value),
@@ -1007,6 +1009,7 @@ class Engine:
         stamp: Stamp | None,
         snapshots: SnapshotIndex,
         show: ShowFields | None = None,
+        extras: FileExtras | None = None,
     ) -> ChangeSet:
         """One album's FileChangeSet (S-LIBRARY-MOVE): stored, then applied or held."""
         run = state.run
@@ -1029,6 +1032,16 @@ class Engine:
             source=spec.uses,
             now=self.clock.now(),
             show=show,
+            changes=[
+                FieldChange(
+                    op=c.op,
+                    field=c.field,
+                    new=c.new,
+                    old=c.old if c.has_old() else fields.get(c.field),
+                )
+                for c in (extras.changes if extras is not None else ())
+            ],
+            rationale=extras.rationale if extras is not None else None,
         )
         try:
             problems = state.backend.check(cs) if cs.targets else []

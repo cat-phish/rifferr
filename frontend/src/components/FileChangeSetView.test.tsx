@@ -228,3 +228,58 @@ test("LIBRARY_MOVE_18 TAG_GRID_16 the album check: cover with its size, show fie
   expect(within(check).getByRole("button", { name: "Change cover" })).toBeInTheDocument();
   expect(calls.some((c: Call) => c.path === "/api/profiles/main/library")).toBe(true);
 });
+
+function queueItem(cs: S["ChangeSet"]): S["QueueItem"] {
+  return {
+    busy: false,
+    kind: "changeset",
+    id: cs.id,
+    profile: "main",
+    run_id: RUN,
+    workflow: "w",
+    step_id: cs.step_id ?? null,
+    created_at: T0,
+    changeset: cs,
+    state: "proposed",
+  };
+}
+
+test("COVERS_RESIZE_6 a file ChangeSet that also changes the cover shows its rationale", async () => {
+  const resize: S["ChangeSet"] = {
+    ...changeset(),
+    step_id: "art-size",
+    source: { kind: "step", name: "covers.resize" },
+    rationale: "cover 3000x3000 -> 1200x1200; original kept as cover-hires.jpg",
+    stamp: null,
+    targets: [
+      {
+        target: { scope: "album", id: "album:1" },
+        changes: [{ field: "art_sha256", op: "set", old: SHA, new: "1".repeat(64) }],
+      },
+    ],
+    files: [
+      {
+        ...effect("artifact", "/art/00/orig.jpg", `${NEW}/cover-hires.jpg`, "album:1"),
+        mode: "copy",
+      },
+    ],
+  };
+  mockApi({
+    "GET /api/profiles": () => PROFILES,
+    "GET /api/review": () => [queueItem(resize)],
+  });
+  renderApp("/review?profile=main");
+  expect(await screen.findByTestId("file-changeset-rationale")).toHaveTextContent(
+    "cover 3000x3000 -> 1200x1200; original kept as cover-hires.jpg",
+  );
+});
+
+test("COVERS_RESIZE_6 a plain library move shows no rationale line", async () => {
+  mockApi({
+    "GET /api/profiles": () => PROFILES,
+    "GET /api/review": () => [queueItem(changeset())],
+  });
+  renderApp("/review?profile=main");
+  await screen.findByText("Library move");
+  expect(screen.queryByTestId("file-changeset-rationale")).toBeNull();
+});

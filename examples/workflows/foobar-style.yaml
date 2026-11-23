@@ -92,6 +92,14 @@ steps:
     uses: covers.search
     with:
       choose: review
+  # Covers larger than 1200x1200 shrink to 1200 on their longest side; the original stays
+  # next to the cover as cover-hires.jpg (author, 2026-11-22). Runs on every album, so a
+  # cover fetchart found during import is resized too. Journaled; undo restores the original.
+  - id: art-size
+    uses: covers.resize
+    with:
+      max: 1200
+      original: "{stem}-hires{ext}"
   # The album's folder in the inbox is empty now (or holds only what beets couldn't
   # import, which stays for checklist line 5): remove the empty folders.
   - id: empty-inbox
@@ -140,7 +148,10 @@ steps:
                mb_trackid]
       # Images other than the cover go in an Art sub-folder; everything else that came
       # along (rip logs, cue sheets) keeps its place in the album folder.
+      # The kept full-size cover (art-size) stays next to the cover; the first matching rule
+      # wins.
       artifacts:
+        - match: ["*-hires.*"]
         - match: ["*.jpg", "*.jpeg", "*.png", "*.gif", "*.webp", "*.tif", "*.tiff", "*.bmp"]
           to: Art
         - "*"

@@ -12,6 +12,7 @@ dependencies = [
     "fastapi>=0.162,<1",
     "httpx>=0.28,<1",
     "keyring>=25,<26",
+    "pillow>=13,<14",
     "pydantic>=2.10,<3",
     "regex>=2026.11.15",
     "ruamel-yaml>=0.18,<0.20",
@@ -58,12 +59,16 @@ workflow = "rifferr.steps.workflow_call:WorkflowCallStep"
 "covers.search" = "rifferr.steps.covers_search:CoversSearchStep"
 "library.move" = "rifferr.steps.library_move:LibraryMoveStep"
 "library.prune" = "rifferr.steps.library_prune:LibraryPruneStep"
+"covers.resize" = "rifferr.steps.covers_resize:CoversResizeStep"
 
 [project.entry-points."rifferr.cover_providers"]
 coverartarchive = "rifferr.covers.providers:CoverArtArchive"
 itunes = "rifferr.covers.providers:ITunes"
 deezer = "rifferr.covers.providers:Deezer"
 local = "rifferr.covers.providers:LocalFiles"
+
+[project.entry-points."rifferr.image_resizers"]
+pillow = "rifferr.covers.resize:PillowResizer"
 
 [project.entry-points."rifferr.backends"]
 beets = "rifferr.backends.beets:from_profile"

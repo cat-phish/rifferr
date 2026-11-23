@@ -31,7 +31,7 @@ import { NoteField } from "../components/NoteField";
 import { TokenBadge } from "../components/MatchBadge";
 import { tc } from "../theme";
 import { ImportDecisionView } from "../components/ImportDecisionView";
-import type { GateAlbum, QueueItem, ReviewGate } from "../api/types";
+import type { ChangeSet, GateAlbum, QueueItem, ReviewGate } from "../api/types";
 import { useProfile, withProfile } from "../hooks/useProfile";
 import { usePipeline, useReviewQueue, useWorkflowSteps } from "../hooks/useReviewQueue";
 import { BULK_ACTIONS, bulkKind, decideAll, type BulkFailure, type BulkKind } from "../lib/bulk";
@@ -839,13 +839,18 @@ function QueueItemCard({ item, focus }: { item: QueueItem; focus: string | null 
       focused={focus === item.id}
       title={
         <Group gap="xs">
-          <Text fw={500}>Library move</Text>
+          <Text fw={500}>{carriesChanges(item.changeset) ? "ChangeSet" : "Library move"}</Text>
           <Text size="sm" c="dimmed">
             from step {item.step_id}
           </Text>
         </Group>
       }
     >
+      {carriesChanges(item.changeset) && item.changeset.rationale && (
+        <Text size="sm" data-testid="file-changeset-rationale">
+          {item.changeset.rationale}
+        </Text>
+      )}
       <FileChangeSetView id={item.id} changeset={item.changeset} />
     </ItemCard>
   ) : (
@@ -1373,4 +1378,10 @@ function GateAlbumView({ album }: { album: GateAlbum }) {
       )}
     </Stack>
   );
+}
+
+/** A FileChangeSet that also changes fields besides its date stamp (COVERS-RESIZE-6): its
+ * rationale says what, since the file list alone doesn't. */
+function carriesChanges(cs: ChangeSet): boolean {
+  return cs.targets.some((t) => t.changes.some((c) => c.field !== cs.stamp?.field));
 }

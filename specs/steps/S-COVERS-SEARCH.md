@@ -293,7 +293,8 @@ Auto mode takes the CAA image. Without an MBID, CAA yields nothing; iTunes's 0.6
 
 ## Non-goals
 - The picker UI (F-COVER-PICKER).
-- Embedding art into files, resizing and format conversion (Open questions 3, 4).
+- Embedding art into files (Open question 3). Resizing and format conversion are
+  S-COVERS-RESIZE (Open question 4).
 - Discogs, fanart.tv and Last.fm providers (Open question 2).
 - Non-front art (back covers, booklets).
 - Scraping any site without an official API.

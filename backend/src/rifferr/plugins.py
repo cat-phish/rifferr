@@ -11,5 +11,13 @@ COVER_PROVIDERS: Final = "rifferr.cover_providers"
 AI_PROVIDERS: Final = "rifferr.ai_providers"
 TEMPLATE_FUNCTIONS: Final = "rifferr.template_functions"
 BACKENDS: Final = "rifferr.backends"
+IMAGE_RESIZERS: Final = "rifferr.image_resizers"
 
-ALL_GROUPS: Final = (STEPS, COVER_PROVIDERS, AI_PROVIDERS, TEMPLATE_FUNCTIONS, BACKENDS)
+ALL_GROUPS: Final = (
+    STEPS,
+    COVER_PROVIDERS,
+    AI_PROVIDERS,
+    TEMPLATE_FUNCTIONS,
+    BACKENDS,
+    IMAGE_RESIZERS,
+)
