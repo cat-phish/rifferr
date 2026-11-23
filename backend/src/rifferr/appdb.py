@@ -393,11 +393,15 @@ class AppDB:
             (_now(), run_id),
         )
 
-    def list_runs(self, profile: str | None = None, limit: int = 50) -> list[Job]:
-        """Newest first."""
+    def list_runs(
+        self, profile: str | None = None, limit: int = 50, workflow: str | None = None
+    ) -> list[Job]:
+        """Newest first; only ``workflow``'s runs when given."""
         sql, args = "SELECT * FROM jobs WHERE kind = 'run'", list[Any]()
         if profile is not None:
-            sql, args = sql + " AND profile = ?", [profile]
+            sql, args = sql + " AND profile = ?", [*args, profile]
+        if workflow is not None:
+            sql, args = sql + " AND workflow = ?", [*args, workflow]
         rows = self._conn.execute(
             sql + " ORDER BY created_at DESC, id DESC LIMIT ?", [*args, limit]
         ).fetchall()

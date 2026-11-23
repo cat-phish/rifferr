@@ -1,7 +1,14 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { expect, test } from "vitest";
 import type { components } from "../api/schema";
-import { type Call, FakeEventSource, err, mockApi, renderApp } from "../test-utils";
+import {
+  type Call,
+  FakeEventSource,
+  currentLocation,
+  err,
+  mockApi,
+  renderApp,
+} from "../test-utils";
 
 type S = components["schemas"];
 const PROFILES = [{ name: "main", backend: "beets", vars: [], secrets: [], error: null }];
@@ -158,7 +165,9 @@ test("REVIEW_QUEUE_11 queue in one section per step, oldest first, with album, r
     },
   });
   renderApp("/review?profile=main");
-  const nav = await within(screen.getByRole("navigation")).findByRole("link", { name: /^Review/ });
+  const nav = await within(screen.getByRole("navigation")).findByRole("link", {
+    name: /^Workflows/,
+  });
   await waitFor(() => {
     expect(within(nav).getByTestId("review-count")).toHaveTextContent("3");
   });
@@ -195,7 +204,9 @@ test("REVIEW_QUEUE_19 an item a decision job holds is neither listed nor counted
     },
   });
   renderApp("/review?profile=main");
-  const nav = await within(screen.getByRole("navigation")).findByRole("link", { name: /^Review/ });
+  const nav = await within(screen.getByRole("navigation")).findByRole("link", {
+    name: /^Workflows/,
+  });
   await waitFor(() => {
     expect(within(nav).getByTestId("review-count")).toHaveTextContent("1");
   });
@@ -256,6 +267,8 @@ test("UI_REFRESH_13 ?stage= opens that stage's tab", async () => {
   await screen.findByTestId("queue-item");
   expect(screen.getByRole("tab", { name: /check/ })).toHaveAttribute("aria-selected", "true");
   expect(screen.getAllByTestId("queue-item").map((e) => e.dataset.item)).toEqual(["g1"]);
+  // An old /review link goes on to the item's workflow page (UI-REFRESH-23).
+  expect(currentLocation()).toBe("/workflows/tagging?profile=main&stage=check");
 });
 
 function summary(name: string): S["WorkflowSummary"] {
@@ -295,7 +308,7 @@ const WORKFLOWS = {
 test("UI_REFRESH_13 a tab per step that can wait, always there; new items never switch tabs", async () => {
   let queue = [csItem("cs1", NEW_RUN)];
   setup({ queue: () => queue, extra: WORKFLOWS });
-  renderApp("/review?profile=main");
+  renderApp("/workflows/tagging?profile=main");
   await screen.findByTestId("queue-item");
   await waitFor(() => {
     expect(screen.getAllByTestId("stage-tab").map((t) => t.textContent)).toEqual([
@@ -334,7 +347,7 @@ test("UI_REFRESH_13 items of a step that isn't in the workflow get an Other tab"
     queue: () => [{ ...csItem("cs1", NEW_RUN), step_id: null }],
     extra: WORKFLOWS,
   });
-  renderApp("/review?profile=main");
+  renderApp("/workflows/tagging?profile=main");
   await screen.findByTestId("queue-item");
   await waitFor(() => {
     expect(screen.getAllByTestId("stage-tab").map((t) => t.textContent)).toEqual([
@@ -349,9 +362,9 @@ test("UI_REFRESH_13 items of a step that isn't in the workflow get an Other tab"
 
 // -- UI-REFRESH-22 ------------------------------------------------------------------------
 
-test("UI_REFRESH_22 /review lists each workflow with its stages; nav and cards open one", async () => {
+test("UI_REFRESH_23 /workflows lists each workflow with its stages; nav and cards open one", async () => {
   setup({ queue: () => [csItem("cs1", NEW_RUN), csItem("cs3", NEW_RUN)], extra: WORKFLOWS });
-  renderApp("/review?profile=main");
+  renderApp("/workflows?profile=main");
   // Two workflows: the overview, one card per workflow with its stage counts.
   await waitFor(() => {
     expect(screen.getAllByTestId("review-workflow-card")).toHaveLength(2);
@@ -370,19 +383,50 @@ test("UI_REFRESH_22 /review lists each workflow with its stages; nav and cards o
   ]);
   fireEvent.click(within(tagging).getByRole("link", { name: /suffix/ }));
   await screen.findAllByTestId("queue-item");
-  expect(screen.getByTestId("review-workflow")).toHaveTextContent("tagging");
+  expect(screen.getByTestId("workflow-title")).toHaveTextContent("tagging");
   expect(screen.getByRole("tab", { name: /suffix/ })).toHaveAttribute("aria-selected", "true");
   fireEvent.click(screen.getByRole("link", { name: /older/ }));
   await waitFor(() => {
-    expect(screen.getByTestId("review-workflow")).toHaveTextContent("older");
+    expect(screen.getByTestId("workflow-title")).toHaveTextContent("older");
   });
   expect(screen.getAllByTestId("stage-tab").map((t) => t.textContent)).toEqual(["suffix0"]);
   expect(screen.queryByTestId("queue-item")).toBeNull();
 });
 
-test("UI_REFRESH_22 the workflow list under Review folds away", async () => {
+test("UI_REFRESH_23 hub links to editing; a workflow page has Review, Runs and Details tabs", async () => {
+  const { calls } = setup({
+    queue: () => [csItem("cs1", NEW_RUN)],
+    extra: { ...WORKFLOWS, "GET /api/runs": () => [] },
+  });
+  renderApp("/workflows?profile=main");
+  await waitFor(() => {
+    expect(screen.getByRole("link", { name: "Edit workflows" })).toHaveAttribute(
+      "href",
+      "/workflow-files?profile=main",
+    );
+  });
+  await waitFor(() => {
+    expect(screen.getAllByTestId("review-workflow-card")).toHaveLength(2);
+  });
+  fireEvent.click(
+    within(nth(screen.getAllByTestId("review-workflow-card"), 1)).getByRole("link", {
+      name: "tagging",
+    }),
+  );
+  await screen.findAllByTestId("queue-item");
+  expect(screen.getByRole("tab", { name: "Review" })).toHaveAttribute("aria-selected", "true");
+  fireEvent.click(screen.getByRole("tab", { name: "Runs" }));
+  await waitFor(() => {
+    const runs = calls.filter((c: Call) => c.method === "GET" && c.path === "/api/runs");
+    expect(runs.some((c) => c.search.get("workflow") === "tagging")).toBe(true);
+  });
+  expect(currentLocation()).toContain("tab=runs");
+  expect(screen.queryByTestId("queue-item")).toBeNull();
+});
+
+test("UI_REFRESH_22 the workflow list under Workflows folds away", async () => {
   setup({ queue: () => [csItem("cs1", NEW_RUN)], extra: WORKFLOWS });
-  renderApp("/review?profile=main&workflow=tagging");
+  renderApp("/workflows/tagging?profile=main");
   await screen.findAllByTestId("review-workflow-link");
   const toggle = screen.getByTestId("review-toggle");
   expect(toggle).toHaveAccessibleName("Hide workflows");
@@ -392,7 +436,7 @@ test("UI_REFRESH_22 the workflow list under Review folds away", async () => {
     for (const l of screen.queryAllByTestId("review-workflow-link")) expect(l).not.toBeVisible();
   });
   // Folding doesn't leave the page.
-  expect(screen.getByTestId("review-workflow")).toHaveTextContent("tagging");
+  expect(screen.getByTestId("workflow-title")).toHaveTextContent("tagging");
   fireEvent.click(toggle);
   await waitFor(() => {
     expect(nth(screen.getAllByTestId("review-workflow-link"), 0)).toBeVisible();
@@ -593,12 +637,12 @@ test("REVIEW_QUEUE_14 accept all per section asks for confirmation with the coun
       "POST /api/changesets/cs3/decision": () => ({ job_id: "j2" }),
     },
   });
-  renderApp("/review?profile=main&workflow=tagging");
+  renderApp("/workflows/tagging?profile=main");
   await screen.findAllByTestId("queue-item");
   // One workflow at a time (UI-REFRESH-22).
   const sec = await screen.findByTestId("step-section");
   expect(within(sec).getByTestId("step-label")).toHaveTextContent("suffix");
-  expect(screen.getByTestId("review-workflow")).toHaveTextContent("tagging");
+  expect(screen.getByTestId("workflow-title")).toHaveTextContent("tagging");
   fireEvent.click(within(sec).getByRole("button", { name: "Reject all" }));
   expect(await screen.findByTestId("bulk-confirm")).toHaveTextContent(
     "Reject 1 ChangeSet of suffix? Conflicted ChangeSets are left alone.",
@@ -623,6 +667,7 @@ test("REVIEW_QUEUE_16 ?item= opens that item; ?run= shows one run", async () => 
   expect(screen.getByRole("tab", { name: /check/ })).toHaveAttribute("aria-selected", "true");
   expect(item("g1")).toHaveAttribute("data-focused", "true");
   expect(screen.getAllByTestId("queue-item").map((e) => e.dataset.item)).toEqual(["g1"]);
+  expect(currentLocation()).toMatch(/^\/workflows\/tagging\?profile=main&item=g1/);
 });
 
 test("REVIEW_QUEUE_16 ?run= filters, and a gone item says so", async () => {

@@ -16,7 +16,7 @@ import {
 } from "@mantine/core";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
-import { Link, useSearchParams } from "react-router";
+import { Link, Navigate, useSearchParams } from "react-router";
 import { api, ok } from "../api/client";
 import { CoverPicker } from "../components/CoverPicker";
 import { CleanupDecisionView } from "../components/CleanupDecisionView";
@@ -52,6 +52,7 @@ import {
   targetKey,
   type FieldRow,
   type StepSection,
+  workflowLink,
 } from "../lib/review";
 
 interface Selection {
@@ -78,8 +79,14 @@ interface DecidedEntry {
 /** The review queue: ChangeSets, review gates, import and cleanup decisions that wait for a decision, grouped by
  * run (F-REVIEW-QUEUE). Updates come from ``/api/events`` via the app shell. Several items
  * of one kind can be decided together (F-DASHBOARD DASHBOARD-13). */
-export function ReviewPage() {
+export function ReviewPage({
+  workflow: fixed,
+  hub = false,
+}: { workflow?: string; hub?: boolean } = {}) {
   const { profile } = useProfile();
+  // Inside a workflow's page (`workflow`), on the Workflows hub (`hub`, UI-REFRESH-23), or
+  // the old `/review` link, which goes on to the workflow's page.
+  const embedded = fixed !== undefined;
   const [params, setParams] = useSearchParams();
   const focus = params.get("item");
   const runFilter = params.get("run");
@@ -179,17 +186,16 @@ export function ReviewPage() {
         d.name,
         (d.steps ?? []).map((st) => st.id),
       );
-  const workflows = reviewWorkflows(details, items);
-  // Plain /review is the overview: every workflow with its stages (UI-REFRESH-22). With
-  // only one workflow there is nothing to choose, so it opens at once.
-  const overview =
-    params.get("workflow") === null && focus === null && runFilter === null && workflows.length > 1;
+  const workflows = reviewWorkflows(details, items, hub);
+  // The hub is the overview: every workflow with its stages (UI-REFRESH-22, -23).
+  const overview = hub;
   const focusItem = items.find((i) => i.id === focus);
-  const urlWorkflow = params.get("workflow");
-  const workflowName =
-    (focusItem && (focusItem.workflow ?? "")) ??
-    urlWorkflow ??
-    (workflows.find((w) => w.count > 0) ?? workflows[0])?.name;
+  const urlWorkflow = embedded ? fixed : params.get("workflow");
+  const workflowName = embedded
+    ? fixed
+    : ((focusItem && (focusItem.workflow ?? "")) ??
+      urlWorkflow ??
+      (workflows.find((w) => w.count > 0) ?? workflows[0])?.name);
   const workflow = workflows.find((w) => w.name === workflowName) ?? {
     name: workflowName ?? "",
     steps: [],
@@ -207,11 +213,8 @@ export function ReviewPage() {
   const stage = focusTab?.value ?? urlStage ?? (tabs.find((t) => t.section) ?? tabs[0])?.value;
   const shown = tabs.find((t) => t.value === stage)?.section;
   useEffect(() => {
-    if (overview) return;
-    const want: [string, string | undefined][] = [
-      ["workflow", workflowName],
-      ["stage", stage],
-    ];
+    if (!embedded) return;
+    const want: [string, string | undefined][] = [["stage", stage]];
     if (want.every(([k, v]) => v === undefined || params.get(k) === v)) return;
     setParams(
       (old) => {
@@ -221,7 +224,7 @@ export function ReviewPage() {
       },
       { replace: true },
     );
-  }, [overview, workflowName, stage, params, setParams]);
+  }, [embedded, stage, params, setParams]);
   const pickStage = (value: string | null) => {
     if (value === null) return;
     setPicked(new Map());
@@ -253,6 +256,30 @@ export function ReviewPage() {
     el?.scrollIntoView?.({ block: "center" });
   }, [focus, focusShown]);
 
+  if (!embedded && !overview) {
+    // The old `/review` page (notifications, run pages): on to the item's or run's
+    // workflow once the queue is known; with nothing to pick, to the hub (UI-REFRESH-23).
+    if (queue.data === undefined) return null;
+    const pickedName =
+      focus !== null ||
+      runFilter !== null ||
+      params.get("workflow") !== null ||
+      workflows.length === 1
+        ? workflowName
+        : undefined;
+    if (pickedName === undefined)
+      return <Navigate replace to={withProfile("/workflows", profile)} />;
+    return (
+      <Navigate
+        replace
+        to={workflowLink(profile, pickedName, {
+          stage: params.get("stage"),
+          item: focus,
+          run: runFilter,
+        })}
+      />
+    );
+  }
   if (overview)
     return (
       <ReviewOverview
@@ -266,25 +293,13 @@ export function ReviewPage() {
 
   return (
     <Stack>
-      <Group justify="space-between">
-        <Group gap="xs" align="baseline">
-          <Title order={2}>
-            <Anchor component={Link} to={withProfile("/review", profile)} inherit c="inherit">
-              Review
-            </Anchor>
-          </Title>
-          {workflowName !== undefined && (
-            <Text c="dimmed" data-testid="review-workflow">
-              › {workflowName || "Other"}
-            </Text>
-          )}
-        </Group>
-        {runFilter !== null && (
-          <Anchor component={Link} to={withProfile("/review", profile)}>
+      {runFilter !== null && (
+        <Group justify="flex-end">
+          <Anchor component={Link} to={workflowLink(profile, workflowName ?? "")}>
             Show every run
           </Anchor>
-        )}
-      </Group>
+        </Group>
+      )}
       {queue.error && <Alert color="red">{queue.error.message}</Alert>}
       {kind !== null && (
         <Card withBorder padding="xs" data-testid="bulk-bar">
@@ -401,15 +416,21 @@ function ReviewOverview({
   error: string | null;
 }) {
   const { profile } = useProfile();
-  const link = (name: string, stage?: string) => {
-    const q = new URLSearchParams(profile === null ? {} : { profile });
-    q.set("workflow", name);
-    if (stage !== undefined) q.set("stage", stage);
-    return `/review?${q.toString()}`;
-  };
+  const link = (name: string, stage?: string) => workflowLink(profile, name, { stage });
   return (
     <Stack>
-      <Title order={2}>Review</Title>
+      <Group justify="space-between">
+        <Title order={2}>Workflows</Title>
+        <Button
+          component={Link}
+          to={withProfile("/workflow-files", profile)}
+          variant="light"
+          size="xs"
+          data-testid="edit-workflows"
+        >
+          Edit workflows
+        </Button>
+      </Group>
       {error !== null && <Alert color="red">{error}</Alert>}
       {loaded && workflows.length === 0 && (
         <Text c="dimmed" data-testid="queue-empty">

@@ -10,19 +10,20 @@ function basename(path: string): string {
   return path.replace(/\/+$/, "").split("/").pop() ?? path;
 }
 
-/** Recent runs, refreshed live from /api/events by the app shell (UI-SHELL-9). */
-export function RunsPage() {
+/** Recent runs, refreshed live from /api/events by the app shell (UI-SHELL-9); with
+ * `workflow`, only that workflow's, inside its page (UI-REFRESH-23). */
+export function RunsPage({ workflow }: { workflow?: string } = {}) {
   const { profile } = useProfile();
   const runs = useQuery({
-    queryKey: ["runs", profile],
+    queryKey: ["runs", profile, workflow ?? null],
     enabled: profile !== null,
     queryFn: async () =>
-      ok(await api.GET("/api/runs", { params: { query: { profile, limit: 50 } } })),
+      ok(await api.GET("/api/runs", { params: { query: { profile, limit: 50, workflow } } })),
   });
 
   return (
     <Stack>
-      <Title order={2}>Runs</Title>
+      {workflow === undefined && <Title order={2}>Runs</Title>}
       {runs.data?.length === 0 && (
         <Text c="dimmed">
           No runs yet. Start one from{" "}

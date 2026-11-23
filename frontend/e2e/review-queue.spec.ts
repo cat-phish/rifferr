@@ -8,7 +8,12 @@ test("REVIEW_QUEUE_18 review queue: partial accept, continue the gate, undo the 
   await page.goto(`/auth/exchange?token=${token}`);
 
   // Start the run: import, a tags.script step with apply: review, then a review gate.
-  await page.getByRole("navigation").getByRole("link", { name: "Workflows" }).click();
+  await page
+    .getByRole("navigation")
+    .getByRole("link", { name: /^Workflows/ })
+    .first()
+    .click();
+  await page.getByRole("main").getByRole("link", { name: "Edit workflows" }).click();
   await page.getByRole("main").getByRole("link", { name: "review-flow" }).click();
   // Every workflow file from outside Rifferr is reviewed and trusted first (SECURITY-12).
   await page.getByRole("button", { name: "Trust this workflow" }).click();
@@ -22,7 +27,8 @@ test("REVIEW_QUEUE_18 review queue: partial accept, continue the gate, undo the 
   await expect(waiting).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId("review-count")).toHaveText("1");
   await waiting.getByRole("link").click();
-  await expect(page.getByRole("heading", { name: "Review" })).toBeVisible();
+  // The old /review link goes on to the workflow's page, Review tab (UI-REFRESH-23).
+  await expect(page.getByRole("tab", { name: "Review" })).toHaveAttribute("aria-selected", "true");
 
   // Partially accept the ChangeSet: the album suffix, not the disambiguation.
   const changeset = page.locator('[data-testid=queue-item][data-kind="changeset"]');

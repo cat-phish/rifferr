@@ -3,7 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { api, ok } from "../api/client";
 import { BeetsTerm } from "../components/BeetsTerm";
-import { useProfile, withProfile } from "../hooks/useProfile";
+import { useProfile } from "../hooks/useProfile";
+import { workflowLink } from "../lib/review";
 
 /** The profile's workflows with validity and trust status (UI-SHELL-3, -4). */
 export function WorkflowsPage() {
@@ -37,7 +38,7 @@ export function WorkflowsPage() {
             {workflows.data.map((w) => (
               <Table.Tr key={w.path}>
                 <Table.Td>
-                  <Anchor component={Link} to={withProfile(`/workflows/${w.name}`, profile)}>
+                  <Anchor component={Link} to={workflowLink(profile, w.name, { tab: "details" })}>
                     {w.name}
                   </Anchor>
                 </Table.Td>

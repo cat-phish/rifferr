@@ -923,7 +923,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Runs */
+        /**
+         * List Runs
+         * @description Newest first; one workflow's with ``workflow`` (UI-REFRESH-23).
+         */
         get: operations["list_runs_api_runs_get"];
         put?: never;
         /**
@@ -6388,6 +6391,8 @@ export interface operations {
             query?: {
                 profile?: string | null;
                 limit?: number;
+                /** @description Only this workflow's runs */
+                workflow?: string | null;
             };
             header?: never;
             path?: never;

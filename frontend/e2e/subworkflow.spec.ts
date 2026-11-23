@@ -4,7 +4,12 @@ test("SUBWORKFLOW_13 the trust prompt lists the called file and trusts both", as
   const token = process.env.RIFFERR_E2E_TOKEN ?? "";
   await page.goto(`/auth/exchange?token=${token}`);
 
-  await page.getByRole("navigation").getByRole("link", { name: "Workflows" }).click();
+  await page
+    .getByRole("navigation")
+    .getByRole("link", { name: /^Workflows/ })
+    .first()
+    .click();
+  await page.getByRole("main").getByRole("link", { name: "Edit workflows" }).click();
   await page.getByRole("main").getByRole("link", { name: "call-flow" }).click();
 
   const review = page.getByTestId("review");

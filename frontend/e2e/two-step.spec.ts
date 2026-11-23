@@ -12,7 +12,12 @@ test("UI_SHELL_13 two-step workflow: sign in, review, trust, start, watch the lo
   expect(page.url()).not.toContain("token");
   await expect(page.getByRole("heading", { name: "Runs" })).toBeVisible();
 
-  await page.getByRole("navigation").getByRole("link", { name: "Workflows" }).click();
+  await page
+    .getByRole("navigation")
+    .getByRole("link", { name: /^Workflows/ })
+    .first()
+    .click();
+  await page.getByRole("main").getByRole("link", { name: "Edit workflows" }).click();
   await page.getByRole("link", { name: "two-step" }).click();
 
   // Import review: YAML, hash, safety report, then Trust.

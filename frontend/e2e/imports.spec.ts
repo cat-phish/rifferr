@@ -7,7 +7,12 @@ test("IMPORT_UI_15 an unmatched album waits; search by ID, import, the lane goes
   const inbox = process.env.RIFFERR_E2E_IMPORTS_INBOX ?? "";
   await page.goto(`/auth/exchange?token=${token}`);
 
-  await page.getByRole("navigation").getByRole("link", { name: "Workflows" }).click();
+  await page
+    .getByRole("navigation")
+    .getByRole("link", { name: /^Workflows/ })
+    .first()
+    .click();
+  await page.getByRole("main").getByRole("link", { name: "Edit workflows" }).click();
   await page.getByRole("main").getByRole("link", { name: "import-flow" }).click();
   await page.getByRole("button", { name: "Trust this workflow" }).click();
   await page.getByRole("textbox", { name: /inbox/ }).fill(inbox);

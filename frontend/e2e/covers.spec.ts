@@ -115,7 +115,12 @@ test("COVER_PICKER_1 COVER_PICKER_13 COVER_PICKER_17 review queue: choose a past
   page,
 }) => {
   await signIn(page);
-  await page.getByRole("navigation").getByRole("link", { name: "Workflows" }).click();
+  await page
+    .getByRole("navigation")
+    .getByRole("link", { name: /^Workflows/ })
+    .first()
+    .click();
+  await page.getByRole("main").getByRole("link", { name: "Edit workflows" }).click();
   await page.getByRole("main").getByRole("link", { name: "cover-flow" }).click();
   await page.getByRole("button", { name: "Trust this workflow" }).click();
   await page

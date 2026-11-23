@@ -9,7 +9,12 @@ test("FILES_CLEANUP_14 a cleanup waits for review; Delete removes the listed fil
   const inbox = process.env.RIFFERR_E2E_CLEANUP_INBOX ?? "";
   await page.goto(`/auth/exchange?token=${token}`);
 
-  await page.getByRole("navigation").getByRole("link", { name: "Workflows" }).click();
+  await page
+    .getByRole("navigation")
+    .getByRole("link", { name: /^Workflows/ })
+    .first()
+    .click();
+  await page.getByRole("main").getByRole("link", { name: "Edit workflows" }).click();
   await page.getByRole("main").getByRole("link", { name: "cleanup-flow" }).click();
   await page.getByRole("button", { name: "Trust this workflow" }).click();
   await page.getByRole("textbox", { name: /inbox/ }).fill(inbox);

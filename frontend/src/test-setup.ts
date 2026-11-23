@@ -1,7 +1,11 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
 import { FakeEventSource, media } from "./test-utils";
+
+// Pages load in several hops (profile, queue, `/review` going on to a workflow page); with
+// every test file in parallel the default 1 s is too tight.
+configure({ asyncUtilTimeout: 4000 });
 
 // jsdom lacks these; Mantine needs them.
 Object.defineProperty(window, "matchMedia", {

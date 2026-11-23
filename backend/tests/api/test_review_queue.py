@@ -405,3 +405,13 @@ async def test_REVIEW_QUEUE_19_a_changeset_is_busy_while_its_decision_job_waits(
     r = await post(api, "/api/changesets/cs1/decision", {"decision": "accept", "accepted": [0]})
     assert r.status_code == 202
     assert "cs1" in api.state.db.busy_ids()
+
+
+async def test_UI_REFRESH_23_runs_of_one_workflow(api: Api) -> None:
+    db = api.state.db
+    db.submit("main", {"source": ECHO, "vars": {}}, workflow="tagging")
+    db.submit("main", {"source": ECHO, "vars": {}}, workflow="other")
+    every = (await api.client.get("/api/runs", params={"profile": "main"})).json()
+    assert sorted(r["workflow"] for r in every) == ["other", "tagging"]
+    one = (await api.client.get("/api/runs", params={"workflow": "tagging"})).json()
+    assert [r["workflow"] for r in one] == ["tagging"]

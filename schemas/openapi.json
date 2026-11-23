@@ -10103,6 +10103,7 @@
     },
     "/api/runs": {
       "get": {
+        "description": "Newest first; one workflow's with ``workflow`` (UI-REFRESH-23).",
         "operationId": "list_runs_api_runs_get",
         "parameters": [
           {
@@ -10131,6 +10132,25 @@
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "description": "Only this workflow's runs",
+            "in": "query",
+            "name": "workflow",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this workflow's runs",
+              "title": "Workflow"
             }
           }
         ],

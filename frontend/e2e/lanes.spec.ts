@@ -5,7 +5,12 @@ test("LANES_15 one album waits at a review gate while the other finishes", async
   const inbox = process.env.RIFFERR_E2E_LANES_INBOX ?? "";
   await page.goto(`/auth/exchange?token=${token}`);
 
-  await page.getByRole("navigation").getByRole("link", { name: "Workflows" }).click();
+  await page
+    .getByRole("navigation")
+    .getByRole("link", { name: /^Workflows/ })
+    .first()
+    .click();
+  await page.getByRole("main").getByRole("link", { name: "Edit workflows" }).click();
   await page.getByRole("main").getByRole("link", { name: "lanes-flow" }).click();
   await page.getByRole("button", { name: "Trust this workflow" }).click();
   await page.getByRole("textbox", { name: /inbox/ }).fill(inbox);

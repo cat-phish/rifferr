@@ -51,7 +51,7 @@ test("TRIGGERS_4 workflow page lists its triggers with state", async () => {
       trigger({ workflow: "other", kind: "schedule" }),
     ],
   });
-  renderApp("/workflows/new-music?profile=main");
+  renderApp("/workflows/new-music?profile=main&tab=details");
   const panel = await screen.findByTestId("triggers");
   const watch = within(panel).getByTestId("trigger-watch");
   expect(within(watch).getByText("armed")).toBeInTheDocument();
@@ -76,7 +76,7 @@ test("TRIGGERS_17 creating a webhook secret shows it once", async () => {
       return { profile: "main", name: "dl", url_path: "/hooks/main/dl", secret: "s3cr3t" };
     },
   });
-  renderApp("/workflows/new-music?profile=main");
+  renderApp("/workflows/new-music?profile=main&tab=details");
   const panel = await screen.findByTestId("triggers");
   expect(within(panel).getByText("no secret yet")).toBeInTheDocument();
   fireEvent.click(within(panel).getByRole("button", { name: "Create secret" }));
@@ -97,7 +97,7 @@ test("TRIGGERS_7 start sends the input folder", async () => {
     "GET /api/workflows/new-music": () => workflow(),
     "POST /api/runs": () => ({ status: 201, body: { id: "R9" } }),
   });
-  renderApp("/workflows/new-music?profile=main");
+  renderApp("/workflows/new-music?profile=main&tab=details");
   const start = await screen.findByTestId("start");
   fireEvent.change(within(start).getByLabelText(/Input folder/), {
     target: { value: " /srv/inbox/A " },

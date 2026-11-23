@@ -64,6 +64,22 @@ export function reviewLink(profile: string | null, key: "item" | "run", value: s
   return `/review?${params.toString()}`;
 }
 
+/** The route name of items with no known workflow ("Other"). */
+export const OTHER_WORKFLOW = "~other";
+
+/** A workflow's page (UI-REFRESH-23), with optional `stage`, `item`, `run` or `tab`. */
+export function workflowLink(
+  profile: string | null,
+  name: string,
+  query: Record<string, string | null | undefined> = {},
+): string {
+  const params = new URLSearchParams();
+  if (profile !== null) params.set("profile", profile);
+  for (const [k, v] of Object.entries(query)) if (v !== null && v !== undefined) params.set(k, v);
+  const q = params.toString();
+  return `/workflows/${encodeURIComponent(name === "" ? OTHER_WORKFLOW : name)}${q ? `?${q}` : ""}`;
+}
+
 // -- step sections (F-REVIEW-QUEUE REVIEW-QUEUE-11, F-UI-REFRESH UI-REFRESH-13) ----------
 
 export interface StepSection {
@@ -146,9 +162,12 @@ interface WorkflowSteps {
   steps?: readonly { id: string; may_wait: boolean }[];
 }
 
+/** The profile's workflows with their counts (UI-REFRESH-22): those that can wait, or every
+ * one with `all` (the Workflows hub, UI-REFRESH-23), plus any other with waiting items. */
 export function reviewWorkflows(
   details: readonly WorkflowSteps[],
   items: readonly QueueItem[],
+  all = false,
 ): ReviewWorkflow[] {
   const counts = new Map<string, number>();
   for (const i of items) counts.set(i.workflow ?? "", (counts.get(i.workflow ?? "") ?? 0) + 1);
@@ -159,7 +178,7 @@ export function reviewWorkflows(
       waits: (d.steps ?? []).filter((s) => s.may_wait).map((s) => s.id),
       count: counts.get(d.name) ?? 0,
     }))
-    .filter((w) => w.waits.length > 0 || w.count > 0);
+    .filter((w) => all || w.waits.length > 0 || w.count > 0);
   for (const [name, count] of counts)
     if (!out.some((w) => w.name === name)) out.push({ name, steps: [], waits: [], count });
   return out;

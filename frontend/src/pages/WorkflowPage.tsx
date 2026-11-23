@@ -38,8 +38,8 @@ export function WorkflowPage() {
   const wf = detail.data;
   return (
     <Stack>
+      {/* The name is the title of the workflow's page around this tab (UI-REFRESH-23). */}
       <Group>
-        <Title order={2}>{wf.name}</Title>
         <Badge color={wf.valid ? "green" : "red"} variant="light">
           {wf.valid ? "valid" : "invalid"}
         </Badge>

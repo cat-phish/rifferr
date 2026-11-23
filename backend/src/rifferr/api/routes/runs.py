@@ -115,8 +115,12 @@ async def list_runs(
     state: State,
     profile: Annotated[str | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 50,
+    workflow: Annotated[
+        str | None, Query(max_length=200, description="Only this workflow's runs")
+    ] = None,
 ) -> list[RunSummary]:
-    jobs = state.db.list_runs(profile, limit)
+    """Newest first; one workflow's with ``workflow`` (UI-REFRESH-23)."""
+    jobs = state.db.list_runs(profile, limit, workflow)
     counts = AppLanes(state.db).counts(job.run for job in jobs)
     return [summary(job, counts.get(job.run)) for job in jobs]
 

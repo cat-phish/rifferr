@@ -4,7 +4,7 @@ import { Link, Route, Routes, useLocation } from "react-router";
 import { auth } from "./api/auth";
 import { useProfile, withProfile } from "./hooks/useProfile";
 import { useAppEvents, useReviewQueue, useWorkflowSteps } from "./hooks/useReviewQueue";
-import { reviewWorkflows } from "./lib/review";
+import { OTHER_WORKFLOW, reviewWorkflows, workflowLink } from "./lib/review";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LibraryPage } from "./pages/LibraryPage";
 import { ReviewPage } from "./pages/ReviewPage";
@@ -13,11 +13,13 @@ import { RunsPage } from "./pages/RunsPage";
 import { ScriptPage } from "./pages/ScriptPage";
 import { ScriptsPage } from "./pages/ScriptsPage";
 import { SignedOut } from "./pages/SignedOut";
-import { WorkflowPage } from "./pages/WorkflowPage";
+import { WorkflowHubPage } from "./pages/WorkflowHubPage";
 import { WorkflowsPage } from "./pages/WorkflowsPage";
 
 /** Routes (F-UI-SHELL Interfaces). `/` is the queue dashboard (F-DASHBOARD DASHBOARD-14);
- * `/runs` stays the runs list. */
+ * `/runs` stays the runs list. `/workflows` is the hub with each workflow's page and its
+ * review items; `/review` links go on there; `/workflow-files` is the list to trust, start
+ * and edit workflows (UI-REFRESH-23). */
 export function App() {
   const signedOut = useSyncExternalStore(auth.subscribe, auth.isSignedOut);
   if (signedOut) return <SignedOut />;
@@ -27,8 +29,9 @@ export function App() {
         <Route path="/" element={<DashboardPage />} />
         <Route path="/runs" element={<RunsPage />} />
         <Route path="/runs/:id" element={<RunPage />} />
-        <Route path="/workflows" element={<WorkflowsPage />} />
-        <Route path="/workflows/:name" element={<WorkflowPage />} />
+        <Route path="/workflows" element={<ReviewPage hub />} />
+        <Route path="/workflows/:name" element={<WorkflowHubPage />} />
+        <Route path="/workflow-files" element={<WorkflowsPage />} />
         <Route path="/scripts" element={<ScriptsPage />} />
         <Route path="/scripts/:name" element={<ScriptPage />} />
         <Route path="/library" element={<LibraryPage />} />
@@ -41,24 +44,25 @@ export function App() {
 /** Profile switcher, navigation and the page area (UI-SHELL-2). */
 function Shell({ children }: { children: React.ReactNode }) {
   const { profile, profiles, setProfile } = useProfile();
-  const { pathname, search } = useLocation();
+  const { pathname } = useLocation();
   const queue = useReviewQueue(profile);
   useAppEvents();
   const waiting = queue.data?.length ?? 0;
-  // One entry per workflow under Review, always listed, with its count (UI-REFRESH-22).
-  const workflows = reviewWorkflows(useWorkflowSteps(profile), queue.data ?? []);
-  const openWorkflow = new URLSearchParams(search).get("workflow");
+  // Every workflow under Workflows, always listed, with its count (UI-REFRESH-22, -23).
+  const workflows = reviewWorkflows(useWorkflowSteps(profile), queue.data ?? [], true);
+  const match = /^\/workflows\/([^/]+)/.exec(pathname);
+  const open = match?.[1] === undefined ? null : decodeURIComponent(match[1]);
+  const openWorkflow = open === OTHER_WORKFLOW ? "" : open;
   const [reviewOpen, setReviewOpen] = useStoredFlag("rifferr.nav.review-open", true);
   const nav: { label: string; to: string; active: boolean; count?: number }[] = [
     { label: "Dashboard", to: "/", active: pathname === "/" },
     { label: "Runs", to: "/runs", active: pathname.startsWith("/runs") },
     {
-      label: "Review",
-      to: "/review",
-      active: pathname.startsWith("/review"),
+      label: "Workflows",
+      to: "/workflows",
+      active: pathname.startsWith("/workflows") || pathname.startsWith("/workflow-files"),
       count: waiting,
     },
-    { label: "Workflows", to: "/workflows", active: pathname.startsWith("/workflows") },
     { label: "Library", to: "/library", active: pathname.startsWith("/library") },
     { label: "Scripts", to: "/scripts", active: pathname.startsWith("/scripts") },
   ];
@@ -87,7 +91,7 @@ function Shell({ children }: { children: React.ReactNode }) {
       </AppShell.Header>
       <AppShell.Navbar p="xs">
         {nav.map((n) => {
-          const sub = n.to === "/review" && workflows.length > 0;
+          const sub = n.to === "/workflows" && workflows.length > 0;
           return (
             <NavLink
               key={n.to}
@@ -140,7 +144,7 @@ function Shell({ children }: { children: React.ReactNode }) {
                     <NavLink
                       key={w.name}
                       component={Link}
-                      to={`${withProfile("/review", profile)}${profile === null ? "?" : "&"}workflow=${encodeURIComponent(w.name)}`}
+                      to={workflowLink(profile, w.name)}
                       label={w.name || "Other"}
                       active={n.active && openWorkflow === w.name}
                       data-testid="review-workflow-link"

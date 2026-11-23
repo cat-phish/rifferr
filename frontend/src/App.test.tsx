@@ -125,7 +125,7 @@ test("UI_SHELL_3 workflows list shows validity, trust and errors with line and c
         ],
       }),
   });
-  renderApp("/workflows?profile=main");
+  renderApp("/workflow-files?profile=main");
   const table = await screen.findByTestId("workflows");
   const [, good, bad] = within(table).getAllByRole("row");
   if (good === undefined || bad === undefined) throw new Error("expected two rows");
@@ -159,7 +159,7 @@ test("UI_SHELL_4 review shows yaml, hash and safety report, then trusts that has
       return { name: "two-step", sha256: SHA, trusted: true };
     },
   });
-  renderApp("/workflows/two-step?profile=main");
+  renderApp("/workflows/two-step?profile=main&tab=details");
   const review = await screen.findByTestId("review");
   expect(within(review).getByText(/name: two-step/)).toBeInTheDocument();
   expect(within(review).getByText(SHA)).toBeInTheDocument();
@@ -187,7 +187,7 @@ test("UI_SHELL_4 empty safety report is still shown", async () => {
       safety: [],
     }),
   });
-  renderApp("/workflows/two-step?profile=main");
+  renderApp("/workflows/two-step?profile=main&tab=details");
   expect(await screen.findByText(/No findings/)).toBeInTheDocument();
 });
 
@@ -204,7 +204,7 @@ test("UI_SHELL_4 a changed file reloads the review instead of trusting", async (
     }),
     "POST /api/workflows/two-step/trust": () => err(409, "hash_mismatch"),
   });
-  renderApp("/workflows/two-step?profile=main");
+  renderApp("/workflows/two-step?profile=main&tab=details");
   await screen.findByText(/No findings/);
   fireEvent.click(screen.getByRole("button", { name: "Trust this workflow" }));
   expect(await screen.findByText(/changed since it was shown/)).toBeInTheDocument();
@@ -216,7 +216,7 @@ test("UI_SHELL_5 start is disabled for invalid workflows and never asks about tr
     "GET /api/profiles": () => PROFILES,
     "GET /api/workflows/two-step": () => workflow({ valid: false }),
   });
-  renderApp("/workflows/two-step?profile=main");
+  renderApp("/workflows/two-step?profile=main&tab=details");
   expect(await screen.findByText("Fix the errors first.")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Start run" })).toBeDisabled();
   expect(screen.queryByText(/Trust/)).not.toBeInTheDocument();
@@ -231,7 +231,7 @@ test("UI_SHELL_6 vars form requires missing vars and starts with vars and hash",
     "POST /api/runs": () => ({ status: 201, body: { id: "R9" } }),
     "GET /api/runs/R9": () => runDetail({ id: "R9", state: "queued" }),
   });
-  renderApp("/workflows/two-step?profile=main");
+  renderApp("/workflows/two-step?profile=main&tab=details");
   const start = await screen.findByRole("button", { name: "Start run" });
   expect(start).toBeDisabled();
   expect(screen.getByText("Set inbox.")).toBeInTheDocument();

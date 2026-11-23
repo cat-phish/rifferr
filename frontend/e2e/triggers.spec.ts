@@ -9,7 +9,12 @@ test("TRIGGERS_9 a folder dropped into a watched folder starts a run", async ({ 
   await page.goto(`/auth/exchange?token=${token}`);
 
   // Untrusted workflows never arm (TRIGGERS-2); trusting arms the watch at once.
-  await page.getByRole("navigation").getByRole("link", { name: "Workflows" }).click();
+  await page
+    .getByRole("navigation")
+    .getByRole("link", { name: /^Workflows/ })
+    .first()
+    .click();
+  await page.getByRole("main").getByRole("link", { name: "Edit workflows" }).click();
   await page.getByRole("main").getByRole("link", { name: "watch-flow" }).click();
   const watch = page.getByTestId("trigger-watch");
   await expect(watch).toContainText("disabled");
