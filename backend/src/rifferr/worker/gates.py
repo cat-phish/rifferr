@@ -123,10 +123,14 @@ def _close_leftovers(db: AppDB, run_id: str, emit: EmitRun) -> None:
 
 
 def cancel_pending_items(db: AppDB, run_id: str) -> None:
-    """Nothing waits on a run that has ended, however it ended: its pending gates,
-    import decisions, cleanups, prunes, cover reviews and move conflicts are cancelled
-    so none is left on screen that can never be decided (REVIEW-10, IMPORT-UI-14,
-    FILES-CLEANUP-14, LIBRARY-PRUNE-3, COVERS-SEARCH-14, LIBRARY-MOVE-5a)."""
+    """Nothing waits on a run that has ended, however it ended: its proposed ChangeSets
+    are rejected and its pending gates, import decisions, cleanups, prunes, cover reviews
+    and move conflicts cancelled, so none is left on screen that can never be decided
+    (CHANGESET-7, REVIEW-10, IMPORT-UI-14, FILES-CLEANUP-14, LIBRARY-PRUNE-3,
+    COVERS-SEARCH-14, LIBRARY-MOVE-5a)."""
+    changesets = AppChangeSets(db)
+    for stored in changesets.for_run(run_id, "proposed"):
+        changesets.set_state(stored.changeset.id, "rejected", resolved_by="review")
     AppReviewGates(db).cancel_for_run(run_id)
     AppImportDecisions(db).cancel_for_run(run_id)
     AppCleanupDecisions(db).cancel_for_run(run_id)

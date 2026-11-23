@@ -414,8 +414,9 @@ class AppDB:
         return _job(row) if row else None
 
     def ended_runs_with_pending_items(self) -> list[str]:
-        """Runs that have ended but still own pending review items: what a run that ended
-        before it could cancel them (a crash, an older version) left behind."""
+        """Runs that have ended but still own pending review items or proposed ChangeSets:
+        what a run that ended before it could close them (a crash, an older version)
+        left behind."""
         tables = (
             "review_gates",
             "import_decisions",
@@ -424,7 +425,12 @@ class AppDB:
             "cover_reviews",
             "move_conflicts",
         )
-        pending = " UNION ".join(f"SELECT run_id FROM {t} WHERE state = 'pending'" for t in tables)
+        pending = " UNION ".join(
+            [
+                *(f"SELECT run_id FROM {t} WHERE state = 'pending'" for t in tables),
+                "SELECT run_id FROM changesets WHERE state = 'proposed'",
+            ]
+        )
         rows = self._conn.execute(
             f"SELECT DISTINCT j.run_id FROM jobs j JOIN ({pending}) p ON p.run_id = j.run_id"
             " WHERE j.kind = 'run' AND j.state IN ('succeeded', 'failed', 'cancelled')"

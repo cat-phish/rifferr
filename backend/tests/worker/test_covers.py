@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import AsyncIterator, Mapping
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -12,8 +13,9 @@ import pytest
 import respx
 from pydantic import JsonValue
 
-from rifferr.appdb import AppCoverReviews, CoverResolvedError
+from rifferr.appdb import AppChangeSets, AppCoverReviews, CoverResolvedError
 from rifferr.artstore import ArtStore
+from rifferr.core.changeset import ChangeSet, ChangeSource, FieldChange, TargetChange, TargetRef
 from rifferr.core.covers import ART_FIELD, CoverCandidate, CoverQuery, sha256_hex
 from rifferr.core.selection import Selection
 from rifferr.covers.http import CoverHttp
@@ -255,6 +257,7 @@ async def test_COVERS_SEARCH_14_a_crashed_run_cancels_its_reviews(
     await h.until(lambda: h.state() == "failed")
     (requested,) = h.events("cover.requested")
     assert h.reviews.pending(run_id=RUN) == []
+    assert AppChangeSets(h.db).for_run(RUN, "proposed") == []
     stored = h.reviews.get(str(requested.data["review_id"]))
     assert stored is not None
     assert stored.state == "cancelled"
@@ -268,9 +271,27 @@ async def test_COVERS_SEARCH_14_start_cancels_reviews_an_ended_run_left_pending(
     h.submit(step(", choose: review"))
     await h.until(lambda: h.state() == "waiting_review")
     (review,) = h.reviews.pending(run_id=RUN)
+    changesets = AppChangeSets(h.db)
+    changesets.add(
+        ChangeSet(
+            id="cs-left",
+            profile="main",
+            run_id=RUN,
+            step_id="art",
+            source=ChangeSource(kind="manual", name="test"),
+            created_at=datetime(2026, 11, 22, tzinfo=UTC),
+            targets=[
+                TargetChange(
+                    target=TargetRef(scope="album", id="album-1"),
+                    changes=[FieldChange(field="label", old=None, new="X")],
+                )
+            ],
+        )
+    )
     h.db.cancel_waiting(RUN)  # ends the run without touching its reviews
     assert h.reviews.pending(run_id=RUN) != []
     h.supervisor.start()
     stored = h.reviews.get(review.id)
     assert stored is not None
     assert stored.state == "cancelled"
+    assert changesets.for_run(RUN, "proposed") == []
