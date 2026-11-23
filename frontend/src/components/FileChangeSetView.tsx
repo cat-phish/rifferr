@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, ok } from "../api/client";
 import type { ChangeSet } from "../api/types";
+import { AlbumCheck } from "./AlbumCheck";
 import { Diff } from "./Diff";
 import { useFold } from "./Fold";
 import { HeaderActions } from "./HeaderActions";
@@ -83,6 +84,7 @@ export function FileChangeSetView({ id, changeset }: { id: string; changeset: Ch
   // One line per album; the files behind "Show the N files" (UI-REFRESH-21).
   return (
     <Stack gap={6} data-testid="file-changeset">
+      <AlbumCheck changeset={changeset} />
       <Group gap="xs" wrap="wrap" data-testid="file-folders">
         <TokenBadge token="changed">{copy ? "copy" : "move"}</TokenBadge>
         <Text size="sm" ff="monospace" data-testid="old-folder">

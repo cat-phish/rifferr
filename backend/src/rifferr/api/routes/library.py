@@ -49,6 +49,9 @@ async def library(
     query: Annotated[str, Query(description="beets query")] = "",
     scope: Annotated[Scope, Query()] = "album",
     limit: Annotated[int, Query(ge=1, le=MAX_LIBRARY_LIMIT)] = LIBRARY_LIMIT,
+    album: Annotated[
+        str | None, Query(max_length=200, description="Only this album, by its id")
+    ] = None,
     client: Annotated[
         str | None, Query(max_length=100, description="A newer query from it cancels this one")
     ] = None,
@@ -59,7 +62,7 @@ async def library(
 ) -> LibraryPage:
     """Albums or items matching a beets query; writes nothing (TAG-GRID-2)."""
     get_profile(state, profile)
-    request = LibraryQuery(query=query, scope=scope, limit=limit)
+    request = LibraryQuery(query=query, scope=scope, limit=limit, album=album)
     result = await ask(
         state,
         profile,

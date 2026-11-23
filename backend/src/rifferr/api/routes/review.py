@@ -14,6 +14,7 @@ from fastapi import APIRouter, Query
 from rifferr.api.errors import ERROR_RESPONSES, ApiError, not_found
 from rifferr.api.models import (
     NO_UNDO_BODY,
+    BeforeRun,
     ChangeSetDetail,
     CleanupDecided,
     CleanupDecisionBody,
@@ -210,6 +211,35 @@ async def get_changeset(changeset_id: str, state: State) -> ChangeSetDetail:
         note=AppChangeSets(state.db).note(changeset_id),
         journal_ids=[e.id for e in AppJournal(state.db).for_changeset(changeset_id)],
     )
+
+
+@router.get(
+    "/changesets/{changeset_id}/before", response_model=BeforeRun, responses=ERROR_RESPONSES
+)
+async def before_run(changeset_id: str, state: State) -> BeforeRun:
+    """For a FileChangeSet's album check (LIBRARY-MOVE-18): each field its run changed on
+    the album or the run's items, with the value before the first change (from the
+    journal), and the files' tags before the import. Reads only the app DB."""
+    cs = _stored(state, changeset_id).changeset
+    album_id = cs.album.id if cs.album is not None else None
+    result = BeforeRun(album_id=album_id)
+    if cs.run_id is None or album_id is None:
+        return result
+    for entry in AppJournal(state.db).for_run(cs.run_id):
+        if entry.state not in ("applied", "partial") or entry.undo_of or entry.undone_by:
+            continue
+        for effect in entry.effects:
+            if effect.target.scope == "album":
+                if effect.target.id == album_id:
+                    result.album.setdefault(effect.field, effect.before)
+            else:
+                result.items.setdefault(effect.target.id, {}).setdefault(
+                    effect.field, effect.before
+                )
+    for decision in AppImportDecisions(state.db).for_run(cs.run_id):
+        if decision.album_id == album_id:
+            result.folder = decision.items
+    return result
 
 
 @router.get(

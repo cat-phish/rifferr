@@ -26,6 +26,7 @@ from rifferr.core.changeset import (
     ChangeSetProposal,
     ChangeSource,
     JournalEntry,
+    ShowFields,
     Stamp,
     TargetRef,
 )
@@ -737,8 +738,8 @@ class Engine:
                 propose=lambda proposal, current, snapshots: self._propose(
                     state, spec, proposal, current, snapshots
                 ),
-                propose_files=lambda plan, stamp, snapshots: self._propose_files(
-                    state, spec, plan, stamp, snapshots
+                propose_files=lambda plan, stamp, snapshots, show: self._propose_files(
+                    state, spec, plan, stamp, snapshots, show
                 ),
                 profile_dir=state.profile_dir,
                 interpolate=lambda value: self._interpolate_text(state, value),
@@ -1005,6 +1006,7 @@ class Engine:
         plan: MovePlan,
         stamp: Stamp | None,
         snapshots: SnapshotIndex,
+        show: ShowFields | None = None,
     ) -> ChangeSet:
         """One album's FileChangeSet (S-LIBRARY-MOVE): stored, then applied or held."""
         run = state.run
@@ -1026,6 +1028,7 @@ class Engine:
             step_id=spec.id,
             source=spec.uses,
             now=self.clock.now(),
+            show=show,
         )
         try:
             problems = state.backend.check(cs) if cs.targets else []

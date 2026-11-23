@@ -29,6 +29,11 @@ test("LIBRARY_MOVE_16 a move waits for review with old and new folders; acceptin
     .filter({ has: page.getByTestId("file-changeset") });
   await expect(item.getByTestId("old-folder")).toHaveText(src);
   await expect(item.getByTestId("new-folder")).toHaveText(dst);
+  // The album check: its show fields above the files (LIBRARY-MOVE-18).
+  const check = item.getByTestId("album-check");
+  await expect(check.getByTestId("album-check-album")).toContainText("Move Sessions");
+  await expect(check.getByTestId("album-check-items")).toContainText("First");
+  await expect(check.getByRole("button", { name: "Change cover" })).toBeVisible();
   await item.getByRole("button", { name: /^Show the \d+ files?$/ }).click();
   await expect(item.getByTestId("file-stamp")).toContainText("date_added");
   const rows = item.getByTestId("file-effect");

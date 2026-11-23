@@ -148,3 +148,75 @@ test("UI_REFRESH_21 a stage of library moves offers Move all N", async () => {
     ]);
   });
 });
+
+test("LIBRARY_MOVE_18 the album check: cover with its size, show fields, changes marked", async () => {
+  const cs: S["ChangeSet"] = {
+    ...changeset(),
+    album: { scope: "album", id: "album:1" },
+    show: { album: ["album", "label"], item: ["track", "title"] },
+  };
+  const { calls } = mockApi({
+    "GET /api/profiles": () => PROFILES,
+    "GET /api/review": () => [
+      {
+        busy: false,
+        kind: "changeset",
+        id: "cs1",
+        profile: "main",
+        run_id: RUN,
+        workflow: "into-library",
+        step_id: "into-library",
+        created_at: T0,
+        changeset: cs,
+        state: "proposed",
+      } satisfies S["QueueItem"],
+    ],
+    "GET /api/changesets/cs1/before": () => ({
+      album_id: "album:1",
+      album: { genre: "Rock" },
+      items: { "item:2": { title: "here comes" } },
+      folder: [{ path: "/inbox/1.flac", tags: { track: 1, title: "Come Together" } }],
+    }),
+    "GET /api/profiles/main/library": () => ({
+      albums: [
+        {
+          id: "album:1",
+          path: NEW,
+          fields: { album: "Abbey Road", label: "Apple", genre: "Pop", albumartist: "The Beatles" },
+          items: [
+            { id: "item:1", path: "x", fields: { track: 1, title: "Come Together" } },
+            { id: "item:2", path: "y", fields: { track: 2, title: "Here Comes" } },
+          ],
+        },
+      ],
+      album_fields: [],
+      item_fields: [],
+      truncated: false,
+    }),
+  });
+  renderApp("/review?profile=main");
+  const check = await screen.findByTestId("album-check");
+  await waitFor(() => {
+    expect(within(check).getByTestId("album-check-album")).toHaveTextContent("Apple");
+  });
+  const albumRows = within(check).getByTestId("album-check-album").querySelectorAll("tr");
+  // The show list, then the field the run changed.
+  expect([...albumRows].map((r) => r.dataset.field)).toEqual(["album", "label", "genre"]);
+  const genre = albumRows[2] as HTMLElement;
+  expect(within(genre).getByText("changed")).toBeInTheDocument();
+  expect(within(albumRows[0] as HTMLElement).queryByText("changed")).toBeNull();
+  const tracks = within(check).getByTestId("album-check-items");
+  const second = tracks.querySelector('tr[data-item="item:2"] td[data-field="title"]');
+  expect(second?.querySelector('[data-changed="true"]')).not.toBeNull();
+  const first = tracks.querySelector('tr[data-item="item:1"] td[data-field="title"]');
+  expect(first?.querySelector('[data-changed="true"]')).toBeNull();
+  // The cover at a readable size, its pixel size once loaded.
+  const img = within(check).getByRole("img", { name: /^Cover of The Beatles - Abbey Road$/ });
+  expect(img.getAttribute("src")).toBe("/api/albums/album%3A1/art?profile=main");
+  Object.defineProperty(img, "naturalWidth", { value: 1200 });
+  Object.defineProperty(img, "naturalHeight", { value: 1000 });
+  fireEvent.load(img);
+  expect(within(check).getByTestId("cover-size")).toHaveTextContent("1200×1000 px");
+  expect(within(check).getByRole("button", { name: "Change cover" })).toBeInTheDocument();
+  expect(calls.some((c: Call) => c.path === "/api/profiles/main/library")).toBe(true);
+});

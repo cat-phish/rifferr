@@ -27,6 +27,7 @@ from rifferr.core.changeset import (
     JournalEntry,
     JournalState,
     ProposedTargetChange,
+    ShowFields,
     Stamp,
     TargetChange,
     TargetRef,
@@ -598,6 +599,7 @@ def file_changeset(
     step_id: str,
     source: str,
     now: datetime,
+    show: ShowFields | None = None,
 ) -> ChangeSet:
     """One album's FileChangeSet (S-LIBRARY-MOVE), with the ``stamp`` change set to
     ``now``'s local date (LIBRARY-MOVE-6b). ``old_stamp`` is the field's current value."""
@@ -617,4 +619,6 @@ def file_changeset(
         targets=targets,
         files=plan.files,
         stamp=stamp,
+        album=plan.album,
+        show=show,
     )

@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from rifferr.backends.base import RUN_MARKER
 from rifferr.beets_config import enabled_plugins
@@ -73,6 +74,25 @@ async def test_LIBRARY_MOVE_1_default_policy_is_review(h: Harness) -> None:
     assert stored.state == "proposed"
     assert len(stored.changeset.files) == 2
     assert paths(h)[0].startswith(SRC)  # nothing moved before review
+
+
+async def test_LIBRARY_MOVE_17_show_fields_go_onto_the_changeset(h: Harness) -> None:
+    run = start(
+        h, '{directory: "{{ vars.library }}", show: {album: [album, label], item: [title]}}'
+    )
+    await h.engine.execute(run)
+    [stored] = h.engine.changesets.for_run(run.id)
+    show = stored.changeset.show
+    assert show is not None
+    assert (show.album, show.item) == (["album", "label"], ["title"])
+
+
+def test_LIBRARY_MOVE_17_show_is_optional_and_checks_field_names() -> None:
+    assert LibraryMoveParams.model_validate({}).show is None
+    with pytest.raises(ValidationError, match=r"show\.album"):
+        LibraryMoveParams.model_validate({"show": {"album": ["not a field!"]}})
+    with pytest.raises(ValidationError, match=r"show\.tracks"):
+        LibraryMoveParams.model_validate({"show": {"tracks": ["title"]}})
 
 
 async def test_LIBRARY_MOVE_1_auto_moves_into_interpolated_directory(h: Harness) -> None:

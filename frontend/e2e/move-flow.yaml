@@ -21,3 +21,4 @@ steps:
       paths:
         - { query: default, format: "$albumartist/$album/$track. $title" }
       stamp: { field: date_added }
+      show: { album: [albumartist, album], item: [track, title] }

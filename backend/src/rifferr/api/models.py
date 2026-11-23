@@ -12,11 +12,18 @@ from rifferr.appdb import JobState
 from rifferr.core.changeset import ChangeSet, ChangeSetState
 from rifferr.core.covers import CoverChoice, CoverQuery, CoverReview, RankedCandidate
 from rifferr.core.files import CleanupChoice, CleanupDecision
-from rifferr.core.imports import MAX_LOOKUP_IDS, MAX_LOOKUP_TEXT, ImportAction, ImportDecision
+from rifferr.core.imports import (
+    MAX_LOOKUP_IDS,
+    MAX_LOOKUP_TEXT,
+    FolderItem,
+    ImportAction,
+    ImportDecision,
+)
 from rifferr.core.moves import MoveChoice, MoveConflict
 from rifferr.core.profile import GridColumns
 from rifferr.core.prune import PruneChoice, PruneDecision
 from rifferr.core.review import ReviewGate
+from rifferr.core.snapshot import FieldValue
 from rifferr.engine.changesets import CurrentTarget
 
 
@@ -366,6 +373,24 @@ class QueueItem(_Model):
     busy: bool = Field(
         default=False,
         description="A decision job holds it; it isn't waiting any more (REVIEW-QUEUE-19)",
+    )
+
+
+class BeforeRun(_Model):
+    """Values of an album's fields before its run changed them (LIBRARY-MOVE-18)."""
+
+    album_id: str | None = None
+    album: dict[str, FieldValue] = Field(
+        default_factory=dict[str, FieldValue],
+        description="Album fields this run changed, with their value before the run",
+    )
+    items: dict[str, dict[str, FieldValue]] = Field(
+        default_factory=dict[str, dict[str, FieldValue]],
+        description="Per item id: item fields this run changed, with their value before it",
+    )
+    folder: list[FolderItem] = Field(
+        default_factory=list[FolderItem],
+        description="The files' tags before the import, when the run decided the import",
     )
 
 

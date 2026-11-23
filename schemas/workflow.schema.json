@@ -1435,6 +1435,18 @@
           "description": "Override the profile's beets paths: for this step; first match wins",
           "title": "Paths"
         },
+        "show": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/With_library_move__ShowFields"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Fields the reviewer sees with each album: {album: [...], item: [...]} (LIBRARY-MOVE-17)"
+        },
         "stamp": {
           "anyOf": [
             {
@@ -1504,6 +1516,28 @@
         "format"
       ],
       "title": "PathParam",
+      "type": "object"
+    },
+    "With_library_move__ShowFields": {
+      "additionalProperties": false,
+      "description": "Fields the reviewer sees with an album and its items (LIBRARY-MOVE-17).",
+      "properties": {
+        "album": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Album",
+          "type": "array"
+        },
+        "item": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Item",
+          "type": "array"
+        }
+      },
+      "title": "ShowFields",
       "type": "object"
     },
     "With_library_move__Stamp": {

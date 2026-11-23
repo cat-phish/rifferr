@@ -214,6 +214,96 @@
         "title": "BeetsConfigStatus",
         "type": "object"
       },
+      "BeforeRun": {
+        "additionalProperties": false,
+        "description": "Values of an album's fields before its run changed them (LIBRARY-MOVE-18).",
+        "properties": {
+          "album": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "description": "Album fields this run changed, with their value before the run",
+            "title": "Album",
+            "type": "object"
+          },
+          "album_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Album Id"
+          },
+          "folder": {
+            "description": "The files' tags before the import, when the run decided the import",
+            "items": {
+              "$ref": "#/components/schemas/FolderItem"
+            },
+            "title": "Folder",
+            "type": "array"
+          },
+          "items": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "object"
+            },
+            "description": "Per item id: item fields this run changed, with their value before it",
+            "title": "Items",
+            "type": "object"
+          }
+        },
+        "title": "BeforeRun",
+        "type": "object"
+      },
       "CalledWorkflow": {
         "additionalProperties": false,
         "description": "A workflow file a workflow calls (S-SUBWORKFLOW), trusted on its own (SUBWORKFLOW-13).",
@@ -273,6 +363,17 @@
         "additionalProperties": false,
         "description": "Proposed field changes to one album and/or its items (CHANGESET-1, -14), and/or\nfile moves of one album (``files``, S-LIBRARY-MOVE).",
         "properties": {
+          "album": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TargetRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "With ``files``: the album they belong to (LIBRARY-MOVE-18)"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -315,6 +416,17 @@
               }
             ],
             "title": "Run Id"
+          },
+          "show": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ShowFields"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Fields shown with the album in review (LIBRARY-MOVE-17)"
           },
           "source": {
             "$ref": "#/components/schemas/ChangeSource"
@@ -5199,6 +5311,28 @@
         "title": "ScriptSummary",
         "type": "object"
       },
+      "ShowFields": {
+        "additionalProperties": false,
+        "description": "Fields the reviewer sees with an album and its items (LIBRARY-MOVE-17).",
+        "properties": {
+          "album": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Album",
+            "type": "array"
+          },
+          "item": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Item",
+            "type": "array"
+          }
+        },
+        "title": "ShowFields",
+        "type": "object"
+      },
       "Stamp": {
         "additionalProperties": false,
         "description": "A field set to the date a FileChangeSet is applied (LIBRARY-MOVE-6b).",
@@ -6243,6 +6377,79 @@
           }
         },
         "summary": "Get Changeset",
+        "tags": [
+          "review"
+        ]
+      }
+    },
+    "/api/changesets/{changeset_id}/before": {
+      "get": {
+        "description": "For a FileChangeSet's album check (LIBRARY-MOVE-18): each field its run changed on\nthe album or the run's items, with the value before the first change (from the\njournal), and the files' tags before the import. Reads only the app DB.",
+        "operationId": "before_run_api_changesets__changeset_id__before_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "changeset_id",
+            "required": true,
+            "schema": {
+              "title": "Changeset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeforeRun"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Before Run",
         "tags": [
           "review"
         ]
@@ -8916,6 +9123,25 @@
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "description": "Only this album, by its id",
+            "in": "query",
+            "name": "album",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this album, by its id",
+              "title": "Album"
             }
           },
           {

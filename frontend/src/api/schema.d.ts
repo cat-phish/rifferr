@@ -45,6 +45,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/changesets/{changeset_id}/before": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Before Run
+         * @description For a FileChangeSet's album check (LIBRARY-MOVE-18): each field its run changed on
+         *     the album or the run's items, with the value before the first change (from the
+         *     journal), and the files' tags before the import. Reads only the app DB.
+         */
+        get: operations["before_run_api_changesets__changeset_id__before_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/changesets/{changeset_id}/current": {
         parameters: {
             query?: never;
@@ -1225,6 +1247,35 @@ export interface components {
             trusted: boolean;
         };
         /**
+         * BeforeRun
+         * @description Values of an album's fields before its run changed them (LIBRARY-MOVE-18).
+         */
+        BeforeRun: {
+            /**
+             * Album
+             * @description Album fields this run changed, with their value before the run
+             */
+            album?: {
+                [key: string]: boolean | number | string | string[] | null;
+            };
+            /** Album Id */
+            album_id?: string | null;
+            /**
+             * Folder
+             * @description The files' tags before the import, when the run decided the import
+             */
+            folder?: components["schemas"]["FolderItem"][];
+            /**
+             * Items
+             * @description Per item id: item fields this run changed, with their value before it
+             */
+            items?: {
+                [key: string]: {
+                    [key: string]: boolean | number | string | string[] | null;
+                };
+            };
+        };
+        /**
          * CalledWorkflow
          * @description A workflow file a workflow calls (S-SUBWORKFLOW), trusted on its own (SUBWORKFLOW-13).
          */
@@ -1258,6 +1309,8 @@ export interface components {
          *     file moves of one album (``files``, S-LIBRARY-MOVE).
          */
         ChangeSet: {
+            /** @description With ``files``: the album they belong to (LIBRARY-MOVE-18) */
+            album?: components["schemas"]["TargetRef"] | null;
             /**
              * Created At
              * Format: date-time
@@ -1276,6 +1329,8 @@ export interface components {
             rationale?: string | null;
             /** Run Id */
             run_id?: string | null;
+            /** @description Fields shown with the album in review (LIBRARY-MOVE-17) */
+            show?: components["schemas"]["ShowFields"] | null;
             source: components["schemas"]["ChangeSource"];
             stamp?: components["schemas"]["Stamp"] | null;
             /** Step Id */
@@ -3128,6 +3183,16 @@ export interface components {
             valid: boolean;
         };
         /**
+         * ShowFields
+         * @description Fields the reviewer sees with an album and its items (LIBRARY-MOVE-17).
+         */
+        ShowFields: {
+            /** Album */
+            album?: string[];
+            /** Item */
+            item?: string[];
+        };
+        /**
          * Stamp
          * @description A field set to the date a FileChangeSet is applied (LIBRARY-MOVE-6b).
          */
@@ -3588,6 +3653,64 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChangeSetDetail"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    before_run_api_changesets__changeset_id__before_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                changeset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BeforeRun"];
                 };
             };
             /** @description Bad Request */
@@ -5581,6 +5704,8 @@ export interface operations {
                 query?: string;
                 scope?: "album" | "item";
                 limit?: number;
+                /** @description Only this album, by its id */
+                album?: string | null;
                 /** @description A newer query from it cancels this one */
                 client?: string | null;
                 /** @description Increases with each query from this client; says which is newer */

@@ -47,6 +47,9 @@ class LibraryQuery(BaseModel):
         le=MAX_LIBRARY_LIMIT,
         description="Most albums (album scope) or items (item scope) to return",
     )
+    album: str | None = Field(
+        default=None, description="Only this album, by its backend id (LIBRARY-MOVE-18)"
+    )
 
 
 class LibraryPage(BaseModel):
@@ -62,7 +65,8 @@ class LibraryPage(BaseModel):
 
 def library_page(backend: LibraryBackend, request: LibraryQuery) -> LibraryPage:
     """TAG-GRID-2: read only; ``QueryError`` propagates for a bad query."""
-    albums = backend.query(Selection(query=request.query, scope=request.scope))
+    ids = (request.album,) if request.album is not None else None
+    albums = backend.query(Selection(query=request.query, scope=request.scope, album_ids=ids))
     truncated = False
     if request.scope == "album":
         truncated = len(albums) > request.limit

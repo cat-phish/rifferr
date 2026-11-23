@@ -149,6 +149,15 @@ class ChangeSource(BaseModel):
     name: str = Field(min_length=1, description="e.g. the step type, or 'ui'")
 
 
+class ShowFields(BaseModel):
+    """Fields the reviewer sees with an album and its items (LIBRARY-MOVE-17)."""
+
+    model_config = _FROZEN
+
+    album: list[FieldName] = Field(default_factory=list[str])
+    item: list[FieldName] = Field(default_factory=list[str])
+
+
 class ChangeSet(BaseModel):
     """Proposed field changes to one album and/or its items (CHANGESET-1, -14), and/or
     file moves of one album (``files``, S-LIBRARY-MOVE)."""
@@ -169,6 +178,12 @@ class ChangeSet(BaseModel):
     )
     stamp: Stamp | None = None
     """With ``files``: the field change to ``stamp.field`` in ``targets`` gets the apply date."""
+    album: TargetRef | None = Field(
+        default=None, description="With ``files``: the album they belong to (LIBRARY-MOVE-18)"
+    )
+    show: ShowFields | None = Field(
+        default=None, description="Fields shown with the album in review (LIBRARY-MOVE-17)"
+    )
 
     @model_validator(mode="after")
     def _not_empty(self) -> Self:

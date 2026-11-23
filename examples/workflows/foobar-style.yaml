@@ -86,6 +86,8 @@ steps:
   # by default). Every such album waits in the review queue with the ranked covers, best
   # first, so each added cover is seen before it's used (author, 2026-11-22); only that
   # album's lane waits. The cover is a ChangeSet, so undo removes it.
+  # Albums that beets' fetchart gave art during import skip this step; their cover is
+  # checked in the into-library review instead.
   - id: art
     uses: covers.search
     with:
@@ -127,6 +129,15 @@ steps:
       paths: *album-paths
       # DATE ADDED (line 13): the day the album enters the library.
       stamp: { field: date_added }
+      # The final check before the library (LIBRARY-MOVE-18): the review shows the cover with
+      # its size and these fields, plus every field this run changed, marked. The cover
+      # beets' fetchart found during import is reviewed here (author, 2026-11-22).
+      show:
+        album: [albumartist, albumartists, albumartist_sort, album, albumtype, albumtypes,
+                year, original_year, label, catalognum, country, media, albumstatus, genre,
+                comp, disctotal, mb_albumid, mb_releasegroupid]
+        item: [disc, track, tracktotal, title, artist, artists, length, format, bitrate,
+               mb_trackid]
       # Images other than the cover go in an Art sub-folder; everything else that came
       # along (rip logs, cue sheets) keeps its place in the album folder.
       artifacts:

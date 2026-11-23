@@ -14,7 +14,7 @@ from typing import Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from rifferr.backends.base import BackendCapabilities, QueryError, TemplateError
-from rifferr.core.changeset import Stamp
+from rifferr.core.changeset import ShowFields, Stamp
 from rifferr.core.moves import ArtifactRule, MoveSettings, PathFormat
 from rifferr.core.workflow.template_fields import TEMPLATE_EXTRA
 from rifferr.engine import StepContext, StepFailure, StepResult
@@ -63,6 +63,11 @@ class LibraryMoveParams(BaseModel):
         description="Untracked files that travel with the album: globs, or {match, to}",
     )
     stamp: Stamp | None = None
+    show: ShowFields | None = Field(
+        default=None,
+        description="Fields the reviewer sees with each album: {album: [...], item: [...]}"
+        " (LIBRARY-MOVE-17)",
+    )
 
     @model_validator(mode="after")
     def _check(self) -> Self:
@@ -139,7 +144,7 @@ class LibraryMoveStep:
                 target=album,
             )
             try:
-                ctx.propose_files(plan, params.stamp)
+                ctx.propose_files(plan, params.stamp, params.show)
             except StepFailure as exc:  # LIBRARY-MOVE-10: this album's lane fails
                 ctx.fail_target(album, str(exc))
                 continue

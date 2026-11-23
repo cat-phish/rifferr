@@ -104,6 +104,14 @@ async def test_TAG_GRID_2_library_route(api: Api) -> None:
     assert [a["fields"]["album"] for a in page["albums"]] == ["Album 1"]
 
 
+async def test_LIBRARY_MOVE_18_library_route_finds_one_album_by_id(api: Api) -> None:
+    every = (await albums(api))["albums"]
+    wanted = every[1]["id"]
+    r = await api.client.get("/api/profiles/main/library", params={"album": wanted})
+    assert r.status_code == 200
+    assert [a["id"] for a in r.json()["albums"]] == [wanted]
+
+
 async def test_TAG_GRID_2_errors(api: Api) -> None:
     r = await api.client.get("/api/profiles/main/library", params={"query": "bare"})
     assert (r.status_code, r.json()["error"]["code"]) == (400, "bad_query")

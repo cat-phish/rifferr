@@ -134,6 +134,20 @@ effect when this spec is Approved:
 - LIBRARY-MOVE-16: In the review queue, a FileChangeSet MUST show per album the old and new
   folder, and per file the old and new name, with partial accept per album (not per file, so an
   album never ends up split across folders).
+- LIBRARY-MOVE-17: `with: show: {album: [field, ...], item: [field, ...]}` names the fields the
+  reviewer sees with each album; the step MUST copy it onto every FileChangeSet it proposes
+  (`ChangeSet.show`). Field names are the backend's (beets fields and flexible attributes);
+  nothing in the engine or UI lists tag names (author, 2026-11-22).
+- LIBRARY-MOVE-18: A FileChangeSet in the review queue MUST show, above its files, the album's
+  final check (author, 2026-11-22):
+  - its current art at a readable size (about 300 px; click for full size) with its pixel
+    dimensions, or "No cover"; a "Change cover" button opens the cover picker for the album;
+  - the `show` album fields as a two-column table, then a track table with the `show` item
+    fields, plus every field a ChangeSet of this run changed on the album or its items;
+  - each field this run changed marked, with its value before the run on hover. "Before" is
+    the earliest `old` value among the run's applied ChangeSets, else the file's tag from the
+    run's import decision (`FolderItem.tags`, matched by disc and track) when one exists.
+  `GET /api/changesets/{id}/before` returns those before values; it reads only the app DB.
 
 ## Interfaces
 ```python
