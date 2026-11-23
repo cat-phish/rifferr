@@ -2392,6 +2392,13 @@ export interface components {
             /** Albums */
             albums: components["schemas"]["AlbumSnapshot"][];
             /**
+             * Field Kinds
+             * @description How to show fields that have a display kind, from the backend's field types (TAG-GRID-16): 'duration' is seconds, shown as m:ss
+             */
+            field_kinds?: {
+                [key: string]: "duration";
+            };
+            /**
              * Item Fields
              * @description Item field names seen, sorted
              */

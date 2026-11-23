@@ -34,6 +34,7 @@ profile event stream.
 - TAG-GRID-13: While the profile's worker runs a job (e.g. an import), Apply MUST still be accepted; the edit job waits its turn and the UI MUST say it's queued behind the running job (open question 5).
 - TAG-GRID-14: Values MUST be shown as text, never as HTML.
 - TAG-GRID-15: A Playwright test MUST cover: query, expand an album, edit a cell, check, apply, see it applied, undo it, against the e2e temp profile.
+- TAG-GRID-16: (Approved by the author, 2026-11-22: track length showed as raw seconds, `243.4666…`, in the into-library check.) The library response MUST name each field whose beets type is a duration (beets `DurationType`, such as `length`) in `field_kinds` (`{field: "duration"}`), taken from beets' own field types, never from a list of names. The grid and the album check (LIBRARY-MOVE-18) MUST show those values as `m:ss` (`h:mm:ss` from an hour). Editing and stored values stay in seconds.
 
 ## Interfaces
 ```python
@@ -121,3 +122,4 @@ Resolved 2026-11-12 (author: "go with your recommendations, approved"):
 - [x] pending edits, bulk set/delete, check, apply, outcome, conflicts
 - [x] recent edits panel with undo; script hand-off
 - [x] Playwright test (TAG-GRID-15)
+- [x] `field_kinds` in the library response from beets field types; FakeBackend; m:ss display in grid and album check (TAG-GRID-16)

@@ -561,6 +561,10 @@ class BackendContract:
         with pytest.raises(ValueError, match=r"expects"):
             backend.coerce(field, value)
 
+    def test_TAG_GRID_16_field_kinds_names_duration_fields(self, backend: LibraryBackend) -> None:
+        kinds = backend.field_kinds(["length", "title", "bitrate", "year", "no_such_field"])
+        assert kinds == {"length": "duration"}
+
     def test_BACKEND_12_album_item_fields(self, backend: LibraryBackend) -> None:
         shared = backend.album_item_fields()
         for name in ("album", "albumartist", "year", "genres", RUN_MARKER):

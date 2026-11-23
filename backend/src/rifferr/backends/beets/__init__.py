@@ -18,6 +18,7 @@ from typing import Any, cast
 
 from beets import config as beets_config
 from beets import dbcore, metadata_plugins
+from beets.dbcore.types import DurationType
 from beets.library import Album, Item, Library
 from beets.library.queries import parse_query_parts
 
@@ -29,6 +30,7 @@ from rifferr.backends.base import (
     CapabilityError,
     ChangeSetRejected,
     DecisionCallback,
+    FieldKind,
     ImportMode,
     ImportOutcome,
     ImportResult,
@@ -264,6 +266,18 @@ class BeetsBackend:
         if metadata_plugins.find_metadata_source_plugins.__wrapped__():
             return None
         return NO_METADATA_SOURCE
+
+    def field_kinds(self, fields: Sequence[str]) -> dict[str, FieldKind]:
+        """TAG-GRID-16: fields of beets' ``DurationType`` (``length``, and any plugin field
+        typed so), on items or albums."""
+        out: dict[str, FieldKind] = {}
+        for field in fields:
+            for model in (Item, Album):
+                kind: Any = model._type(field)  # pyright: ignore[reportPrivateUsage]
+                if isinstance(kind, DurationType):
+                    out[field] = "duration"
+                    break
+        return out
 
     def match_thresholds(self) -> MatchThresholds | None:
         """UI-REFRESH-6: beets' ``match.strong_rec_thresh`` and ``match.medium_rec_thresh``

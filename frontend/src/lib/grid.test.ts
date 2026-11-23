@@ -3,6 +3,7 @@ import {
   DEFAULT_COLUMNS,
   type Row,
   deleteEdit,
+  display,
   labelKey,
   loadPrefs,
   problemsByCell,
@@ -67,4 +68,14 @@ test("TAG_GRID_3 column choice is remembered per browser and profile", () => {
   expect(loadPrefs("other", "album", ["x"]).columns).toEqual(["x"]);
   window.localStorage.setItem("rifferr.grid.main.item", "{not json");
   expect(loadPrefs("main", "item", ["y"]).columns).toEqual(["y"]);
+});
+
+test("TAG_GRID_16 durations show as m:ss, h:mm:ss from an hour; other values unchanged", () => {
+  expect(display(243.4666, "duration")).toBe("4:03");
+  expect(display(59.6, "duration")).toBe("1:00");
+  expect(display(3725, "duration")).toBe("1:02:05");
+  expect(display(0, "duration")).toBe("0:00");
+  expect(display("x", "duration")).toBe("x");
+  expect(display(null, "duration")).toBe("");
+  expect(display(243.5)).toBe("243.5");
 });

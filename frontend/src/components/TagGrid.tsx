@@ -26,6 +26,8 @@ import {
   albumRow,
   cellKey,
   deleteEdit,
+  display,
+  type FieldKinds,
   itemRow,
   setEdit,
   show,
@@ -64,6 +66,8 @@ export interface GridProps {
   /** For the art column (COVER-PICKER-16): thumbnails and "Change cover". */
   profile?: string;
   onChangeCover?: (row: Row) => void;
+  /** Display kinds of fields (TAG-GRID-16): durations show as m:ss. */
+  kinds?: FieldKinds;
 }
 
 type Line =
@@ -403,6 +407,7 @@ function FieldCell({ row, field, ...props }: { row: Row; field: string } & GridP
   const conflict = props.conflicts.get(key);
   const current = row.fields[field];
   const editable = !props.busy.has(row.key);
+  const kind = props.kinds?.[field];
   const bg = problem
     ? "var(--mantine-color-red-light)"
     : conflict
@@ -422,7 +427,7 @@ function FieldCell({ row, field, ...props }: { row: Row; field: string } & GridP
           data-problem={problem ? "true" : undefined}
           data-conflict={conflict ? "true" : undefined}
           aria-invalid={problem ? true : undefined}
-          title={problem ?? (conflict ? `now ${show(conflict.current)}` : show(current))}
+          title={problem ?? (conflict ? `now ${show(conflict.current)}` : fullTitle(current, kind))}
           onDoubleClick={() => {
             if (editable) setOpen(true);
           }}
@@ -447,16 +452,20 @@ function FieldCell({ row, field, ...props }: { row: Row; field: string } & GridP
         >
           {edit ? (
             <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
-              <s style={{ opacity: 0.6 }}>{show(edit.old) || "(none)"}</s> →{" "}
-              <b>{edit.op === "delete" ? "(deleted)" : show(edit.new) || "(empty)"}</b>
+              <s style={{ opacity: 0.6 }}>{display(edit.old, kind) || "(none)"}</s> →{" "}
+              <b>{edit.op === "delete" ? "(deleted)" : display(edit.new, kind) || "(empty)"}</b>
             </span>
           ) : conflict ? (
             <span>
-              now <b>{show(conflict.current) || "(none)"}</b>, you wanted{" "}
-              <b>{conflict.wanted.op === "delete" ? "(deleted)" : show(conflict.wanted.new)}</b>
+              now <b>{display(conflict.current, kind) || "(none)"}</b>, you wanted{" "}
+              <b>
+                {conflict.wanted.op === "delete" ? "(deleted)" : display(conflict.wanted.new, kind)}
+              </b>
             </span>
           ) : (
-            <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{show(current)}</span>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+              {display(current, kind)}
+            </span>
           )}
         </div>
       </Popover.Target>
@@ -481,6 +490,12 @@ function FieldCell({ row, field, ...props }: { row: Row; field: string } & GridP
       </Popover.Dropdown>
     </Popover>
   );
+}
+
+/** The cell's tooltip: for a duration also the stored seconds, which the editor shows. */
+function fullTitle(current: FieldValue | undefined, kind: "duration" | undefined): string {
+  const text = display(current, kind);
+  return kind === undefined || text === show(current) ? text : `${text} (${show(current)} s)`;
 }
 
 function initialText(edit: Edit | undefined, current: FieldValue | undefined): string {

@@ -463,6 +463,7 @@ function Library({ profile, summary }: { profile: string; summary: ProfileSummar
                 item: prefs.item.widths,
               }}
               profile={profile}
+              kinds={library.data?.field_kinds}
               onChangeCover={setCoverRow}
               defaultWidth={DEFAULT_WIDTH}
               onResize={(s, field, width) => {

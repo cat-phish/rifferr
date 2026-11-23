@@ -25,6 +25,10 @@ RUN_MARKER: Final = "rifferr_run"
 
 ImportMode = Literal["quiet", "auto", "interactive"]
 
+FieldKind = Literal["duration"]
+"""How a field's value is shown, from the backend's own field types (F-TAG-GRID TAG-GRID-16):
+``duration`` holds seconds and is shown as ``m:ss``."""
+
 #: Reserved. Import questions come back in ``ImportResult.questions`` instead of through
 #: a callback, because the answer may take days (F-IMPORT-UI); pass ``None``.
 DecisionCallback = Callable[[object], object]
@@ -256,6 +260,11 @@ class LibraryBackend(Protocol):
     def lookup_problem(self) -> str | None:
         """Why album lookups can't find any candidates, whatever the folder (beets: no
         metadata source plugin is loaded), or ``None`` (BEETS-IMPORT-19)."""
+        ...
+
+    def field_kinds(self, fields: Sequence[str]) -> dict[str, FieldKind]:
+        """The display kind of each of ``fields`` that has one, from the backend's field
+        types, never from a list of names (TAG-GRID-16). Fields without one are left out."""
         ...
 
     def match_thresholds(self) -> MatchThresholds | None:

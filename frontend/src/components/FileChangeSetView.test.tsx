@@ -149,11 +149,11 @@ test("UI_REFRESH_21 a stage of library moves offers Move all N", async () => {
   });
 });
 
-test("LIBRARY_MOVE_18 the album check: cover with its size, show fields, changes marked", async () => {
+test("LIBRARY_MOVE_18 TAG_GRID_16 the album check: cover with its size, show fields, changes marked", async () => {
   const cs: S["ChangeSet"] = {
     ...changeset(),
     album: { scope: "album", id: "album:1" },
-    show: { album: ["album", "label"], item: ["track", "title"] },
+    show: { album: ["album", "label"], item: ["track", "title", "length"] },
   };
   const { calls } = mockApi({
     "GET /api/profiles": () => PROFILES,
@@ -184,7 +184,11 @@ test("LIBRARY_MOVE_18 the album check: cover with its size, show fields, changes
           path: NEW,
           fields: { album: "Abbey Road", label: "Apple", genre: "Pop", albumartist: "The Beatles" },
           items: [
-            { id: "item:1", path: "x", fields: { track: 1, title: "Come Together" } },
+            {
+              id: "item:1",
+              path: "x",
+              fields: { track: 1, title: "Come Together", length: 259.6 },
+            },
             { id: "item:2", path: "y", fields: { track: 2, title: "Here Comes" } },
           ],
         },
@@ -192,6 +196,7 @@ test("LIBRARY_MOVE_18 the album check: cover with its size, show fields, changes
       album_fields: [],
       item_fields: [],
       truncated: false,
+      field_kinds: { length: "duration" },
     }),
   });
   renderApp("/review?profile=main");
@@ -210,6 +215,9 @@ test("LIBRARY_MOVE_18 the album check: cover with its size, show fields, changes
   expect(second?.querySelector('[data-changed="true"]')).not.toBeNull();
   const first = tracks.querySelector('tr[data-item="item:1"] td[data-field="title"]');
   expect(first?.querySelector('[data-changed="true"]')).toBeNull();
+  // Durations as m:ss (TAG-GRID-16).
+  const length = tracks.querySelector('tr[data-item="item:1"] td[data-field="length"]');
+  expect(length).toHaveTextContent("4:20");
   // The cover at a readable size, its pixel size once loaded.
   const img = within(check).getByRole("img", { name: /^Cover of The Beatles - Abbey Road$/ });
   expect(img.getAttribute("src")).toBe("/api/albums/album%3A1/art?profile=main");

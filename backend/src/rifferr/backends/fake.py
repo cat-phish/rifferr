@@ -54,6 +54,7 @@ from rifferr.backends.base import (
     CapabilityError,
     ChangeSetRejected,
     DecisionCallback,
+    FieldKind,
     FileMoveError,
     ImportMode,
     ImportOutcome,
@@ -196,6 +197,7 @@ class FakeBackend:
         field_types: Mapping[str, type] | None = None,
         cli: Sequence[str] = ECHO_CLI,
         art_store: Path | None = None,
+        duration_fields: frozenset[str] = frozenset({"length"}),
     ) -> None:
         self.capabilities = capabilities or DEFAULT_CAPABILITIES
         self.art = ArtStore(art_store) if art_store is not None else None
@@ -208,6 +210,8 @@ class FakeBackend:
         """Album fields carried to items on apply; ``None`` = all (beets 2.x)."""
         self.read_only = read_only
         self.field_types = dict(DEFAULT_FIELD_TYPES if field_types is None else field_types)
+        self.duration_fields = duration_fields
+        """Fields ``field_kinds`` calls durations, as beets' ``DurationType`` (TAG-GRID-16)."""
         self.fail_writes: dict[str, str] = {}
         """item id -> error message, to simulate tag-write failures (CHANGESET-10)."""
         self.apply_calls: list[ChangeSet] = []
@@ -320,6 +324,7 @@ class FakeBackend:
             inherited_fields=self.inherited_fields,
             read_only=self.read_only,
             field_types=self.field_types,
+            duration_fields=self.duration_fields,
         )
         view._albums = self._albums
         return view
@@ -504,6 +509,11 @@ class FakeBackend:
     def plugin_problems(self) -> list[str]:
         """``plugin_problems_list``, which tests set (BEETS-IMPORT-20)."""
         return list(self.plugin_problems_list)
+
+    def field_kinds(self, fields: Sequence[str]) -> dict[str, FieldKind]:
+        """Like beets: ``length`` is a duration, plus any field in ``duration_fields``
+        (TAG-GRID-16)."""
+        return {f: "duration" for f in fields if f in self.duration_fields}
 
     def match_thresholds(self) -> MatchThresholds | None:
         """``thresholds``, which tests may change (UI-REFRESH-6)."""

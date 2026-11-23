@@ -42,6 +42,25 @@ export function itemRow(a: AlbumSnapshot, i: ItemSnapshot): Row {
 }
 
 /** A field value as text. Lists show their entries joined, for reading only (TAG-GRID-14). */
+/** A field's display kind from the library response (TAG-GRID-16). */
+export type FieldKinds = Partial<Record<string, "duration">>;
+
+/** Seconds as `m:ss`, or `h:mm:ss` from an hour (TAG-GRID-16). */
+export function duration(seconds: number): string {
+  const total = Math.round(seconds);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = String(total % 60).padStart(2, "0");
+  return h > 0 ? `${String(h)}:${String(m).padStart(2, "0")}:${s}` : `${String(m)}:${s}`;
+}
+
+/** `show`, with a duration field's seconds as `m:ss` (TAG-GRID-16). Editing keeps `show`. */
+export function display(value: FieldValue | undefined, kind?: "duration"): string {
+  if (kind === "duration" && typeof value === "number" && Number.isFinite(value) && value >= 0)
+    return duration(value);
+  return show(value);
+}
+
 export function show(value: FieldValue | undefined): string {
   if (value === null || value === undefined) return "";
   if (Array.isArray(value)) return value.join("; ");

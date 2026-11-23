@@ -68,6 +68,15 @@ def test_TAG_GRID_2_album_scope_page_with_field_names_and_limit() -> None:
     assert page.truncated
 
 
+def test_TAG_GRID_16_page_names_duration_fields() -> None:
+    page = library_page(library().read_only_view(), LibraryQuery())
+    assert page.field_kinds == {"length": "duration"}
+    fb = FakeBackend(duration_fields=frozenset({"length", "runtime"}))
+    fb.add_album({"album": "X", "runtime": 61.0, "items": [{"title": "t", "length": 3.5}]})
+    page = library_page(fb.read_only_view(), LibraryQuery())
+    assert page.field_kinds == {"length": "duration", "runtime": "duration"}
+
+
 def test_TAG_GRID_2_item_scope_counts_items_against_the_limit() -> None:
     fb = library().read_only_view()
     page = library_page(fb, LibraryQuery(scope="item", query="title:1"))

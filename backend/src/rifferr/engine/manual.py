@@ -14,7 +14,7 @@ from typing import Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from rifferr.backends.base import LibraryBackend
+from rifferr.backends.base import FieldKind, LibraryBackend
 from rifferr.core.changeset import (
     ChangeProblem,
     ChangeSet,
@@ -61,6 +61,11 @@ class LibraryPage(BaseModel):
     album_fields: list[str] = Field(description="Album field names seen, sorted")
     item_fields: list[str] = Field(description="Item field names seen, sorted")
     truncated: bool = Field(description="More matched than 'limit'")
+    field_kinds: dict[str, FieldKind] = Field(
+        default_factory=dict,
+        description="How to show fields that have a display kind, from the backend's field "
+        "types (TAG-GRID-16): 'duration' is seconds, shown as m:ss",
+    )
 
 
 def library_page(backend: LibraryBackend, request: LibraryQuery) -> LibraryPage:
@@ -86,8 +91,13 @@ def library_page(backend: LibraryBackend, request: LibraryQuery) -> LibraryPage:
         albums = kept
     album_fields = sorted({k for a in albums for k in a.fields})
     item_fields = sorted({k for a in albums for i in a.items for k in i.fields})
+    kinds = backend.field_kinds(sorted({*album_fields, *item_fields}))
     return LibraryPage(
-        albums=albums, album_fields=album_fields, item_fields=item_fields, truncated=truncated
+        albums=albums,
+        album_fields=album_fields,
+        item_fields=item_fields,
+        truncated=truncated,
+        field_kinds=kinds,
     )
 
 

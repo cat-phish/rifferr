@@ -15,7 +15,7 @@ import { useState } from "react";
 import { api, ok } from "../api/client";
 import type { ChangeSet } from "../api/types";
 import { albumArt } from "../lib/covers";
-import { show, type AlbumSnapshot, type FieldValue } from "../lib/grid";
+import { display, show, type AlbumSnapshot, type FieldValue } from "../lib/grid";
 import { CoverPicker } from "./CoverPicker";
 
 type Before = Record<string, FieldValue>;
@@ -48,19 +48,22 @@ function Value({
   now,
   before,
   known,
+  kind,
 }: {
   now: FieldValue | undefined;
   before: FieldValue | undefined;
   known: boolean;
+  /** TAG-GRID-16: a duration shows as m:ss. */
+  kind?: "duration";
 }) {
-  const text = show(now);
+  const text = display(now, kind);
   if (!known || same(now, before))
     return (
       <Text span size="sm" c={text === "" ? "dimmed" : undefined}>
         {text === "" ? "—" : text}
       </Text>
     );
-  const was = show(before);
+  const was = display(before, kind);
   return (
     <Tooltip label={`Before this run: ${was === "" ? "(empty)" : was}`} withArrow>
       <Group gap={4} wrap="nowrap" data-changed="true" style={{ display: "inline-flex" }}>
@@ -181,6 +184,7 @@ export function AlbumCheck({ changeset }: { changeset: ChangeSet }) {
   const snap: AlbumSnapshot | undefined = album.data?.albums[0];
   if (albumId === null || snap === undefined) return null;
   const b = before.data;
+  const kinds = album.data?.field_kinds ?? {};
   const items = snap.items ?? [];
   const folder: FolderItem[] = b?.folder ?? [];
   const itemBefore = (id: string, fields: Record<string, FieldValue>, i: number): Before => ({
@@ -214,7 +218,12 @@ export function AlbumCheck({ changeset }: { changeset: ChangeSet }) {
                     {f}
                   </Table.Td>
                   <Table.Td>
-                    <Value now={snap.fields[f]} before={albumBefore[f]} known={f in albumBefore} />
+                    <Value
+                      now={snap.fields[f]}
+                      before={albumBefore[f]}
+                      known={f in albumBefore}
+                      kind={kinds[f]}
+                    />
                   </Table.Td>
                 </Table.Tr>
               ))}
@@ -240,7 +249,12 @@ export function AlbumCheck({ changeset }: { changeset: ChangeSet }) {
                     <Table.Tr key={it.id} data-item={it.id}>
                       {itemFields.map((f) => (
                         <Table.Td key={f} data-field={f}>
-                          <Value now={it.fields[f]} before={was[f]} known={f in was} />
+                          <Value
+                            now={it.fields[f]}
+                            before={was[f]}
+                            known={f in was}
+                            kind={kinds[f]}
+                          />
                         </Table.Td>
                       ))}
                     </Table.Tr>
