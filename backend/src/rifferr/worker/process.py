@@ -87,7 +87,7 @@ from rifferr.steps.files_cleanup import apply_reviewed, outcome_counts
 from rifferr.steps.library_prune import drop_albums, file_exists
 from rifferr.steps.registry import load_step_types
 from rifferr.worker.cleanup import busy_folders
-from rifferr.worker.gates import gate_albums, reject_gate_lanes, settle
+from rifferr.worker.gates import cancel_pending_items, gate_albums, reject_gate_lanes, settle
 from rifferr.worker.import_undo import recover_removals, undo_import
 from rifferr.worker.protocol import HEARTBEAT_INTERVAL, WorkerCommand, WorkerMessage, encode
 from rifferr.workflow_calls import stored_calls
@@ -396,14 +396,11 @@ class Worker:
                 self.db.suspend(job.run, run.suspended_after, run.holds, run.gates)
             else:
                 self.db.finish(job.run, run.state.value)  # type: ignore[arg-type]
-                self.imports.cancel_for_run(job.run)  # nothing waits on a finished run
-                self.cleanups.cancel_for_run(job.run)
-                self.covers.cancel_for_run(job.run)
-                self.moves.cancel_for_run(job.run)
-                self.prunes.cancel_for_run(job.run)
+                cancel_pending_items(self.db, job.run)
         except Exception as exc:  # an engine bug: still end the run cleanly
             log.exception("run %s crashed", run.id)
             self.db.finish(job.run, "failed", f"{type(exc).__name__}: {exc}")
+            cancel_pending_items(self.db, job.run)
             if not run.finished:
                 self._send_finished(run.id, run.last_seq + 1, f"internal error: {exc}")
         finally:

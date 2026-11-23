@@ -11,10 +11,12 @@ from pathlib import Path
 
 import pytest
 
+from rifferr.appdb import AppCoverReviews
 from rifferr.engine import Event
 from rifferr.profile_store import config_root, create_profile
 from rifferr.trust import workflow_hash
 from rifferr.worker.supervisor import WorkerSupervisor
+from tests.api.test_covers_api import review
 from tests.worker.conftest import ECHO, FAKE_WORKER, PID, SLOW, Sup, block, set_idle_timeout
 
 
@@ -175,6 +177,22 @@ async def test_WORKER_6_crash_fails_the_run_and_next_request_gets_a_fresh_worker
     assert job is not None
     assert (job.state, job.error) == ("failed", "worker_crashed")
     assert await _pid_of(sup) != pid
+
+
+async def test_WORKER_6_crash_cancels_what_the_run_left_pending(sup: Sup) -> None:
+    # A review the crashed run left behind could never be decided (its run isn't
+    # waiting any more), so it must not stay pending.
+    run_id = await sup.submit(block(60))
+    await sup.wait_for(run_id, "run.step.log")
+    reviews = AppCoverReviews(sup.db)
+    reviews.add(review("v1", run_id))
+    pid = sup.supervisor.worker_pid("main")
+    assert pid is not None
+    os.kill(pid, signal.SIGKILL)
+    await sup.finished(run_id)
+    stored = reviews.get("v1")
+    assert stored is not None
+    assert stored.state == "cancelled"
 
 
 async def test_WORKER_6_worker_that_cannot_start_fails_the_queue(sup: Sup) -> None:

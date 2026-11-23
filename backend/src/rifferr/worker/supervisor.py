@@ -45,7 +45,7 @@ from rifferr.core.review import GateDecision
 from rifferr.engine.events import Event, EventSink, profile_stream
 from rifferr.engine.undo import run_entries, undoable
 from rifferr.trust import workflow_hash
-from rifferr.worker.gates import cancel_lanes, reject_gate_lanes, settle
+from rifferr.worker.gates import cancel_lanes, cancel_pending_items, reject_gate_lanes, settle
 from rifferr.worker.protocol import (
     HUNG_AFTER,
     MAX_MESSAGE,
@@ -769,7 +769,11 @@ class WorkerSupervisor:
         return decided
 
     def start(self) -> None:
-        """Start background work: the review-gate deadline timer (REVIEW-9)."""
+        """Start background work: the review-gate deadline timer (REVIEW-9). First cancel
+        what ended runs left pending, since nobody can decide it any more."""
+        for run_id in self.db.ended_runs_with_pending_items():
+            log.warning("run %s has ended; cancelling the reviews it left pending", run_id)
+            cancel_pending_items(self.db, run_id)
         if self._gate_timer is None:
             self._gate_timer = asyncio.create_task(self._gate_timer_loop())
 
@@ -818,12 +822,7 @@ class WorkerSupervisor:
         if self.db.cancel_waiting(run_id):
             self._reject_holds(run_id, job.payload.get("holds"))
             cancel_lanes(self.db, run_id, lambda t, step, d: self._emit_run(run_id, t, step, d))
-            AppReviewGates(self.db).cancel_for_run(run_id)  # REVIEW-10
-            AppImportDecisions(self.db).cancel_for_run(run_id)  # IMPORT-UI-14
-            AppCleanupDecisions(self.db).cancel_for_run(run_id)  # FILES-CLEANUP-14
-            AppCoverReviews(self.db).cancel_for_run(run_id)  # COVERS-SEARCH-14
-            AppMoveConflicts(self.db).cancel_for_run(run_id)  # LIBRARY-MOVE-5a
-            AppPruneDecisions(self.db).cancel_for_run(run_id)  # LIBRARY-PRUNE-3
+            cancel_pending_items(self.db, run_id)
             seq = self.db.last_seq(run_id) + 1
             self._persist(self._event(run_id, seq, "run.finished", {"status": "cancelled"}))
             return
@@ -966,6 +965,7 @@ class WorkerSupervisor:
                 # e.g. a review decision: its run stays waiting_review
                 self._job_failed(job, reason)
                 continue
+            cancel_pending_items(self.db, job.run)
             seq = self.db.last_seq(job.run) + 1
             data: dict[str, JsonValue] = {"status": "failed", "reason": reason, "error": error}
             self._persist(self._event(job.run, seq, "run.finished", data))

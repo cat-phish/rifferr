@@ -413,6 +413,25 @@ class AppDB:
         ).fetchone()
         return _job(row) if row else None
 
+    def ended_runs_with_pending_items(self) -> list[str]:
+        """Runs that have ended but still own pending review items: what a run that ended
+        before it could cancel them (a crash, an older version) left behind."""
+        tables = (
+            "review_gates",
+            "import_decisions",
+            "cleanup_decisions",
+            "prune_decisions",
+            "cover_reviews",
+            "move_conflicts",
+        )
+        pending = " UNION ".join(f"SELECT run_id FROM {t} WHERE state = 'pending'" for t in tables)
+        rows = self._conn.execute(
+            f"SELECT DISTINCT j.run_id FROM jobs j JOIN ({pending}) p ON p.run_id = j.run_id"
+            " WHERE j.kind = 'run' AND j.state IN ('succeeded', 'failed', 'cancelled')"
+            " ORDER BY j.run_id"
+        ).fetchall()
+        return [str(r["run_id"]) for r in rows]
+
     def busy_ids(self) -> set[str]:
         """Ids of waiting items a decision job holds right now (REVIEW-QUEUE-19): decision
         rows claimed by any job but a lookup, and ChangeSets with a queued or running

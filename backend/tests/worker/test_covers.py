@@ -3,6 +3,7 @@ supervisor (S-COVERS-SEARCH COVERS-SEARCH-12 to -15, -21)."""
 
 from __future__ import annotations
 
+import sqlite3
 from collections.abc import AsyncIterator, Mapping
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,7 @@ from rifferr.core.covers import ART_FIELD, CoverCandidate, CoverQuery, sha256_he
 from rifferr.core.selection import Selection
 from rifferr.covers.http import CoverHttp
 from rifferr.engine import StepTypeRegistry
+from rifferr.engine.events import Event
 from rifferr.profile_store import config_root, load_profile
 from rifferr.steps.covers_search import CoversSearchStep
 from rifferr.steps.review import ReviewStep
@@ -233,3 +235,42 @@ async def test_COVERS_SEARCH_1_unknown_providers_fail_the_step(h: CoverHarness) 
     await h.until(lambda: h.state() == "failed")
     finished = h.events("run.step.finished")[-1].data
     assert "no cover provider named nosuch" in str(finished.get("error"))
+
+
+async def test_COVERS_SEARCH_14_a_crashed_run_cancels_its_reviews(
+    h: CoverHarness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # An engine error (e.g. "database is locked") after B went to review must not
+    # leave B's review pending on a failed run, where it can never be decided.
+    original = Worker._record_run_state  # pyright: ignore[reportPrivateUsage]
+
+    def locked(self: Worker, event: Event) -> None:
+        if event.type == "run.waiting_review":
+            raise sqlite3.OperationalError("database is locked")
+        original(self, event)
+
+    monkeypatch.setattr(Worker, "_record_run_state", locked)
+    h.album("B")
+    h.submit(step(", choose: review"))
+    await h.until(lambda: h.state() == "failed")
+    (requested,) = h.events("cover.requested")
+    assert h.reviews.pending(run_id=RUN) == []
+    stored = h.reviews.get(str(requested.data["review_id"]))
+    assert stored is not None
+    assert stored.state == "cancelled"
+
+
+async def test_COVERS_SEARCH_14_start_cancels_reviews_an_ended_run_left_pending(
+    h: CoverHarness,
+) -> None:
+    # As an older version left it: the run failed, its review stayed pending.
+    h.album("B")
+    h.submit(step(", choose: review"))
+    await h.until(lambda: h.state() == "waiting_review")
+    (review,) = h.reviews.pending(run_id=RUN)
+    h.db.cancel_waiting(RUN)  # ends the run without touching its reviews
+    assert h.reviews.pending(run_id=RUN) != []
+    h.supervisor.start()
+    stored = h.reviews.get(review.id)
+    assert stored is not None
+    assert stored.state == "cancelled"
