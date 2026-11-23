@@ -1064,6 +1064,14 @@
             },
             "title": "Registered",
             "type": "array"
+          },
+          "search_links": {
+            "description": "Manual search pages, in order (COVER-PICKER-20)",
+            "items": {
+              "$ref": "#/components/schemas/SearchLink"
+            },
+            "title": "Search Links",
+            "type": "array"
           }
         },
         "required": [
@@ -5467,6 +5475,29 @@
           "errors"
         ],
         "title": "ScriptSummary",
+        "type": "object"
+      },
+      "SearchLink": {
+        "additionalProperties": false,
+        "description": "A manual search page the picker links to, filled from its query (COVER-PICKER-20).",
+        "properties": {
+          "name": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "url": {
+            "description": "http(s) URL; {artist}, {album}, {year}, {catalognum}, {barcode} and {query} are filled in, percent-encoded",
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "url"
+        ],
+        "title": "SearchLink",
         "type": "object"
       },
       "ShowFields": {

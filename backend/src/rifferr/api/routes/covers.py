@@ -539,6 +539,7 @@ async def cover_providers(profile: str, state: State) -> CoverProvidersView:
         ],
         registered=sorted(state.covers.providers),
         profile_hash=profile_file_hash(state.config_root, p.name),
+        search_links=p.covers.search_links,
     )
 
 

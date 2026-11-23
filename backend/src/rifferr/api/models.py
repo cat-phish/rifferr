@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, StringConstraints
 
 from rifferr.appdb import JobState
 from rifferr.core.changeset import ChangeSet, ChangeSetState
-from rifferr.core.covers import CoverChoice, CoverQuery, CoverReview, RankedCandidate
+from rifferr.core.covers import CoverChoice, CoverQuery, CoverReview, RankedCandidate, SearchLink
 from rifferr.core.files import CleanupChoice, CleanupDecision
 from rifferr.core.imports import (
     MAX_LOOKUP_IDS,
@@ -708,6 +708,10 @@ class CoverProvidersView(_Model):
     providers: list[CoverProviderOrder] = Field(description="In the profile's order")
     registered: list[str] = Field(description="Every installed cover provider")
     profile_hash: str = Field(description="sha256 of profile.yaml as read")
+    search_links: list[SearchLink] = Field(
+        default_factory=list[SearchLink],
+        description="Manual search pages, in order (COVER-PICKER-20)",
+    )
 
 
 class CoverProvidersBody(_Model):

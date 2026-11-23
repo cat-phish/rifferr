@@ -332,3 +332,49 @@ async def test_COVER_PICKER_16_album_art_has_an_etag(
         "/api/albums/a1/art", params={"profile": "main"}, headers={"if-none-match": f'"{sha}"'}
     )
     assert (again.status_code, again.content) == (304, b"")
+
+
+# -- COVER-PICKER-20, -21: manual search links --------------------------------------------
+
+
+def test_COVER_PICKER_21_default_search_links_are_google_images_and_amazon() -> None:
+    links = CoverSettings().search_links
+    assert [link.name for link in links] == ["Google Images", "Amazon"]
+    assert all(link.url.startswith("https://") and "{query}" in link.url for link in links)
+    assert CoverSettings.model_validate({"search_links": []}).search_links == []
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "javascript:alert({query})",
+        "ftp://example.com/?q={query}",
+        "https://{artist}.example.com/",
+        "https://example.com{album}/x",
+        "https://example.com/?q={title}",
+        "https://example.com/?q={query",
+        "example.com/?q={query}",
+    ],
+)
+def test_COVER_PICKER_21_bad_search_link_templates_are_refused(url: str) -> None:
+    with pytest.raises(ValueError, match="search link"):
+        CoverSettings.model_validate({"search_links": [{"name": "X", "url": url}]})
+
+
+def test_COVER_PICKER_21_search_link_names_are_unique() -> None:
+    link = {"name": "Shop", "url": "https://shop.example/?q={query}"}
+    with pytest.raises(ValueError, match="once"):
+        CoverSettings.model_validate({"search_links": [link, link]})
+
+
+async def test_COVER_PICKER_21_covers_route_returns_the_search_links(api: Api) -> None:
+    yaml = profile_dir(config_root(), "main") / "profile.yaml"
+    yaml.write_text(
+        yaml.read_text()
+        + "covers:\n  search_links:\n"
+        + '    - {name: Discogs, url: "https://www.discogs.com/search/?q={query}"}\n'
+    )
+    view = (await api.client.get("/api/profiles/main/covers")).json()
+    assert view["search_links"] == [
+        {"name": "Discogs", "url": "https://www.discogs.com/search/?q={query}"}
+    ]

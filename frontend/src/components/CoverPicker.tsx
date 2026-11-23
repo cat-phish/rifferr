@@ -38,6 +38,7 @@ import {
   rankCandidates,
   sizeLabel,
   toBase64,
+  searchLinkUrl,
 } from "../lib/covers";
 import { tc } from "../theme";
 import { jobOf, useMarkDecided } from "./Decided";
@@ -651,6 +652,20 @@ function PickerBody({
         <Text size="xs" c="dimmed">
           or drop an image here, or press Ctrl+V (⌘V)
         </Text>
+        {(view.search_links ?? []).map((link) => (
+          <Button
+            key={link.name}
+            component="a"
+            href={searchLinkUrl(link.url, query)}
+            target="_blank"
+            rel="noopener noreferrer"
+            size="xs"
+            variant="subtle"
+            data-testid="search-link"
+          >
+            Search {link.name}
+          </Button>
+        ))}
         {hiddenCount > 0 || showHidden ? (
           <Checkbox
             size="xs"

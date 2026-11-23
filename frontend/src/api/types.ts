@@ -49,6 +49,7 @@ export type MoveConflict = S["MoveConflict"];
 export type RankedCandidate = S["RankedCandidate"];
 export type CoverQuery = S["CoverQuery"];
 export type CoverProvidersView = S["CoverProvidersView"];
+export type SearchLink = S["SearchLink"];
 export type CoverQueryAnswer = S["CoverQueryAnswer"];
 export type CleanupEntry = S["CleanupEntry"];
 export type InboxFolder = S["InboxFolder"];

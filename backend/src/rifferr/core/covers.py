@@ -83,6 +83,46 @@ def _default_providers() -> list[ProviderSetting]:
     return [ProviderSetting(name=n) for n in BUILTIN_PROVIDERS]
 
 
+SEARCH_LINK_FIELDS: Final = frozenset({"artist", "album", "year", "catalognum", "barcode", "query"})
+_PLACEHOLDER = re.compile(r"\{([^{}]*)\}")
+
+
+class SearchLink(BaseModel):
+    """A manual search page the picker links to, filled from its query (COVER-PICKER-20)."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    name: str = Field(min_length=1, max_length=40)
+    url: str = Field(
+        description="http(s) URL; {artist}, {album}, {year}, {catalognum}, "
+        "{barcode} and {query} are filled in, percent-encoded"
+    )
+
+    @field_validator("url")
+    @classmethod
+    def _check_url(cls, url: str) -> str:
+        scheme, sep, rest = url.partition("://")
+        if not sep or scheme.lower() not in ("http", "https"):
+            raise ValueError("a search link must start with https:// or http://")
+        host = rest.split("/", 1)[0].split("?", 1)[0].split("#", 1)[0]
+        if not host or "{" in host or "}" in host:
+            raise ValueError("a search link's host can't be empty or hold a placeholder")
+        names = _PLACEHOLDER.findall(url)
+        unknown = sorted(set(names) - SEARCH_LINK_FIELDS)
+        if unknown:
+            raise ValueError(f"unknown placeholder {{{unknown[0]}}} in a search link")
+        if "{" in _PLACEHOLDER.sub("", url) or "}" in _PLACEHOLDER.sub("", url):
+            raise ValueError("unbalanced { or } in a search link")
+        return url
+
+
+def _default_search_links() -> list[SearchLink]:
+    return [
+        SearchLink(name="Google Images", url="https://www.google.com/search?tbm=isch&q={query}"),
+        SearchLink(name="Amazon", url="https://www.amazon.com/s?k={query}&i=popular"),
+    ]
+
+
 class CoverSettings(BaseModel):
     """``covers`` in ``profile.yaml`` (COVERS-SEARCH-5, -7 to -11)."""
 
@@ -105,6 +145,19 @@ class CoverSettings(BaseModel):
     providers: list[ProviderSetting] = Field(
         default_factory=_default_providers, description="In order; the order breaks ties"
     )
+
+    search_links: list[SearchLink] = Field(
+        default_factory=_default_search_links,
+        description="Manual search pages the cover picker links to (COVER-PICKER-20)",
+    )
+
+    @field_validator("search_links")
+    @classmethod
+    def _unique_links(cls, links: list[SearchLink]) -> list[SearchLink]:
+        names = [link.name for link in links]
+        if len(set(names)) != len(names):
+            raise ValueError("each search link name may be used once")
+        return links
 
     def provider(self, name: str) -> ProviderSetting | None:
         return next((p for p in self.providers if p.name == name), None)

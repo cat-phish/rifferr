@@ -382,3 +382,31 @@ test("COVER_PICKER_12 COVER_PICKER_15 focusable candidates with alt text; a fail
   );
   expect(within(preview).getByRole("button", { name: "Use this cover" })).toBeDisabled();
 });
+
+test("COVER_PICKER_20 search links follow the query form and open in a new tab", async () => {
+  setup(review(), {
+    "GET /api/profiles/main/covers": () => ({
+      ...VIEW,
+      search_links: [
+        { name: "Images", url: "https://images.test/search?q={query}" },
+        { name: "Shop", url: "https://shop.test/s?k={album}&y={year}" },
+      ],
+    }),
+  });
+  renderApp("/review?profile=main");
+  const picker = await openPicker();
+  const links = () => within(picker).getAllByTestId("search-link");
+  expect(links().map((a) => a.textContent)).toEqual(["Search Images", "Search Shop"]);
+  expect(links()[0]).toHaveAttribute("href", "https://images.test/search?q=Artist%20Album");
+  expect(links()[0]).toHaveAttribute("target", "_blank");
+  expect(links()[0]).toHaveAttribute("rel", "noopener noreferrer");
+  fireEvent.change(within(picker).getByLabelText("Album"), { target: { value: "B & C" } });
+  expect(links()[1]).toHaveAttribute("href", "https://shop.test/s?k=B%20%26%20C&y=");
+});
+
+test("COVER_PICKER_21 no search links when the profile lists none", async () => {
+  setup(review());
+  renderApp("/review?profile=main");
+  const picker = await openPicker();
+  expect(within(picker).queryAllByTestId("search-link")).toEqual([]);
+});

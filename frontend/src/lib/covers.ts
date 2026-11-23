@@ -131,3 +131,29 @@ export function imagesFrom(data: DataTransfer | null): { images: File[]; text: b
 }
 
 export const PASTE_LINK_MESSAGE = "Paste an image, not a link: copy the image itself.";
+
+/** The query fields a manual search link can use (COVER-PICKER-20). */
+export interface SearchLinkQuery {
+  artist: string;
+  album: string;
+  year?: number | null;
+  catalognum?: string | null;
+  barcode?: string | null;
+}
+
+/** A search link's URL with its placeholders filled from the query form, each value
+ * percent-encoded as one URL component so it can't leave its parameter (COVER-PICKER-20).
+ * The template was checked by the server (COVER-PICKER-21). */
+export function searchLinkUrl(template: string, q: SearchLinkQuery): string {
+  const values: Record<string, string> = {
+    artist: q.artist.trim(),
+    album: q.album.trim(),
+    year: q.year == null ? "" : String(q.year),
+    catalognum: q.catalognum?.trim() ?? "",
+    barcode: q.barcode?.trim() ?? "",
+  };
+  values.query = [values.artist, values.album].filter((v) => v !== "").join(" ");
+  return template.replace(/\{([a-z]+)\}/g, (whole, name: string) =>
+    name in values ? encodeURIComponent(values[name] ?? "") : whole,
+  );
+}

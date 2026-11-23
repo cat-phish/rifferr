@@ -1619,6 +1619,11 @@ export interface components {
              * @description Every installed cover provider
              */
             registered: string[];
+            /**
+             * Search Links
+             * @description Manual search pages, in order (COVER-PICKER-20)
+             */
+            search_links?: components["schemas"]["SearchLink"][];
         };
         /**
          * CoverQuery
@@ -3278,6 +3283,19 @@ export interface components {
             sha256: string;
             /** Valid */
             valid: boolean;
+        };
+        /**
+         * SearchLink
+         * @description A manual search page the picker links to, filled from its query (COVER-PICKER-20).
+         */
+        SearchLink: {
+            /** Name */
+            name: string;
+            /**
+             * Url
+             * @description http(s) URL; {artist}, {album}, {year}, {catalognum}, {barcode} and {query} are filled in, percent-encoded
+             */
+            url: string;
         };
         /**
          * ShowFields

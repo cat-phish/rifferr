@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RankedCandidate } from "../api/types";
-import { imagesFrom, providerRows, rankCandidates, scoreWith } from "./covers";
+import { imagesFrom, providerRows, rankCandidates, scoreWith, searchLinkUrl } from "./covers";
 import rankCase from "./rank-case.json";
 
 interface CaseCandidate {
@@ -93,5 +93,25 @@ describe("COVER-PICKER-17, -19 clipboard", () => {
       images: [],
       text: true,
     });
+  });
+});
+
+describe("searchLinkUrl (COVER-PICKER-20)", () => {
+  const q = { artist: "Lady Gaga", album: "MAYHEM", year: 2025, catalognum: null, barcode: "" };
+
+  it("COVER_PICKER_20 fills the placeholders percent-encoded from the query form", () => {
+    expect(searchLinkUrl("https://www.google.com/search?tbm=isch&q={query}", q)).toBe(
+      "https://www.google.com/search?tbm=isch&q=Lady%20Gaga%20MAYHEM",
+    );
+    expect(searchLinkUrl("https://x.test/{artist}/{album}?y={year}&c={catalognum}", q)).toBe(
+      "https://x.test/Lady%20Gaga/MAYHEM?y=2025&c=",
+    );
+  });
+
+  it("COVER_PICKER_20 keeps a value inside its own parameter", () => {
+    const tricky = { ...q, artist: "AC/DC & Co?#=", album: "" };
+    expect(searchLinkUrl("https://x.test/s?k={query}&i=popular", tricky)).toBe(
+      "https://x.test/s?k=AC%2FDC%20%26%20Co%3F%23%3D&i=popular",
+    );
   });
 });

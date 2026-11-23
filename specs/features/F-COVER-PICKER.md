@@ -64,6 +64,10 @@ Own images (upload and paste):
 - COVER-PICKER-18: The upload route MUST decode the image and check it as a downloaded one: JPEG or PNG by magic bytes, at most `covers.max_bytes`, and the real size from its header. It keeps the bytes in the cover cache and answers a candidate with provider `upload`, `match_confidence` 1.0, its size, and a `size_score` and `filtered` like any other. The candidate joins the grid at its score (weight 1.0 unless the profile lists `upload`; it isn't a searchable provider) and can be previewed and chosen through -13 or -14 like any other. A bad image answers `422 bad_image` with the reason, and an image that is too small or the wrong shape is still accepted but shown as filtered, so the user can see why.
 - COVER-PICKER-19: Pasted text MUST NOT be fetched. When the clipboard holds a URL or other text and no image, the picker says "Paste an image, not a link: copy the image itself". The server never fetches a client-sent URL (COVERS-SEARCH-20).
 
+Manual search links:
+- COVER-PICKER-20: The picker MUST show one link per entry of the profile's `covers.search_links` (Interfaces), labelled "Search <name>", next to the upload buttons. Each link's URL is its template with the placeholders filled from the query form as it is now, so editing the form changes the links. Placeholders: `{artist}`, `{album}`, `{year}`, `{catalognum}`, `{barcode}`, and `{query}` (artist and album joined by a space). Each value is percent-encoded as one URL component; an empty field fills in as empty. The link opens in a new tab with `rel="noopener noreferrer"`. Rifferr never fetches these URLs: the user finds an image there, copies it, and pastes or uploads it (COVER-PICKER-17).
+- COVER-PICKER-21: Without `covers.search_links` in `profile.yaml`, the list MUST be Google Images and Amazon (Interfaces). An empty list shows no links. Profile validation MUST refuse an entry whose template doesn't start with `https://` or `http://`, has an unknown placeholder, or puts a placeholder in the scheme or host (before the first `/` after `://`), and MUST refuse two entries with the same name. `GET /api/profiles/{profile}/covers` returns the list.
+
 Library grid:
 - COVER-PICKER-16: The library grid in album scope MUST have an "Art" column, shown by default and hideable like the others (TAG-GRID-3), with a small thumbnail of each album's current art. Thumbnails load lazily, only for visible rows, from `GET /api/albums/{id}/art`, which sends `Cache-Control: private, max-age=3600` and an `ETag` of the art's sha256. An album without art shows an empty cell.
 
@@ -168,6 +172,18 @@ Where the build differs from the text above, or adds to it:
   and `e2e/covers.spec.ts`. The e2e profile uses only the `local` provider and a pasted
   image, so no test touches the network. The paste is simulated (B-065).
 
+Manual search links:
+```yaml
+# profile.yaml (COVER-PICKER-20, -21); these two are the defaults
+covers:
+  search_links:
+    - {name: Google Images, url: "https://www.google.com/search?tbm=isch&q={query}"}
+    - {name: Amazon, url: "https://www.amazon.com/s?k={query}&i=popular"}
+    # e.g. another store or region:
+    # - {name: Discogs, url: "https://www.discogs.com/search/?q={query}&type=release"}
+```
+`SearchLink {name: str (1..40 chars), url: str}` in `CoverSettings` (S-COVERS-SEARCH).
+
 ## Examples
 Review mode. "Boards of Canada - Geogaddi" waits because nothing scored 0.6 or more. The
 user opens it from the notification and the picker shows the three stored candidates. They
@@ -190,6 +206,9 @@ Saving defaults. The user turns Deezer off, sets Cover Art Archive to 3 and save
 the next `covers.search` step uses weight 3.
 
 ## Extensibility
+- Manual search links are profile data (COVER-PICKER-20, -21). Adding a site, a region or a
+  different query shape is a `profile.yaml` edit, with no code change. Editing them from a
+  settings screen comes later.
 - A third-party provider (`rifferr.cover_providers` entry point) appears in the provider
   panel with no UI change. Its status, candidates and weight work like the built-ins.
 - The picker is one component used by the review queue and the library grid. Other screens
@@ -208,6 +227,12 @@ the next `covers.search` step uses weight 3.
   key. It is JSON-only behind the F-SECURITY middleware. It is the first route that writes
   `profile.yaml` (open question 1).
 - Provider settings returned by `GET …/covers` leave out secret references (PROFILE-4).
+- Manual search links (COVER-PICKER-20) are plain links the user clicks. Rifferr never
+  fetches them, and they aren't providers, so COVERS-SEARCH-20 (no client-sent URL fetched)
+  and the provider host lists are unchanged. Templates are profile data, never client input.
+  Only `http(s)` templates are accepted, and filled values are percent-encoded into the path
+  or query only, so album metadata can't change the scheme or host or break out of its
+  parameter.
 - Uploads arrive as base64 JSON, so no multipart or other non-JSON body is accepted
   anywhere. The request body is capped at `covers.max_bytes` × 4/3 plus a small overhead
   before decoding. Uploaded bytes are checked by magic bytes, served only through the image
@@ -243,6 +268,8 @@ All resolved by the user on 2026-11-14:
 - [x] `lib/covers.ts` (`rankCandidates`) with a ranking case shared with the server's test
 - [x] `CoverPicker`, `ProviderPanel`, `CoverPreview`; review queue uses the picker
 - [x] upload route (base64 JSON, checks, `upload` candidates); file picker, drop and paste in the picker
+- [x] `SearchLink` and `covers.search_links` (defaults, validation) in `CoverSettings`; schemas, TS client
+- [x] search links in the picker, filled from the query form (`lib/covers.ts` `searchLinkUrl`)
 - [x] library grid: "Change cover" and the "Art" column
 - [x] Playwright: review-mode pick through the `local` provider (no network), weight re-rank, paste an image, album-mode change and undo
 - [x] coverage row 6 note, roadmap, overview status
