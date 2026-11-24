@@ -15,6 +15,7 @@ from pydantic import JsonValue
 
 from rifferr.appdb import (
     AppChangeSets,
+    AppChoiceReviews,
     AppCleanupDecisions,
     AppCoverReviews,
     AppDB,
@@ -124,8 +125,8 @@ def _close_leftovers(db: AppDB, run_id: str, emit: EmitRun) -> None:
 
 def cancel_pending_items(db: AppDB, run_id: str) -> None:
     """Nothing waits on a run that has ended, however it ended: its proposed ChangeSets
-    are rejected and its pending gates, import decisions, cleanups, prunes, cover reviews
-    and move conflicts cancelled, so none is left on screen that can never be decided
+    are rejected and its pending gates, import decisions, cleanups, prunes, cover reviews,
+    choice reviews and move conflicts cancelled, so none is left on screen that can never be decided
     (CHANGESET-7, REVIEW-10, IMPORT-UI-14, FILES-CLEANUP-14, LIBRARY-PRUNE-3,
     COVERS-SEARCH-14, LIBRARY-MOVE-5a)."""
     changesets = AppChangeSets(db)
@@ -136,6 +137,7 @@ def cancel_pending_items(db: AppDB, run_id: str) -> None:
     AppCleanupDecisions(db).cancel_for_run(run_id)
     AppPruneDecisions(db).cancel_for_run(run_id)
     AppCoverReviews(db).cancel_for_run(run_id)
+    AppChoiceReviews(db).cancel_for_run(run_id)
     AppMoveConflicts(db).cancel_for_run(run_id)
 
 

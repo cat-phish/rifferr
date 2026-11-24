@@ -46,6 +46,7 @@ export type PruneDecision = S["PruneDecision"];
 export type PruneAlbum = S["PruneAlbum"];
 export type CoverReview = S["CoverReview"];
 export type MoveConflict = S["MoveConflict"];
+export type ChoiceReview = S["ChoiceReview"];
 export type RankedCandidate = S["RankedCandidate"];
 export type CoverQuery = S["CoverQuery"];
 export type CoverProvidersView = S["CoverProvidersView"];

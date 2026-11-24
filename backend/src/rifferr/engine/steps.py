@@ -19,6 +19,7 @@ from rifferr.core.changeset import (
     Stamp,
     TargetRef,
 )
+from rifferr.core.choices import ChoiceOffer, ChoiceOnReject, CustomField, LearnSettings
 from rifferr.core.covers import CoverQuery, RankedCandidate
 from rifferr.core.files import BusyFolder, CleanupChoice, CleanupEntry, CleanupOptions
 from rifferr.core.imports import ImportQuestion, TimeoutAction
@@ -28,7 +29,7 @@ from rifferr.core.profile import ProfileFile, Secret
 from rifferr.core.prune import PruneAlbum
 from rifferr.core.review import GateDecision, GateRequest, OnReject
 from rifferr.core.selection import Scope, Selection
-from rifferr.core.snapshot import AlbumSnapshot
+from rifferr.core.snapshot import AlbumSnapshot, FieldValue
 from rifferr.core.workflow import StepSpec, StepTypeInfo
 from rifferr.engine.changesets import SnapshotIndex
 from rifferr.engine.events import ENGINE_EVENTS
@@ -207,6 +208,29 @@ class CoverRequest:
 RequestCover = Callable[[CoverRequest], str]
 
 
+@dataclass(frozen=True)
+class ChoiceRequest:
+    """An album waiting for a person to choose an outcome (S-TAGS-CHOOSE TAGS-CHOOSE-3)."""
+
+    album_id: str
+    label: str
+    options: list[ChoiceOffer]
+    message: str | None = None
+    shown: Mapping[str, FieldValue] = field(default_factory=dict[str, FieldValue])
+    suggested: str | None = None
+    custom: list[CustomField] = field(default_factory=list[CustomField])
+    known_name: str | None = None
+    known_name_value: str | None = None
+    known_name_option: str | None = None
+    known_name_actions: list[dict[str, Any]] = field(default_factory=list[dict[str, Any]])
+    learn: LearnSettings | None = None
+    on_reject: ChoiceOnReject = "stop"
+
+
+#: The engine's side of ``ctx.request_choice``: request -> review id.
+RequestChoice = Callable[[ChoiceRequest], str]
+
+
 #: The engine's side of ``ctx.request_move_conflict``: plan, settings -> conflict id.
 RequestMoveConflict = Callable[[MovePlan, MoveSettings], str]
 
@@ -269,6 +293,10 @@ def _no_cover(request: CoverRequest) -> str:
     raise StepFailure("this run can't leave cover reviews")
 
 
+def _no_choice(request: ChoiceRequest) -> str:
+    raise StepFailure("this run can't leave choice reviews")
+
+
 def _no_move_conflict(plan: MovePlan, settings: MoveSettings) -> str:
     raise StepFailure("this run can't leave move conflicts")
 
@@ -318,6 +346,7 @@ class StepContext:
         request_cleanup: RequestCleanup | None = None,
         hold_pass: HoldPass | None = None,
         request_cover: RequestCover | None = None,
+        request_choice: RequestChoice | None = None,
         request_move_conflict: RequestMoveConflict | None = None,
         run_input: str = "",
         request_prune: RequestPrune | None = None,
@@ -363,6 +392,7 @@ class StepContext:
         self._request_cleanup = request_cleanup or _no_cleanup
         self._hold_pass = hold_pass or _no_hold_pass
         self._request_cover = request_cover or _no_cover
+        self._request_choice = request_choice or _no_choice
         self._request_move_conflict = request_move_conflict or _no_move_conflict
         self._request_prune = request_prune or _no_prune
         self.removals: RemovalJournal = removals or InMemoryRemovals()
@@ -518,6 +548,15 @@ class StepContext:
         """Leave an album in the review queue to pick its cover; only that album's lane
         waits (COVERS-SEARCH-14). Returns the review id."""
         return self._request_cover(request)
+
+    def request_choice(self, request: ChoiceRequest) -> str:
+        """Leave an album in the review queue to choose one of ``request.options`` or type
+        values; only that album's lane waits (S-TAGS-CHOOSE TAGS-CHOOSE-3). The album must
+        come from ``albums()``. The decision becomes one ChangeSet applied through the
+        engine. Returns the review id."""
+        if self._snapshots.album(request.album_id) is None:
+            raise StepFailure(f"album {request.album_id} is not one of this step's targets")
+        return self._request_choice(request)
 
     def request_move_conflict(self, plan: MovePlan, settings: MoveSettings) -> str:
         """Leave a conflicted album in the review queue; only its lane waits until it is

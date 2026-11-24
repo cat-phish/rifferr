@@ -274,6 +274,13 @@ class BeetsBackend:
         """ALBUM-FACTS-7: ``rifferr.artist_names``, re-read when the file changes."""
         return album_fact_config.load_names(album_fact_config.names_path(self.beetsdir))
 
+    def add_artist_name(self, name: str) -> str:
+        """TAGS-CHOOSE-13: append to ``rifferr.artist_names``' ``names`` (ruamel round trip)."""
+        path = album_fact_config.names_path(self.beetsdir)
+        if path is None:
+            raise ValueError("set rifferr.artist_names in the beets config to remember names")
+        return album_fact_config.add_name(path, name)
+
     def lookup_problem(self) -> str | None:
         """BEETS-IMPORT-19: with no metadata source plugin loaded, beets' autotagger has
         nothing to search. In beets 2.x MusicBrainz is the ``musicbrainz`` plugin, loaded

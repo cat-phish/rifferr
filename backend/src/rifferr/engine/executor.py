@@ -31,6 +31,7 @@ from rifferr.core.changeset import (
     Stamp,
     TargetRef,
 )
+from rifferr.core.choices import ChoiceReview
 from rifferr.core.covers import CoverReview
 from rifferr.core.files import BusyFolder, CleanupDecision
 from rifferr.core.ids import new_ulid
@@ -69,6 +70,7 @@ from rifferr.engine.changesets import (
     new_changeset,
     proposed_event,
 )
+from rifferr.engine.choices import ChoiceReviewStore, InMemoryChoiceStore
 from rifferr.engine.cleanup import CleanupDecisionStore, InMemoryCleanupStore
 from rifferr.engine.covers import CoverReviewStore, InMemoryCoverStore
 from rifferr.engine.events import Event, EventSink
@@ -92,6 +94,7 @@ from rifferr.engine.prune import (
 from rifferr.engine.review import GateStore, InMemoryGateStore, conflicted_for, fold_changes
 from rifferr.engine.run import PassRecord, Run, RunState, Scalar, StepRecord
 from rifferr.engine.steps import (
+    ChoiceRequest,
     CleanupRequest,
     CoverRequest,
     FileExtras,
@@ -196,6 +199,7 @@ class Engine:
         imports: ImportDecisionStore | None = None,
         cleanups: CleanupDecisionStore | None = None,
         covers: CoverReviewStore | None = None,
+        choices: ChoiceReviewStore | None = None,
         moves: MoveConflictStore | None = None,
         prunes: PruneDecisionStore | None = None,
         removals: RemovalJournal | None = None,
@@ -205,6 +209,7 @@ class Engine:
         self.removals: RemovalJournal = removals or InMemoryRemovals()
         self.moves: MoveConflictStore = moves or InMemoryMoveConflictStore()
         self.covers: CoverReviewStore = covers or InMemoryCoverStore()
+        self.choices: ChoiceReviewStore = choices or InMemoryChoiceStore()
         self.cleanups: CleanupDecisionStore = cleanups or InMemoryCleanupStore()
         self.imports: ImportDecisionStore = imports or InMemoryImportStore()
         self.lanes: LaneStore = lanes or InMemoryLaneStore()
@@ -541,7 +546,16 @@ class Engine:
     def _hold(
         self, state: _RunState, key: str, kind: str, ref: str, label: str | None = None
     ) -> None:
-        if kind not in ("changeset", "gate", "import", "cleanup", "cover", "move", "prune"):
+        if kind not in (
+            "changeset",
+            "gate",
+            "import",
+            "cleanup",
+            "cover",
+            "move",
+            "prune",
+            "choice",
+        ):
             raise ValueError(f"unknown hold kind {kind!r}")
         state.lane_holds.setdefault(key, []).append(Hold(cast(Any, kind), ref))
         if label is not None:
@@ -635,6 +649,41 @@ class Engine:
             "reason": review.reason,
         }
         self._emit(run, "cover.requested", spec.id, data)
+        return review.id
+
+    def _request_choice(self, state: _RunState, spec: StepSpec, request: ChoiceRequest) -> str:
+        """TAGS-CHOOSE-3: store the review and hold only that album's lane."""
+        run = state.run
+        review = ChoiceReview(
+            id=new_ulid(),
+            profile=run.profile,
+            run_id=run.id,
+            step_id=spec.id,
+            album_id=request.album_id,
+            label=request.label,
+            message=request.message,
+            shown=dict(request.shown),
+            options=list(request.options),
+            suggested=request.suggested,
+            custom=list(request.custom),
+            known_name=request.known_name,
+            known_name_value=request.known_name_value,
+            known_name_option=request.known_name_option,
+            known_name_actions=list(request.known_name_actions),
+            learn=request.learn,
+            on_reject=request.on_reject,
+            created_at=self.clock.now(),
+        )
+        self.choices.add(review)
+        self._hold(state, review.album_id, "choice", review.id)
+        data: dict[str, JsonValue] = {
+            "review_id": review.id,
+            "album_id": review.album_id,
+            "label": review.label,
+            "options": len(review.options),
+            "suggested": review.suggested,
+        }
+        self._emit(run, "choice.requested", spec.id, data)
         return review.id
 
     def _request_move_conflict(
@@ -765,6 +814,7 @@ class Engine:
                 imported_folder=state.imported,
                 request_cleanup=lambda request: self._request_cleanup(state, spec, request),
                 request_cover=lambda request: self._request_cover(state, spec, request),
+                request_choice=lambda request: self._request_choice(state, spec, request),
                 request_move_conflict=lambda plan, settings: self._request_move_conflict(
                     state, spec, plan, settings
                 ),

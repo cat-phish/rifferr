@@ -734,6 +734,75 @@
               "type": "string"
             },
             "uses": {
+              "const": "tags.choose",
+              "title": "Uses"
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Backend condition (a beets query).",
+              "title": "When"
+            },
+            "with": {
+              "$ref": "#/$defs/With_tags_choose"
+            }
+          },
+          "required": [
+            "id",
+            "uses"
+          ],
+          "title": "Step: tags.choose",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One entry of ``steps:`` (WORKFLOW-2, WORKFLOW-3).",
+          "properties": {
+            "apply": {
+              "default": "review",
+              "description": "Whether this step's ChangeSets apply automatically or wait for review. Ignored by steps that don't produce ChangeSets.",
+              "enum": [
+                "auto",
+                "review"
+              ],
+              "title": "Apply",
+              "type": "string"
+            },
+            "id": {
+              "pattern": "^[a-z][a-z0-9_-]*$",
+              "title": "Id",
+              "type": "string"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Name"
+            },
+            "on_error": {
+              "default": "stop",
+              "enum": [
+                "stop",
+                "skip",
+                "continue"
+              ],
+              "title": "On Error",
+              "type": "string"
+            },
+            "uses": {
               "const": "tags.script",
               "title": "Uses"
             },
@@ -1946,6 +2015,1052 @@
         "run"
       ],
       "title": "ShellParams",
+      "type": "object"
+    },
+    "With_tags_choose": {
+      "additionalProperties": false,
+      "description": "``with:`` of a ``tags.choose`` step.",
+      "properties": {
+        "custom": {
+          "description": "Fields offered for free entry",
+          "items": {
+            "type": "string"
+          },
+          "title": "Custom",
+          "type": "array"
+        },
+        "known_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Offer 'This is one artist': remember this field's value in the artist-name rules (TAGS-CHOOSE-13)",
+          "title": "Known Name"
+        },
+        "known_name_option": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The label 'This is one artist' decides with; when it names an option, that option's actions apply, otherwise the album stays unchanged",
+          "title": "Known Name Option"
+        },
+        "learn": {
+          "default": false,
+          "description": "Add a rule to the rules file for a custom decision (TAGS-CHOOSE-10)",
+          "title": "Learn",
+          "type": "boolean"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Shown for each album: a beets template",
+          "title": "Message",
+          "x-rifferr-template": true
+        },
+        "on_reject": {
+          "default": "stop",
+          "description": "On reject, stop the album's lane or let it go on",
+          "enum": [
+            "stop",
+            "continue"
+          ],
+          "title": "On Reject",
+          "type": "string"
+        },
+        "options": {
+          "items": {
+            "$ref": "#/$defs/With_tags_choose__ChoiceOption"
+          },
+          "title": "Options",
+          "type": "array"
+        },
+        "options_from": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Rules file with more options, relative to the profile's rules/",
+          "title": "Options From"
+        },
+        "query": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Albums to ask about: a backend query (a beets query) that may use album facts (C-ALBUM-FACTS). Default: every album of the step",
+          "title": "Query"
+        },
+        "rank_by": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "List field: rules are ranked by how many of its values they match",
+          "title": "Rank By"
+        },
+        "show": {
+          "description": "Fields to show",
+          "items": {
+            "type": "string"
+          },
+          "title": "Show",
+          "type": "array"
+        },
+        "when_single": {
+          "default": "review",
+          "description": "auto: apply the only option that changes something without review (not with custom fields)",
+          "enum": [
+            "review",
+            "auto"
+          ],
+          "title": "When Single",
+          "type": "string"
+        }
+      },
+      "title": "TagsChooseParams",
+      "type": "object"
+    },
+    "With_tags_choose__AppendSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "title": "Field",
+          "type": "string"
+        },
+        "values": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Values",
+          "type": "array",
+          "x-rifferr-template": true
+        }
+      },
+      "required": [
+        "field",
+        "values"
+      ],
+      "title": "AppendSpec",
+      "type": "object"
+    },
+    "With_tags_choose__AppendUniqueAction": {
+      "additionalProperties": false,
+      "properties": {
+        "append_unique": {
+          "$ref": "#/$defs/With_tags_choose__AppendSpec"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Label for logs and preview",
+          "title": "Name"
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "enum": [
+                "album",
+                "item"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Default: the script's scope",
+          "title": "Scope"
+        },
+        "when": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Backend query (a beets query)",
+          "title": "When"
+        }
+      },
+      "required": [
+        "append_unique"
+      ],
+      "title": "AppendUniqueAction",
+      "type": "object"
+    },
+    "With_tags_choose__CaseAction": {
+      "additionalProperties": false,
+      "properties": {
+        "case": {
+          "$ref": "#/$defs/With_tags_choose__CaseSpec"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Label for logs and preview",
+          "title": "Name"
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "enum": [
+                "album",
+                "item"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Default: the script's scope",
+          "title": "Scope"
+        },
+        "when": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Backend query (a beets query)",
+          "title": "When"
+        }
+      },
+      "required": [
+        "case"
+      ],
+      "title": "CaseAction",
+      "type": "object"
+    },
+    "With_tags_choose__CaseSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Fields",
+          "type": "array"
+        },
+        "keep": {
+          "description": "Words left in exactly this form (matched case-insensitively)",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Keep",
+          "type": "array"
+        },
+        "style": {
+          "enum": [
+            "lower",
+            "upper",
+            "title",
+            "sentence"
+          ],
+          "title": "Style",
+          "type": "string"
+        }
+      },
+      "required": [
+        "fields",
+        "style"
+      ],
+      "title": "CaseSpec",
+      "type": "object"
+    },
+    "With_tags_choose__ChoiceOption": {
+      "additionalProperties": false,
+      "description": "One outcome a person can choose (TAGS-CHOOSE-1).",
+      "properties": {
+        "actions": {
+          "items": {
+            "oneOf": [
+              {
+                "$ref": "#/$defs/With_tags_choose__SetAction"
+              },
+              {
+                "$ref": "#/$defs/With_tags_choose__CopyAction"
+              },
+              {
+                "$ref": "#/$defs/With_tags_choose__MoveAction"
+              },
+              {
+                "$ref": "#/$defs/With_tags_choose__ReplaceAction"
+              },
+              {
+                "$ref": "#/$defs/With_tags_choose__SplitAction"
+              },
+              {
+                "$ref": "#/$defs/With_tags_choose__JoinAction"
+              },
+              {
+                "$ref": "#/$defs/With_tags_choose__CaseAction"
+              },
+              {
+                "$ref": "#/$defs/With_tags_choose__FromFilenameAction"
+              },
+              {
+                "$ref": "#/$defs/With_tags_choose__DeleteAction"
+              },
+              {
+                "$ref": "#/$defs/With_tags_choose__AppendUniqueAction"
+              }
+            ]
+          },
+          "minItems": 1,
+          "title": "Actions",
+          "type": "array"
+        },
+        "label": {
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "suggest": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/With_tags_choose__Suggest"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Preselect this option when its query matches (TAGS-CHOOSE-2)"
+        }
+      },
+      "required": [
+        "label",
+        "actions"
+      ],
+      "title": "ChoiceOption",
+      "type": "object"
+    },
+    "With_tags_choose__CopyAction": {
+      "additionalProperties": false,
+      "properties": {
+        "copy": {
+          "$ref": "#/$defs/With_tags_choose__CopySpec"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Label for logs and preview",
+          "title": "Name"
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "enum": [
+                "album",
+                "item"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Default: the script's scope",
+          "title": "Scope"
+        },
+        "when": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Backend query (a beets query)",
+          "title": "When"
+        }
+      },
+      "required": [
+        "copy"
+      ],
+      "title": "CopyAction",
+      "type": "object"
+    },
+    "With_tags_choose__CopySpec": {
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "title": "From",
+          "type": "string"
+        },
+        "to": {
+          "title": "To",
+          "type": "string"
+        }
+      },
+      "required": [
+        "from",
+        "to"
+      ],
+      "title": "CopySpec",
+      "type": "object"
+    },
+    "With_tags_choose__DeleteAction": {
+      "additionalProperties": false,
+      "properties": {
+        "delete": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Delete",
+          "type": "array"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Label for logs and preview",
+          "title": "Name"
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "enum": [
+                "album",
+                "item"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Default: the script's scope",
+          "title": "Scope"
+        },
+        "when": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Backend query (a beets query)",
+          "title": "When"
+        }
+      },
+      "required": [
+        "delete"
+      ],
+      "title": "DeleteAction",
+      "type": "object"
+    },
+    "With_tags_choose__FromFilenameAction": {
+      "additionalProperties": false,
+      "properties": {
+        "from_filename": {
+          "$ref": "#/$defs/With_tags_choose__FromFilenameSpec"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Label for logs and preview",
+          "title": "Name"
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "enum": [
+                "album",
+                "item"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Default: the script's scope",
+          "title": "Scope"
+        },
+        "when": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Backend query (a beets query)",
+          "title": "When"
+        }
+      },
+      "required": [
+        "from_filename"
+      ],
+      "title": "FromFilenameAction",
+      "type": "object"
+    },
+    "With_tags_choose__FromFilenameSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "pattern": {
+          "description": "Literal text and $field placeholders, e.g. '$track - $title'",
+          "title": "Pattern",
+          "type": "string"
+        },
+        "source": {
+          "default": "stem",
+          "enum": [
+            "stem",
+            "name",
+            "path"
+          ],
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "pattern"
+      ],
+      "title": "FromFilenameSpec",
+      "type": "object"
+    },
+    "With_tags_choose__JoinAction": {
+      "additionalProperties": false,
+      "properties": {
+        "join": {
+          "$ref": "#/$defs/With_tags_choose__JoinSpec"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Label for logs and preview",
+          "title": "Name"
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "enum": [
+                "album",
+                "item"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Default: the script's scope",
+          "title": "Scope"
+        },
+        "when": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Backend query (a beets query)",
+          "title": "When"
+        }
+      },
+      "required": [
+        "join"
+      ],
+      "title": "JoinAction",
+      "type": "object"
+    },
+    "With_tags_choose__JoinSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "title": "Field",
+          "type": "string"
+        },
+        "into": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Into"
+        },
+        "with": {
+          "title": "With",
+          "type": "string"
+        }
+      },
+      "required": [
+        "field",
+        "with"
+      ],
+      "title": "JoinSpec",
+      "type": "object"
+    },
+    "With_tags_choose__MoveAction": {
+      "additionalProperties": false,
+      "properties": {
+        "move": {
+          "$ref": "#/$defs/With_tags_choose__CopySpec"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Label for logs and preview",
+          "title": "Name"
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "enum": [
+                "album",
+                "item"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Default: the script's scope",
+          "title": "Scope"
+        },
+        "when": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Backend query (a beets query)",
+          "title": "When"
+        }
+      },
+      "required": [
+        "move"
+      ],
+      "title": "MoveAction",
+      "type": "object"
+    },
+    "With_tags_choose__ReplaceAction": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Label for logs and preview",
+          "title": "Name"
+        },
+        "replace": {
+          "$ref": "#/$defs/With_tags_choose__ReplaceSpec"
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "enum": [
+                "album",
+                "item"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Default: the script's scope",
+          "title": "Scope"
+        },
+        "when": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Backend query (a beets query)",
+          "title": "When"
+        }
+      },
+      "required": [
+        "replace"
+      ],
+      "title": "ReplaceAction",
+      "type": "object"
+    },
+    "With_tags_choose__ReplaceSpec": {
+      "additionalProperties": false,
+      "description": "Literal (``find``) or regex (``regex``) replacement in string values.",
+      "properties": {
+        "fields": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Fields",
+          "type": "array"
+        },
+        "find": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Find"
+        },
+        "flags": {
+          "items": {
+            "enum": [
+              "i",
+              "m",
+              "s"
+            ],
+            "type": "string"
+          },
+          "title": "Flags",
+          "type": "array"
+        },
+        "regex": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Python re pattern; \\1 or \\g<name> in 'with'",
+          "title": "Regex"
+        },
+        "with": {
+          "title": "With",
+          "type": "string"
+        }
+      },
+      "required": [
+        "fields",
+        "with"
+      ],
+      "title": "ReplaceSpec",
+      "type": "object"
+    },
+    "With_tags_choose__SetAction": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Label for logs and preview",
+          "title": "Name"
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "enum": [
+                "album",
+                "item"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Default: the script's scope",
+          "title": "Scope"
+        },
+        "set": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ]
+          },
+          "minProperties": 1,
+          "title": "Set",
+          "type": "object",
+          "x-rifferr-template": true
+        },
+        "when": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Backend query (a beets query)",
+          "title": "When"
+        }
+      },
+      "required": [
+        "set"
+      ],
+      "title": "SetAction",
+      "type": "object"
+    },
+    "With_tags_choose__SplitAction": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Label for logs and preview",
+          "title": "Name"
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "enum": [
+                "album",
+                "item"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Default: the script's scope",
+          "title": "Scope"
+        },
+        "split": {
+          "$ref": "#/$defs/With_tags_choose__SplitSpec"
+        },
+        "when": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Backend query (a beets query)",
+          "title": "When"
+        }
+      },
+      "required": [
+        "split"
+      ],
+      "title": "SplitAction",
+      "type": "object"
+    },
+    "With_tags_choose__SplitSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "by": {
+          "minLength": 1,
+          "title": "By",
+          "type": "string"
+        },
+        "field": {
+          "title": "Field",
+          "type": "string"
+        },
+        "into": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Into"
+        },
+        "strip": {
+          "default": true,
+          "title": "Strip",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "field",
+        "by"
+      ],
+      "title": "SplitSpec",
+      "type": "object"
+    },
+    "With_tags_choose__Suggest": {
+      "additionalProperties": false,
+      "properties": {
+        "when": {
+          "description": "Backend query (a beets query); may use album facts",
+          "minLength": 1,
+          "title": "When",
+          "type": "string"
+        }
+      },
+      "required": [
+        "when"
+      ],
+      "title": "Suggest",
       "type": "object"
     },
     "With_tags_script": {

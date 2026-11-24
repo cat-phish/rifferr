@@ -23,6 +23,7 @@ from pydantic import JsonValue
 
 from rifferr.appdb import (
     AppChangeSets,
+    AppChoiceReviews,
     AppCleanupDecisions,
     AppCoverReviews,
     AppDB,
@@ -192,6 +193,7 @@ class NotificationService:
                 "cleanup",
                 "cover",
                 "move",
+                "choice",
             ) or not isinstance(ref, str):
                 continue
             old = held.items.get(ref)
@@ -481,6 +483,9 @@ class NotificationService:
         if item.kind == "cover":
             cover = AppCoverReviews(self.db).get(item.ref)
             return cover is not None and cover.state == "pending"
+        if item.kind == "choice":
+            choice = AppChoiceReviews(self.db).get(item.ref)
+            return choice is not None and choice.state == "pending"
         if item.kind == "move":
             move = AppMoveConflicts(self.db).get(item.ref)
             return move is not None and move.state == "pending"

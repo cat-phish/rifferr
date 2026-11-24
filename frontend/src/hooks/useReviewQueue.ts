@@ -21,6 +21,8 @@ export const APP_EVENTS = [
   "cleanup.resolved",
   "move.requested",
   "move.resolved",
+  "choice.requested",
+  "choice.resolved",
   "changeset.proposed",
   "changeset.applied",
   "changeset.rejected",

@@ -1,0 +1,27 @@
+# Genre buckets for the foobar-style workflow's genre-bucket step (S-TAGS-CHOOSE).
+# Each rule offers its label when the album's sub-genres match its query (a beets query);
+# rules matching more of an album's sub-genres come first. A query is split at spaces, so
+# write "." for a space inside a name ("drum.and.bass"), or quote the whole term. Sub-genres no rule matches are
+# offered as their top-level genre in beets lastgenre's genre tree (`fallback`).
+# Copy this file into the profile's rules/ folder and edit it: it is yours. With
+# `learn: true`, a bucket you type in review adds a rule here.
+target: genres
+rules:
+  - label: Rock
+    when: 'subgenres::(?i)rock|punk|grunge|shoegaze|emo'
+    actions: [{ set: { genres: [Rock] } }]
+  - label: Metal
+    when: 'subgenres::(?i)metal|doom|sludge|grindcore|metalcore'
+    actions: [{ set: { genres: [Metal] } }]
+  - label: Electronic
+    when: 'subgenres::(?i)electronic|house|techno|ambient|idm|drum.and.bass|dubstep|trance'
+    actions: [{ set: { genres: [Electronic] } }]
+  - label: Hip Hop
+    when: 'subgenres::(?i)hip.hop|rap|trap|grime'
+    actions: [{ set: { genres: [Hip Hop] } }]
+  - label: Jazz
+    when: 'subgenres::(?i)jazz|bebop|swing'
+    actions: [{ set: { genres: [Jazz] } }]
+fallback:
+  template: "%genre_root{{{ value }}}"
+  actions: [{ set: { genres: ["{{ choice }}"] } }]

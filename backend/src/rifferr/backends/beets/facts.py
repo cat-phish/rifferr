@@ -13,6 +13,7 @@ queries compare them as numbers: ``rf_items:..6``, ``rf_share_multi_artist_track
 
 from __future__ import annotations
 
+import io
 import re
 from collections.abc import Mapping
 from pathlib import Path
@@ -22,8 +23,10 @@ import beets
 from beets.dbcore import types as dbtypes
 from beets.library import Album
 from ruamel.yaml import YAML, YAMLError
+from ruamel.yaml.comments import CommentedMap, CommentedSeq
 
 from rifferr.core.facts import PREFIX, ArtistNames
+from rifferr.profile_store import atomic_write
 
 BUILT_IN = (
     "items",
@@ -89,6 +92,36 @@ def load_names(path: Path | None) -> ArtistNames:
         raise FactsConfigError(f"artist names file {path}: {exc}") from None
     _cache[path] = (mtime, names)
     return names
+
+
+def add_name(path: Path, name: str) -> str:
+    """Append ``name`` to the file's ``names``, keeping comments and order; creates the
+    file when missing (TAGS-CHOOSE-13)."""
+    yaml = YAML()
+    yaml.preserve_quotes = True
+    try:
+        text = path.read_text(encoding="utf-8") if path.exists() else ""
+        doc: Any = yaml.load(text) if text.strip() else None
+    except (OSError, YAMLError) as exc:
+        raise ValueError(f"artist names file {path}: {exc}") from None
+    if doc is None:
+        doc = CommentedMap()
+    if not isinstance(doc, CommentedMap):
+        raise ValueError(f"artist names file {path} is not a mapping")
+    names: Any = doc.get("names")
+    if names is None:
+        names = CommentedSeq()
+        doc["names"] = names
+    if not isinstance(names, CommentedSeq):
+        raise ValueError(f"artist names file {path}: names is not a list")
+    if name in names:
+        return f"{path.name}: {name!r} is already a known name"
+    names.append(name)
+    out = io.StringIO()
+    yaml.dump(doc, out)
+    atomic_write(path, out.getvalue().encode("utf-8"))
+    _cache.pop(path, None)
+    return f"{path.name}: added {name!r} to names"
 
 
 def field_types() -> dict[str, Any]:

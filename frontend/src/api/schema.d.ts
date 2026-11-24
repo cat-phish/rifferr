@@ -128,6 +128,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/choices/{review_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Choice */
+        get: operations["get_choice_api_choices__review_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/choices/{review_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decide Choice
+         * @description Answer a choice review (S-TAGS-CHOOSE TAGS-CHOOSE-5, -6, -13): ``choose`` queues the
+         *     job that applies the option or the custom values as one ChangeSet; ``skip`` lets the
+         *     album go on unchanged; ``reject`` follows the step's ``on_reject``.
+         */
+        post: operations["decide_choice_api_choices__review_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/cleanups/{decision_id}": {
         parameters: {
             query?: never;
@@ -903,8 +942,8 @@ export interface paths {
          * @description What waits for a decision, oldest first: run ChangeSets that are proposed or
          *     conflicted, pending review gates (REVIEW-QUEUE-1), pending import decisions
          *     (IMPORT-UI-7), pending cleanup decisions (FILES-CLEANUP-14), cover reviews
-         *     (COVERS-SEARCH-14) and move conflicts (LIBRARY-MOVE-5a). ``busy`` marks those a
-         *     decision job holds (REVIEW-QUEUE-19).
+         *     (COVERS-SEARCH-14), choice reviews (TAGS-CHOOSE-3) and move conflicts
+         *     (LIBRARY-MOVE-5a). ``busy`` marks those a decision job holds (REVIEW-QUEUE-19).
          */
         get: operations["review_queue_api_review_get"];
         put?: never;
@@ -1429,6 +1468,181 @@ export interface components {
             targets: components["schemas"]["ManualChange"][];
         };
         /**
+         * ChoiceDecided
+         * @description ``job_id`` is the worker job that applies the choice (``choose``); ``None``
+         *     otherwise.
+         */
+        ChoiceDecided: {
+            /** Job Id */
+            job_id?: string | null;
+        };
+        /**
+         * ChoiceDecisionBody
+         * @description Answer a choice review (TAGS-CHOOSE-5). ``choose`` takes an ``option`` key from the
+         *     review, or ``custom`` with ``values`` for the review's custom fields;
+         *     ``known_name: true`` is "This is one artist" (TAGS-CHOOSE-13).
+         */
+        ChoiceDecisionBody: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "choose" | "skip" | "reject";
+            /**
+             * Known Name
+             * @default false
+             */
+            known_name: boolean;
+            /** Note */
+            note?: string | null;
+            /** Option */
+            option?: string | null;
+            /** Values */
+            values?: {
+                [key: string]: boolean | number | string | string[] | null;
+            } | null;
+        };
+        /**
+         * ChoiceOffer
+         * @description One option offered for an album (TAGS-CHOOSE-1).
+         */
+        ChoiceOffer: {
+            /**
+             * Actions
+             * @description Tag-script actions, run again on the album's current values when chosen
+             */
+            actions?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Key
+             * @description Stable id of the option within the review
+             */
+            key: string;
+            /** Label */
+            label: string;
+            /**
+             * Matched
+             * @description How many rank_by values the rule matches
+             * @default 0
+             */
+            matched: number;
+            /** Preview */
+            preview?: components["schemas"]["ChoicePreview"][];
+            /**
+             * Rule
+             * @description From the rules file (TAGS-CHOOSE-8)
+             * @default false
+             */
+            rule: boolean;
+        };
+        /**
+         * ChoicePreview
+         * @description One field change an option makes, as the reviewer sees it (TAGS-CHOOSE-4).
+         */
+        ChoicePreview: {
+            /** After */
+            after: boolean | number | string | string[] | null;
+            /** Before */
+            before: boolean | number | string | string[] | null;
+            /**
+             * Deleted
+             * @default false
+             */
+            deleted: boolean;
+            /** Field */
+            field: string;
+            target: components["schemas"]["TargetRef"];
+        };
+        /**
+         * ChoiceReview
+         * @description An album waiting in the review queue for a choice (TAGS-CHOOSE-3).
+         */
+        ChoiceReview: {
+            /** Album Id */
+            album_id: string;
+            /** Changeset Id */
+            changeset_id?: string | null;
+            /**
+             * Chosen
+             * @description Key of the chosen option
+             */
+            chosen?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Custom */
+            custom?: components["schemas"]["CustomField"][];
+            /** Decided At */
+            decided_at?: string | null;
+            /** Decided By */
+            decided_by?: string | null;
+            /** Id */
+            id: string;
+            /**
+             * Known Name
+             * @description Field whose value 'This is one artist' remembers
+             */
+            known_name?: string | null;
+            /**
+             * Known Name Actions
+             * @description That option's actions; none leaves the album unchanged
+             */
+            known_name_actions?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Known Name Option
+             * @description Label 'This is one artist' decides with (TAGS-CHOOSE-13)
+             */
+            known_name_option?: string | null;
+            /** Known Name Value */
+            known_name_value?: string | null;
+            /** Label */
+            label: string;
+            learn?: components["schemas"]["LearnSettings"] | null;
+            /**
+             * Learned
+             * @description What the decision added to a rules file (TAGS-CHOOSE-10, -13)
+             */
+            learned?: string | null;
+            /** Message */
+            message?: string | null;
+            /** Note */
+            note?: string | null;
+            /**
+             * On Reject
+             * @default stop
+             * @enum {string}
+             */
+            on_reject: "stop" | "continue";
+            /** Options */
+            options: components["schemas"]["ChoiceOffer"][];
+            /** Profile */
+            profile: string;
+            /** Run Id */
+            run_id: string;
+            /** Shown */
+            shown?: {
+                [key: string]: boolean | number | string | string[] | null;
+            };
+            /**
+             * State
+             * @default pending
+             * @enum {string}
+             */
+            state: "pending" | "chosen" | "skipped" | "rejected" | "cancelled";
+            /** Step Id */
+            step_id: string;
+            /**
+             * Suggested
+             * @description Key of the suggested option
+             */
+            suggested?: string | null;
+        };
+        /**
          * CleanupDecided
          * @description ``job_id`` is the worker job that cleans the folder (``delete``); ``None`` for
          *     ``keep``, which needs no job.
@@ -1802,6 +2016,22 @@ export interface components {
         CurrentValues: {
             /** Targets */
             targets: components["schemas"]["CurrentTarget"][];
+        };
+        /**
+         * CustomField
+         * @description A field offered for free entry, with its current value (TAGS-CHOOSE-4).
+         */
+        CustomField: {
+            /** Field */
+            field: string;
+            /**
+             * Kind
+             * @default text
+             * @enum {string}
+             */
+            kind: "text" | "list";
+            /** Value */
+            value?: boolean | number | string | string[] | null;
         };
         /** Decision */
         Decision: {
@@ -2347,7 +2577,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "changeset" | "gate" | "import" | "cleanup" | "cover" | "move" | "prune";
+            kind: "changeset" | "gate" | "import" | "cleanup" | "cover" | "move" | "prune" | "choice";
             /**
              * Ref
              * @description ChangeSet id, review gate id, import decision id, cleanup decision id, prune decision id, cover review id or move conflict id
@@ -2385,6 +2615,26 @@ export interface components {
             steps: {
                 [key: string]: string;
             };
+        };
+        /**
+         * LearnSettings
+         * @description Where a custom decision is remembered (TAGS-CHOOSE-10).
+         */
+        LearnSettings: {
+            /** Rank By */
+            rank_by: string;
+            /**
+             * Rules File
+             * @description Relative to the profile's rules/ folder
+             */
+            rules_file: string;
+            /** Target */
+            target: string;
+            /**
+             * Unmatched
+             * @description The album's rank_by values no rule matched
+             */
+            unmatched?: string[];
         };
         /**
          * LibraryPage
@@ -2930,6 +3180,7 @@ export interface components {
              */
             busy: boolean;
             changeset?: components["schemas"]["ChangeSet"] | null;
+            choice_review?: components["schemas"]["ChoiceReview"] | null;
             cleanup_decision?: components["schemas"]["CleanupDecision"] | null;
             cover_review?: components["schemas"]["CoverReview"] | null;
             /**
@@ -2945,7 +3196,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "changeset" | "gate" | "import" | "cleanup" | "cover" | "move" | "prune";
+            kind: "changeset" | "gate" | "import" | "cleanup" | "cover" | "move" | "prune" | "choice";
             move_conflict?: components["schemas"]["MoveConflict"] | null;
             /** Profile */
             profile: string;
@@ -4029,6 +4280,126 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobQueued"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_choice_api_choices__review_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                review_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChoiceReview"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    decide_choice_api_choices__review_id__decision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                review_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChoiceDecisionBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChoiceDecided"];
                 };
             };
             /** @description Bad Request */

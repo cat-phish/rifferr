@@ -405,6 +405,11 @@ class FakeBackend:
         """``names``, which tests set (ALBUM-FACTS-7)."""
         return self.names
 
+    def add_artist_name(self, name: str) -> str:
+        if name not in self.names.names:
+            self.names = ArtistNames(self.names.joiners, (*self.names.names, name))
+        return f"artist names: added {name!r}"
+
     def check(self, changes: ChangeSet) -> list[ChangeProblem]:
         self._need("query")  # read only: works on a read-only view too (TAG-GRID-7)
         problems: list[ChangeProblem] = []

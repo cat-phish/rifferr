@@ -52,6 +52,7 @@ rifferr = "rifferr.cli:main"
 shell = "rifferr.steps.shell:ShellStep"
 "beets.import" = "rifferr.steps.beets_import:BeetsImportStep"
 "tags.script" = "rifferr.steps.tagscript:TagScriptStep"
+"tags.choose" = "rifferr.steps.tags_choose:TagsChooseStep"
 review = "rifferr.steps.review:ReviewStep"
 "beets.command" = "rifferr.steps.beets_command:BeetsCommandStep"
 notify = "rifferr.steps.notify:NotifyStep"
@@ -79,6 +80,7 @@ beets = "rifferr.backends.beets:from_profile"
 [project.entry-points."rifferr.template_functions"]
 ifgreater = "rifferr.tagscript.functions:ifgreater"
 unpad = "rifferr.tagscript.functions:unpad"
+genre_root = "rifferr.backends.beets.genres:genre_root"
 
 [tool.uv.build-backend]
 # beets finds plugins as beetsplug.<name>: ship the rifferr plugin shim (C-TEMPLATE-FUNCTIONS).

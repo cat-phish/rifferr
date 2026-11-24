@@ -1,5 +1,5 @@
 # S-TAGS-CHOOSE: `tags.choose` step (a review with choices)
-Status: Approved
+Status: Implemented
 Milestone: M5
 
 ## Context
@@ -87,6 +87,41 @@ fallback:
   actions: [{ set: { genres: ["{{ choice }}"] } }]
 ```
 
+As implemented (2026-11-23; `rifferr.steps.tags_choose`, `rifferr.choice_rules`, the
+worker's `choice_apply` job):
+- The review is a `ChoiceReview` (`rifferr.core.choices`) in the `choice_reviews` table. The
+  engine emits `choice.requested` / `choice.resolved` (like `cover.requested`), not
+  `review.requested`, whose data describes a review gate. Lanes hold on kind `choice`, so
+  `review.needed` notifications include it.
+- Each option is stored with its actions; the decision job runs them again on the album's
+  current values, then proposes and applies the ChangeSet (source `tags.choose`, rationale
+  "<label> (chosen in review)[: note]"). Custom values become `set` actions with the values
+  made literal (`escape_template`), or `delete` for an empty value.
+- `GET /api/choices/{id}` and `POST /api/choices/{id}/decision {decision: choose | skip |
+  reject, option?, values?, known_name?, note?}`; `option: custom` takes `values`. A decision
+  that doesn't fit the review (unknown option or field) is a 400 at once.
+- `reject` with `on_reject: stop` ends the album's lane `rejected`.
+- `query` is matched with album facts (the step's `when` can't see them). The step's default
+  `apply` is `auto` (the choice was the review); with `when_single: auto` the only changing
+  option is proposed through that policy.
+- Rules options: a rule is offered when it matches at least one `rank_by` value (each value
+  tried alone) and changes something; rules and fallback options are ranked together by
+  their count, ties in file order. With no `suggest` match, the top-ranked rule is suggested.
+  Rules files are data: `{{ value }}` / `{{ choice }}` are the only placeholders, not
+  workflow interpolation. A path leaving `rules/` fails the step.
+- `%genre_root` reads `beetsplug/lastgenre/genres-tree.yaml` as a file (importing the plugin
+  needs `pylast`) and title-cases the root, as lastgenre writes genres by default.
+- `learn` (TAGS-CHOOSE-10): a custom decision adds one rule labelled with the custom value of
+  the rules file's `target`, whose query matches the album's unmatched `rank_by` values
+  exactly (`rank_by::^v1$|^v2$`). It needs `options_from`, `rank_by`, `custom` and a
+  `target`.
+- `known_name_option` (TAGS-CHOOSE-13) may name an option, whose actions then apply; a label
+  that names no option (the example's "Single artist") leaves the album unchanged. The name is
+  added through `LibraryBackend.add_artist_name` to the file `rifferr.artist_names` names;
+  that file must be writable. The button shows only when the field has a single value.
+- The plugin API is `ctx.request_choice(ChoiceRequest)` (like `ctx.request_cover`).
+- Not done: timeouts (open question 3).
+
 ## Examples
 Album kind (foobar-style):
 ```yaml
@@ -114,7 +149,7 @@ Album kind (foobar-style):
 
 ## Extensibility
 Options are data. Plugin authors reuse the choice review from their own steps through
-`ctx.open_choice(...)` (public step API, mirroring `ctx.open_gate`).
+`ctx.request_choice(...)` (public step API, like `ctx.request_cover`).
 
 ## Security & safety
 Option actions are tag-script actions: no code runs. Custom values are validated and coerced
@@ -134,8 +169,8 @@ inside `<profile>/rules/`.
 3. Timeouts: should a choice review support `timeout`/`on_timeout` like `review`?
 
 ## Tasks
-- [ ] Model, step and validation; FakeBackend tests per behavior
-- [ ] Choice store and decision job; API route; SSE events
-- [ ] Review card (radio options, previews, custom inputs)
-- [ ] Rules file, ranking, `%genre_root` (backends/beets) and `learn`
-- [ ] Playwright spec
+- [x] Model, step and validation; FakeBackend tests per behavior
+- [x] Choice store and decision job; API route; SSE events
+- [x] Review card (radio options, previews, custom inputs)
+- [x] Rules file, ranking, `%genre_root` (backends/beets) and `learn`
+- [x] Playwright spec

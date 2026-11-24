@@ -620,6 +620,495 @@
         "title": "CheckResult",
         "type": "object"
       },
+      "ChoiceDecided": {
+        "additionalProperties": false,
+        "description": "``job_id`` is the worker job that applies the choice (``choose``); ``None``\notherwise.",
+        "properties": {
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          }
+        },
+        "title": "ChoiceDecided",
+        "type": "object"
+      },
+      "ChoiceDecisionBody": {
+        "additionalProperties": false,
+        "description": "Answer a choice review (TAGS-CHOOSE-5). ``choose`` takes an ``option`` key from the\nreview, or ``custom`` with ``values`` for the review's custom fields;\n``known_name: true`` is \"This is one artist\" (TAGS-CHOOSE-13).",
+        "properties": {
+          "decision": {
+            "enum": [
+              "choose",
+              "skip",
+              "reject"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "known_name": {
+            "default": false,
+            "title": "Known Name",
+            "type": "boolean"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "option": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Option"
+          },
+          "values": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "maxProperties": 100,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Values"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "title": "ChoiceDecisionBody",
+        "type": "object"
+      },
+      "ChoiceOffer": {
+        "additionalProperties": false,
+        "description": "One option offered for an album (TAGS-CHOOSE-1).",
+        "properties": {
+          "actions": {
+            "description": "Tag-script actions, run again on the album's current values when chosen",
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Actions",
+            "type": "array"
+          },
+          "key": {
+            "description": "Stable id of the option within the review",
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "matched": {
+            "default": 0,
+            "description": "How many rank_by values the rule matches",
+            "title": "Matched",
+            "type": "integer"
+          },
+          "preview": {
+            "items": {
+              "$ref": "#/components/schemas/ChoicePreview"
+            },
+            "title": "Preview",
+            "type": "array"
+          },
+          "rule": {
+            "default": false,
+            "description": "From the rules file (TAGS-CHOOSE-8)",
+            "title": "Rule",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "key",
+          "label"
+        ],
+        "title": "ChoiceOffer",
+        "type": "object"
+      },
+      "ChoicePreview": {
+        "additionalProperties": false,
+        "description": "One field change an option makes, as the reviewer sees it (TAGS-CHOOSE-4).",
+        "properties": {
+          "after": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After"
+          },
+          "before": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before"
+          },
+          "deleted": {
+            "default": false,
+            "title": "Deleted",
+            "type": "boolean"
+          },
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "target": {
+            "$ref": "#/components/schemas/TargetRef"
+          }
+        },
+        "required": [
+          "target",
+          "field",
+          "before",
+          "after"
+        ],
+        "title": "ChoicePreview",
+        "type": "object"
+      },
+      "ChoiceReview": {
+        "additionalProperties": false,
+        "description": "An album waiting in the review queue for a choice (TAGS-CHOOSE-3).",
+        "properties": {
+          "album_id": {
+            "title": "Album Id",
+            "type": "string"
+          },
+          "changeset_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Changeset Id"
+          },
+          "chosen": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Key of the chosen option",
+            "title": "Chosen"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "custom": {
+            "items": {
+              "$ref": "#/components/schemas/CustomField"
+            },
+            "title": "Custom",
+            "type": "array"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "decided_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided By"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "known_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Field whose value 'This is one artist' remembers",
+            "title": "Known Name"
+          },
+          "known_name_actions": {
+            "description": "That option's actions; none leaves the album unchanged",
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Known Name Actions",
+            "type": "array"
+          },
+          "known_name_option": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Label 'This is one artist' decides with (TAGS-CHOOSE-13)",
+            "title": "Known Name Option"
+          },
+          "known_name_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Known Name Value"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "learn": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LearnSettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "learned": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the decision added to a rules file (TAGS-CHOOSE-10, -13)",
+            "title": "Learned"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "on_reject": {
+            "default": "stop",
+            "enum": [
+              "stop",
+              "continue"
+            ],
+            "title": "On Reject",
+            "type": "string"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/ChoiceOffer"
+            },
+            "title": "Options",
+            "type": "array"
+          },
+          "profile": {
+            "title": "Profile",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "shown": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Shown",
+            "type": "object"
+          },
+          "state": {
+            "default": "pending",
+            "enum": [
+              "pending",
+              "chosen",
+              "skipped",
+              "rejected",
+              "cancelled"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "step_id": {
+            "title": "Step Id",
+            "type": "string"
+          },
+          "suggested": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Key of the suggested option",
+            "title": "Suggested"
+          }
+        },
+        "required": [
+          "id",
+          "profile",
+          "run_id",
+          "step_id",
+          "album_id",
+          "label",
+          "options",
+          "created_at"
+        ],
+        "title": "ChoiceReview",
+        "type": "object"
+      },
       "CleanupDecided": {
         "additionalProperties": false,
         "description": "``job_id`` is the worker job that cleans the folder (``delete``); ``None`` for\n``keep``, which needs no job.",
@@ -1516,6 +2005,56 @@
           "targets"
         ],
         "title": "CurrentValues",
+        "type": "object"
+      },
+      "CustomField": {
+        "additionalProperties": false,
+        "description": "A field offered for free entry, with its current value (TAGS-CHOOSE-4).",
+        "properties": {
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "kind": {
+            "default": "text",
+            "enum": [
+              "text",
+              "list"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "field"
+        ],
+        "title": "CustomField",
         "type": "object"
       },
       "Decision": {
@@ -3021,7 +3560,8 @@
               "cleanup",
               "cover",
               "move",
-              "prune"
+              "prune",
+              "choice"
             ],
             "title": "Kind",
             "type": "string"
@@ -3103,6 +3643,40 @@
           "steps"
         ],
         "title": "LaneOut",
+        "type": "object"
+      },
+      "LearnSettings": {
+        "additionalProperties": false,
+        "description": "Where a custom decision is remembered (TAGS-CHOOSE-10).",
+        "properties": {
+          "rank_by": {
+            "title": "Rank By",
+            "type": "string"
+          },
+          "rules_file": {
+            "description": "Relative to the profile's rules/ folder",
+            "title": "Rules File",
+            "type": "string"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          },
+          "unmatched": {
+            "description": "The album's rank_by values no rule matched",
+            "items": {
+              "type": "string"
+            },
+            "title": "Unmatched",
+            "type": "array"
+          }
+        },
+        "required": [
+          "rules_file",
+          "rank_by",
+          "target"
+        ],
+        "title": "LearnSettings",
         "type": "object"
       },
       "LibraryPage": {
@@ -4430,6 +5004,16 @@
               }
             ]
           },
+          "choice_review": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChoiceReview"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "cleanup_decision": {
             "anyOf": [
               {
@@ -4487,7 +5071,8 @@
               "cleanup",
               "cover",
               "move",
-              "prune"
+              "prune",
+              "choice"
             ],
             "title": "Kind",
             "type": "string"
@@ -6907,6 +7492,161 @@
           }
         },
         "summary": "Repropose",
+        "tags": [
+          "review"
+        ]
+      }
+    },
+    "/api/choices/{review_id}": {
+      "get": {
+        "operationId": "get_choice_api_choices__review_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "review_id",
+            "required": true,
+            "schema": {
+              "title": "Review Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChoiceReview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Get Choice",
+        "tags": [
+          "review"
+        ]
+      }
+    },
+    "/api/choices/{review_id}/decision": {
+      "post": {
+        "description": "Answer a choice review (S-TAGS-CHOOSE TAGS-CHOOSE-5, -6, -13): ``choose`` queues the\njob that applies the option or the custom values as one ChangeSet; ``skip`` lets the\nalbum go on unchanged; ``reject`` follows the step's ``on_reject``.",
+        "operationId": "decide_choice_api_choices__review_id__decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "review_id",
+            "required": true,
+            "schema": {
+              "title": "Review Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChoiceDecisionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChoiceDecided"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Decide Choice",
         "tags": [
           "review"
         ]
@@ -10227,7 +10967,7 @@
     },
     "/api/review": {
       "get": {
-        "description": "What waits for a decision, oldest first: run ChangeSets that are proposed or\nconflicted, pending review gates (REVIEW-QUEUE-1), pending import decisions\n(IMPORT-UI-7), pending cleanup decisions (FILES-CLEANUP-14), cover reviews\n(COVERS-SEARCH-14) and move conflicts (LIBRARY-MOVE-5a). ``busy`` marks those a\ndecision job holds (REVIEW-QUEUE-19).",
+        "description": "What waits for a decision, oldest first: run ChangeSets that are proposed or\nconflicted, pending review gates (REVIEW-QUEUE-1), pending import decisions\n(IMPORT-UI-7), pending cleanup decisions (FILES-CLEANUP-14), cover reviews\n(COVERS-SEARCH-14), choice reviews (TAGS-CHOOSE-3) and move conflicts\n(LIBRARY-MOVE-5a). ``busy`` marks those a decision job holds (REVIEW-QUEUE-19).",
         "operationId": "review_queue_api_review_get",
         "parameters": [
           {

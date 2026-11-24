@@ -35,6 +35,7 @@ const KIND_LABEL: Record<QueueItem["kind"], string> = {
   cover: "cover choices",
   move: "move conflicts",
   prune: "library entries to drop",
+  choice: "choices",
 };
 
 /** The home screen (F-DASHBOARD DASHBOARD-14): what needs review, runs in progress, the
@@ -79,6 +80,7 @@ function itemLabel(item: QueueItem): string {
   if (item.kind === "cleanup") return item.cleanup_decision?.path ?? "folder cleanup";
   if (item.kind === "cover") return item.cover_review?.label ?? "cover choice";
   if (item.kind === "move") return item.move_conflict?.label ?? "move conflict";
+  if (item.kind === "choice") return item.choice_review?.label ?? "choice";
   const targets = item.changeset?.targets.length ?? 0;
   return `tag changes to ${count(targets, "target")}`;
 }

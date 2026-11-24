@@ -197,6 +197,12 @@ class LibraryBackend(Protocol):
         """The artist-name rules facts use (ALBUM-FACTS-7); empty when none are set."""
         ...
 
+    def add_artist_name(self, name: str) -> str:
+        """Add ``name`` to the artist-name rules' ``names`` (S-TAGS-CHOOSE TAGS-CHOOSE-13),
+        so later albums with it aren't flagged. Returns a line saying what changed; raises
+        ``ValueError`` when the backend has no rules file to write."""
+        ...
+
     def check(self, changes: ChangeSet) -> list[ChangeProblem]:
         """Problems that stop ``changes`` from being applied: unknown targets, read-only
         fields, values the field can't store (CHANGESET-2). Empty when it can apply."""

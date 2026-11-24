@@ -1,0 +1,28 @@
+# Workflow for the choice review e2e test (S-TAGS-CHOOSE TAGS-CHOOSE-12): import an album,
+# choose its kind (the suggestion is Split), then type a release date.
+name: choose-flow
+description: Import, then choose the album kind and enter a release date in review.
+vars:
+  inbox:
+    description: Folder with an album to import
+steps:
+  - id: import
+    uses: beets.import
+    with:
+      path: "{{ vars.inbox }}"
+      set: { album: Choice Sessions, albumartist: "A & B" }
+      options: { duplicate_action: keep }
+  - id: kind
+    uses: tags.choose
+    with:
+      show: [albumartist]
+      options:
+        - label: Split
+          suggest: { when: "albumartist::&" }
+          actions: [{ set: { albumkind: split, albumartist: Split } }]
+        - label: Collaboration
+          actions: [{ set: { albumkind: collab, albumartist: Collaboration } }]
+  - id: dates
+    uses: tags.choose
+    with:
+      custom: [releasedate]

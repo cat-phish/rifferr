@@ -22,6 +22,7 @@ from pydantic import JsonValue, ValidationError
 
 from rifferr.appdb import (
     AppChangeSets,
+    AppChoiceReviews,
     AppCleanupDecisions,
     AppCoverReviews,
     AppDB,
@@ -36,12 +37,15 @@ from rifferr.appdb import (
     Job,
 )
 from rifferr.core.changeset import ChangeSet
+from rifferr.core.choices import ChoiceDecision
 from rifferr.core.covers import CoverChoice
 from rifferr.core.files import CleanupChoice
 from rifferr.core.imports import ImportAction
 from rifferr.core.moves import MoveChoice
 from rifferr.core.prune import PruneChoice
 from rifferr.core.review import GateDecision
+from rifferr.core.snapshot import FieldValue
+from rifferr.engine.choices import decision_actions
 from rifferr.engine.events import Event, EventSink, profile_stream
 from rifferr.engine.undo import run_entries, undoable
 from rifferr.trust import workflow_hash
@@ -686,6 +690,87 @@ class WorkerSupervisor:
         self._emit_run(
             run_id,
             "cover.resolved",
+            claimed.step_id,
+            {
+                "review_id": review_id,
+                "album_id": claimed.album_id,
+                "decision": decision,
+                "decided_by": by,
+            },
+        )
+        lanes.resolve_hold(run_id, review_id)
+        if settle(self.db, run_id, lambda t, step, d: self._emit_run(run_id, t, step, d)) == (
+            "requeued"
+        ):
+            await self._wake(claimed.profile)
+        return None
+
+    # -- choice reviews (S-TAGS-CHOOSE) ----------------------------------------------
+
+    async def decide_choice(
+        self,
+        review_id: str,
+        decision: ChoiceDecision,
+        *,
+        option: str | None = None,
+        values: Mapping[str, FieldValue] | None = None,
+        known_name: bool = False,
+        note: str | None = None,
+        by: str | None = None,
+    ) -> str | None:
+        """Answer a choice review (TAGS-CHOOSE-5, -6). ``choose`` queues the worker job that
+        applies the option (or the custom values) as one ChangeSet and returns its id;
+        ``skip`` lets the album go on unchanged and ``reject`` follows the review's
+        ``on_reject`` (``None``). Raises ``KeyError`` (unknown), ``ChoiceResolvedError``
+        (decided already), ``ChoiceBusyError`` (a job holds it) or ``ValueError`` while
+        its run isn't waiting yet or the decision doesn't fit the review."""
+        if self._shutting_down:
+            raise RuntimeError("server is shutting down")
+        store = AppChoiceReviews(self.db)
+        found = store.get(review_id)
+        if found is None:
+            raise KeyError(review_id)
+        job = self.db.job_for_run(found.run_id)
+        if found.state == "pending" and (job is None or job.state != "waiting_review"):
+            state = job.state if job is not None else "missing"
+            raise ValueError(f"run {found.run_id} is {state}; the choice can't be decided yet")
+        if decision == "choose":
+            decision_actions(
+                found,
+                option=option,
+                values=values or {},
+                known_name=known_name,
+                escape=lambda text: text,
+            )  # checked here so a bad request fails at once; the job runs it again
+        claimed = store.claim(review_id, "pending-job")
+        if decision == "choose":
+            payload: dict[str, JsonValue] = {
+                "review_id": review_id,
+                "option": option,
+                "values": cast(JsonValue, dict(values)) if values is not None else None,
+                "known_name": known_name,
+                "note": note,
+                "by": by,
+            }
+            queued = self.db.submit_job(claimed.profile, "choice_apply", payload, claimed.run_id)
+            store.set_claim(review_id, queued.id)
+            await self._wake(claimed.profile)
+            return queued.id
+        run_id = claimed.run_id
+        claimed.state = "skipped" if decision == "skip" else "rejected"
+        claimed.decided_by = by
+        claimed.decided_at = self._clock()
+        claimed.note = note
+        store.release(claimed)
+        lanes = AppLanes(self.db)
+        if decision == "reject" and claimed.on_reject == "stop":
+            moved = lanes.set_state(run_id, [claimed.album_id], "rejected", only_from=("waiting",))
+            for key in moved:
+                data = {"key": key, "state": "rejected", "reason": "rejected at a choice review"}
+                self._emit_run(run_id, "lane.finished", claimed.step_id, dict(data))
+        self._emit_run(
+            run_id,
+            "choice.resolved",
             claimed.step_id,
             {
                 "review_id": review_id,

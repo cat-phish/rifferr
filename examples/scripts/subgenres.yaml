@@ -1,0 +1,12 @@
+# Checklist "Genres": beets' genres (from lastgenre or the metadata source) become the
+# sub-genres, kept as separate values in the multi-valued `subgenres` field, so nobody has to
+# split them by ";" by hand. The broad genre is chosen next (genre-bucket in foobar-style).
+# Write `subgenres` into the files with `rifferr.file_tags` (C-FILE-TAGS), e.g.
+#   subgenres: { tag: SUBGENRE, multi: true }
+# Runs once per album: an album that has sub-genres already is left alone.
+scope: album
+idempotence: fail
+actions:
+  - name: subgenres-from-genres
+    when: "^subgenres::. genres::."
+    copy: { from: genres, to: subgenres }

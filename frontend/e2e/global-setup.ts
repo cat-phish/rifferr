@@ -40,6 +40,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     watched: join(root, "watched"),
     dashboard: join(root, "dashboard-inbox"),
     covers: join(root, "covers-inbox"),
+    choices: join(root, "choices-inbox"),
     moves: join(root, "moves-inbox"),
     moved: join(root, "moved-library"),
     home: join(root, "home"),
@@ -186,6 +187,18 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     join(here, "cover-flow.yaml"),
     join(dirs.config, "profiles", "main", "workflows", "cover-flow.yaml"),
   );
+  // An album whose kind and release date are chosen in review (S-TAGS-CHOOSE).
+  cpSync(
+    join(here, "choose-flow.yaml"),
+    join(dirs.config, "profiles", "main", "workflows", "choose-flow.yaml"),
+  );
+  cpSync(
+    join(backend, "tests", "fixtures", "audio", "album-flac"),
+    join(dirs.choices, "album-flac"),
+    {
+      recursive: true,
+    },
+  );
 
   cpSync(
     join(repo, "examples", "workflows", "two-step.yaml"),
@@ -268,6 +281,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   process.env.RIFFERR_E2E_WATCHED = dirs.watched;
   process.env.RIFFERR_E2E_DASHBOARD = dirs.dashboard;
   process.env.RIFFERR_E2E_COVERS_INBOX = dirs.covers;
+  process.env.RIFFERR_E2E_CHOICES_INBOX = dirs.choices;
   process.env.RIFFERR_E2E_MOVES_INBOX = dirs.moves;
   process.env.RIFFERR_E2E_MOVED_LIBRARY = dirs.moved;
   process.env.RIFFERR_E2E_FIXTURE = join(backend, "tests", "fixtures", "audio", "album-flac");

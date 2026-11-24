@@ -19,6 +19,7 @@ from pydantic import BaseModel, JsonValue
 
 from rifferr.api.security import SessionRecord
 from rifferr.core.changeset import ApplyResult, ChangeSet, ChangeSetState, JournalEntry
+from rifferr.core.choices import ChoiceReview
 from rifferr.core.covers import CoverReview
 from rifferr.core.files import CleanupDecision
 from rifferr.core.ids import new_ulid
@@ -59,6 +60,7 @@ JobKind = Literal[
     "cleanup_apply",
     "import_undo",
     "cover_apply",
+    "choice_apply",
     "move_retry",
     "prune_apply",
 ]
@@ -424,6 +426,7 @@ class AppDB:
             "cleanup_decisions",
             "prune_decisions",
             "cover_reviews",
+            "choice_reviews",
             "move_conflicts",
         )
         pending = " UNION ".join(
@@ -449,6 +452,7 @@ class AppDB:
             "cleanup_decisions",
             "prune_decisions",
             "cover_reviews",
+            "choice_reviews",
             "move_conflicts",
         ):
             rows = self._conn.execute(
@@ -1186,6 +1190,102 @@ class CoverBusyError(ValueError):
 
     def __init__(self, review_id: str) -> None:
         super().__init__(f"cover review {review_id} is being decided; try again shortly")
+        self.review_id = review_id
+
+
+class AppChoiceReviews:
+    """``ChoiceReviewStore`` backed by the ``choice_reviews`` table (TAGS-CHOOSE-3)."""
+
+    def __init__(self, db: AppDB) -> None:
+        self.db = db
+
+    @property
+    def _conn(self) -> sqlite3.Connection:
+        return self.db._conn  # pyright: ignore[reportPrivateUsage]
+
+    def add(self, review: ChoiceReview) -> None:
+        self._conn.execute(
+            "INSERT INTO choice_reviews (id, profile, run_id, step_id, album_id, state, body,"
+            " created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                review.id,
+                review.profile,
+                review.run_id,
+                review.step_id,
+                review.album_id,
+                review.state,
+                review.model_dump_json(),
+                review.created_at.isoformat(),
+            ),
+        )
+
+    def get(self, review_id: str) -> ChoiceReview | None:
+        row = self._conn.execute(
+            "SELECT body FROM choice_reviews WHERE id = ?", (review_id,)
+        ).fetchone()
+        return ChoiceReview.model_validate_json(row["body"]) if row else None
+
+    def pending(self, profile: str | None = None, run_id: str | None = None) -> list[ChoiceReview]:
+        """Pending reviews, oldest first."""
+        sql, args = "SELECT body FROM choice_reviews WHERE state = 'pending'", list[Any]()
+        if profile is not None:
+            sql, args = sql + " AND profile = ?", [*args, profile]
+        if run_id is not None:
+            sql, args = sql + " AND run_id = ?", [*args, run_id]
+        rows = self._conn.execute(sql + " ORDER BY created_at, id", args).fetchall()
+        return [ChoiceReview.model_validate_json(r["body"]) for r in rows]
+
+    def claim(self, review_id: str, job: str) -> ChoiceReview:
+        """Reserve a pending review for one decision. Raises ``KeyError`` (unknown),
+        ``ChoiceResolvedError`` (not pending) or ``ChoiceBusyError`` (claimed)."""
+        cur = self._conn.execute(
+            "UPDATE choice_reviews SET claim = ? WHERE id = ? AND state = 'pending'"
+            " AND claim IS NULL",
+            (job, review_id),
+        )
+        review = self.get(review_id)
+        if review is None:
+            raise KeyError(review_id)
+        if cur.rowcount != 1:
+            if review.state != "pending":
+                raise ChoiceResolvedError(review_id, review.state)
+            raise ChoiceBusyError(review_id)
+        return review
+
+    def set_claim(self, review_id: str, job: str | None) -> None:
+        self._conn.execute("UPDATE choice_reviews SET claim = ? WHERE id = ?", (job, review_id))
+
+    def release(self, review: ChoiceReview) -> None:
+        """Save ``review`` and drop the claim."""
+        self._conn.execute(
+            "UPDATE choice_reviews SET state = ?, body = ?, claim = NULL WHERE id = ?",
+            (review.state, review.model_dump_json(), review.id),
+        )
+
+    def cancel_for_run(self, run_id: str) -> list[str]:
+        """Cancel the run's pending reviews (a cancelled or finished run). Returns ids."""
+        cancelled: list[str] = []
+        for review in self.pending(run_id=run_id):
+            review.state = "cancelled"
+            self.release(review)
+            cancelled.append(review.id)
+        return cancelled
+
+
+class ChoiceResolvedError(ValueError):
+    """The choice review isn't pending any more (TAGS-CHOOSE-5: decided once)."""
+
+    def __init__(self, review_id: str, state: str) -> None:
+        super().__init__(f"choice review {review_id} is already {state}")
+        self.review_id = review_id
+        self.state = state
+
+
+class ChoiceBusyError(ValueError):
+    """A job is applying a decision for this review right now."""
+
+    def __init__(self, review_id: str) -> None:
+        super().__init__(f"choice review {review_id} is being decided; try again shortly")
         self.review_id = review_id
 
 

@@ -46,7 +46,7 @@ A row gets a link once its spec file exists. Build order: [docs/roadmap.md](../d
 | [C-TEMPLATE-FUNCTIONS](core/C-TEMPLATE-FUNCTIONS.md) | Rifferr template functions in beets templates | 1, 4 | M5 | Implemented |
 | [C-FILE-TAGS](core/C-FILE-TAGS.md) | Flexible attributes written as file tags | 1, 8 | M5 | Implemented |
 | [C-ALBUM-FACTS](core/C-ALBUM-FACTS.md) | Computed album facts in templates and conditions | 4 | M5 | Implemented |
-| [S-TAGS-CHOOSE](steps/S-TAGS-CHOOSE.md) | `tags.choose` step: a review with choices | 2a, 3 | M5 | Approved |
+| [S-TAGS-CHOOSE](steps/S-TAGS-CHOOSE.md) | `tags.choose` step: a review with choices | 2a, 3 | M5 | Implemented |
 | [F-DEV-TOOLING](features/F-DEV-TOOLING.md) | Project skeleton, checks, CI, fixtures | 9, 10 | M0 | Implemented |
 | [F-SECURITY](features/F-SECURITY.md) | Host/Origin checks, local token, remote auth, workflow trust | 8 | M0 | Implemented |
 | [F-API](features/F-API.md) | HTTP API and SSE event stream | 8 | M0 | Implemented |

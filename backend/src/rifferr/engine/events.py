@@ -43,6 +43,9 @@ ENGINE_EVENTS = frozenset(
         # S-COVERS-SEARCH (COVERS-SEARCH-14, -21)
         "cover.requested",
         "cover.resolved",
+        # S-TAGS-CHOOSE (TAGS-CHOOSE-3, -5)
+        "choice.requested",
+        "choice.resolved",
         # S-LIBRARY-MOVE (LIBRARY-MOVE-5a)
         "move.requested",
         "move.resolved",

@@ -113,6 +113,20 @@ Other changes:
       subgenres: { tag: SUBGENRE, multi: true }
       albumkind: ALBUMKIND
   ```
+- **Artist-name rules.** The example workflow's `album-kind` step asks about album artists
+  with a joiner ("A & B"). List the joiners, and band names that contain one, in a file next
+  to the beets config, and name it under `rifferr`. "This is one artist" in the review adds
+  a name to it, so the file must be writable:
+  ```yaml
+  rifferr:
+    artist_names: artist-names.yaml   # relative to the beets directory
+  ```
+  ```yaml
+  # ~/rifferr-test/beets/artist-names.yaml
+  joiners: [" & ", " / ", ", ", " x "]
+  names: [AC/DC, Simon & Garfunkel]
+  ```
+
 ## 2. Create the profile
 
 ```bash
@@ -170,14 +184,15 @@ set; at run time that provider is skipped.
 
 ## 3. Add the example workflow
 
-Copy the example workflow, the workflow it calls and the scripts they use into the
-profile:
+Copy the example workflow, the workflow it calls, the scripts they use and the genre
+rules into the profile:
 
 ```bash
 P=~/.config/rifferr/profiles/test
-mkdir -p $P/workflows $P/scripts
+mkdir -p $P/workflows $P/scripts $P/rules
 cp ../examples/workflows/{foobar-style,release-suffixes}.yaml $P/workflows/
 cp ../examples/scripts/*.yaml $P/scripts/
+cp ../examples/rules/*.yaml $P/rules/
 uv run rifferr validate --profile test --safety $P/workflows/foobar-style.yaml
 ```
 
@@ -248,6 +263,9 @@ What to expect:
   written there. The inbox keeps only files nothing has touched.
 - Release-type suffixes and missing covers run next. A cover that no
   provider finds well enough waits for you to choose one.
+- Choices wait in the queue too, one card per step: the album kind of splits,
+  collaborations, soundtracks and compilations, a release date that's missing, and every
+  album's broad genre. The likely option is preselected; pick another or type values.
 - Each album's **library move** waits in the review queue, showing the old and new
   folder and every file's old and new name. Accept it and the album moves from
   `staging` into `library`.

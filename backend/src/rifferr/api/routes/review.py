@@ -16,6 +16,8 @@ from rifferr.api.models import (
     NO_UNDO_BODY,
     BeforeRun,
     ChangeSetDetail,
+    ChoiceDecided,
+    ChoiceDecisionBody,
     CleanupDecided,
     CleanupDecisionBody,
     CurrentValues,
@@ -38,6 +40,7 @@ from rifferr.api.state import State
 from rifferr.appdb import (
     HOLDING_CHANGESETS,
     AppChangeSets,
+    AppChoiceReviews,
     AppCleanupDecisions,
     AppCoverReviews,
     AppImportDecisions,
@@ -45,6 +48,8 @@ from rifferr.appdb import (
     AppMoveConflicts,
     AppPruneDecisions,
     AppReviewGates,
+    ChoiceBusyError,
+    ChoiceResolvedError,
     CleanupBusyError,
     CleanupResolvedError,
     GateAlbumsError,
@@ -56,11 +61,13 @@ from rifferr.appdb import (
     PruneBusyError,
     PruneResolvedError,
 )
+from rifferr.core.choices import ChoiceReview
 from rifferr.core.files import CleanupDecision
 from rifferr.core.imports import ImportDecision
 from rifferr.core.moves import MoveConflict
 from rifferr.core.review import ReviewGate
 from rifferr.engine.changesets import StoredChangeSet
+from rifferr.engine.choices import ChoiceDecisionError
 
 router = APIRouter(prefix="/api", tags=["review"])
 
@@ -80,8 +87,8 @@ async def review_queue(
     """What waits for a decision, oldest first: run ChangeSets that are proposed or
     conflicted, pending review gates (REVIEW-QUEUE-1), pending import decisions
     (IMPORT-UI-7), pending cleanup decisions (FILES-CLEANUP-14), cover reviews
-    (COVERS-SEARCH-14) and move conflicts (LIBRARY-MOVE-5a). ``busy`` marks those a
-    decision job holds (REVIEW-QUEUE-19)."""
+    (COVERS-SEARCH-14), choice reviews (TAGS-CHOOSE-3) and move conflicts
+    (LIBRARY-MOVE-5a). ``busy`` marks those a decision job holds (REVIEW-QUEUE-19)."""
     workflows: dict[str, str | None] = {}
 
     def workflow(run_id: str) -> str | None:
@@ -170,6 +177,19 @@ async def review_queue(
                 step_id=cover.step_id,
                 created_at=cover.created_at,
                 cover_review=cover,
+            )
+        )
+    for choice in AppChoiceReviews(state.db).pending(profile=profile, run_id=run):
+        items.append(
+            QueueItem(
+                kind="choice",
+                id=choice.id,
+                profile=choice.profile,
+                run_id=choice.run_id,
+                workflow=workflow(choice.run_id),
+                step_id=choice.step_id,
+                created_at=choice.created_at,
+                choice_review=choice,
             )
         )
     for move in AppMoveConflicts(state.db).pending(profile=profile, run_id=run):
@@ -338,6 +358,47 @@ async def decide_gate(gate_id: str, body: GateDecisionBody, state: State) -> Rev
     gate = AppReviewGates(state.db).get(gate_id)
     assert gate is not None
     return gate
+
+
+@router.get("/choices/{review_id}", response_model=ChoiceReview, responses=ERROR_RESPONSES)
+async def get_choice(review_id: str, state: State) -> ChoiceReview:
+    found = AppChoiceReviews(state.db).get(review_id)
+    if found is None:
+        raise not_found(f"choice review {review_id}")
+    return found
+
+
+@router.post(
+    "/choices/{review_id}/decision",
+    status_code=202,
+    response_model=ChoiceDecided,
+    responses=ERROR_RESPONSES,
+)
+async def decide_choice(review_id: str, body: ChoiceDecisionBody, state: State) -> ChoiceDecided:
+    """Answer a choice review (S-TAGS-CHOOSE TAGS-CHOOSE-5, -6, -13): ``choose`` queues the
+    job that applies the option or the custom values as one ChangeSet; ``skip`` lets the
+    album go on unchanged; ``reject`` follows the step's ``on_reject``."""
+    try:
+        job_id = await state.supervisor.decide_choice(
+            review_id,
+            body.decision,
+            option=body.option,
+            values=body.values,
+            known_name=body.known_name,
+            note=body.note,
+            by=DECIDER,
+        )
+    except KeyError:
+        raise not_found(f"choice review {review_id}") from None
+    except ChoiceResolvedError as exc:
+        raise ApiError(409, "already_resolved", str(exc)) from None
+    except ChoiceBusyError as exc:
+        raise ApiError(409, "busy", str(exc)) from None
+    except ChoiceDecisionError as exc:
+        raise ApiError(400, "bad_request", str(exc)) from None
+    except ValueError as exc:
+        raise ApiError(409, "not_waiting", str(exc)) from None
+    return ChoiceDecided(job_id=job_id)
 
 
 @router.post(

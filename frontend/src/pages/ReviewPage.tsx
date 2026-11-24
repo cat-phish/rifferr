@@ -19,6 +19,7 @@ import { createContext, useCallback, useContext, useEffect, useState } from "rea
 import { Link, Navigate, useSearchParams } from "react-router";
 import { api, ok } from "../api/client";
 import { CoverPicker } from "../components/CoverPicker";
+import { ChoiceReviewView } from "../components/ChoiceReviewView";
 import { CleanupDecisionView } from "../components/CleanupDecisionView";
 import { FileChangeSetView } from "../components/FileChangeSetView";
 import { MoveConflictView } from "../components/MoveConflictView";
@@ -809,6 +810,22 @@ function QueueItemCard({ item, focus }: { item: QueueItem; focus: string | null 
       }
     >
       <MoveConflictView conflict={item.move_conflict} />
+    </ItemCard>
+  ) : item.kind === "choice" && item.choice_review ? (
+    <ItemCard
+      key={item.id}
+      item={item}
+      focused={focus === item.id}
+      title={
+        <Group gap="xs">
+          <Text fw={500}>Choice</Text>
+          <Text size="sm" c="dimmed">
+            step {item.step_id}
+          </Text>
+        </Group>
+      }
+    >
+      <ChoiceReviewView review={item.choice_review} />
     </ItemCard>
   ) : item.kind === "cover" && item.cover_review ? (
     <ItemCard

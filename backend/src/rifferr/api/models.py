@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, StringConstraints
 
 from rifferr.appdb import JobState
 from rifferr.core.changeset import ChangeSet, ChangeSetState
+from rifferr.core.choices import ChoiceDecision, ChoiceReview
 from rifferr.core.covers import CoverChoice, CoverQuery, CoverReview, RankedCandidate, SearchLink
 from rifferr.core.files import CleanupChoice, CleanupDecision
 from rifferr.core.imports import (
@@ -216,7 +217,7 @@ LaneStateOut = Literal[
 
 
 class LaneHold(_Model):
-    kind: Literal["changeset", "gate", "import", "cleanup", "cover", "move", "prune"]
+    kind: Literal["changeset", "gate", "import", "cleanup", "cover", "move", "prune", "choice"]
     ref: str = Field(
         description="ChangeSet id, review gate id, import decision id, cleanup decision id,"
         " prune decision id,"
@@ -376,7 +377,7 @@ class QueueItem(_Model):
     ``cover_review`` / ``move_conflict`` is set (IMPORT-UI-7, FILES-CLEANUP-14,
     COVERS-SEARCH-21, LIBRARY-MOVE-5a)."""
 
-    kind: Literal["changeset", "gate", "import", "cleanup", "cover", "move", "prune"]
+    kind: Literal["changeset", "gate", "import", "cleanup", "cover", "move", "prune", "choice"]
     id: str
     profile: str
     run_id: str
@@ -389,6 +390,7 @@ class QueueItem(_Model):
     import_decision: ImportDecision | None = None
     cleanup_decision: CleanupDecision | None = None
     cover_review: CoverReview | None = None
+    choice_review: ChoiceReview | None = None
     move_conflict: MoveConflict | None = None
     prune_decision: PruneDecision | None = None
     busy: bool = Field(
@@ -727,6 +729,25 @@ class MoveDecisionBody(_Model):
 
 class MoveDecided(_Model):
     """``job_id`` is the worker job that retries the move (``retry``); ``None`` otherwise."""
+
+    job_id: str | None = None
+
+
+class ChoiceDecisionBody(_Model):
+    """Answer a choice review (TAGS-CHOOSE-5). ``choose`` takes an ``option`` key from the
+    review, or ``custom`` with ``values`` for the review's custom fields;
+    ``known_name: true`` is "This is one artist" (TAGS-CHOOSE-13)."""
+
+    decision: ChoiceDecision
+    option: str | None = Field(default=None, max_length=200)
+    values: dict[str, FieldValue] | None = Field(default=None, max_length=100)
+    known_name: bool = False
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class ChoiceDecided(_Model):
+    """``job_id`` is the worker job that applies the choice (``choose``); ``None``
+    otherwise."""
 
     job_id: str | None = None
 

@@ -295,3 +295,39 @@ def test_TAGSCRIPT_19_reference_scripts_are_idempotent(fields: dict[str, Any], n
     assert first.error is None
     check = check_idempotence(script, first, backend)
     assert check.ok, (fields, check.issues)
+
+
+#: subgenres.yaml: (album fields, expected album-level changes).
+SUBGENRES: list[tuple[dict[str, Any], dict[str, Any]]] = [
+    ({"genres": ["Post-Rock", "Math Rock"]}, {"subgenres": ["Post-Rock", "Math Rock"]}),
+    ({"genres": ["Post-Rock"], "subgenres": ["Shoegaze"]}, {}),  # once only
+    ({"genres": []}, {}),
+]
+
+
+@pytest.mark.parametrize(("fields", "expected"), SUBGENRES)
+def test_TAGSCRIPT_5_subgenres_script(fields: dict[str, Any], expected: dict[str, Any]) -> None:
+    backend = fake({"album": "A", **fields})
+    backend.field_types["subgenres"] = list
+    assert changes(backend, load("subgenres.yaml")) == expected
+
+
+@SETTINGS
+@given(
+    st.fixed_dictionaries(
+        {},
+        optional={
+            "genres": st.lists(st.sampled_from(["Rock", "Post-Rock", "Jazz"]), max_size=3),
+            "subgenres": st.lists(st.sampled_from(["Shoegaze", "Rock"]), max_size=2),
+        },
+    )
+)
+def test_TAGSCRIPT_19_subgenres_script_is_idempotent(fields: dict[str, Any]) -> None:
+    backend = fake({"album": "A", **fields})
+    backend.field_types["subgenres"] = list
+    script = load("subgenres.yaml")
+    (album,) = backend.query(Selection())
+    first = run_script(script, album, backend)
+    assert first.error is None
+    check = check_idempotence(script, first, backend)
+    assert check.ok, (fields, check.issues)

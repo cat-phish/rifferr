@@ -13,8 +13,9 @@
 name: foobar-style
 description: >-
   Import new albums with beets, move them out of the inbox into a staging folder, move
-  featured artists into titles, fix release-type suffixes and dates, find missing covers,
-  add ReplayGain, then move each album into the library after review.
+  featured artists into titles, fix release-type suffixes, choose album kinds, fix dates,
+  sort genres into broad buckets, find missing covers, add ReplayGain, then move each album
+  into the library after review.
 vars:
   inbox:
     description: Folder with new albums to import (the checklist's "Stage 1, unsorted")
@@ -24,6 +25,20 @@ vars:
       review. The inbox only ever holds files nobody has touched.
   library:
     description: The music library folder albums move into once reviewed
+  # The album artist (and its sort name) of each album kind, so these albums sort into
+  # their own folders ("Split/", "Collaboration/", ...) on an iPod and in the library.
+  label_split:
+    description: Album artist of splits
+    default: Split
+  label_collab:
+    description: Album artist of collaborations
+    default: Collaboration
+  label_soundtrack:
+    description: Album artist of soundtracks
+    default: Soundtrack
+  label_compilation:
+    description: Album artist of compilations
+    default: Compilation
 # Manual runs without --input import the whole inbox.
 input: "{{ vars.inbox }}"
 on:
@@ -57,8 +72,9 @@ steps:
     with:
       directory: "{{ vars.staging }}"
       paths: &album-paths
-        # Splits and compilations: the year after the album name.
-        - query: "albumkind::^(split|compilation)$"
+        # Splits, collaborations, soundtracks and compilations (album-kind): under the
+        # kind's label, with the year after the album name.
+        - query: "albumkind::^(split|collab|soundtrack|compilation)$"
           format: >-
             %the{$albumartist}/$album%if{$original_year, ($original_year)}
             [%if{%ifgreater{$bitdepth,16,1},24-bit }$format]/%ifgreater{$disctotal,1,Disc
@@ -91,6 +107,81 @@ steps:
     uses: workflow
     with:
       workflow: release-suffixes.yaml
+  # Checklist lines 7, 9, 10, 18: every album with several album artists, an album artist
+  # with a joiner ("A & B", "A / B"; joiners and known band names like AC/DC are in the
+  # artist-name rules, `rifferr.artist_names` in the beets config) and every soundtrack or
+  # compilation waits in the review queue for its kind (author, 2026-11-23). The likely
+  # one is preselected:
+  #   - collaboration when most tracks credit several artists (featured artists are in the
+  #     titles by now),
+  #   - split with 2 to 4 album artists,
+  #   - soundtrack when beets says so, otherwise nothing.
+  # Any option can be chosen, or the fields typed in. The album artist and its sort name
+  # become the kind's label; the individual artists go to the multi-valued `albumartists`
+  # (from MusicBrainz, or the album artist split at its joiners; editable in review).
+  # "This is one artist" adds the album artist to the known names and leaves the album
+  # unchanged. Albums already given a kind aren't asked again.
+  - id: album-kind
+    uses: tags.choose
+    with:
+      query: >-
+        ^albumkind::. albumtypes:soundtrack ,
+        ^albumkind::. albumtypes:compilation ,
+        ^albumkind::. rf_count_albumartists:2.. ,
+        ^albumkind::. rf_joined_albumartist:1
+      known_name: albumartist
+      known_name_option: Single artist
+      show: [albumartist, albumartists, albumtypes]
+      options:
+        - label: Collaboration
+          suggest: { when: "rf_share_multi_artist_tracks:51.." }
+          actions:
+            - &artists-from-albumartist
+              when: "^albumkind::. rf_count_albumartists:..1"
+              copy: { from: albumartist, to: albumartists }
+            - &artists-at-joiners
+              when: "^albumkind::. rf_count_albumartists:..1"
+              replace: { fields: [albumartists], regex: '\s*(?:&|/|,| - | x | and )\s*', with: ";" }
+            - &artists-split
+              when: "^albumkind::. rf_count_albumartists:..1"
+              split: { field: albumartists, by: ";" }
+            - set:
+                albumkind: collab
+                albumartist: "{{ vars.label_collab }}"
+                albumartist_sort: "{{ vars.label_collab }}"
+        - label: Split
+          suggest: { when: "rf_count_albumartists:2..4" }
+          actions:
+            - *artists-from-albumartist
+            - *artists-at-joiners
+            - *artists-split
+            - set:
+                albumkind: split
+                albumartist: "{{ vars.label_split }}"
+                albumartist_sort: "{{ vars.label_split }}"
+        - label: Soundtrack
+          suggest: { when: "albumtypes:soundtrack" }
+          actions:
+            - set:
+                albumkind: soundtrack
+                albumartist: "{{ vars.label_soundtrack }}"
+                albumartist_sort: "{{ vars.label_soundtrack }}"
+        - label: Compilation
+          actions:
+            - set:
+                albumkind: compilation
+                albumartist: "{{ vars.label_compilation }}"
+                albumartist_sort: "{{ vars.label_compilation }}"
+      custom: [albumartist, albumartists, albumkind]
+  # Dates still missing: an album without a release date waits for one to be typed in
+  # (`year`, `month`, `day`), and the original date if it differs. The dates step below
+  # then does the copies.
+  - id: dates-missing
+    uses: tags.choose
+    with:
+      query: "year:0"
+      show: [original_year, year, label, catalognum]
+      custom: [year, month, day, original_year, original_month, original_day]
   # Checklist "Manage Dates/Years": an album without an original date takes the release
   # date; the release date is kept in `releasedate`, then DATE becomes the original date,
   # so albums sort by first release on an iPod and in folders (author, 2026-11-23).
@@ -100,6 +191,25 @@ steps:
     apply: auto
     with:
       script: dates.yaml
+  # Checklist line 14, genres: beets' genres move to the multi-valued `subgenres`
+  # (subgenres.yaml), then every album waits for its broad genre (author, 2026-11-23). The
+  # buckets come from the profile's rules/genres.yaml (start from examples/rules/), ranked
+  # by how many of the album's sub-genres each matches; sub-genres no rule knows are offered
+  # as their top-level genre in beets lastgenre's genre tree. A bucket typed in review is
+  # added to the rules file (`learn`), so the next album with those sub-genres gets it.
+  - id: subgenres
+    uses: tags.script
+    apply: auto
+    with:
+      script: subgenres.yaml
+  - id: genre-bucket
+    uses: tags.choose
+    with:
+      show: [subgenres, genres]
+      options_from: genres.yaml
+      rank_by: subgenres
+      custom: [genres]
+      learn: true
   # Checklist line 6, album art: albums without art get a cover from the providers in
   # the profile's `covers` settings (Cover Art Archive, local images, iTunes and Deezer
   # by default). Every such album waits in the review queue with the ranked covers, best
@@ -157,7 +267,7 @@ steps:
   #   plugins: [the]
   #   the: { a: no, format: "{0}, {1}" }
   # `%ifgreater` and `%unpad` are Rifferr's built-in template functions. `albumkind` is
-  # the flexible attribute the classification rules set (checklist line 7, not yet).
+  # the flexible attribute album-kind sets.
   - id: into-library
     uses: library.move
     with:

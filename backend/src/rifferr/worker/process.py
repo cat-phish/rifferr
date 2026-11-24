@@ -13,18 +13,20 @@ import asyncio
 import contextlib
 import logging
 import os
+import shlex
 import sys
 import threading
 from collections.abc import Callable, Iterable, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import BinaryIO, cast
+from typing import Any, BinaryIO, cast
 
 from pydantic import JsonValue, ValidationError
 
 from rifferr.appdb import (
     HOLDING_CHANGESETS,
     AppChangeSets,
+    AppChoiceReviews,
     AppCleanupDecisions,
     AppCoverReviews,
     AppDB,
@@ -40,7 +42,9 @@ from rifferr.appdb import (
 )
 from rifferr.backends.base import CapabilityError, LibraryBackend, QueryError, TemplateError
 from rifferr.backends.loader import load_backend
+from rifferr.choice_rules import append_rule, query_literal, resolve_rules
 from rifferr.core.changeset import ChangeSet, ChangeSource, FieldChange, TargetChange, TargetRef
+from rifferr.core.choices import CUSTOM, ChoiceReview
 from rifferr.core.covers import ART_FIELD
 from rifferr.core.ids import new_ulid
 from rifferr.core.imports import (
@@ -68,13 +72,17 @@ from rifferr.engine import (
     StepTypeRegistry,
 )
 from rifferr.engine.changesets import (
+    SnapshotIndex,
     apply_changeset,
+    build_changesets,
     current_values,
     file_changeset,
+    new_changeset,
     proposed_event,
     reject_changeset,
     repropose_targets,
 )
+from rifferr.engine.choices import decision_actions
 from rifferr.engine.events import profile_stream
 from rifferr.engine.lanes import lane_json
 from rifferr.engine.recovery import recover_pending
@@ -86,6 +94,9 @@ from rifferr.steps.cleanup_plan import CleanupError
 from rifferr.steps.files_cleanup import apply_reviewed, outcome_counts
 from rifferr.steps.library_prune import drop_albums, file_exists
 from rifferr.steps.registry import load_step_types
+from rifferr.steps.tagscript import proposal as tagscript_proposal
+from rifferr.tagscript.evaluator import run_script
+from rifferr.tagscript.models import TagScript
 from rifferr.worker.cleanup import busy_folders
 from rifferr.worker.gates import cancel_pending_items, gate_albums, reject_gate_lanes, settle
 from rifferr.worker.import_undo import recover_removals, undo_import
@@ -180,6 +191,7 @@ class Worker:
         self.imports = AppImportDecisions(db)
         self.cleanups = AppCleanupDecisions(db)
         self.covers = AppCoverReviews(db)
+        self.choices = AppChoiceReviews(db)
         self.moves = AppMoveConflicts(db)
         self.prunes = AppPruneDecisions(db)
 
@@ -325,6 +337,9 @@ class Worker:
         if job.kind == "cover_apply":
             self._apply_cover(job)
             return
+        if job.kind == "choice_apply":
+            self._apply_choice(job)
+            return
         if job.kind == "move_retry":
             self._retry_move(job)
             return
@@ -350,6 +365,7 @@ class Worker:
             imports=self.imports,
             cleanups=self.cleanups,
             covers=self.covers,
+            choices=self.choices,
             moves=self.moves,
             prunes=self.prunes,
             removals=AppRemovalJournal(self.db, self.profile.name),
@@ -790,6 +806,141 @@ class Worker:
             review.run_id,
             lambda type, step, d: self._changeset_emitter(review.run_id, step)(type, d),
         )
+
+    def _apply_choice(self, job: Job) -> None:
+        """Apply what a person chose at a choice review (TAGS-CHOOSE-5): the option's
+        actions (or the custom values) run again on the album's current values and become
+        one ChangeSet, applied through the journal at once (the choice was the review);
+        then the album's lane goes on. ``learn`` and "This is one artist" also update a
+        rules file (TAGS-CHOOSE-10, -13)."""
+        payload = job.payload
+        review_id = str(payload.get("review_id"))
+        review = self.choices.get(review_id)
+        if review is None:
+            self._finish_job(job, "failed", f"no choice review {review_id}")
+            return
+        by = payload.get("by")
+        decided_by = by if isinstance(by, str) else None
+        note = payload.get("note")
+        note = note if isinstance(note, str) and note.strip() else None
+        option = payload.get("option")
+        raw_values = payload.get("values")
+        values = cast(dict[str, Any], raw_values) if isinstance(raw_values, dict) else None
+        known_name = payload.get("known_name") is True
+        emit = self._changeset_emitter(review.run_id, review.step_id)
+        changeset_id: str | None = None
+        learned: list[str] = []
+        try:
+            label, actions = decision_actions(
+                review,
+                option=option if isinstance(option, str) else None,
+                values=values,
+                known_name=known_name,
+                escape=self.backend.escape_template,
+            )
+            if known_name and review.known_name_value is not None:
+                learned.append(self.backend.add_artist_name(review.known_name_value))
+            (album,) = self.backend.query(Selection(ids=(review.album_id,)))
+            if actions:
+                script = TagScript.model_validate({"idempotence": "off", "actions": actions})
+                result = run_script(script, album, self.backend)
+                if result.error is not None:
+                    raise ValueError(str(result.error))
+                made = tagscript_proposal(result, review.step_id)
+                if made is not None:
+                    snapshots = SnapshotIndex()
+                    snapshots.add([album])
+                    rationale = f"{label} (chosen in review)" + (f": {note}" if note else "")
+                    built = build_changesets(
+                        made.model_copy(update={"rationale": rationale}),
+                        current=None,
+                        snapshots=snapshots,
+                        make=lambda targets, why: new_changeset(
+                            targets,
+                            why,
+                            id=new_ulid(),
+                            profile=review.profile,
+                            run_id=review.run_id,
+                            step_id=review.step_id,
+                            source=ChangeSource(kind="step", name="tags.choose"),
+                            created_at=datetime.now(UTC),
+                        ),
+                    )
+                    for cs in built:
+                        self.changesets.add(cs)
+                        emit("changeset.proposed", proposed_event(cs))
+                        outcome = apply_changeset(
+                            cs,
+                            backend=self.backend,
+                            journal=self.journal,
+                            store=self.changesets,
+                            new_id=new_ulid,
+                            now=lambda: datetime.now(UTC),
+                            emit=emit,
+                            resolved_by=decided_by,
+                        )
+                        if outcome.state != "applied":
+                            raise ValueError(f"the change was {outcome.state}")
+                        changeset_id = cs.id
+            if option == CUSTOM and not known_name and review.learn is not None:
+                learned += self._learn(review, values or {})
+        except Exception as exc:  # the album is gone, or the library refused: still waiting
+            log.warning("choice review %s: applying failed: %s", review_id, exc)
+            self.choices.set_claim(review_id, None)
+            message = f"{type(exc).__name__}: {exc}"
+            emit("run.step.log", {"stream": "error", "line": f"{review.label}: choice: {message}"})
+            self._finish_job(job, "failed", message)
+            return
+        review.state = "chosen"
+        review.chosen = "known_name" if known_name else str(option)
+        review.decided_by = decided_by
+        review.decided_at = datetime.now(UTC)
+        review.note = note
+        review.changeset_id = changeset_id
+        review.learned = "; ".join(learned) or None
+        self.choices.release(review)
+        for line in learned:
+            emit("run.step.log", {"stream": "info", "line": f"{review.label}: {line}"})
+        emit(
+            "choice.resolved",
+            {
+                "review_id": review.id,
+                "album_id": review.album_id,
+                "decision": "choose",
+                "option": review.chosen,
+                "label": label,
+                "decided_by": decided_by,
+                "changeset_id": changeset_id,
+                "learned": review.learned,
+            },
+        )
+        self.lanes.resolve_hold(review.run_id, review.id)
+        result_data: dict[str, JsonValue] = {
+            "changeset_id": changeset_id,
+            "learned": review.learned,
+        }
+        self._finish_job(job, "succeeded", result=result_data)
+        settle(
+            self.db,
+            review.run_id,
+            lambda type, step, d: self._changeset_emitter(review.run_id, step)(type, d),
+        )
+
+    def _learn(self, review: ChoiceReview, values: dict[str, Any]) -> list[str]:
+        """TAGS-CHOOSE-10: the album's rank_by values no rule matched get a rule setting
+        the custom value of the rules file's target."""
+        learn = review.learn
+        assert learn is not None
+        value = values.get(learn.target)
+        if not learn.unmatched or value in (None, "", []):
+            return []
+        label = ", ".join(str(v) for v in value) if isinstance(value, list) else str(value)
+        # One query term, quoted: backend queries are split at spaces like a shell line.
+        when = shlex.quote(
+            f"{learn.rank_by}::" + "|".join(query_literal(v) for v in learn.unmatched)
+        )
+        path = resolve_rules(self.profile.root, learn.rules_file)
+        return [append_rule(path, label, when, learn.target, value)]
 
     def _retry_move(self, job: Job) -> None:
         """Plan a conflicted album again with its step's settings (LIBRARY-MOVE-5a). Still
