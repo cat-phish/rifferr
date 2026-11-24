@@ -179,6 +179,15 @@ def test_SEC_43_sign_in_prints_a_one_time_link(
         client.close()
 
 
+def test_SECURITY_21_sign_in_prints_a_link_for_a_host(
+    server: Server, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert cli("sign-in", "--host", "Rifferr.Home.Lan") == 0
+    assert capsys.readouterr().out.startswith("https://rifferr.home.lan/auth/exchange?token=")
+    assert cli("sign-in", "--host", "rifferr.home.lan:8080", "--http") == 0
+    assert capsys.readouterr().out.startswith("http://rifferr.home.lan:8080/auth/exchange?token=")
+
+
 def test_CLI_4_filter_redacts_args_and_message() -> None:
     import logging
 

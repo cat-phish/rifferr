@@ -8,6 +8,7 @@ runs the latter under uvicorn.
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -38,8 +39,10 @@ from rifferr.api.routes import (
     workflows,
 )
 from rifferr.api.security import (
+    DAY,
     ASGIApp,
     SecurityConfig,
+    SessionRecord,
     Sessions,
     generate_token,
     normalize_host,
@@ -52,6 +55,7 @@ from rifferr.appdb import AppDB, SqliteEventSink
 from rifferr.engine import StepTypeRegistry
 from rifferr.notify import Notifier, default_notifier
 from rifferr.notify.service import NotificationService
+from rifferr.passwords import PasswordCheck, auth_path
 from rifferr.profile_store import app_db_path, config_root, load_profile
 from rifferr.steps.registry import load_step_types
 from rifferr.triggers import TriggerManager
@@ -129,9 +133,19 @@ class ApiSettings:
     """Extra ``Host`` names to accept, e.g. a reverse proxy's (SEC-46). Default: none."""
     sessions: Sessions = field(default_factory=Sessions)
     """Browser sessions and one-time sign-in codes (SEC-42, -43)."""
+    session_idle: float = 30 * DAY
+    """A session ends after this many seconds unused (SECURITY-15)."""
+    session_max: float = 90 * DAY
+    """... and at the latest this many seconds after it started (SECURITY-15)."""
+    passwords: PasswordCheck | None = None
+    """The password login (SECURITY-17); default: ``auth.json`` in the config dir."""
 
     def __post_init__(self) -> None:
         self.extra_hosts = tuple(normalize_host(h) for h in self.extra_hosts)
+        self.sessions.idle = self.session_idle
+        self.sessions.max_age = self.session_max
+        if self.passwords is None and not self.no_auth:
+            self.passwords = PasswordCheck(auth_path(self.config_root or config_root()))
 
     def security(self) -> SecurityConfig:
         dev_origins: tuple[str, ...] = ()
@@ -147,11 +161,37 @@ class ApiSettings:
             extra_hosts=self.extra_hosts,
             dev_origins=dev_origins,
             sessions=self.sessions,
+            passwords=self.passwords,
             # SECURITY-3: webhooks are called by other programs, not browsers, and check
             # their own secrets (TRIGGERS-17). The Host allowlist still applies.
             exempt_prefixes=(HOOKS_PREFIX,),
             own_auth_prefixes=(HOOKS_PREFIX,),
         )
+
+
+class DbSessionStore:
+    """Sessions in the app DB (SECURITY-15)."""
+
+    def __init__(self, db: AppDB) -> None:
+        self.db = db
+
+    def add(self, key: str, record: SessionRecord) -> None:
+        self.db.session_add(key, record)
+
+    def get(self, key: str) -> SessionRecord | None:
+        return self.db.session_get(key)
+
+    def touch(self, key: str, last_used_at: float, expires_at: float) -> None:
+        self.db.session_touch(key, last_used_at, expires_at)
+
+    def delete(self, key: str) -> None:
+        self.db.session_delete(key)
+
+    def delete_all(self) -> None:
+        self.db.sessions_delete_all()
+
+    def purge(self, now: float) -> None:
+        self.db.sessions_purge(now)
 
 
 def _add_schemas(app: FastAPI, models: Mapping[str, type[BaseModel]]) -> None:
@@ -177,6 +217,8 @@ def create_api(settings: ApiSettings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         db = AppDB(settings.db_path or app_db_path())  # migrates (API-1)
+        settings.sessions.store = DbSessionStore(db)  # SECURITY-15: survive restarts
+        settings.sessions.store.purge(time.time())
         supervisor = WorkerSupervisor(db, SqliteEventSink(db), command=settings.worker_command)
         previews = PreviewSupervisor(command=settings.preview_command)
         state = ServerState(

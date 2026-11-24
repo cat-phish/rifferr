@@ -29,10 +29,12 @@ from rifferr.api.app import (
     create_app_and_api,
 )
 from rifferr.api.security import (
+    DAY,
     EXCHANGE_PATH,
     SIGN_IN_LINK_PATH,
     BindRefusedError,
     check_bind,
+    is_loopback,
     normalize_host,
     token_file_path,
 )
@@ -43,6 +45,9 @@ from rifferr.cli.client import (
     remove_server_file,
     write_server_file,
 )
+from rifferr.core.duration import parse_duration
+from rifferr.passwords import auth_path, read_login
+from rifferr.profile_store import config_root
 
 log = logging.getLogger("rifferr.cli")
 
@@ -71,13 +76,42 @@ def add_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None
         help="also accept this Host, e.g. a reverse proxy's name; repeatable. The proxy "
         "must pass Host and Origin through unchanged and should serve https",
     )
+    p.add_argument(
+        "--session-idle",
+        type=_duration_arg,
+        default=30 * DAY,
+        metavar="DURATION",
+        help="a browser session ends after this long unused (default: 30d)",
+    )
+    p.add_argument(
+        "--session-max",
+        type=_duration_arg,
+        default=90 * DAY,
+        metavar="DURATION",
+        help="... and at the latest this long after it started (default: 90d)",
+    )
     p.add_argument("--uds", type=Path, default=None, help=argparse.SUPPRESS)
     p.set_defaults(func=cmd_serve)
 
 
 def add_sign_in_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:  # pyright: ignore[reportPrivateUsage]
     p = sub.add_parser("sign-in", help="print a one-time sign-in link for the running server")
+    p.add_argument(
+        "--host",
+        type=_host_arg,
+        default=None,
+        metavar="NAME[:PORT]",
+        help="print the link for this name, e.g. the server's reverse-proxy name",
+    )
+    p.add_argument("--http", action="store_true", help="with --host: http instead of https")
     p.set_defaults(func=cmd_sign_in)
+
+
+def _duration_arg(value: str) -> float:
+    try:
+        return parse_duration(value).total_seconds()
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from None
 
 
 def _host_arg(value: str) -> str:
@@ -206,9 +240,11 @@ class _Server(uvicorn.Server):
 
 def cmd_serve(args: argparse.Namespace) -> int:
     try:
-        check_bind(args.host)
+        check_bind(args.host, real_auth=read_login(auth_path(config_root())) is not None)
     except BindRefusedError as exc:
         return _fail(2, str(exc))
+    if args.no_auth and not is_loopback(args.host):  # SECURITY-20: a login needs auth on
+        return _fail(2, f"binding to {args.host} can't be used with --no-auth")
     if args.no_auth and args.allowed_host:  # SEC-46: a proxied server keeps its auth
         return _fail(2, "--allowed-host can't be used with --no-auth")
     settings = ApiSettings(
@@ -218,6 +254,8 @@ def cmd_serve(args: argparse.Namespace) -> int:
         dev=args.dev,
         vite_port=args.vite_port,
         extra_hosts=tuple(args.allowed_host),
+        session_idle=args.session_idle,
+        session_max=args.session_max,
     )
     try:
         sock = _bind(args)
@@ -236,7 +274,12 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
     server = _Server(config, end_streams)
     vite = _start_vite(args.port, args.vite_port) if args.dev else None
-    info = new_server_info(args.port, args.no_auth, str(args.uds) if args.uds else None)
+    info = new_server_info(
+        args.port,
+        args.no_auth,
+        str(args.uds) if args.uds else None,
+        ui_port=args.vite_port if args.dev else args.port,
+    )
     ui_port = args.vite_port if args.dev else args.port
     previous = signal.signal(signal.SIGTERM, _graceful)
 
@@ -305,7 +348,7 @@ def cmd_sign_in(args: argparse.Namespace) -> int:
         return 3
     try:
         if client.info.no_auth:
-            print(f"http://127.0.0.1:{client.info.port}/ (no auth)")
+            print(f"http://127.0.0.1:{client.info.ui_port or client.info.port}/ (no auth)")
             return 0
         r = client.post(SIGN_IN_LINK_PATH)
         if r.status_code != 200:
@@ -313,7 +356,11 @@ def cmd_sign_in(args: argparse.Namespace) -> int:
             return 1
         body = r.json()
         minutes = int(body["expires_in"]) // 60
-        print(f"http://127.0.0.1:{client.info.port}{body['path']}")
+        if args.host:
+            print(f"{'http' if args.http else 'https'}://{args.host}{body['path']}")
+        else:
+            # the port the browser uses: Vite's with --dev, which proxies /auth
+            print(f"http://127.0.0.1:{client.info.ui_port or client.info.port}{body['path']}")
         print(f"(works once, for {minutes} minutes)", file=sys.stderr)
         return 0
     finally:

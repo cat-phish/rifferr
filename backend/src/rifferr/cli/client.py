@@ -33,6 +33,8 @@ class ServerInfo(BaseModel):
     started_at: datetime
     uds: str | None = None
     """Unix socket path when the server listens on one instead of TCP."""
+    ui_port: int | None = None
+    """Where the browser opens the app: the Vite port with ``--dev``, else ``port``."""
 
 
 def server_file_path(env: Mapping[str, str] | None = None) -> Path:
@@ -83,9 +85,16 @@ def read_server_file(
     return info
 
 
-def new_server_info(port: int, no_auth: bool, uds: str | None = None) -> ServerInfo:
+def new_server_info(
+    port: int, no_auth: bool, uds: str | None = None, ui_port: int | None = None
+) -> ServerInfo:
     return ServerInfo(
-        port=port, pid=os.getpid(), no_auth=no_auth, started_at=datetime.now(UTC), uds=uds
+        port=port,
+        pid=os.getpid(),
+        no_auth=no_auth,
+        started_at=datetime.now(UTC),
+        uds=uds,
+        ui_port=ui_port,
     )
 
 

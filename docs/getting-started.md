@@ -113,7 +113,6 @@ Other changes:
       subgenres: { tag: SUBGENRE, multi: true }
       albumkind: ALBUMKIND
   ```
-
 ## 2. Create the profile
 
 ```bash
@@ -210,7 +209,26 @@ uv run rifferr serve
 ```
 
 `serve` opens the app in your browser and signs you in. If no browser opens, run
-`uv run rifferr sign-in` in another terminal for a one-time link.
+`uv run rifferr sign-in` in another terminal for a one-time link. You stay signed in
+across restarts for 30 days of use; "Account → Sign out" ends it.
+
+To sign in with a password instead, set one (it ends every session):
+
+```bash
+uv run rifferr passwd          # user "admin"; asks twice, at least 12 characters
+```
+
+The signed-out page then shows a sign-in form. On a server reached from other machines,
+put Rifferr behind a reverse proxy that serves https and passes `Host` and `Origin`
+through unchanged, and start it with that name:
+
+```bash
+uv run rifferr serve --host 0.0.0.0 --allowed-host rifferr.home.lan --no-browser
+```
+
+Rifferr listens beyond this machine only once a password is set, and accepts the
+password only over https. Without a password, `uv run rifferr sign-in --host
+rifferr.home.lan` (run over SSH on the server) prints a one-time link for that name.
 
 Start a run of the whole inbox from the app, or from another terminal:
 

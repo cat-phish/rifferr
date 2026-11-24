@@ -8,20 +8,27 @@ with ``--no-auth``.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import ipaddress
 import json
+import logging
 import os
 import re
 import secrets
 import time
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from collections.abc import Awaitable, Callable, Iterable, MutableMapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 from urllib.parse import parse_qs
+
+if TYPE_CHECKING:
+    from rifferr.passwords import PasswordCheck
+
+log = logging.getLogger(__name__)
 
 Scope = MutableMapping[str, Any]
 Message = MutableMapping[str, Any]
@@ -31,6 +38,15 @@ ASGIApp = Callable[[Scope, Receive, Send], Awaitable[None]]
 
 EXCHANGE_PATH = "/auth/exchange"
 SIGN_IN_LINK_PATH = "/auth/sign-in-link"
+SIGN_IN_PATH = "/auth/sign-in"
+SIGN_OUT_PATH = "/auth/sign-out"
+SIGN_OUT_ALL_PATH = "/auth/sign-out-all"
+STATUS_PATH = "/auth/status"
+SIGN_IN_SCRIPT_PATH = "/auth/sign-in.js"
+MAX_SIGN_IN_BODY = 4096
+DAY = 24 * 3600.0
+TOUCH_EVERY = 3600.0
+"""A session's use is recorded at most this often (SECURITY-15)."""
 HEALTH_PATH = "/healthz"
 MUTATING = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 TOKEN_BYTES = 32
@@ -103,13 +119,80 @@ def normalize_host(value: str) -> str:
     return host
 
 
+StartedBy = Literal["code", "password"]
+
+
+@dataclass(frozen=True)
+class SessionRecord:
+    """One browser session (SECURITY-15). Times are Unix seconds."""
+
+    created_at: float
+    last_used_at: float
+    expires_at: float
+    started_by: str
+    label: str = ""
+
+
+class SessionStore(Protocol):
+    """Where sessions live, keyed by the SHA-256 (hex) of the session id."""
+
+    def add(self, key: str, record: SessionRecord) -> None: ...
+    def get(self, key: str) -> SessionRecord | None: ...
+    def touch(self, key: str, last_used_at: float, expires_at: float) -> None: ...
+    def delete(self, key: str) -> None: ...
+    def delete_all(self) -> None: ...
+    def purge(self, now: float) -> None: ...
+
+
+class MemorySessionStore:
+    """Sessions in memory: tests, and servers started without an app DB."""
+
+    def __init__(self, cap: int = 256) -> None:
+        self.cap = cap
+        self._rows: OrderedDict[str, SessionRecord] = OrderedDict()
+
+    def add(self, key: str, record: SessionRecord) -> None:
+        self._rows[key] = record
+        while len(self._rows) > self.cap:
+            self._rows.popitem(last=False)  # drop the oldest
+
+    def get(self, key: str) -> SessionRecord | None:
+        return self._rows.get(key)
+
+    def touch(self, key: str, last_used_at: float, expires_at: float) -> None:
+        row = self._rows.get(key)
+        if row is not None:
+            self._rows[key] = replace(row, last_used_at=last_used_at, expires_at=expires_at)
+
+    def delete(self, key: str) -> None:
+        self._rows.pop(key, None)
+
+    def delete_all(self) -> None:
+        self._rows.clear()
+
+    def purge(self, now: float) -> None:
+        for key in [k for k, r in self._rows.items() if r.expires_at <= now]:
+            del self._rows[key]
+
+
+def user_agent_label(value: str | None) -> str:
+    """A short label for a session list, from the User-Agent."""
+    text = (value or "").strip()
+    browser = next(
+        (b for b in ("Firefox", "Edg", "Chrome", "Safari") if b in text), text[:40] or "unknown"
+    )
+    browser = {"Edg": "Edge"}.get(browser, browser)
+    system = next((o for o in ("Windows", "Android", "iPhone", "Mac", "Linux") if o in text), "")
+    return f"{browser} on {system}" if system else browser
+
+
 class Sessions:
-    """Browser sessions and one-time sign-in codes, in server memory only (SEC-42, -43).
+    """Browser sessions (SECURITY-15) and one-time sign-in codes (SEC-42, -43).
 
     The cookie holds a session id, never the local token, so a leaked cookie is not a
-    bearer token and ends at restart. Sign-in links carry a code that works once and
-    for ``code_ttl`` seconds. Only SHA-256 digests are kept, so lookups don't compare
-    secrets byte by byte.
+    bearer token. Sessions live in ``store``: the app DB on a server, so they survive a
+    restart. Sign-in codes stay in memory and work once, for ``code_ttl`` seconds. Only
+    SHA-256 digests are kept, so lookups don't compare secrets byte by byte.
     """
 
     def __init__(
@@ -119,27 +202,34 @@ class Sessions:
         max_sessions: int = 256,
         max_codes: int = 32,
         clock: Callable[[], float] = time.monotonic,
+        wall: Callable[[], float] = time.time,
+        store: SessionStore | None = None,
+        idle: float = 30 * DAY,
+        max_age: float = 90 * DAY,
     ) -> None:
         self.code_ttl = code_ttl
-        self.max_sessions = max_sessions
         self.max_codes = max_codes
         self.clock = clock
+        self.wall = wall
+        self.store: SessionStore = store or MemorySessionStore(max_sessions)
+        self.idle = idle
+        self.max_age = max_age
         self._codes: OrderedDict[bytes, float] = OrderedDict()
-        self._sessions: OrderedDict[bytes, None] = OrderedDict()
+        self._purged_at = 0.0
 
     @staticmethod
     def _digest(value: str) -> bytes:
         return hashlib.sha256(value.encode()).digest()
 
     @staticmethod
-    def _add(store: OrderedDict[bytes, Any], key: bytes, value: Any, cap: int) -> None:
-        store[key] = value
-        while len(store) > cap:
-            store.popitem(last=False)  # drop the oldest
+    def key(sid: str) -> str:
+        return hashlib.sha256(sid.encode()).hexdigest()
 
     def sign_in_code(self) -> str:
         code = secrets.token_urlsafe(TOKEN_BYTES)
-        self._add(self._codes, self._digest(code), self.clock() + self.code_ttl, self.max_codes)
+        self._codes[self._digest(code)] = self.clock() + self.code_ttl
+        while len(self._codes) > self.max_codes:
+            self._codes.popitem(last=False)
         return code
 
     def redeem(self, code: str | None) -> bool:
@@ -149,13 +239,103 @@ class Sessions:
         expires = self._codes.pop(self._digest(code), None)
         return expires is not None and self.clock() < expires
 
-    def new_session(self) -> str:
+    def _purge(self, now: float) -> None:
+        if now - self._purged_at >= TOUCH_EVERY:
+            self._purged_at = now
+            self.store.purge(now)
+
+    def new_session(self, started_by: StartedBy = "code", label: str = "") -> str:
+        now = self.wall()
+        self._purge(now)
         sid = secrets.token_urlsafe(TOKEN_BYTES)
-        self._add(self._sessions, self._digest(sid), None, self.max_sessions)
+        end = now + min(self.idle, self.max_age)
+        self.store.add(self.key(sid), SessionRecord(now, now, end, started_by, label))
         return sid
 
+    def check(self, sid: str | None) -> tuple[SessionRecord | None, bool]:
+        """The live session ``sid`` names, and whether its use was just recorded (at most
+        hourly, which moves its end); None when it's unknown or has ended."""
+        if not sid:
+            return None, False
+        now = self.wall()
+        self._purge(now)
+        key = self.key(sid)
+        row = self.store.get(key)
+        if row is None:
+            return None, False
+        if now >= row.expires_at:
+            self.store.delete(key)
+            return None, False
+        if now - row.last_used_at >= TOUCH_EVERY:
+            end = min(now + self.idle, row.created_at + self.max_age)
+            self.store.touch(key, now, end)
+            return replace(row, last_used_at=now, expires_at=end), True
+        return row, False
+
+    def lookup(self, sid: str | None) -> SessionRecord | None:
+        return self.check(sid)[0]
+
     def session_ok(self, sid: str | None) -> bool:
-        return bool(sid) and self._digest(sid or "") in self._sessions
+        return self.lookup(sid) is not None
+
+    def max_age_of(self, row: SessionRecord) -> int:
+        return max(0, round(row.expires_at - self.wall()))
+
+    def end(self, sid: str | None) -> None:
+        if sid:
+            self.store.delete(self.key(sid))
+
+    def end_all(self) -> None:
+        self.store.delete_all()
+
+
+class SignInThrottle:
+    """SECURITY-19: password failures per client address and in all, in memory."""
+
+    def __init__(
+        self,
+        *,
+        per_address: int = 5,
+        total: int = 20,
+        window: float = 15 * 60,
+        pause: float = 15 * 60,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self.per_address = per_address
+        self.total = total
+        self.window = window
+        self.pause = pause
+        self.clock = clock
+        self._failures: dict[str, deque[float]] = {}
+        self._all: deque[float] = deque()
+        self._blocked: dict[str, float] = {}
+        self._paused_until = 0.0
+
+    def _trim(self, times: deque[float], now: float) -> None:
+        while times and times[0] <= now - self.window:
+            times.popleft()
+
+    def retry_after(self, address: str) -> float | None:
+        """Seconds until ``address`` may try again, or None when it may now."""
+        now = self.clock()
+        until = max(self._blocked.get(address, 0.0), self._paused_until)
+        return until - now if until > now else None
+
+    def failed(self, address: str) -> None:
+        now = self.clock()
+        times = self._failures.setdefault(address, deque())
+        times.append(now)
+        self._trim(times, now)
+        self._all.append(now)
+        self._trim(self._all, now)
+        if len(times) >= self.per_address:
+            self._blocked[address] = now + self.pause
+            times.clear()
+        if len(self._all) >= self.total:
+            self._paused_until = now + self.pause
+            self._all.clear()
+        for addr in [a for a, t in self._blocked.items() if t <= now]:
+            del self._blocked[addr]
 
 
 @dataclass(frozen=True)
@@ -176,6 +356,9 @@ class SecurityConfig:
     allowlist."""
     sessions: Sessions = field(default_factory=Sessions, compare=False)
     """Browser sessions and sign-in codes (SEC-42, -43). Shared, mutable server state."""
+    passwords: PasswordCheck | None = field(default=None, compare=False)
+    """The password login (SECURITY-17, -18); None: no password sign-in."""
+    throttle: SignInThrottle = field(default_factory=SignInThrottle, compare=False)
 
     @property
     def cookie_name(self) -> str:
@@ -259,7 +442,7 @@ def is_loopback(host: str) -> bool:
 
 
 def check_bind(host: str, *, real_auth: bool = False) -> None:
-    """SECURITY-1, -9. M0 has no real auth, so only loopback binds are allowed."""
+    """SECURITY-1, -9, -20: beyond loopback only with a password login (``real_auth``)."""
     if not is_loopback(host) and not real_auth:
         raise BindRefusedError(f"binding to {host} requires authentication; {DOCS_HINT}")
 
@@ -289,22 +472,6 @@ async def _respond(
         }
     )
     await send({"type": "http.response.body", "body": body})
-
-
-async def _signed_out(send: Send) -> None:
-    """SECURITY-7: the same 401, as a page with no app data."""
-    await send(
-        {
-            "type": "http.response.start",
-            "status": 401,
-            "headers": [
-                (b"content-type", b"text/html; charset=utf-8"),
-                (b"content-length", str(len(SIGNED_OUT_PAGE)).encode()),
-                (b"cache-control", b"no-store"),
-            ],
-        }
-    )
-    await send({"type": "http.response.body", "body": SIGNED_OUT_PAGE})
 
 
 def _header(scope: Scope, name: bytes) -> str | None:
@@ -458,8 +625,128 @@ class JsonOnly:
         await self.app(scope, receive, send)
 
 
+def _client_address(scope: Scope) -> str:
+    client = scope.get("client")
+    if isinstance(client, (tuple, list)) and client:
+        return str(client[0])  # pyright: ignore[reportUnknownArgumentType]
+    return "unknown"
+
+
+def password_transport_ok(scope: Scope, config: SecurityConfig) -> bool:
+    """SECURITY-20: loopback to a loopback name, served over TLS, or through the https
+    origin of a configured extra host (a reverse proxy)."""
+    if scope.get("scheme") in ("https", "wss"):
+        return True
+    host = (_header(scope, b"host") or "").lower()
+    extra = {h.lower() for h in config.extra_hosts}
+    origin = (_header(scope, b"origin") or "").lower()
+    if host in extra:
+        return origin == f"https://{host}"
+    loopback_names = {
+        f"127.0.0.1:{config.port}",
+        f"localhost:{config.port}",
+        f"[::1]:{config.port}",
+    }
+    return host in loopback_names and is_loopback(_client_address(scope))
+
+
+async def _read_body(receive: Receive, limit: int) -> bytes | None:
+    body = b""
+    while True:
+        message = await receive()
+        if message.get("type") != "http.request":
+            return None
+        body += message.get("body", b"")
+        if len(body) > limit:
+            return None
+        if not message.get("more_body", False):
+            return body
+
+
+async def _send_json(
+    send: Send, status: int, data: Any, headers: Iterable[tuple[bytes, bytes]] = ()
+) -> None:
+    body = json.dumps(data).encode()
+    await send(
+        {
+            "type": "http.response.start",
+            "status": status,
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"content-length", str(len(body)).encode()),
+                (b"cache-control", b"no-store"),
+                *headers,
+            ],
+        }
+    )
+    await send({"type": "http.response.body", "body": body})
+
+
+async def _no_content(send: Send, headers: Iterable[tuple[bytes, bytes]] = ()) -> None:
+    await send(
+        {
+            "type": "http.response.start",
+            "status": 204,
+            "headers": [(b"cache-control", b"no-store"), *headers],
+        }
+    )
+    await send({"type": "http.response.body", "body": b""})
+
+
+SIGN_IN_SCRIPT = b"""// Rifferr password sign-in (F-SECURITY SECURITY-18).
+// Served without auth: no app data.
+"use strict";
+const form = document.getElementById("sign-in");
+const error = document.getElementById("sign-in-error");
+const MESSAGES = {
+  bad_credentials: "Wrong user name or password.",
+  https_required:
+    "Password sign-in needs https. Open Rifferr at its https address, " +
+    "or use a sign-in link (rifferr sign-in).",
+  no_password: "No password is set. Run rifferr passwd on the server, or use a sign-in link.",
+};
+form.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  error.textContent = "";
+  const data = new FormData(form);
+  const r = await fetch("/auth/sign-in", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username: data.get("username"), password: data.get("password") }),
+  });
+  if (r.status === 204) {
+    window.location.reload();
+    return;
+  }
+  let code = "";
+  try {
+    code = (await r.json()).error.code;
+  } catch {}
+  if (code === "too_many_attempts") {
+    const minutes = Math.max(1, Math.ceil(Number(r.headers.get("retry-after") || 60) / 60));
+    error.textContent = `Too many failed attempts. Try again in ${minutes} minutes.`;
+  } else {
+    error.textContent = MESSAGES[code] || `Sign-in failed (${r.status}).`;
+  }
+});
+"""
+
+SIGN_IN_FORM = b"""<h2>Sign in</h2>
+<form id="sign-in" style="display: grid; gap: .5rem; max-width: 20rem">
+<label>User name <input name="username" autocomplete="username" value="admin" required></label>
+<label>Password <input name="password" type="password" autocomplete="current-password"
+ required autofocus></label>
+<button type="submit">Sign in</button>
+<p id="sign-in-error" role="alert" style="color: #c92a2a"></p>
+</form>
+<script src="/auth/sign-in.js"></script>
+<h2>Or use a sign-in link</h2>
+"""
+
+
 class TokenAuth:
-    """SECURITY-6, -7: session cookie or local token as bearer; the sign-in routes."""
+    """SECURITY-6, -7, -15 to -21: session cookie or local token as bearer; the sign-in
+    routes."""
 
     def __init__(self, app: ASGIApp, config: SecurityConfig) -> None:
         self.app = app
@@ -470,12 +757,19 @@ class TokenAuth:
             await self.app(scope, receive, send)
             return
         path = scope.get("path", "")
-        if scope["type"] == "http" and path == EXCHANGE_PATH:
-            await self._exchange(scope, send)
-            return
-        if scope["type"] == "http" and path == SIGN_IN_LINK_PATH:
-            await self._sign_in_link(scope, send)
-            return
+        if scope["type"] == "http":
+            route = {
+                EXCHANGE_PATH: self._exchange,
+                SIGN_IN_LINK_PATH: self._sign_in_link,
+                SIGN_IN_PATH: self._sign_in,
+                SIGN_OUT_PATH: self._sign_out,
+                SIGN_OUT_ALL_PATH: self._sign_out_all,
+                STATUS_PATH: self._status,
+                SIGN_IN_SCRIPT_PATH: self._script,
+            }.get(path)
+            if route is not None:
+                await route(scope, receive, send)
+                return
         if (
             self.config.no_auth
             or path in self.config.public_paths
@@ -483,23 +777,44 @@ class TokenAuth:
         ):
             await self.app(scope, receive, send)
             return
-        if self._cookie_ok(scope) or self.config.token_ok(_bearer(scope)):
+        found = self._session(scope)
+        if found is not None:
+            sid, row, touched = found
+            if touched and scope["type"] == "http":
+                await self.app(scope, receive, self._with_cookie(scope, send, sid, row))
+            else:
+                await self.app(scope, receive, send)
+            return
+        if self._token_cookie(scope) or self.config.token_ok(_bearer(scope)):
             await self.app(scope, receive, send)
             return
         if scope["type"] == "websocket":
             await send({"type": "websocket.close", "code": 1008})
             return
         if scope.get("method") == "GET" and "text/html" in (_header(scope, b"accept") or ""):
-            await _signed_out(send)  # a browser tab: explain, don't dump JSON
+            await self._signed_out(send)  # a browser tab: explain, don't dump JSON
             return
         await _respond(send, 401, "unauthenticated", "authentication required")
 
-    def _cookie_ok(self, scope: Scope) -> bool:
-        """A session id we issued; the local token itself still counts (older cookies)."""
-        sessions = self.config.sessions
-        return any(
-            sessions.session_ok(v) or self.config.token_ok(v)
-            for v in _cookies(scope, self.config.cookie_name)
+    # -- sessions --
+
+    def _session(self, scope: Scope) -> tuple[str, SessionRecord, bool] | None:
+        for value in _cookies(scope, self.config.cookie_name):
+            row, touched = self.config.sessions.check(value)
+            if row is not None:
+                return value, row, touched
+        return None
+
+    def _token_cookie(self, scope: Scope) -> bool:
+        """The local token itself in the cookie still counts (older cookies)."""
+        return any(self.config.token_ok(v) for v in _cookies(scope, self.config.cookie_name))
+
+    def _signed_in(self, scope: Scope) -> bool:
+        return (
+            self.config.no_auth
+            or self._session(scope) is not None
+            or self._token_cookie(scope)
+            or self.config.token_ok(_bearer(scope))
         )
 
     def _secure_cookie(self, scope: Scope) -> bool:
@@ -509,7 +824,54 @@ class TokenAuth:
         extra = {h.lower() for h in self.config.extra_hosts}
         return scope.get("scheme") in ("https", "wss") or host in extra
 
-    async def _exchange(self, scope: Scope, send: Send) -> None:
+    def _cookie(self, scope: Scope, value: str, max_age: int) -> tuple[bytes, bytes]:
+        cookie = (
+            f"{self.config.cookie_name}={value}; HttpOnly; SameSite=Strict; Path=/; "
+            f"Max-Age={max_age}"
+        )
+        if self._secure_cookie(scope):
+            cookie += "; Secure"
+        return (b"set-cookie", cookie.encode())
+
+    def _new_session_cookie(self, scope: Scope, started_by: StartedBy) -> tuple[bytes, bytes]:
+        sessions = self.config.sessions
+        sid = sessions.new_session(started_by, user_agent_label(_header(scope, b"user-agent")))
+        row = sessions.lookup(sid)
+        return self._cookie(scope, sid, sessions.max_age_of(row) if row else 0)
+
+    def _with_cookie(self, scope: Scope, send: Send, sid: str, row: SessionRecord) -> Send:
+        """SECURITY-15: the cookie's Max-Age follows the session's moved end."""
+        header = self._cookie(scope, sid, self.config.sessions.max_age_of(row))
+
+        async def wrapped(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                message["headers"] = [*message.get("headers", []), header]
+            await send(message)
+
+        return wrapped
+
+    async def _signed_out(self, send: Send) -> None:
+        """SECURITY-7: the same 401, as a page with no app data; with a password login,
+        it holds the sign-in form (SECURITY-18)."""
+        page = SIGNED_OUT_PAGE
+        if self.config.passwords is not None and self.config.passwords.enabled():
+            page = page.replace(b"<h1>Signed out</h1>\n", b"<h1>Signed out</h1>\n" + SIGN_IN_FORM)
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 401,
+                "headers": [
+                    (b"content-type", b"text/html; charset=utf-8"),
+                    (b"content-length", str(len(page)).encode()),
+                    (b"cache-control", b"no-store"),
+                ],
+            }
+        )
+        await send({"type": "http.response.body", "body": page})
+
+    # -- routes --
+
+    async def _exchange(self, scope: Scope, receive: Receive, send: Send) -> None:
         query = parse_qs(scope.get("query_string", b"").decode("latin-1"))
         token = (query.get("token") or [None])[0]
         headers: list[tuple[bytes, bytes]] = [(b"location", b"/"), (b"cache-control", b"no-store")]
@@ -519,17 +881,11 @@ class TokenAuth:
             if not (self.config.sessions.redeem(token) or self.config.token_ok(token)):
                 await _respond(send, 403, "invalid_token", "invalid or expired token")
                 return
-            cookie = (
-                f"{self.config.cookie_name}={self.config.sessions.new_session()}; "
-                "HttpOnly; SameSite=Strict; Path=/"
-            )
-            if self._secure_cookie(scope):
-                cookie += "; Secure"
-            headers.append((b"set-cookie", cookie.encode()))
+            headers.append(self._new_session_cookie(scope, "code"))
         await send({"type": "http.response.start", "status": 303, "headers": headers})
         await send({"type": "http.response.body", "body": b""})
 
-    async def _sign_in_link(self, scope: Scope, send: Send) -> None:
+    async def _sign_in_link(self, scope: Scope, receive: Receive, send: Send) -> None:
         """``POST /auth/sign-in-link`` with the local token as Bearer: a new one-time
         sign-in code for ``rifferr sign-in`` (SEC-43). A browser session can't mint one."""
         if scope.get("method", "GET").upper() != "POST":
@@ -542,24 +898,107 @@ class TokenAuth:
             await _respond(send, 401, "unauthenticated", "authentication required")
             return
         sessions = self.config.sessions
-        body = json.dumps(
+        await _send_json(
+            send,
+            200,
             {
                 "path": f"{EXCHANGE_PATH}?token={sessions.sign_in_code()}",
                 "expires_in": sessions.code_ttl,
-            }
-        ).encode()
+            },
+        )
+
+    async def _sign_in(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """``POST /auth/sign-in {username, password}`` (SECURITY-18 to -20)."""
+        if scope.get("method", "GET").upper() != "POST":
+            await _respond(send, 405, "method_not_allowed", "use POST")
+            return
+        if self.config.no_auth:
+            await _respond(send, 409, "no_auth", "the server runs without auth")
+            return
+        passwords = self.config.passwords
+        if passwords is None or not passwords.enabled():
+            await _respond(send, 404, "no_password", "no password is set; run rifferr passwd")
+            return
+        if not password_transport_ok(scope, self.config):
+            await _respond(send, 403, "https_required", "password sign-in needs https")
+            return
+        address = _client_address(scope)
+        wait = self.config.throttle.retry_after(address)
+        if wait is not None:
+            await _respond(
+                send,
+                429,
+                "too_many_attempts",
+                "too many failed sign-ins; try again later",
+                [(b"retry-after", str(int(wait) + 1).encode())],
+            )
+            return
+        raw = await _read_body(receive, MAX_SIGN_IN_BODY)
+        try:
+            data = json.loads(raw) if raw is not None else None
+        except ValueError:
+            data = None
+        user = data.get("username") if isinstance(data, dict) else None  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+        password = data.get("password") if isinstance(data, dict) else None  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+        if not isinstance(user, str) or not isinstance(password, str):
+            await _respond(send, 400, "bad_request", "send a username and a password")
+            return
+        if not await asyncio.to_thread(passwords.verify, user, password):
+            self.config.throttle.failed(address)
+            log.warning("password sign-in failed from %s", address)
+            await _respond(send, 401, "bad_credentials", "wrong user name or password")
+            return
+        log.info("password sign-in from %s", address)
+        await _no_content(send, [self._new_session_cookie(scope, "password")])
+
+    async def _sign_out(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """``POST /auth/sign-out``: this browser's session ends (SECURITY-16)."""
+        if scope.get("method", "GET").upper() != "POST":
+            await _respond(send, 405, "method_not_allowed", "use POST")
+            return
+        for value in _cookies(scope, self.config.cookie_name):
+            self.config.sessions.end(value)
+        await _no_content(send, [self._cookie(scope, "", 0)])
+
+    async def _sign_out_all(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """``POST /auth/sign-out-all``: every session ends (SECURITY-16)."""
+        if scope.get("method", "GET").upper() != "POST":
+            await _respond(send, 405, "method_not_allowed", "use POST")
+            return
+        if self.config.no_auth or not self._signed_in(scope):
+            await _respond(send, 401, "unauthenticated", "authentication required")
+            return
+        self.config.sessions.end_all()
+        log.info("every session was ended")
+        await _no_content(send, [self._cookie(scope, "", 0)])
+
+    async def _status(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """``GET /auth/status``, no auth: what the sign-in screen needs to know."""
+        passwords = self.config.passwords
+        await _send_json(
+            send,
+            200,
+            {
+                "signed_in": self._signed_in(scope),
+                "password_login": (
+                    not self.config.no_auth and passwords is not None and passwords.enabled()
+                ),
+            },
+        )
+
+    async def _script(self, scope: Scope, receive: Receive, send: Send) -> None:
         await send(
             {
                 "type": "http.response.start",
                 "status": 200,
                 "headers": [
-                    (b"content-type", b"application/json"),
-                    (b"content-length", str(len(body)).encode()),
+                    (b"content-type", b"text/javascript; charset=utf-8"),
+                    (b"content-length", str(len(SIGN_IN_SCRIPT)).encode()),
                     (b"cache-control", b"no-store"),
                 ],
             }
         )
-        await send({"type": "http.response.body", "body": body})
+        await send({"type": "http.response.body", "body": SIGN_IN_SCRIPT})
 
 
 def secure(app: ASGIApp, config: SecurityConfig) -> ASGIApp:

@@ -1,7 +1,18 @@
-import { ActionIcon, AppShell, Badge, Group, NavLink, Select, Title } from "@mantine/core";
+import {
+  ActionIcon,
+  AppShell,
+  Badge,
+  Button,
+  Group,
+  Menu,
+  NavLink,
+  Select,
+  Title,
+} from "@mantine/core";
 import { useState, useSyncExternalStore } from "react";
 import { Link, Route, Routes, useLocation } from "react-router";
 import { auth } from "./api/auth";
+import { signOut } from "./api/session";
 import { useProfile, withProfile } from "./hooks/useProfile";
 import { useAppEvents, useReviewQueue, useWorkflowSteps } from "./hooks/useReviewQueue";
 import { OTHER_WORKFLOW, reviewWorkflows, workflowLink } from "./lib/review";
@@ -41,6 +52,41 @@ export function App() {
   );
 }
 
+/** Sign out of this browser, or end every session (SECURITY-16). */
+function AccountMenu() {
+  const leave = (everywhere: boolean) => {
+    void signOut(everywhere).then(() => {
+      auth.markSignedOut();
+    });
+  };
+  return (
+    <Menu position="bottom-end">
+      <Menu.Target>
+        <Button variant="subtle" size="compact-sm" data-testid="account-menu">
+          Account
+        </Button>
+      </Menu.Target>
+      <Menu.Dropdown>
+        <Menu.Item
+          onClick={() => {
+            leave(false);
+          }}
+        >
+          Sign out
+        </Menu.Item>
+        <Menu.Item
+          color="red"
+          onClick={() => {
+            leave(true);
+          }}
+        >
+          Sign out everywhere
+        </Menu.Item>
+      </Menu.Dropdown>
+    </Menu>
+  );
+}
+
 /** Profile switcher, navigation and the page area (UI-SHELL-2). */
 function Shell({ children }: { children: React.ReactNode }) {
   const { profile, profiles, setProfile } = useProfile();
@@ -71,22 +117,25 @@ function Shell({ children }: { children: React.ReactNode }) {
       <AppShell.Header>
         <Group h="100%" px="md" justify="space-between">
           <Title order={3}>Rifferr</Title>
-          <Select
-            aria-label="Profile"
-            data-testid="profile"
-            placeholder="No profile"
-            data={profiles.map((p) => ({
-              value: p.name,
-              label: p.error === null ? p.name : `${p.name} (can't load)`,
-              disabled: p.error !== null,
-            }))}
-            value={profile}
-            onChange={(v) => {
-              if (v !== null) setProfile(v);
-            }}
-            allowDeselect={false}
-            w={220}
-          />
+          <Group gap="sm">
+            <Select
+              aria-label="Profile"
+              data-testid="profile"
+              placeholder="No profile"
+              data={profiles.map((p) => ({
+                value: p.name,
+                label: p.error === null ? p.name : `${p.name} (can't load)`,
+                disabled: p.error !== null,
+              }))}
+              value={profile}
+              onChange={(v) => {
+                if (v !== null) setProfile(v);
+              }}
+              allowDeselect={false}
+              w={220}
+            />
+            <AccountMenu />
+          </Group>
         </Group>
       </AppShell.Header>
       <AppShell.Navbar p="xs">

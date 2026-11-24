@@ -17,6 +17,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, JsonValue
 
+from rifferr.api.security import SessionRecord
 from rifferr.core.changeset import ApplyResult, ChangeSet, ChangeSetState, JournalEntry
 from rifferr.core.covers import CoverReview
 from rifferr.core.files import CleanupDecision
@@ -471,6 +472,45 @@ class AppDB:
             sql, args = sql + " AND state = ?", [*args, state]
         rows = self._conn.execute(sql + " ORDER BY created_at, id", args).fetchall()
         return [_job(r) for r in rows]
+
+    # -- sessions (F-SECURITY SECURITY-15) -------------------------------------
+
+    def session_add(self, key: str, record: SessionRecord) -> None:
+        self._conn.execute(
+            "INSERT OR REPLACE INTO sessions (id_sha256, created_at, last_used_at, expires_at,"
+            " started_by, label) VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                key,
+                record.created_at,
+                record.last_used_at,
+                record.expires_at,
+                record.started_by,
+                record.label,
+            ),
+        )
+
+    def session_get(self, key: str) -> SessionRecord | None:
+        row = self._conn.execute(
+            "SELECT created_at, last_used_at, expires_at, started_by, label FROM sessions"
+            " WHERE id_sha256 = ?",
+            (key,),
+        ).fetchone()
+        return SessionRecord(*row) if row is not None else None
+
+    def session_touch(self, key: str, last_used_at: float, expires_at: float) -> None:
+        self._conn.execute(
+            "UPDATE sessions SET last_used_at = ?, expires_at = ? WHERE id_sha256 = ?",
+            (last_used_at, expires_at, key),
+        )
+
+    def session_delete(self, key: str) -> None:
+        self._conn.execute("DELETE FROM sessions WHERE id_sha256 = ?", (key,))
+
+    def sessions_delete_all(self) -> int:
+        return self._conn.execute("DELETE FROM sessions").rowcount
+
+    def sessions_purge(self, now: float) -> None:
+        self._conn.execute("DELETE FROM sessions WHERE expires_at <= ?", (now,))
 
     # -- trust (F-SECURITY) ----------------------------------------------------
 

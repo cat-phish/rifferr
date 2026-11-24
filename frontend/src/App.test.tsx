@@ -78,6 +78,47 @@ test("UI_SHELL_1 a 401 shows Signed out and nothing is stored", async () => {
   expect(setItem).not.toHaveBeenCalled();
 });
 
+test("SECURITY_18 with a password login, Signed out holds a sign-in form", async () => {
+  const { calls } = mockApi({
+    "GET /api/profiles": () => err(401, "unauthenticated"),
+    "GET /auth/status": () => ({ signed_in: false, password_login: true }),
+    "POST /auth/sign-in": () => err(401, "bad_credentials"),
+  });
+  renderApp("/");
+  const form = await screen.findByTestId("sign-in-form");
+  fireEvent.change(within(form).getByLabelText(/Password/), { target: { value: "wrong one" } });
+  fireEvent.click(within(form).getByRole("button", { name: "Sign in" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Wrong user name or password.");
+  expect(calls.find((c) => c.path === "/auth/sign-in")?.body).toEqual({
+    username: "admin",
+    password: "wrong one",
+  });
+});
+
+test("SECURITY_18 without a password login, only the link is offered", async () => {
+  mockApi({
+    "GET /api/profiles": () => err(401, "unauthenticated"),
+    "GET /auth/status": () => ({ signed_in: false, password_login: false }),
+  });
+  renderApp("/");
+  expect(await screen.findByRole("heading", { name: "Signed out" })).toBeInTheDocument();
+  expect(screen.queryByTestId("sign-in-form")).not.toBeInTheDocument();
+});
+
+test("SECURITY_16 the account menu signs out everywhere", async () => {
+  const { calls } = mockApi({
+    "GET /api/profiles": () => [],
+    "GET /api/review": () => [],
+    "POST /auth/sign-out-all": () => ({}),
+    "GET /auth/status": () => ({ signed_in: false, password_login: false }),
+  });
+  renderApp("/");
+  fireEvent.click(await screen.findByTestId("account-menu"));
+  fireEvent.click(await screen.findByText("Sign out everywhere"));
+  expect(await screen.findByRole("heading", { name: "Signed out" })).toBeInTheDocument();
+  expect(calls.some((c) => c.method === "POST" && c.path === "/auth/sign-out-all")).toBe(true);
+});
+
 // -- UI-SHELL-2 ---------------------------------------------------------------------------------
 
 test("UI_SHELL_2 profile switcher defaults to the first loadable profile and keeps it in the URL", async () => {
