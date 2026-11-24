@@ -1,0 +1,44 @@
+# Checklist "Manage Dates/Years" (docs/original-checklist.md), as far as rules can do it.
+# beets keeps dates as year, month and day fields (original_year/month/day for the
+# original release) and writes DATE and ORIGINALDATE from them, so the checklist's
+# ORIGINALYEAR vs ORIGINALDATE checks need nothing: they can't disagree.
+#
+# 1. No original date: take the release date.
+# 2. Keep the release date in `releasedate` (a flexible attribute, YYYY[-MM[-DD]]) before
+#    3. the release date becomes the original date, so DATE sorts by first release on an
+#    iPod and in folder browsing (author, 2026-11-23).
+# Step 3 waits for step 2, so a release date is never lost: an album without one (only
+# an original date, or neither) is left alone, and a later step asks for it.
+# Note: `beet mbsync` or a re-import puts MusicBrainz's release date back in year/month/day.
+scope: album
+idempotence: fail
+actions:
+  # Conditions see earlier actions, so the year is copied last: until then
+  # `original_year:0` still holds for the month and day copies.
+  - name: original-day-from-release
+    when: "original_year:0 ^year:0"
+    copy: { from: day, to: original_day }
+  - name: original-month-from-release
+    when: "original_year:0 ^year:0"
+    copy: { from: month, to: original_month }
+  - name: original-year-from-release
+    when: "original_year:0 ^year:0"
+    copy: { from: year, to: original_year }
+  - name: keep-release-day
+    when: "^releasedate::. ^year:0 ^month:0 ^day:0"
+    set: { releasedate: "$year-$month-$day" }
+  - name: keep-release-month
+    when: "^releasedate::. ^year:0 ^month:0"
+    set: { releasedate: "$year-$month" }
+  - name: keep-release-year
+    when: "^releasedate::. ^year:0"
+    set: { releasedate: "$year" }
+  - name: release-day-from-original
+    when: "^original_year:0 releasedate::."
+    copy: { from: original_day, to: day }
+  - name: release-month-from-original
+    when: "^original_year:0 releasedate::."
+    copy: { from: original_month, to: month }
+  - name: release-year-from-original
+    when: "^original_year:0 releasedate::."
+    copy: { from: original_year, to: year }

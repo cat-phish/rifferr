@@ -5,7 +5,21 @@
 # own (`rifferr trust`): trusting a workflow that calls it doesn't trust it.
 name: Release-type suffixes
 description: EP / Single and Compilation suffixes from the release type.
+vars:
+  ep_max_tracks:
+    description: Albums with at most this many tracks may be EPs (likely-ep)
+    default: "6"
+  ep_max_seconds:
+    description: and at most this total length in seconds (1799 = under 30 minutes)
+    default: "1799"
 steps:
+  # Few, short tracks and not marked EP or single: proposed as an EP, for review (B-044).
+  # Runs first, so an accepted EP gets its " (EP)" suffix from release-types below.
+  - id: likely-ep
+    uses: tags.script
+    apply: review
+    with:
+      script: likely-ep.yaml
   # EP / Single from albumtype or the album name, plus the " (EP)" / " (Single)"
   # suffix. Applied without review: the rules are mechanical and every change can be
   # undone from the run page.

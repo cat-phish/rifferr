@@ -14,10 +14,13 @@ import contextvars
 import functools
 from collections.abc import Callable, Iterator
 from importlib.metadata import entry_points
+from typing import Any
 
 from beets.library.models import DefaultTemplateFunctions
 from beets.plugins import BeetsPlugin, find_plugins
 
+from rifferr.backends.beets import facts as album_facts
+from rifferr.backends.beets import file_tags
 from rifferr.plugins import TEMPLATE_FUNCTIONS
 
 #: The beets plugin name: ``plugins: [rifferr]``.
@@ -112,8 +115,21 @@ def check_collisions() -> None:
 
 
 class RifferrTemplatePlugin(BeetsPlugin):
-    """Registers Rifferr template functions with beets (BeetsPlugin.template_funcs)."""
+    """The ``rifferr`` beets plugin: template functions (BeetsPlugin.template_funcs) and
+    flexible attributes written as file tags (C-FILE-TAGS, ``add_media_field``)."""
 
     def __init__(self) -> None:
         super().__init__(PLUGIN_NAME)
         self.template_funcs.update(rifferr_functions())
+        self.item_types: dict[str, Any] = {}
+        self.album_types: dict[str, Any] = {}
+        specs, separator = file_tags.from_config()
+        file_tags.register(self, specs, separator)
+        # C-ALBUM-FACTS: facts are integers, so beets queries compare them as numbers.
+        self.album_types.update(album_facts.field_types())
+        self.album_types.update(
+            album_facts.count_field_types([n for n, s in specs.items() if s.multi])
+        )
+        if specs:
+            # beets 2.14 types the write listener so strictly that no signature matches.
+            self.register_listener("write", file_tags.on_write)  # pyright: ignore[reportCallIssue, reportArgumentType]

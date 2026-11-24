@@ -3133,6 +3133,14 @@
             "title": "Field Kinds",
             "type": "object"
           },
+          "file_tags": {
+            "description": "Flexible attributes the backend also writes into the files as tags, sorted (FILE-TAGS-7)",
+            "items": {
+              "type": "string"
+            },
+            "title": "File Tags",
+            "type": "array"
+          },
           "item_fields": {
             "description": "Item field names seen, sorted",
             "items": {

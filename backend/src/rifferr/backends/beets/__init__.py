@@ -40,7 +40,8 @@ from rifferr.backends.base import (
     TemplateError,
 )
 from rifferr.backends.beets import apply as changes_apply
-from rifferr.backends.beets import config, templates
+from rifferr.backends.beets import config, file_tags, templates
+from rifferr.backends.beets import facts as album_fact_config
 from rifferr.backends.beets import moves as library_moves
 from rifferr.backends.beets.importer import (
     AppliedImportSession,
@@ -59,6 +60,7 @@ from rifferr.core.changeset import (
     FileMode,
     same_value,
 )
+from rifferr.core.facts import ArtistNames, album_facts
 from rifferr.core.ids import new_ulid
 from rifferr.core.imports import ImportAction, ImportApplyError, ImportQuestion, MatchThresholds
 from rifferr.core.moves import ALL_ARTIFACTS, ArtifactRule, MovePlan, PathFormat
@@ -257,6 +259,21 @@ class BeetsBackend:
         fixed = frozenset(Album._fields)  # pyright: ignore[reportPrivateUsage]
         return SharedFields(exclude=fixed - frozenset(Album.item_keys))
 
+    def album_facts(self, album: AlbumSnapshot) -> dict[str, FieldValue]:
+        """C-ALBUM-FACTS: built-in facts over the snapshot's (working) values, and the
+        ``rifferr.album_facts`` counts as beets item queries over each working item."""
+        counts = {
+            name: sum(1 for item in album.items if self.matches(query, item))
+            for name, query in album_fact_config.queries().items()
+        }
+        return album_facts(
+            album.fields, [i.fields for i in album.items], self.artist_names(), counts
+        )
+
+    def artist_names(self) -> ArtistNames:
+        """ALBUM-FACTS-7: ``rifferr.artist_names``, re-read when the file changes."""
+        return album_fact_config.load_names(album_fact_config.names_path(self.beetsdir))
+
     def lookup_problem(self) -> str | None:
         """BEETS-IMPORT-19: with no metadata source plugin loaded, beets' autotagger has
         nothing to search. In beets 2.x MusicBrainz is the ``musicbrainz`` plugin, loaded
@@ -278,6 +295,10 @@ class BeetsBackend:
                     out[field] = "duration"
                     break
         return out
+
+    def file_tag_fields(self) -> list[str]:
+        """FILE-TAGS-7: the ``rifferr.file_tags`` entries the beets plugin registered."""
+        return sorted(file_tags.registered())
 
     def match_thresholds(self) -> MatchThresholds | None:
         """UI-REFRESH-6: beets' ``match.strong_rec_thresh`` and ``match.medium_rec_thresh``

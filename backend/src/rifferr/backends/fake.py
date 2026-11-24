@@ -78,6 +78,7 @@ from rifferr.core.changeset import (
     find_conflicts,
 )
 from rifferr.core.covers import ART_FIELD, SHA256
+from rifferr.core.facts import ArtistNames, album_facts
 from rifferr.core.imports import (
     FolderItem,
     ImportAction,
@@ -212,6 +213,12 @@ class FakeBackend:
         self.field_types = dict(DEFAULT_FIELD_TYPES if field_types is None else field_types)
         self.duration_fields = duration_fields
         """Fields ``field_kinds`` calls durations, as beets' ``DurationType`` (TAG-GRID-16)."""
+        self.names = ArtistNames()
+        """Artist-name rules for album facts (ALBUM-FACTS-7)."""
+        self.fact_queries: dict[str, str] = {}
+        """Named item counts for album facts: name → query (ALBUM-FACTS-2)."""
+        self.file_tags: list[str] = []
+        """Fields ``file_tag_fields`` reports as written to files (FILE-TAGS-7)."""
         self.fail_writes: dict[str, str] = {}
         """item id -> error message, to simulate tag-write failures (CHANGESET-10)."""
         self.apply_calls: list[ChangeSet] = []
@@ -386,6 +393,18 @@ class FakeBackend:
     def album_item_fields(self) -> SharedFields:
         return SharedFields(include=self.inherited_fields, exclude=frozenset({"id", "path"}))
 
+    def album_facts(self, album: AlbumSnapshot) -> dict[str, FieldValue]:
+        """C-ALBUM-FACTS over the snapshot; ``fact_queries`` are the named counts."""
+        counts = {
+            name: sum(1 for item in album.items if self.matches(query, item))
+            for name, query in self.fact_queries.items()
+        }
+        return album_facts(album.fields, [i.fields for i in album.items], self.names, counts)
+
+    def artist_names(self) -> ArtistNames:
+        """``names``, which tests set (ALBUM-FACTS-7)."""
+        return self.names
+
     def check(self, changes: ChangeSet) -> list[ChangeProblem]:
         self._need("query")  # read only: works on a read-only view too (TAG-GRID-7)
         problems: list[ChangeProblem] = []
@@ -509,6 +528,10 @@ class FakeBackend:
     def plugin_problems(self) -> list[str]:
         """``plugin_problems_list``, which tests set (BEETS-IMPORT-20)."""
         return list(self.plugin_problems_list)
+
+    def file_tag_fields(self) -> list[str]:
+        """``file_tags``, which tests set (FILE-TAGS-7)."""
+        return sorted(self.file_tags)
 
     def field_kinds(self, fields: Sequence[str]) -> dict[str, FieldKind]:
         """Like beets: ``length`` is a duration, plus any field in ``duration_fields``

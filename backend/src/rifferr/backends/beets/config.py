@@ -7,6 +7,8 @@ semi-internal beets/confuse APIs, all pinned by the contract tests in
 - ``beets.config`` (a confuse ``LazyConfig``): ``clear()``, ``read()``, ``set()``
   and its ``sources`` list (to remove a temporary overlay again).
 - ``beets.plugins.load_plugins()`` and ``beets.plugins._instances`` (to unload in tests).
+- ``beets.util.cached_classproperty.cache`` (cleared after plugins load, as beets' own test
+  helper does, so plugin field types apply).
 - ``beets.plugins.get_plugin_names()``, ``find_plugins()`` and ``BeetsPlugin.name``
   (``failed_plugins``, BEETS-IMPORT-20).
 - ``beets.metadata_plugins.find_metadata_source_plugins.__wrapped__`` (uncached; the backend's
@@ -26,9 +28,11 @@ from typing import Any
 
 import beets
 import beets.plugins
+import beets.util
 import confuse
 
-from rifferr.backends.beets import templates
+from rifferr.backends.beets import facts as album_facts
+from rifferr.backends.beets import file_tags, templates
 from rifferr.beets_config import ConfigTrusted, inspect_config, refusal
 
 _loaded: Path | None = None
@@ -67,12 +71,22 @@ def load(beetsdir: Path, trusted: ConfigTrusted | None = None, profile: str | No
     # TEMPLATE-FUNCTIONS-1..4: the rifferr plugin always loads; collisions stop the worker.
     try:
         templates.rifferr_functions()
+        file_tags.validate_config()
+        album_facts.queries()
         names = beets.config["plugins"].as_str_seq()
         if templates.PLUGIN_NAME not in names:
             beets.config.set({"plugins": [*names, templates.PLUGIN_NAME]})
         beets.plugins.load_plugins()
+        # Model field types come from plugins (``item_types``, FILE-TAGS-9) and beets
+        # caches them per class on first use; drop what an earlier load cached.
+        beets.util.cached_classproperty.cache.clear()
         templates.check_collisions()
-    except templates.TemplateFunctionError as exc:
+    except (
+        templates.TemplateFunctionError,
+        file_tags.FileTagError,
+        album_facts.FactsConfigError,
+    ) as exc:
+        file_tags.unregister_all()
         beets.plugins._instances.clear()  # pyright: ignore[reportPrivateUsage]
         beets.config.clear()
         raise BeetsConfigError(str(exc)) from None
@@ -98,6 +112,7 @@ def loaded_beetsdir() -> Path | None:
 def reset() -> None:
     """Forget the loaded config and plugins. For tests only: a real worker loads once."""
     global _loaded
+    file_tags.unregister_all()
     beets.plugins._instances.clear()  # pyright: ignore[reportPrivateUsage]
     beets.config.clear()
     os.environ.pop("BEETSDIR", None)

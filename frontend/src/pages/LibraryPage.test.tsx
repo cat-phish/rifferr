@@ -556,3 +556,10 @@ test("COVER_PICKER_2 COVER_PICKER_3 COVER_PICKER_14 change cover searches for th
   });
   expect(await within(picker).findByTestId("decision-sent")).toHaveTextContent("Cover set");
 });
+
+test("FILE_TAGS_7 columns written to the files as tags are marked", async () => {
+  setup({ library: () => ({ ...page(), file_tags: ["album"] }) });
+  renderApp("/library?profile=main");
+  expect(await screen.findByLabelText("written to files")).toBeInTheDocument();
+  expect(screen.getByTitle("album: also written to the files as a tag")).toBeInTheDocument();
+});

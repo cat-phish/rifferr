@@ -464,6 +464,7 @@ function Library({ profile, summary }: { profile: string; summary: ProfileSummar
               }}
               profile={profile}
               kinds={library.data?.field_kinds}
+              fileTags={library.data?.file_tags}
               onChangeCover={setCoverRow}
               defaultWidth={DEFAULT_WIDTH}
               onResize={(s, field, width) => {

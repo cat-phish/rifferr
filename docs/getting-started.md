@@ -88,6 +88,31 @@ Other changes:
 - **Path formats** (`paths:`) in your beets config are only used by beets'
   own moves. The example workflow sets its own path formats on its
   `library.move` step. Compare the two and keep whichever you want.
+- **Plugins the example workflow uses**: `ftintitle` (featured artists into
+  titles), `replaygain` (album and track gain) and `the` (path formats):
+  ```yaml
+  plugins: [musicbrainz, ftintitle, replaygain, the]
+  ftintitle: { auto: no, drop: no }
+  replaygain: { backend: ffmpeg, auto: no }
+  the: { a: no, format: "{0}, {1}" }
+  ```
+- **Fields to write into the files.** beets keeps
+  [flexible attributes](https://beets.readthedocs.io/en/stable/reference/cli.html#modify)
+  (fields beets doesn't know, like `releasedate`) only in its database. List the
+  ones other players should see under `rifferr.file_tags`, with the tag name to use;
+  `multi: true` makes a field a list, written as one tag per value. Multiple values
+  are written the way each format stores them, so players that understand them see
+  separate values; ID3v2.3, which has none, gets one value joined with
+  `multi_separator`:
+  ```yaml
+  rifferr:
+    multi_separator: "; "
+    file_tags:
+      releasedate: RELEASEDATE
+      date_added: DATE ADDED
+      subgenres: { tag: SUBGENRE, multi: true }
+      albumkind: ALBUMKIND
+  ```
 
 ## 2. Create the profile
 

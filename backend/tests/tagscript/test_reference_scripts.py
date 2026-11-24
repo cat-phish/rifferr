@@ -9,6 +9,7 @@ beets in tests/backends/beets/test_reference_scripts.py.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -17,18 +18,34 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from rifferr.backends.base import LibraryBackend
-from rifferr.backends.fake import FakeBackend
+from rifferr.backends.fake import DEFAULT_FIELD_TYPES, FakeBackend
 from rifferr.core.selection import Selection
 from rifferr.tagscript.evaluator import check_idempotence, run_script
 from rifferr.tagscript.loader import parse_script
 from rifferr.tagscript.models import TagScript
 
 SCRIPTS = Path(__file__).parents[3] / "examples" / "scripts"
-TYPES: dict[str, type] = {"albumtypes": list, "albumartists": list, "artists": list}
+TYPES: dict[str, type] = {
+    **DEFAULT_FIELD_TYPES,
+    "albumtypes": list,
+    "albumartists": list,
+    "artists": list,
+}
+
+
+#: release-suffixes.yaml's var defaults, for scripts that use them.
+VARS = {"{{ vars.ep_max_tracks }}": "6", "{{ vars.ep_max_seconds }}": "1799"}
+
+
+def interpolate(text: str) -> str:
+    for key, value in VARS.items():
+        text = text.replace(key, value)
+    return text
 
 
 def load(name: str) -> TagScript:
-    script, errors = parse_script((SCRIPTS / name).read_text(encoding="utf-8"), name, str)
+    text = (SCRIPTS / name).read_text(encoding="utf-8")
+    script, errors = parse_script(text, name, interpolate)
     assert script is not None, errors
     return script
 
@@ -94,6 +111,58 @@ PATH_CHARACTERS: list[tuple[dict[str, Any], dict[str, Any], dict[tuple[str, str]
 ]
 
 
+#: dates.yaml: (album date fields, expected changes). Absent dates are 0, as beets stores
+#: them; releasedate as beets renders it (zero-padded month and day).
+NO_DATES = {
+    f: 0 for f in ("year", "month", "day", "original_year", "original_month", "original_day")
+}
+DATES: list[tuple[dict[str, Any], dict[str, Any]]] = [
+    (
+        {
+            "year": 2004,
+            "month": 3,
+            "day": 22,
+            "original_year": 1999,
+            "original_month": 5,
+            "original_day": 1,
+        },
+        {"releasedate": "2004-03-22", "year": 1999, "month": 5, "day": 1},
+    ),
+    (
+        {"year": 2004, "month": 3, "day": 22},
+        {
+            "releasedate": "2004-03-22",
+            "original_year": 2004,
+            "original_month": 3,
+            "original_day": 22,
+        },
+    ),
+    (
+        {"year": 2004, "month": 3},
+        {"releasedate": "2004-03", "original_year": 2004, "original_month": 3},
+    ),
+    ({"year": 2004}, {"releasedate": "2004", "original_year": 2004}),
+    ({"original_year": 1999}, {}),  # no release date to keep: left for a person
+    ({}, {}),
+    (  # already done: nothing changes
+        {"year": 1999, "original_year": 1999, "releasedate": "2004-03-22"},
+        {},
+    ),
+]
+
+
+#: likely-ep.yaml: (album fields, tracks, seconds per track, expected changes).
+LIKELY_EP: list[tuple[dict[str, Any], int, float, dict[str, Any]]] = [
+    ({"albumtype": "album"}, 5, 240.0, {"albumtype": "ep"}),
+    ({"albumtype": "album"}, 6, 299.0, {"albumtype": "ep"}),  # 29:54
+    ({"albumtype": "album"}, 6, 300.0, {}),  # exactly 30 minutes
+    ({"albumtype": "album"}, 7, 120.0, {}),
+    ({"albumtype": "ep"}, 4, 240.0, {}),
+    ({"albumtype": "single"}, 2, 200.0, {}),
+    ({}, 3, 200.0, {"albumtype": "ep"}),
+]
+
+
 def all_changes(backend: LibraryBackend, script: TagScript) -> dict[tuple[str, str], Any]:
     (album,) = backend.query(Selection())
     result = run_script(script, album, backend)
@@ -136,6 +205,30 @@ def test_TAGSCRIPT_8_path_characters_script(
     assert all_changes(backend, load("path-characters.yaml")) == expected
 
 
+@pytest.mark.parametrize(("fields", "expected"), DATES)
+def test_TAGSCRIPT_7_dates_script(fields: dict[str, Any], expected: dict[str, Any]) -> None:
+    got = changes(fake({"album": "A", **NO_DATES, **fields}), load("dates.yaml"))
+    # FakeBackend renders $month and $day unpadded; beets pads them (see the beets test).
+    unpadded = {
+        k: re.sub(r"-0(\d)", r"-\1", v) if k == "releasedate" else v for k, v in expected.items()
+    }
+    assert got == unpadded
+
+
+def tracks(n: int, seconds: float) -> list[dict[str, Any]]:
+    return [{"title": f"t{i}", "track": i, "length": seconds} for i in range(1, n + 1)]
+
+
+@pytest.mark.parametrize(("fields", "n", "seconds", "expected"), LIKELY_EP)
+def test_ALBUM_FACTS_1_likely_ep_script(
+    fields: dict[str, Any], n: int, seconds: float, expected: dict[str, Any]
+) -> None:
+    backend = FakeBackend.from_fixture(
+        {"albums": [{"album": "A", **fields, "items": tracks(n, seconds)}]}, field_types=TYPES
+    )
+    assert changes(backend, load("likely-ep.yaml")) == expected
+
+
 # -- idempotence (TAGSCRIPT-19) -----------------------------------------------------------
 
 words = st.text(st.characters(categories=("L", "N"), max_codepoint=0x24F), min_size=1, max_size=8)
@@ -162,8 +255,38 @@ albums = st.fixed_dictionaries(
 SETTINGS = settings(max_examples=200, deadline=None, suppress_health_check=[HealthCheck.too_slow])
 
 
+dates = st.fixed_dictionaries(
+    {
+        "year": st.sampled_from([0, 1999, 2004]),
+        "month": st.integers(0, 12),
+        "day": st.integers(0, 28),
+        "original_year": st.sampled_from([0, 1999, 2004]),
+        "original_month": st.integers(0, 12),
+        "original_day": st.integers(0, 28),
+    },
+    optional={"releasedate": st.sampled_from(["2004", "2004-03-22"])},
+)
+
+
 @SETTINGS
-@given(albums, st.sampled_from(["release-types.yaml", "compilation.yaml", "path-characters.yaml"]))
+@given(dates)
+def test_TAGSCRIPT_19_dates_script_is_idempotent(fields: dict[str, Any]) -> None:
+    backend = fake({"album": "A", **fields})
+    script = load("dates.yaml")
+    (album,) = backend.query(Selection())
+    first = run_script(script, album, backend)
+    assert first.error is None
+    check = check_idempotence(script, first, backend)
+    assert check.ok, (fields, check.issues)
+
+
+@SETTINGS
+@given(
+    albums,
+    st.sampled_from(
+        ["release-types.yaml", "compilation.yaml", "path-characters.yaml", "likely-ep.yaml"]
+    ),
+)
 def test_TAGSCRIPT_19_reference_scripts_are_idempotent(fields: dict[str, Any], name: str) -> None:
     backend = fake(fields)
     script = load(name)

@@ -2406,6 +2406,11 @@ export interface components {
                 [key: string]: "duration";
             };
             /**
+             * File Tags
+             * @description Flexible attributes the backend also writes into the files as tags, sorted (FILE-TAGS-7)
+             */
+            file_tags?: string[];
+            /**
              * Item Fields
              * @description Item field names seen, sorted
              */

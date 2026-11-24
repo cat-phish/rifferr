@@ -58,11 +58,24 @@ FIXTURES: tuple[Fixture, ...] = (
         },
         660,
     ),
+    Fixture(
+        "single-m4a/01 Lone.m4a",
+        {
+            "album": "Fixture Single",
+            "album_artist": "Other Artist",
+            "artist": "Other Artist",
+            "title": "Lone",
+            "track": "1/1",
+            "date": "2010",
+        },
+        660,
+    ),
 )
 
 CODEC = {
     ".flac": ["-c:a", "flac"],
     ".mp3": ["-c:a", "libmp3lame", "-b:a", "64k", "-id3v2_version", "4"],
+    ".m4a": ["-c:a", "aac", "-b:a", "32k"],
 }
 
 

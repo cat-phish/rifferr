@@ -68,6 +68,8 @@ export interface GridProps {
   onChangeCover?: (row: Row) => void;
   /** Display kinds of fields (TAG-GRID-16): durations show as m:ss. */
   kinds?: FieldKinds;
+  /** Fields the backend also writes into the files as tags (FILE-TAGS-7). */
+  fileTags?: readonly string[];
 }
 
 type Line =
@@ -242,8 +244,20 @@ function HeaderCell({ scope, field, ...props }: { scope: Scope; field: string } 
         fontFamily: "var(--mantine-font-family-monospace)",
       }}
     >
-      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+      <span
+        style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+        title={
+          props.fileTags?.includes(field)
+            ? `${field}: also written to the files as a tag`
+            : undefined
+        }
+      >
         {field === ART_COLUMN ? "Art" : field}
+        {props.fileTags?.includes(field) && (
+          <span aria-label="written to files" style={{ opacity: 0.6, marginLeft: 4 }}>
+            ◆
+          </span>
+        )}
       </span>
       <div
         aria-hidden

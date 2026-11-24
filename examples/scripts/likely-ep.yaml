@@ -1,0 +1,12 @@
+# Checklist "album type" pass, third EP check (B-044): an album with few, short tracks
+# that isn't marked as an EP or single is proposed as an EP, for review. The limits come
+# from the calling workflow's vars. Uses Rifferr's computed album facts (C-ALBUM-FACTS):
+# rf_items is the number of tracks, rf_length the total length in seconds.
+scope: album
+idempotence: fail
+actions:
+  - name: likely-ep
+    when: >-
+      rf_items:..{{ vars.ep_max_tracks }} rf_length:..{{ vars.ep_max_seconds }}
+      ^albumtype:ep ^albumtype:single
+    set: { albumtype: ep }

@@ -12,9 +12,9 @@
 #   rifferr run foobar-style --profile main --input "/path/to/inbox/Artist - Album"
 name: foobar-style
 description: >-
-  Import new albums with beets, move them out of the inbox into a staging folder, fix
-  release-type suffixes, find missing covers, then move each album into the library
-  after review.
+  Import new albums with beets, move them out of the inbox into a staging folder, move
+  featured artists into titles, fix release-type suffixes and dates, find missing covers,
+  add ReplayGain, then move each album into the library after review.
 vars:
   inbox:
     description: Folder with new albums to import (the checklist's "Stage 1, unsorted")
@@ -75,12 +75,31 @@ steps:
     uses: beets.command
     with:
       command: write
+  # Featured artists: beets' ftintitle plugin moves "feat. X" from the artist into the
+  # title ("A feat. B" / "Song" -> "A" / "Song (feat. B)"), so the album artist and the
+  # artist folders name only the primary artist (author, 2026-11-23). Needs the plugin in
+  # the profile's beets config, without running during import:
+  #   plugins: [ftintitle]
+  #   ftintitle: { auto: no, drop: no }
+  - id: featured-artists
+    uses: beets.command
+    with:
+      command: ftintitle
   # Release-type suffixes live in their own file, so other import workflows can call
   # them too. Its steps run here as suffixes/release-types and suffixes/compilations.
   - id: suffixes
     uses: workflow
     with:
       workflow: release-suffixes.yaml
+  # Checklist "Manage Dates/Years": an album without an original date takes the release
+  # date; the release date is kept in `releasedate`, then DATE becomes the original date,
+  # so albums sort by first release on an iPod and in folders (author, 2026-11-23).
+  # Albums with no release date are left as they are.
+  - id: dates
+    uses: tags.script
+    apply: auto
+    with:
+      script: dates.yaml
   # Checklist line 6, album art: albums without art get a cover from the providers in
   # the profile's `covers` settings (Cover Art Archive, local images, iTunes and Deezer
   # by default). Every such album waits in the review queue with the ranked covers, best
@@ -116,6 +135,16 @@ steps:
     apply: auto
     with:
       script: path-characters.yaml
+  # ReplayGain (album and track gain) while the album is still in staging, before it
+  # moves into the library (author, 2026-11-23). Needs the plugin in the profile's beets
+  # config:
+  #   plugins: [replaygain]
+  #   replaygain: { backend: ffmpeg, auto: no }
+  - id: replaygain
+    uses: beets.command
+    with:
+      command: replaygain
+      args: ["-a"]
   # Checklist lines 5, 13, 15, 17, 18, 19: rename and move each album from staging into
   # the library, only once a person accepts the move in the review queue (`apply`
   # defaults to review): one decision per album, showing the old and new

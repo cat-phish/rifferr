@@ -18,6 +18,7 @@ from typing import Protocol
 import regex
 
 from rifferr.core.changeset import TargetRef, same_value
+from rifferr.core.facts import PREFIX
 from rifferr.core.snapshot import AlbumSnapshot, FieldValue, ItemSnapshot
 from rifferr.tagscript.models import (
     PLACEHOLDER,
@@ -54,6 +55,10 @@ class Evaluator(Protocol):
     def coerce(self, field: str, value: FieldValue) -> FieldValue: ...
 
     def album_item_fields(self) -> Container[str]: ...
+
+    def album_facts(self, album: AlbumSnapshot) -> dict[str, FieldValue]:
+        """Computed facts of ``album`` (C-ALBUM-FACTS), from its working values."""
+        ...
 
 
 @dataclass(frozen=True)
@@ -110,12 +115,16 @@ class _Target:
     ref: TargetRef
     snapshot: Snapshot
     fields: Fields
+    facts: Callable[[], Fields] | None = None
+    """The album's computed facts, from current working values (ALBUM-FACTS-3)."""
 
-    def view(self) -> Snapshot:
+    def view(self, text: str = "") -> Snapshot:
         """The snapshot with working values; fields deleted so far are ``None``
-        (absent), so the backend doesn't fall back to stored values (BACKEND-10)."""
+        (absent), so the backend doesn't fall back to stored values (BACKEND-10).
+        An album's facts are added when ``text`` (a query or template) names one."""
         gone: Fields = {k: None for k in self.snapshot.fields if k not in self.fields}
-        return self.snapshot.model_copy(update={"fields": {**gone, **self.fields}})
+        extra: Fields = self.facts() if self.facts is not None and PREFIX in text else {}
+        return self.snapshot.model_copy(update={"fields": {**gone, **self.fields, **extra}})
 
     def path(self) -> str:
         return self.snapshot.path or ""
@@ -218,6 +227,14 @@ def run_script(
     begin = start or _original_fields(album)
     album_t = _Target(_ref(album), album, dict(begin[_ref(album)]))
     items = [_Target(_ref(i), i, dict(begin[_ref(i)])) for i in album.items]
+
+    def facts() -> Fields:
+        working_album = album.model_copy(
+            update={"fields": album_t.view().fields, "items": [i.view() for i in items]}
+        )
+        return ev.album_facts(working_album)
+
+    album_t.facts = facts
     shared = ev.album_item_fields()
     working: dict[TargetRef, Fields] = {}
     for t in [album_t, *items]:
@@ -244,7 +261,7 @@ def run_script(
 
 def _matches(ev: Evaluator, condition: str, target: _Target) -> bool:
     try:
-        return ev.matches(condition, target.view())
+        return ev.matches(condition, target.view(condition))
     except Exception as exc:  # the backend's QueryError, or a broken backend
         raise _ActionError(None, f"when {condition!r}: {exc}") from exc
 
@@ -278,6 +295,7 @@ def _present(fields: Fields, name: str) -> bool:
 
 
 def _put(fields: Fields, name: str, value: FieldValue) -> bool:
+    _writable(name)
     if value is None:
         return _drop(fields, name)
     if name in fields and same_value(fields[name], value):
@@ -286,7 +304,13 @@ def _put(fields: Fields, name: str, value: FieldValue) -> bool:
     return True
 
 
+def _writable(name: str) -> None:
+    if name.startswith(PREFIX):
+        raise _ActionError(name, f"{name} is a computed album fact and can't be set")
+
+
 def _drop(fields: Fields, name: str) -> bool:
+    _writable(name)
     if name not in fields:
         return False
     del fields[name]
@@ -295,7 +319,7 @@ def _drop(fields: Fields, name: str) -> bool:
 
 def _evaluate(ev: Evaluator, template: str, target: _Target, name: str) -> str:
     try:
-        return ev.evaluate(template, target.view())
+        return ev.evaluate(template, target.view(template))
     except Exception as exc:  # the backend's TemplateError
         raise _ActionError(name, f"template {template!r}: {exc}") from exc
 

@@ -10,11 +10,14 @@ import pytest
 from tests.backends.beets.conftest import BeetsEnv, seed
 from tests.tagscript.test_reference_scripts import (
     COMPILATIONS,
+    DATES,
+    LIKELY_EP,
     PATH_CHARACTERS,
     RELEASE_TYPES,
     all_changes,
     changes,
     load,
+    tracks,
 )
 
 
@@ -47,3 +50,24 @@ def test_TAGSCRIPT_8_path_characters_script_on_beets(
     fields = {"albumartist": "Band", **album, "items": [{"track": 1, **item}]}
     seed(backend, [fields])
     assert all_changes(backend, load("path-characters.yaml")) == expected
+
+
+@pytest.mark.parametrize(("fields", "expected"), DATES)
+def test_TAGSCRIPT_7_dates_script_on_beets(
+    beets_env: BeetsEnv, fields: dict[str, Any], expected: dict[str, Any]
+) -> None:
+    backend = beets_env.backend()
+    seed(
+        backend,
+        [{"albumartist": "Band", "album": "A", **fields, "items": [{"title": "t", "track": 1}]}],
+    )
+    assert changes(backend, load("dates.yaml")) == expected
+
+
+@pytest.mark.parametrize(("fields", "n", "seconds", "expected"), LIKELY_EP)
+def test_ALBUM_FACTS_1_likely_ep_script_on_beets(
+    beets_env: BeetsEnv, fields: dict[str, Any], n: int, seconds: float, expected: dict[str, Any]
+) -> None:
+    backend = beets_env.backend()
+    seed(backend, [{"albumartist": "Band", "album": "A", **fields, "items": tracks(n, seconds)}])
+    assert changes(backend, load("likely-ep.yaml")) == expected

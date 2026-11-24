@@ -66,6 +66,11 @@ class LibraryPage(BaseModel):
         description="How to show fields that have a display kind, from the backend's field "
         "types (TAG-GRID-16): 'duration' is seconds, shown as m:ss",
     )
+    file_tags: list[str] = Field(
+        default_factory=list,
+        description="Flexible attributes the backend also writes into the files as tags, "
+        "sorted (FILE-TAGS-7)",
+    )
 
 
 def library_page(backend: LibraryBackend, request: LibraryQuery) -> LibraryPage:
@@ -98,6 +103,7 @@ def library_page(backend: LibraryBackend, request: LibraryQuery) -> LibraryPage:
         item_fields=item_fields,
         truncated=truncated,
         field_kinds=kinds,
+        file_tags=backend.file_tag_fields(),
     )
 
 

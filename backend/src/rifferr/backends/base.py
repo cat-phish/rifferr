@@ -15,6 +15,7 @@ from typing import Final, Literal, Protocol, runtime_checkable
 from pydantic import BaseModel, ConfigDict, Field
 
 from rifferr.core.changeset import ApplyResult, ChangeProblem, ChangeSet, FileEffect, FileMode
+from rifferr.core.facts import ArtistNames
 from rifferr.core.imports import ImportAction, ImportQuestion, MatchThresholds
 from rifferr.core.moves import ArtifactRule, MovePlan, PathFormat
 from rifferr.core.selection import Selection
@@ -187,6 +188,15 @@ class LibraryBackend(Protocol):
         """Album fields carried to the album's items on store (BACKEND-12)."""
         ...
 
+    def album_facts(self, album: AlbumSnapshot) -> dict[str, FieldValue]:
+        """Computed facts of ``album`` from its (working) values (C-ALBUM-FACTS): the
+        built-in ones and the backend's named item counts, all integers."""
+        ...
+
+    def artist_names(self) -> ArtistNames:
+        """The artist-name rules facts use (ALBUM-FACTS-7); empty when none are set."""
+        ...
+
     def check(self, changes: ChangeSet) -> list[ChangeProblem]:
         """Problems that stop ``changes`` from being applied: unknown targets, read-only
         fields, values the field can't store (CHANGESET-2). Empty when it can apply."""
@@ -265,6 +275,11 @@ class LibraryBackend(Protocol):
     def field_kinds(self, fields: Sequence[str]) -> dict[str, FieldKind]:
         """The display kind of each of ``fields`` that has one, from the backend's field
         types, never from a list of names (TAG-GRID-16). Fields without one are left out."""
+        ...
+
+    def file_tag_fields(self) -> list[str]:
+        """Flexible attributes the backend also writes into the files as tags, sorted
+        (C-FILE-TAGS FILE-TAGS-7); empty when none are mapped."""
         ...
 
     def match_thresholds(self) -> MatchThresholds | None:
