@@ -246,6 +246,10 @@ def run_script(
             try:
                 if action.when is not None and not _matches(ev, action.when, target):
                     continue
+                if action.if_ is not None and not _holds(ev, action.if_, target, "if"):
+                    continue
+                if action.unless is not None and _holds(ev, action.unless, target, "unless"):
+                    continue
                 changed = _apply(action, target, ev, result, index)
             except _ActionError as exc:
                 result.error = ScriptError(
@@ -264,6 +268,22 @@ def _matches(ev: Evaluator, condition: str, target: _Target) -> bool:
         return ev.matches(condition, target.view(condition))
     except Exception as exc:  # the backend's QueryError, or a broken backend
         raise _ActionError(None, f"when {condition!r}: {exc}") from exc
+
+
+#: Template results that count as false (TEMPLATE-CONDITIONS-2).
+FALSE_RESULTS = frozenset({"", "0", "false"})
+
+
+def is_true(result: str) -> bool:
+    return result.strip().lower() not in FALSE_RESULTS
+
+
+def _holds(ev: Evaluator, template: str, target: _Target, key: str) -> bool:
+    """An ``if`` / ``unless`` template on working values (TEMPLATE-CONDITIONS-1 to -3)."""
+    try:
+        return is_true(ev.evaluate(template, target.view(template)))
+    except Exception as exc:  # the backend's TemplateError
+        raise _ActionError(None, f"{key} {template!r}: {exc}") from exc
 
 
 def _inherit(

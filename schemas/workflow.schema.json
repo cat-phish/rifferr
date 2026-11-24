@@ -2183,6 +2183,20 @@
         "append_unique": {
           "$ref": "#/$defs/With_tags_choose__AppendSpec"
         },
+        "if": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Run only when this beets template is true: not empty, 0 or false (C-TEMPLATE-CONDITIONS)",
+          "title": "If",
+          "x-rifferr-template": true
+        },
         "name": {
           "anyOf": [
             {
@@ -2212,6 +2226,20 @@
           "default": null,
           "description": "Default: the script's scope",
           "title": "Scope"
+        },
+        "unless": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Skip when this beets template is true: not empty, 0 or false",
+          "title": "Unless",
+          "x-rifferr-template": true
         },
         "when": {
           "anyOf": [
@@ -2239,6 +2267,20 @@
         "case": {
           "$ref": "#/$defs/With_tags_choose__CaseSpec"
         },
+        "if": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Run only when this beets template is true: not empty, 0 or false (C-TEMPLATE-CONDITIONS)",
+          "title": "If",
+          "x-rifferr-template": true
+        },
         "name": {
           "anyOf": [
             {
@@ -2268,6 +2310,20 @@
           "default": null,
           "description": "Default: the script's scope",
           "title": "Scope"
+        },
+        "unless": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Skip when this beets template is true: not empty, 0 or false",
+          "title": "Unless",
+          "x-rifferr-template": true
         },
         "when": {
           "anyOf": [
@@ -2401,6 +2457,20 @@
         "copy": {
           "$ref": "#/$defs/With_tags_choose__CopySpec"
         },
+        "if": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Run only when this beets template is true: not empty, 0 or false (C-TEMPLATE-CONDITIONS)",
+          "title": "If",
+          "x-rifferr-template": true
+        },
         "name": {
           "anyOf": [
             {
@@ -2430,6 +2500,20 @@
           "default": null,
           "description": "Default: the script's scope",
           "title": "Scope"
+        },
+        "unless": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Skip when this beets template is true: not empty, 0 or false",
+          "title": "Unless",
+          "x-rifferr-template": true
         },
         "when": {
           "anyOf": [
@@ -2481,6 +2565,20 @@
           "title": "Delete",
           "type": "array"
         },
+        "if": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Run only when this beets template is true: not empty, 0 or false (C-TEMPLATE-CONDITIONS)",
+          "title": "If",
+          "x-rifferr-template": true
+        },
         "name": {
           "anyOf": [
             {
@@ -2510,6 +2608,20 @@
           "default": null,
           "description": "Default: the script's scope",
           "title": "Scope"
+        },
+        "unless": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Skip when this beets template is true: not empty, 0 or false",
+          "title": "Unless",
+          "x-rifferr-template": true
         },
         "when": {
           "anyOf": [
@@ -2537,6 +2649,20 @@
         "from_filename": {
           "$ref": "#/$defs/With_tags_choose__FromFilenameSpec"
         },
+        "if": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Run only when this beets template is true: not empty, 0 or false (C-TEMPLATE-CONDITIONS)",
+          "title": "If",
+          "x-rifferr-template": true
+        },
         "name": {
           "anyOf": [
             {
@@ -2566,6 +2692,20 @@
           "default": null,
           "description": "Default: the script's scope",
           "title": "Scope"
+        },
+        "unless": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Skip when this beets template is true: not empty, 0 or false",
+          "title": "Unless",
+          "x-rifferr-template": true
         },
         "when": {
           "anyOf": [
@@ -2615,6 +2755,20 @@
     "With_tags_choose__JoinAction": {
       "additionalProperties": false,
       "properties": {
+        "if": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Run only when this beets template is true: not empty, 0 or false (C-TEMPLATE-CONDITIONS)",
+          "title": "If",
+          "x-rifferr-template": true
+        },
         "join": {
           "$ref": "#/$defs/With_tags_choose__JoinSpec"
         },
@@ -2647,6 +2801,20 @@
           "default": null,
           "description": "Default: the script's scope",
           "title": "Scope"
+        },
+        "unless": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Skip when this beets template is true: not empty, 0 or false",
+          "title": "Unless",
+          "x-rifferr-template": true
         },
         "when": {
           "anyOf": [
@@ -2702,6 +2870,20 @@
     "With_tags_choose__MoveAction": {
       "additionalProperties": false,
       "properties": {
+        "if": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Run only when this beets template is true: not empty, 0 or false (C-TEMPLATE-CONDITIONS)",
+          "title": "If",
+          "x-rifferr-template": true
+        },
         "move": {
           "$ref": "#/$defs/With_tags_choose__CopySpec"
         },
@@ -2735,6 +2917,20 @@
           "description": "Default: the script's scope",
           "title": "Scope"
         },
+        "unless": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Skip when this beets template is true: not empty, 0 or false",
+          "title": "Unless",
+          "x-rifferr-template": true
+        },
         "when": {
           "anyOf": [
             {
@@ -2758,6 +2954,20 @@
     "With_tags_choose__ReplaceAction": {
       "additionalProperties": false,
       "properties": {
+        "if": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Run only when this beets template is true: not empty, 0 or false (C-TEMPLATE-CONDITIONS)",
+          "title": "If",
+          "x-rifferr-template": true
+        },
         "name": {
           "anyOf": [
             {
@@ -2790,6 +3000,20 @@
           "default": null,
           "description": "Default: the script's scope",
           "title": "Scope"
+        },
+        "unless": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Skip when this beets template is true: not empty, 0 or false",
+          "title": "Unless",
+          "x-rifferr-template": true
         },
         "when": {
           "anyOf": [
@@ -2876,6 +3100,20 @@
     "With_tags_choose__SetAction": {
       "additionalProperties": false,
       "properties": {
+        "if": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Run only when this beets template is true: not empty, 0 or false (C-TEMPLATE-CONDITIONS)",
+          "title": "If",
+          "x-rifferr-template": true
+        },
         "name": {
           "anyOf": [
             {
@@ -2934,6 +3172,20 @@
           "type": "object",
           "x-rifferr-template": true
         },
+        "unless": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Skip when this beets template is true: not empty, 0 or false",
+          "title": "Unless",
+          "x-rifferr-template": true
+        },
         "when": {
           "anyOf": [
             {
@@ -2957,6 +3209,20 @@
     "With_tags_choose__SplitAction": {
       "additionalProperties": false,
       "properties": {
+        "if": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Run only when this beets template is true: not empty, 0 or false (C-TEMPLATE-CONDITIONS)",
+          "title": "If",
+          "x-rifferr-template": true
+        },
         "name": {
           "anyOf": [
             {
@@ -2989,6 +3255,20 @@
         },
         "split": {
           "$ref": "#/$defs/With_tags_choose__SplitSpec"
+        },
+        "unless": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Skip when this beets template is true: not empty, 0 or false",
+          "title": "Unless",
+          "x-rifferr-template": true
         },
         "when": {
           "anyOf": [
@@ -3194,6 +3474,20 @@
         "append_unique": {
           "$ref": "#/$defs/With_tags_script__AppendSpec"
         },
+        "if": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Run only when this beets template is true: not empty, 0 or false (C-TEMPLATE-CONDITIONS)",
+          "title": "If",
+          "x-rifferr-template": true
+        },
         "name": {
           "anyOf": [
             {
@@ -3223,6 +3517,20 @@
           "default": null,
           "description": "Default: the script's scope",
           "title": "Scope"
+        },
+        "unless": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Skip when this beets template is true: not empty, 0 or false",
+          "title": "Unless",
+          "x-rifferr-template": true
         },
         "when": {
           "anyOf": [
@@ -3250,6 +3558,20 @@
         "case": {
           "$ref": "#/$defs/With_tags_script__CaseSpec"
         },
+        "if": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Run only when this beets template is true: not empty, 0 or false (C-TEMPLATE-CONDITIONS)",
+          "title": "If",
+          "x-rifferr-template": true
+        },
         "name": {
           "anyOf": [
             {
@@ -3279,6 +3601,20 @@
           "default": null,
           "description": "Default: the script's scope",
           "title": "Scope"
+        },
+        "unless": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Skip when this beets template is true: not empty, 0 or false",
+          "title": "Unless",
+          "x-rifferr-template": true
         },
         "when": {
           "anyOf": [
@@ -3344,6 +3680,20 @@
         "copy": {
           "$ref": "#/$defs/With_tags_script__CopySpec"
         },
+        "if": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Run only when this beets template is true: not empty, 0 or false (C-TEMPLATE-CONDITIONS)",
+          "title": "If",
+          "x-rifferr-template": true
+        },
         "name": {
           "anyOf": [
             {
@@ -3373,6 +3723,20 @@
           "default": null,
           "description": "Default: the script's scope",
           "title": "Scope"
+        },
+        "unless": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Skip when this beets template is true: not empty, 0 or false",
+          "title": "Unless",
+          "x-rifferr-template": true
         },
         "when": {
           "anyOf": [
@@ -3424,6 +3788,20 @@
           "title": "Delete",
           "type": "array"
         },
+        "if": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Run only when this beets template is true: not empty, 0 or false (C-TEMPLATE-CONDITIONS)",
+          "title": "If",
+          "x-rifferr-template": true
+        },
         "name": {
           "anyOf": [
             {
@@ -3453,6 +3831,20 @@
           "default": null,
           "description": "Default: the script's scope",
           "title": "Scope"
+        },
+        "unless": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Skip when this beets template is true: not empty, 0 or false",
+          "title": "Unless",
+          "x-rifferr-template": true
         },
         "when": {
           "anyOf": [
@@ -3480,6 +3872,20 @@
         "from_filename": {
           "$ref": "#/$defs/With_tags_script__FromFilenameSpec"
         },
+        "if": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Run only when this beets template is true: not empty, 0 or false (C-TEMPLATE-CONDITIONS)",
+          "title": "If",
+          "x-rifferr-template": true
+        },
         "name": {
           "anyOf": [
             {
@@ -3509,6 +3915,20 @@
           "default": null,
           "description": "Default: the script's scope",
           "title": "Scope"
+        },
+        "unless": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Skip when this beets template is true: not empty, 0 or false",
+          "title": "Unless",
+          "x-rifferr-template": true
         },
         "when": {
           "anyOf": [
@@ -3558,6 +3978,20 @@
     "With_tags_script__JoinAction": {
       "additionalProperties": false,
       "properties": {
+        "if": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Run only when this beets template is true: not empty, 0 or false (C-TEMPLATE-CONDITIONS)",
+          "title": "If",
+          "x-rifferr-template": true
+        },
         "join": {
           "$ref": "#/$defs/With_tags_script__JoinSpec"
         },
@@ -3590,6 +4024,20 @@
           "default": null,
           "description": "Default: the script's scope",
           "title": "Scope"
+        },
+        "unless": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Skip when this beets template is true: not empty, 0 or false",
+          "title": "Unless",
+          "x-rifferr-template": true
         },
         "when": {
           "anyOf": [
@@ -3645,6 +4093,20 @@
     "With_tags_script__MoveAction": {
       "additionalProperties": false,
       "properties": {
+        "if": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Run only when this beets template is true: not empty, 0 or false (C-TEMPLATE-CONDITIONS)",
+          "title": "If",
+          "x-rifferr-template": true
+        },
         "move": {
           "$ref": "#/$defs/With_tags_script__CopySpec"
         },
@@ -3678,6 +4140,20 @@
           "description": "Default: the script's scope",
           "title": "Scope"
         },
+        "unless": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Skip when this beets template is true: not empty, 0 or false",
+          "title": "Unless",
+          "x-rifferr-template": true
+        },
         "when": {
           "anyOf": [
             {
@@ -3701,6 +4177,20 @@
     "With_tags_script__ReplaceAction": {
       "additionalProperties": false,
       "properties": {
+        "if": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Run only when this beets template is true: not empty, 0 or false (C-TEMPLATE-CONDITIONS)",
+          "title": "If",
+          "x-rifferr-template": true
+        },
         "name": {
           "anyOf": [
             {
@@ -3733,6 +4223,20 @@
           "default": null,
           "description": "Default: the script's scope",
           "title": "Scope"
+        },
+        "unless": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Skip when this beets template is true: not empty, 0 or false",
+          "title": "Unless",
+          "x-rifferr-template": true
         },
         "when": {
           "anyOf": [
@@ -3819,6 +4323,20 @@
     "With_tags_script__SetAction": {
       "additionalProperties": false,
       "properties": {
+        "if": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Run only when this beets template is true: not empty, 0 or false (C-TEMPLATE-CONDITIONS)",
+          "title": "If",
+          "x-rifferr-template": true
+        },
         "name": {
           "anyOf": [
             {
@@ -3877,6 +4395,20 @@
           "type": "object",
           "x-rifferr-template": true
         },
+        "unless": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Skip when this beets template is true: not empty, 0 or false",
+          "title": "Unless",
+          "x-rifferr-template": true
+        },
         "when": {
           "anyOf": [
             {
@@ -3900,6 +4432,20 @@
     "With_tags_script__SplitAction": {
       "additionalProperties": false,
       "properties": {
+        "if": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Run only when this beets template is true: not empty, 0 or false (C-TEMPLATE-CONDITIONS)",
+          "title": "If",
+          "x-rifferr-template": true
+        },
         "name": {
           "anyOf": [
             {
@@ -3932,6 +4478,20 @@
         },
         "split": {
           "$ref": "#/$defs/With_tags_script__SplitSpec"
+        },
+        "unless": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Skip when this beets template is true: not empty, 0 or false",
+          "title": "Unless",
+          "x-rifferr-template": true
         },
         "when": {
           "anyOf": [

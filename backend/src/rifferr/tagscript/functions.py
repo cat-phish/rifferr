@@ -32,3 +32,15 @@ def unpad(n: str) -> str:
     if not text.isascii() or not text.isdigit():
         return n
     return text.lstrip("0") or "0"
+
+
+def startswith(text: str, prefix: str = "") -> str:
+    """``%startswith{text,prefix}``: ``1`` when ``text`` starts with ``prefix`` (exact),
+    else empty (TEMPLATE-CONDITIONS-4)."""
+    return "1" if text.startswith(prefix) else ""
+
+
+#: Rifferr's built-in template functions by name, for backends without beets' template
+#: engine (FakeBackend, TEMPLATE-CONDITIONS-5). The beets backend gets them through the
+#: ``rifferr.template_functions`` entry points.
+BUILT_INS = {"ifgreater": ifgreater, "unpad": unpad, "startswith": startswith}

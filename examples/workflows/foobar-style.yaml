@@ -173,6 +173,14 @@ steps:
                 albumartist: "{{ vars.label_compilation }}"
                 albumartist_sort: "{{ vars.label_compilation }}"
       custom: [albumartist, albumartists, albumkind]
+  # Checklist line 10: splits and collaborations carry their artists in the album name,
+  # "A / B - Split EP" (author, 2026-11-23). Before path-characters, which turns the "/"
+  # into a lookalike for folder names.
+  - id: kind-album-name
+    uses: tags.script
+    apply: auto
+    with:
+      script: kind-album-name.yaml
   # Dates still missing: an album without a release date waits for one to be typed in
   # (`year`, `month`, `day`), and the original date if it differs. The dates step below
   # then does the copies.

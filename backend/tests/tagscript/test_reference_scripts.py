@@ -331,3 +331,46 @@ def test_TAGSCRIPT_19_subgenres_script_is_idempotent(fields: dict[str, Any]) -> 
     assert first.error is None
     check = check_idempotence(script, first, backend)
     assert check.ok, (fields, check.issues)
+
+
+#: kind-album-name.yaml: (album fields, expected album-level changes).
+KIND_ALBUM_NAME: list[tuple[dict[str, Any], dict[str, Any]]] = [
+    (
+        {"album": "Split EP", "albumkind": "split", "albumartists": ["A", "B"]},
+        {"album": "A / B - Split EP"},
+    ),
+    ({"album": "A / B - Split EP", "albumkind": "split", "albumartists": ["A", "B"]}, {}),
+    (
+        {"album": "Together, Again", "albumkind": "collab", "albumartists": ["A, Jr.", "B"]},
+        {"album": "A, Jr. / B - Together, Again"},
+    ),
+    ({"album": "Hits", "albumkind": "compilation", "albumartists": ["A", "B"]}, {}),
+    ({"album": "Live", "albumartists": ["A"]}, {}),
+]
+
+
+@pytest.mark.parametrize(("fields", "expected"), KIND_ALBUM_NAME)
+def test_TEMPLATE_CONDITIONS_8_kind_album_name_script(
+    fields: dict[str, Any], expected: dict[str, Any]
+) -> None:
+    assert changes(fake(fields), load("kind-album-name.yaml")) == expected
+
+
+@SETTINGS
+@given(
+    st.fixed_dictionaries(
+        {"album": names},
+        optional={
+            "albumkind": st.sampled_from(["split", "collab", "compilation"]),
+            "albumartists": st.lists(st.sampled_from(["A", "B", "C, D", "E / F"]), max_size=3),
+        },
+    )
+)
+def test_TEMPLATE_CONDITIONS_8_kind_album_name_is_idempotent(fields: dict[str, Any]) -> None:
+    backend = fake(fields)
+    script = load("kind-album-name.yaml")
+    (album,) = backend.query(Selection())
+    first = run_script(script, album, backend)
+    assert first.error is None
+    check = check_idempotence(script, first, backend)
+    assert check.ok, (fields, check.issues)

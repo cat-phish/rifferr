@@ -124,3 +124,32 @@ def test_TEMPLATE_FUNCTIONS_5_builtin_module_is_pure() -> None:
 
     imported = {n for n, v in vars(mod).items() if type(v).__name__ == "module"}
     assert imported <= {"math"}
+
+
+def test_TEMPLATE_CONDITIONS_4_startswith_in_beets(beets_env: BeetsEnv) -> None:
+    backend = beets_env.backend()
+    seed(backend, [{**ALBUM[0], "album": "A / B - Split EP"}])
+    [album] = backend.query(Selection())
+    assert backend.evaluate("%startswith{$album,A / B - }", album) == "1"
+    assert backend.evaluate("%startswith{$album,a}", album) == ""
+
+
+def test_TEMPLATE_CONDITIONS_1_unless_on_the_beets_backend(beets_env: BeetsEnv) -> None:
+    from rifferr.tagscript.evaluator import run_script
+    from rifferr.tagscript.loader import parse_script
+
+    script, errors = parse_script(
+        "actions:\n"
+        "  - unless: '%startswith{$album,$albumartist - }'\n"
+        "    set: { album: '$albumartist - $album' }\n",
+        "t.yaml",
+        str,
+    )
+    assert script is not None, errors
+    backend = beets_env.backend()
+    seed(backend, [{**ALBUM[0], "album": "A - x"}, {**ALBUM[0], "album": "y"}])
+    after = {
+        album.fields["album"]: [d.after for d in run_script(script, album, backend).diffs()]
+        for album in backend.query(Selection())
+    }
+    assert after == {"A - x": [], "y": ["A - y"]}

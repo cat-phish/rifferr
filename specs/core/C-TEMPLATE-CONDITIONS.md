@@ -1,5 +1,5 @@
 # C-TEMPLATE-CONDITIONS: Template conditions on tag-script actions
-Status: Approved
+Status: Implemented
 Milestone: M5
 
 ## Context
@@ -94,8 +94,15 @@ Values render into the template result only; they are never parsed again as temp
 2. ~~Helper field name?~~ Resolved 2026-11-23 (author approved as drafted): `kind_artists`, no
    reserved prefix.
 
+As implemented (2026-11-23):
+- FakeBackend's template renderer is now a small parser: `$field`, `${field}`, the `$`
+  escapes and the functions in `rifferr.tagscript.functions.BUILT_INS`; any other
+  `%func{}` is still a template error there. beets' own `%if`, `%the` etc. stay beets-only.
+- `kind-album-name.yaml` also requires `albumartists::.` before joining, so an album with
+  a kind but no artist list is left alone.
+
 ## Tasks
-- [ ] `if` / `unless` in the action model, evaluator and preview; schema regenerated
-- [ ] `%startswith` built-in; built-ins on FakeBackend
-- [ ] Tests per behavior (FakeBackend and beets contract)
-- [ ] `kind-album-name.yaml`, idempotence test, foobar-style step, coverage row 10
+- [x] `if` / `unless` in the action model, evaluator and preview; schema regenerated
+- [x] `%startswith` built-in; built-ins on FakeBackend
+- [x] Tests per behavior (FakeBackend and beets contract)
+- [x] `kind-album-name.yaml`, idempotence test, foobar-style step, coverage row 10

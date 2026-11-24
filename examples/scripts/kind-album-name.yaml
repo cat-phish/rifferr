@@ -1,0 +1,17 @@
+# Checklist line 10: splits and collaborations carry their artists in the album name,
+# "A / B - Split EP" (author, 2026-11-23). album-kind sets `albumkind` and `albumartists`
+# first. The artists go into the name once: a rerun sees that the name already starts with
+# them (`unless`, C-TEMPLATE-CONDITIONS).
+scope: album
+idempotence: fail
+actions:
+  # A helper field with the artists, removed again at the end: the net change is the album.
+  - name: kind-artists
+    when: "albumkind::^(split|collab)$ albumartists::."
+    join: { field: albumartists, with: " / ", into: kind_artists }
+  - name: artists-in-album-name
+    when: "albumkind::^(split|collab)$ kind_artists::."
+    unless: "%startswith{$album,$kind_artists - }"
+    set: { album: "$kind_artists - $album" }
+  - name: drop-helper
+    delete: [kind_artists]

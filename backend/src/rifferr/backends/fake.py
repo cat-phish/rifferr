@@ -99,6 +99,7 @@ from rifferr.core.moves import (
 )
 from rifferr.core.selection import Selection
 from rifferr.core.snapshot import AlbumSnapshot, FieldValue, ItemSnapshot, label
+from rifferr.tagscript.functions import BUILT_INS
 
 DEFAULT_CAPABILITIES = BackendCapabilities(
     import_=True,
@@ -1024,28 +1025,79 @@ def _numeric_match(term: _Term, value: float) -> bool:
 
 # -- templates ----------------------------------------------------------------
 
-_TEMPLATE = re.compile(
-    r"\$(?P<escaped>[$%},])|\$\{(?P<braced>[A-Za-z0-9_]+)\}|\$(?P<bare>[A-Za-z0-9_]+)"
-)
-_FUNCTION = re.compile(r"%[A-Za-z0-9_]+\{")
 _SPECIALS = re.compile(r"([$%},])")
 """Characters with a ``$`` escape, as in beets."""
-_SPECIALS_ESCAPED = re.compile(r"\$[$%},]")
 
 
 def render_template(template: str, env: Mapping[str, FieldValue]) -> str:
-    if _FUNCTION.search(_SPECIALS_ESCAPED.sub("", template)):
-        raise TemplateError("FakeBackend doesn't support template functions (%func{...})")
+    """``$field``, ``${field}``, the ``$`` escapes and Rifferr's built-in template
+    functions (TEMPLATE-CONDITIONS-5); other ``%func{...}`` are a template error."""
+    out, pos = _render_part(template, 0, env, stop="")
+    if pos != len(template):  # pragma: no cover - _render_part reads to the end
+        raise TemplateError(f"invalid template {template!r}")
+    return out
 
-    def sub(m: re.Match[str]) -> str:
-        if m["escaped"]:
-            return m["escaped"]
-        name = m["braced"] or m["bare"]
-        if name not in env:
-            return m.group(0)
-        return _render(env[name])
 
-    return _TEMPLATE.sub(sub, template)
+_NAME = re.compile(r"[A-Za-z0-9_]+")
+
+
+def _render_part(text: str, pos: int, env: Mapping[str, FieldValue], stop: str) -> tuple[str, int]:
+    """Render from ``pos`` until a character in ``stop`` at this level (not consumed)."""
+    out: list[str] = []
+    while pos < len(text):
+        c = text[pos]
+        if c in stop:
+            return "".join(out), pos
+        if c == "$":
+            nxt = text[pos + 1 : pos + 2]
+            if nxt and nxt in "$%},":
+                out.append(nxt)
+                pos += 2
+                continue
+            if nxt == "{":
+                end = text.find("}", pos + 2)
+                name = text[pos + 2 : end] if end != -1 else ""
+                if end != -1 and _NAME.fullmatch(name):
+                    out.append(_render(env[name]) if name in env else text[pos : end + 1])
+                    pos = end + 1
+                    continue
+            m = _NAME.match(text, pos + 1)
+            if m:
+                name = m.group(0)
+                out.append(_render(env[name]) if name in env else "$" + name)
+                pos = m.end()
+                continue
+            out.append("$")
+            pos += 1
+            continue
+        if c == "%":
+            m = _NAME.match(text, pos + 1)
+            if m and text[m.end() : m.end() + 1] == "{":
+                name = m.group(0)
+                func = BUILT_INS.get(name)
+                if func is None:
+                    raise TemplateError(
+                        f"FakeBackend supports only Rifferr's built-in template functions, "
+                        f"not %{name}"
+                    )
+                args: list[str] = []
+                pos = m.end() + 1
+                while True:
+                    arg, pos = _render_part(text, pos, env, stop=",}")
+                    args.append(arg)
+                    if pos >= len(text):
+                        raise TemplateError(f"unclosed %{name}{{ in {text!r}")
+                    pos += 1
+                    if text[pos - 1] == "}":
+                        break
+                try:
+                    out.append(str(func(*args)))
+                except TypeError as exc:
+                    raise TemplateError(f"%{name}: {exc}") from None
+                continue
+        out.append(c)
+        pos += 1
+    return "".join(out), pos
 
 
 def _render(value: FieldValue) -> str:

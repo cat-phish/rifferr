@@ -44,7 +44,7 @@ ACTION_KEYS: Final = (
     "delete",
     "append_unique",
 )
-COMMON_KEYS: Final = ("when", "scope", "name")
+COMMON_KEYS: Final = ("when", "if", "unless", "scope", "name")
 #: ``$field`` or ``${field}`` in a ``from_filename`` pattern.
 PLACEHOLDER: Final = re.compile(r"\$\{(?P<braced>[a-z_][a-z0-9_]*)\}|\$(?P<bare>[a-z_][a-z0-9_]*)")
 
@@ -158,6 +158,18 @@ class ActionBase(BaseModel):
     model_config = _SPEC
 
     when: str | None = Field(default=None, description="Backend query (a beets query)")
+    if_: str | None = Field(
+        default=None,
+        alias="if",
+        description="Run only when this beets template is true: not empty, 0 or false "
+        "(C-TEMPLATE-CONDITIONS)",
+        json_schema_extra=TEMPLATE_EXTRA,
+    )
+    unless: str | None = Field(
+        default=None,
+        description="Skip when this beets template is true: not empty, 0 or false",
+        json_schema_extra=TEMPLATE_EXTRA,
+    )
     scope: ActionScope | None = Field(default=None, description="Default: the script's scope")
     name: str | None = Field(default=None, description="Label for logs and preview")
 

@@ -80,6 +80,7 @@ beets = "rifferr.backends.beets:from_profile"
 [project.entry-points."rifferr.template_functions"]
 ifgreater = "rifferr.tagscript.functions:ifgreater"
 unpad = "rifferr.tagscript.functions:unpad"
+startswith = "rifferr.tagscript.functions:startswith"
 genre_root = "rifferr.backends.beets.genres:genre_root"
 
 [tool.uv.build-backend]
