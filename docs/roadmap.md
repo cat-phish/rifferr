@@ -217,6 +217,9 @@ installs from PyPI and runs from the Docker image.
 Order: reference workflow + coverage → F-PACKAGING (PyPI with bundled
 frontend, Docker image with PUID/PGID).
 
+- [ ] C-FOLDER-FACTS: Drafted 2026-11-23 (checklist line 12: vinyl from rip logs, anthology
+  choice); open questions for the author.
+- [ ] F-PACKAGING: Drafted 2026-11-23; open questions for the author.
 - [x] S-LIBRARY-MOVE (ahead of the main order): Implemented 2026-11-18. Journaled
   rename, move and copy into the library; conflicts wait in review; undo restores moved files.
 
