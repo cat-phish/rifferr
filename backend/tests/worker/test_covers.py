@@ -135,6 +135,35 @@ async def test_COVERS_SEARCH_12_albums_with_art_are_skipped(h: CoverHarness) -> 
     assert any("has art, skipped" in line for line in h.logs())
 
 
+async def test_COVERS_SEARCH_12_a_folder_image_becomes_the_albums_art(
+    h: CoverHarness, tmp_path: Path
+) -> None:
+    folder = tmp_path / "music" / "A"
+    folder.mkdir(parents=True)
+    (folder / "folder.jpg").write_bytes(jpeg(500, 500))
+    h.album("A", path=str(folder))
+    h.shop.answers["A"] = [answer("big.jpg")]
+    h.submit(step())
+    await h.until(lambda: h.state() == "succeeded")
+    assert h.shop.queries == []
+    assert h.art_of("A") == sha256_hex(jpeg(500, 500))
+    assert (folder / "folder.jpg").is_file()
+    assert any("folder.jpg (500x500), used as the cover" in line for line in h.logs())
+
+
+async def test_COVERS_SEARCH_12_adopt_local_false_only_skips(
+    h: CoverHarness, tmp_path: Path
+) -> None:
+    folder = tmp_path / "music" / "A"
+    folder.mkdir(parents=True)
+    (folder / "cover.jpg").write_bytes(jpeg(500, 500))
+    h.album("A", path=str(folder))
+    h.submit(step(", adopt_local: false"))
+    await h.until(lambda: h.state() == "succeeded")
+    assert h.art_of("A") is None
+    assert any("has art, skipped" in line for line in h.logs())
+
+
 async def test_COVERS_SEARCH_13_filters_the_real_size_and_follows_on_none(h: CoverHarness) -> None:
     h.album("A")
     h.album("B")

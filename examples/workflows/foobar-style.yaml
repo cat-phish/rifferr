@@ -223,8 +223,9 @@ steps:
   # by default). Every such album waits in the review queue with the ranked covers, best
   # first, so each added cover is seen before it's used (author, 2026-11-22); only that
   # album's lane waits. The cover is a ChangeSet, so undo removes it.
-  # Albums that beets' fetchart gave art during import skip this step; their cover is
-  # checked in the into-library review instead.
+  # Albums that already have art skip the search: art beets' fetchart set during import,
+  # or a cover image that came in the album folder (folder.jpg, cover.jpg), which becomes
+  # the album's art here (adopt_local). Their cover is checked in the into-library review.
   - id: art
     uses: covers.search
     with:

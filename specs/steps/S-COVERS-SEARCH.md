@@ -95,7 +95,11 @@ still run it as a `beets.command` step.
 - COVERS-SEARCH-12: `covers.search` MUST run once per album. With `only_missing: true`
   (default) it MUST skip albums that already have art: an `artpath` that exists, or a
   `local`-provider match when `local` is enabled and `local_counts: true` (default). Skips
-  MUST be logged per album.
+  MUST be logged per album. When the skip is due only to a local match (the backend has no
+  art for the album) and `adopt_local: true` (default), the step MUST propose the first
+  local match (the `local` provider's pattern order) as the album's art, as a ChangeSet like
+  a chosen cover, so later steps and reviews see the cover the album arrived with
+  (B-096). The image file itself stays where it is.
 - COVERS-SEARCH-13: With `choose: auto` (default), the step MUST take the top-ranked candidate
   if its score is at least `min_score` (default 0.6) and download it; the bytes MUST be an
   image (JPEG or PNG by magic bytes) whose real size passes the filters, else the next
@@ -221,6 +225,7 @@ secrets:                        # PROFILE-4 references
   uses: covers.search
   with:
     only_missing: true
+    adopt_local: true           # a folder image becomes the album's art
     choose: auto                # auto | review
     min_score: 0.6
     max_tries: 3

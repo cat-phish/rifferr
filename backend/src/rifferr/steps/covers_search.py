@@ -79,6 +79,10 @@ class CoversSearchParams(BaseModel):
         default=True,
         description="With only_missing: an image in the album folder counts as art",
     )
+    adopt_local: bool = Field(
+        default=True,
+        description="A folder image counted as art becomes the album's art (a ChangeSet)",
+    )
     choose: Literal["auto", "review"] = Field(
         default="auto", description="auto: take the best cover; review: always ask"
     )
@@ -163,8 +167,28 @@ class CoversSearchStep:
                 label = album_label(album)
                 current = album.fields.get(ART_FIELD)
                 if params.only_missing and _has_art(album, current, params, settings):
-                    ctx.log(f"{label}: has art, skipped", target=album.id)
                     counts["skipped"] += 1
+                    local = None if current or not params.adopt_local else _local(album, settings)
+                    if local is None:
+                        ctx.log(f"{label}: has art, skipped", target=album.id)
+                        continue
+                    path, (width, height) = local
+                    try:
+                        sha, _ = store.put(path.read_bytes())
+                    except OSError as exc:
+                        ctx.log(f"{label}: can't read {path.name}: {exc}", "error", album.id)
+                        continue
+                    ctx.propose(
+                        ChangeSetProposal(
+                            changes=[ProposedFieldChange(field=ART_FIELD, new=sha, old=None)],
+                            rationale=f"the album's own {path.name} ({width}x{height})",
+                        ),
+                        current=TargetRef(scope="album", id=album.id),
+                    )
+                    ctx.log(
+                        f"{label}: has art {path.name} ({width}x{height}), used as the cover",
+                        target=album.id,
+                    )
                     continue
                 query = build_query(ctx, album, params.query)
                 result = await search(
@@ -252,6 +276,15 @@ def album_label(album: AlbumSnapshot) -> str:
     return f"{artist} - {name}" if artist else str(name)
 
 
+def _local(album: AlbumSnapshot, settings: CoverSettings) -> tuple[Path, tuple[int, int]] | None:
+    """The first image in the album folder the ``local`` provider would offer, if enabled."""
+    local = settings.provider("local")
+    if local is None or not local.enabled:
+        return None
+    found = local_images(album.path, local.settings.get("patterns"))
+    return found[0] if found else None
+
+
 def _has_art(
     album: AlbumSnapshot,
     current: object,
@@ -262,11 +295,7 @@ def _has_art(
     album folder that the ``local`` provider would offer."""
     if current:
         return True
-    if not params.local_counts:
-        return False
-    local = settings.provider("local")
-    patterns = local.settings.get("patterns") if local is not None else None
-    return bool(local_images(album.path, patterns))
+    return params.local_counts and _local(album, settings) is not None
 
 
 def build_query(

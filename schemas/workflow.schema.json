@@ -1360,6 +1360,12 @@
     "With_covers_search": {
       "additionalProperties": false,
       "properties": {
+        "adopt_local": {
+          "default": true,
+          "description": "A folder image counted as art becomes the album's art (a ChangeSet)",
+          "title": "Adopt Local",
+          "type": "boolean"
+        },
         "choose": {
           "default": "auto",
           "description": "auto: take the best cover; review: always ask",
