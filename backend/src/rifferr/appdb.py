@@ -1855,6 +1855,31 @@ class AppLanes:
             ]
         return lanes, starting
 
+    def failed(
+        self, profile: str | None, workflow: str | None, limit: int = 50
+    ) -> list[tuple[str, Lane, datetime]]:
+        """UI-REFRESH-27: failed lanes of finished runs (with when each failed), newest
+        first. A run is left out once a later run of the same input exists."""
+        sql = (
+            "SELECT l.* FROM run_lanes l JOIN jobs j ON j.run_id = l.run_id"
+            " WHERE j.kind = 'run' AND l.state = 'failed'"
+            " AND j.state NOT IN ('queued', 'running', 'waiting_review')"
+            " AND (j.input IS NULL OR NOT EXISTS (SELECT 1 FROM jobs n WHERE n.kind = 'run'"
+            " AND n.profile = j.profile AND n.workflow IS j.workflow AND n.input = j.input"
+            " AND (n.created_at > j.created_at OR (n.created_at = j.created_at AND n.id > j.id))))"
+        )
+        args: list[Any] = []
+        if profile is not None:
+            sql, args = sql + " AND j.profile = ?", [*args, profile]
+        if workflow is not None:
+            sql, args = sql + " AND j.workflow = ?", [*args, workflow]
+        rows = self._conn.execute(
+            sql + " ORDER BY l.updated_at DESC, l.seq DESC LIMIT ?", [*args, limit]
+        ).fetchall()
+        return [
+            (row["run_id"], _lane(row), datetime.fromisoformat(row["updated_at"])) for row in rows
+        ]
+
     def counts(self, run_ids: Iterable[str]) -> dict[str, dict[str, int]]:
         """Run id -> lane state -> count (LANES-9), in one query."""
         ids = list(run_ids)

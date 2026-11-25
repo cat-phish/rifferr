@@ -252,9 +252,24 @@ class PipelineStart(_Model):
     created_at: datetime
 
 
+class PipelineFailed(_Model):
+    """An album whose lane failed, at the step it failed at (UI-REFRESH-27)."""
+
+    run_id: str
+    key: str
+    label: str
+    step: str | None = Field(description="Expanded id of the step that failed")
+    error: str | None = Field(description="That step's error in the run")
+    failed_at: datetime
+
+
 class PipelineOut(_Model):
     lanes: list[PipelineLane]
     starting: list[PipelineStart]
+    failed: list[PipelineFailed] = Field(
+        default_factory=list[PipelineFailed],
+        description="Failed albums of finished runs, newest first (UI-REFRESH-27)",
+    )
 
 
 StepStatusOut = Literal["pending", "running", "succeeded", "failed", "skipped", "cancelled"]

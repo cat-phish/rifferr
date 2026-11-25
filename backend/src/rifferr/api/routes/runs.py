@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any, cast
 
@@ -13,6 +14,7 @@ from rifferr.api.models import (
     Accepted,
     LaneHold,
     LaneOut,
+    PipelineFailed,
     PipelineLane,
     PipelineOut,
     PipelineStart,
@@ -33,7 +35,7 @@ from rifferr.core.workflow.interpolation import (
     InterpolationError,
     interpolate,
 )
-from rifferr.engine.lanes import counts
+from rifferr.engine.lanes import Lane, counts
 from rifferr.engine.undo import run_entries
 from rifferr.workflow_calls import called_hashes, stored_calls
 
@@ -136,9 +138,12 @@ async def get_pipeline(
         str | None, Query(max_length=200, description="Only this workflow's albums")
     ] = None,
 ) -> PipelineOut:
-    """Every live album and the step it is at, plus runs with no lanes yet (UI-REFRESH-24)."""
+    """Every live album and the step it is at, plus runs with no lanes yet (UI-REFRESH-24),
+    and the albums that failed (UI-REFRESH-27)."""
     lanes, starting = AppLanes(state.db).live(profile, workflow)
+    failed = AppLanes(state.db).failed(profile, workflow)
     return PipelineOut(
+        failed=[failed_entry(state, run_id, lane, at) for run_id, lane, at in failed],
         lanes=[
             PipelineLane(
                 run_id=run_id,
@@ -158,6 +163,21 @@ async def get_pipeline(
             )
             for job in starting
         ],
+    )
+
+
+def failed_entry(state: ServerState, run_id: str, lane: Lane, at: datetime) -> PipelineFailed:
+    """UI-REFRESH-27: the lane's failed step and that step's last error in the run."""
+    step = next((s for s, status in lane.steps.items() if status == "failed"), None)
+    error: str | None = None
+    if step is not None:
+        for event in state.db.events_since(run_id, 0):
+            if event.type == "run.step.finished" and event.step_id == step:
+                value = event.data.get("error")
+                if isinstance(value, str):
+                    error = value
+    return PipelineFailed(
+        run_id=run_id, key=lane.key, label=lane.label, step=step, error=error, failed_at=at
     )
 
 

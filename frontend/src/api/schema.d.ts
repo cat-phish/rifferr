@@ -462,7 +462,8 @@ export interface paths {
         };
         /**
          * Get Pipeline
-         * @description Every live album and the step it is at, plus runs with no lanes yet (UI-REFRESH-24).
+         * @description Every live album and the step it is at, plus runs with no lanes yet (UI-REFRESH-24),
+         *     and the albums that failed (UI-REFRESH-27).
          */
         get: operations["get_pipeline_api_pipeline_get"];
         put?: never;
@@ -2857,6 +2858,33 @@ export interface components {
             query: string;
         };
         /**
+         * PipelineFailed
+         * @description An album whose lane failed, at the step it failed at (UI-REFRESH-27).
+         */
+        PipelineFailed: {
+            /**
+             * Error
+             * @description That step's error in the run
+             */
+            error: string | null;
+            /**
+             * Failed At
+             * Format: date-time
+             */
+            failed_at: string;
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Run Id */
+            run_id: string;
+            /**
+             * Step
+             * @description Expanded id of the step that failed
+             */
+            step: string | null;
+        };
+        /**
          * PipelineLane
          * @description A live album of a workflow and the step it is at (UI-REFRESH-24).
          */
@@ -2898,6 +2926,11 @@ export interface components {
         };
         /** PipelineOut */
         PipelineOut: {
+            /**
+             * Failed
+             * @description Failed albums of finished runs, newest first (UI-REFRESH-27)
+             */
+            failed?: components["schemas"]["PipelineFailed"][];
             /** Lanes */
             lanes: components["schemas"]["PipelineLane"][];
             /** Starting */

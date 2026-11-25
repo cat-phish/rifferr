@@ -277,3 +277,42 @@ export function pipelineByStep(
 function folderName(path: string): string {
   return path.replace(/\/+$/, "").split("/").pop() ?? path;
 }
+
+/** An album whose lane failed, at the step it failed at (UI-REFRESH-27). */
+export interface FailedEntry {
+  key: string;
+  runId: string;
+  label: string;
+  error: string | null;
+  failedAt: string;
+}
+
+/** Failed albums by the step they failed at (UI-REFRESH-27); one at no known step goes to
+ * {@link FINISHING_STAGE}. Keeps the API's order (newest first). */
+export function failedByStep(
+  steps: readonly string[],
+  failed: readonly {
+    run_id: string;
+    key: string;
+    label: string;
+    step?: string | null;
+    error?: string | null;
+    failed_at: string;
+  }[],
+): Map<string, FailedEntry[]> {
+  const out = new Map<string, FailedEntry[]>();
+  for (const f of failed) {
+    const step = f.step && steps.includes(f.step) ? f.step : FINISHING_STAGE;
+    out.set(step, [
+      ...(out.get(step) ?? []),
+      {
+        key: `${f.run_id}:${f.key}`,
+        runId: f.run_id,
+        label: f.label,
+        error: f.error ?? null,
+        failedAt: f.failed_at,
+      },
+    ]);
+  }
+  return out;
+}

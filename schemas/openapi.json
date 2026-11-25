@@ -4172,6 +4172,63 @@
         "title": "PathFormat",
         "type": "object"
       },
+      "PipelineFailed": {
+        "additionalProperties": false,
+        "description": "An album whose lane failed, at the step it failed at (UI-REFRESH-27).",
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "That step's error in the run",
+            "title": "Error"
+          },
+          "failed_at": {
+            "format": "date-time",
+            "title": "Failed At",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "step": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Expanded id of the step that failed",
+            "title": "Step"
+          }
+        },
+        "required": [
+          "run_id",
+          "key",
+          "label",
+          "step",
+          "error",
+          "failed_at"
+        ],
+        "title": "PipelineFailed",
+        "type": "object"
+      },
       "PipelineLane": {
         "additionalProperties": false,
         "description": "A live album of a workflow and the step it is at (UI-REFRESH-24).",
@@ -4253,6 +4310,14 @@
       "PipelineOut": {
         "additionalProperties": false,
         "properties": {
+          "failed": {
+            "description": "Failed albums of finished runs, newest first (UI-REFRESH-27)",
+            "items": {
+              "$ref": "#/components/schemas/PipelineFailed"
+            },
+            "title": "Failed",
+            "type": "array"
+          },
           "lanes": {
             "items": {
               "$ref": "#/components/schemas/PipelineLane"
@@ -8746,7 +8811,7 @@
     },
     "/api/pipeline": {
       "get": {
-        "description": "Every live album and the step it is at, plus runs with no lanes yet (UI-REFRESH-24).",
+        "description": "Every live album and the step it is at, plus runs with no lanes yet (UI-REFRESH-24),\nand the albums that failed (UI-REFRESH-27).",
         "operationId": "get_pipeline_api_pipeline_get",
         "parameters": [
           {

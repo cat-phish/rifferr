@@ -110,3 +110,59 @@ async def test_UI_REFRESH_24_pipeline_lists_live_lanes_and_starting_runs(api: Ap
     assert [(s["run_id"], s["input"], s["state"]) for s in out["starting"]] == [
         (starting, "/in/New Album", "queued")
     ]
+
+
+async def test_UI_REFRESH_27_pipeline_lists_failed_albums_at_their_step(api: Api) -> None:
+    from datetime import UTC, datetime
+
+    from rifferr.engine import Event
+
+    db = api.state.db
+    lanes = AppLanes(db)
+
+    def finished_run(input: str | None, lane: Lane, error: str | None = None) -> str:
+        run = db.submit("main", {"source": ECHO, "vars": {}}, workflow="tagging", input=input).run
+        lanes.save(run, [lane])
+        db._conn.execute(  # pyright: ignore[reportPrivateUsage]
+            "UPDATE jobs SET state = 'succeeded' WHERE run_id = ?", (run,)
+        )
+        if error is not None:
+            step = next(s for s, status in lane.steps.items() if status == "failed")
+            db.append_event(
+                Event(
+                    seq=1,
+                    ts=datetime.now(UTC),
+                    run_id=run,
+                    type="run.step.finished",
+                    step_id=step,
+                    data={"status": "failed", "error": error},
+                )
+            )
+        return run
+
+    failing = {"import": "succeeded", "sub/check": "failed"}
+    failed = finished_run(
+        "/in/A", Lane("album-1", "Artist - A", "failed", None, steps=failing), "'x' is not set"
+    )
+    finished_run("/in/B", Lane("album-2", "Artist - B", "failed", None, steps=failing), "old")
+    retried = finished_run("/in/B", Lane("album-3", "Artist - B", "done", None))
+    finished_run("/in/C", Lane("album-4", "Artist - C", "done", None))
+    live = db.submit("main", {"source": ECHO, "vars": {}}, workflow="tagging", input="/in/D").run
+    lanes.save(live, [Lane("album-5", "Artist - D", "failed", None, steps=failing)])
+    other = db.submit("main", {"source": ECHO, "vars": {}}, workflow="other", input="/in/E").run
+    lanes.save(other, [Lane("album-6", "Elsewhere", "failed", None, steps=failing)])
+    db._conn.execute(  # pyright: ignore[reportPrivateUsage]
+        "UPDATE jobs SET state = 'succeeded' WHERE run_id = ?", (other,)
+    )
+
+    out = (
+        await api.client.get("/api/pipeline", params={"profile": "main", "workflow": "tagging"})
+    ).json()
+    # Only the newest run of each input; a retry of /in/B hides its old failure; a run
+    # still in progress isn't listed here (its lanes are on UI-REFRESH-24's list).
+    assert [(f["run_id"], f["key"], f["step"], f["error"]) for f in out["failed"]] == [
+        (failed, "album-1", "sub/check", "'x' is not set")
+    ]
+    assert out["failed"][0]["label"] == "Artist - A"
+    assert "failed_at" in out["failed"][0]
+    assert retried not in {f["run_id"] for f in out["failed"]}

@@ -43,6 +43,8 @@ import {
   count,
   currentOf,
   FINISHING_STAGE,
+  failedByStep,
+  type FailedEntry,
   fieldRows,
   formatValue,
   groupByStep,
@@ -224,8 +226,15 @@ export function ReviewPage({
     pipeline.data?.starting ?? [],
     shownIds,
   );
+  // Failed albums stay at the step they failed at (UI-REFRESH-27).
+  const failedAt = failedByStep(workflow.steps, pipeline.data?.failed ?? []);
+  const failuresAt = (value: string) => failedAt.get(value) ?? [];
   const tabs = stageTabs(workflow, sections, embedded);
-  if (embedded && (atStep.get(FINISHING_STAGE)?.length ?? 0) > 0)
+  if (
+    embedded &&
+    ((atStep.get(FINISHING_STAGE)?.length ?? 0) > 0 ||
+      (failedAt.get(FINISHING_STAGE)?.length ?? 0) > 0)
+  )
     tabs.push({ value: FINISHING_STAGE, label: "Finishing", section: undefined });
   const albumsAt = (value: string) => atStep.get(value) ?? [];
   const focusTab = tabs.find((t) => t.section?.items.some((i) => i.id === focus));
@@ -233,8 +242,12 @@ export function ReviewPage({
   const stage =
     focusTab?.value ??
     urlStage ??
-    (tabs.find((t) => t.section) ?? tabs.find((t) => albumsAt(t.value).length > 0) ?? tabs[0])
-      ?.value;
+    (
+      tabs.find((t) => t.section) ??
+      tabs.find((t) => albumsAt(t.value).length > 0) ??
+      tabs.find((t) => failuresAt(t.value).length > 0) ??
+      tabs[0]
+    )?.value;
   const waitingTabs = tabs.filter((t) => (t.section?.items.length ?? 0) > 0);
   const shown = tabs.find((t) => t.value === stage)?.section;
   useEffect(() => {
@@ -421,6 +434,7 @@ export function ReviewPage({
                     label={t.label}
                     n={t.section?.items.length ?? 0}
                     albums={embedded ? albumsAt(t.value).length : undefined}
+                    failed={embedded ? failuresAt(t.value).length : undefined}
                   />
                 ))}
                 {!tabs.some((t) => t.value === stage) && (
@@ -434,6 +448,9 @@ export function ReviewPage({
                   <Text c="dimmed" data-testid="stage-empty">
                     Nothing waiting at this step.
                   </Text>
+                )}
+                {embedded && failuresAt(stage).length > 0 && (
+                  <FailedHere entries={failuresAt(stage)} />
                 )}
                 {embedded && albumsAt(stage).length > 0 && <AtThisStep entries={albumsAt(stage)} />}
               </Box>
@@ -531,23 +548,26 @@ function ReviewOverview({
 }
 
 /** One stage tab with its count; dimmed while nothing waits there (UI-REFRESH-13). With
- * `albums`, also the count of albums at that step not waiting on review (UI-REFRESH-24). */
+ * `albums`, also the count of albums at that step not waiting on review (UI-REFRESH-24);
+ * with `failed`, a red count of albums that failed there (UI-REFRESH-27). */
 function StageTabButton({
   value,
   label,
   n,
   albums,
+  failed,
 }: {
   value: string;
   label: string;
   n: number;
   albums?: number;
+  failed?: number;
 }) {
   return (
     <Tabs.Tab
       value={value}
       data-testid="stage-tab"
-      c={n === 0 && !albums ? "dimmed" : undefined}
+      c={n === 0 && !albums && !failed ? "dimmed" : undefined}
       rightSection={
         <Group gap={4} wrap="nowrap">
           <Badge
@@ -564,11 +584,58 @@ function StageTabButton({
               +{String(albums)}
             </Text>
           )}
+          {failed !== undefined && failed > 0 && (
+            <Badge
+              size="sm"
+              color="red"
+              variant="filled"
+              data-testid="stage-failed"
+              title="Albums that failed at this step"
+            >
+              {String(failed)} failed
+            </Badge>
+          )}
         </Group>
       }
     >
       {label}
     </Tabs.Tab>
+  );
+}
+
+/** The albums that failed at a step, with the error and their run (UI-REFRESH-27). */
+function FailedHere({ entries }: { entries: readonly FailedEntry[] }) {
+  const { profile } = useProfile();
+  return (
+    <Stack gap="xs" mt="md" data-testid="failed-here">
+      <Text size="sm" fw={600} c="red">
+        Failed here
+      </Text>
+      <Table>
+        <Table.Tbody>
+          {entries.map((e) => (
+            <Table.Tr key={e.key} data-testid="failed-album">
+              <Table.Td>{e.label}</Table.Td>
+              <Table.Td>
+                <Text size="sm" c="red" data-testid="failed-error">
+                  {e.error ?? "failed"}
+                </Text>
+              </Table.Td>
+              <Table.Td>
+                <Text size="xs" c="dimmed" title={e.failedAt}>
+                  {duration(e.failedAt)} ago
+                </Text>
+              </Table.Td>
+              <Table.Td>
+                <Anchor component={Link} to={withProfile(`/runs/${e.runId}`, profile)} size="sm">
+                  Run
+                </Anchor>
+              </Table.Td>
+            </Table.Tr>
+          ))}
+        </Table.Tbody>
+      </Table>
+    </Stack>
   );
 }
 

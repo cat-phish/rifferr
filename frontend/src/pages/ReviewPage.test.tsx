@@ -1105,3 +1105,38 @@ test("UI_REFRESH_20_a_succeeded_decision_job_does_not_bring_the_item_back", asyn
   await new Promise((r) => setTimeout(r, 50));
   expect(screen.getAllByTestId("queue-item").map((e) => e.dataset.item)).toEqual(["cs3"]);
 });
+
+// -- UI-REFRESH-27 ------------------------------------------------------------------------
+
+test("UI_REFRESH_27 a failed album stays at the step it failed at, with its error", async () => {
+  setup({
+    queue: () => [],
+    extra: {
+      ...WORKFLOWS,
+      "GET /api/pipeline": () => ({
+        lanes: [],
+        starting: [],
+        failed: [
+          {
+            run_id: "R9",
+            key: "album-1",
+            label: "Artist - Failed",
+            step: "write",
+            error: "{{ vars.x }}: 'x' is not set",
+            failed_at: new Date().toISOString(),
+          },
+        ],
+      }),
+    },
+  });
+  renderApp("/workflows/tagging?profile=main");
+  // With nothing waiting and no live albums, the tab with the failure opens.
+  await waitFor(() => {
+    expect(screen.getByRole("tab", { name: /write/ })).toHaveAttribute("aria-selected", "true");
+  });
+  expect(screen.getByTestId("stage-failed").textContent).toBe("1 failed");
+  const row = await screen.findByTestId("failed-album");
+  expect(row.textContent).toContain("Artist - Failed");
+  expect(screen.getByTestId("failed-error").textContent).toBe("{{ vars.x }}: 'x' is not set");
+  expect(row.querySelector("a")?.getAttribute("href")).toContain("/runs/R9");
+});
