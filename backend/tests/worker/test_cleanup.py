@@ -156,3 +156,29 @@ async def test_FILES_CLEANUP_7_busy_folders_from_decisions_and_other_runs(
     assert [(str(b.path), b.reason) for b in busy] == [
         ("/in/other", f"input of run {other.run_id}")
     ]
+
+
+def test_FILES_CLEANUP_18_watched_folders_come_from_every_workflows_watch_path(
+    tmp_path: Path,
+) -> None:
+    from rifferr.core.profile import parse_profile
+    from rifferr.worker.cleanup import watched_folders
+
+    root = tmp_path / "profiles" / "main"
+    (root / "workflows").mkdir(parents=True)
+    profile = parse_profile(
+        "vars: {inbox: /music/inbox}\n", "profile.yaml", name="main", root=root, env={}
+    )
+    (root / "workflows" / "watching.yaml").write_text(
+        "name: W\non: {watch: {path: '{{ vars.inbox }}'}}\nsteps: [{id: a, uses: test.echo}]\n"
+    )
+    (root / "workflows" / "own.yml").write_text(
+        "name: O\nvars: {drop: {default: /music/drop}}\n"
+        "on: {watch: {path: '{{ vars.drop }}'}}\nsteps: [{id: a, uses: test.echo}]\n"
+    )
+    (root / "workflows" / "manual.yaml").write_text("name: M\nsteps: [{id: a, uses: test.echo}]\n")
+    (root / "workflows" / "broken.yaml").write_text("name: [\n")
+    (root / "workflows" / "unset.yaml").write_text(
+        "name: U\non: {watch: {path: '{{ vars.nope }}'}}\nsteps: [{id: a, uses: test.echo}]\n"
+    )
+    assert watched_folders(profile) == [Path("/music/drop"), Path("/music/inbox")]

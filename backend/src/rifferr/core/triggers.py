@@ -10,6 +10,9 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Final, Literal, cast
 
+from rifferr.core.profile import merged_vars
+from rifferr.core.workflow import InterpolationContext, Workflow, interpolate
+
 _UNITS: Final = {"s": 1, "m": 60, "h": 3600}
 
 TriggerKind = Literal["manual", "watch", "schedule", "webhook"]
@@ -189,3 +192,14 @@ def top_level(relative: str) -> str | None:
     for the watch folder itself."""
     parts = [p for p in relative.replace("\\", "/").split("/") if p and p != "."]
     return parts[0] if parts else None
+
+
+def watch_path(wf: Workflow, profile_vars: Mapping[str, str], profile_name: str) -> str | None:
+    """The folder ``wf``'s watch trigger watches, interpolated as when it is armed
+    (TRIGGERS-1), or ``None`` without a watch trigger. Raises ``InterpolationError``."""
+    if wf.on is None or wf.on.watch is None:
+        return None
+    ctx = InterpolationContext(
+        vars=merged_vars(profile_vars, wf.vars), profile={"name": profile_name}
+    )
+    return interpolate(wf.on.watch.path, ctx)

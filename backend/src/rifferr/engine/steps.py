@@ -342,6 +342,7 @@ class StepContext:
         base_url: str | None = None,
         profile_settings: ProfileFile | None = None,
         busy_folders: Callable[[], list[BusyFolder]] | None = None,
+        watched_folders: Callable[[], list[Path]] | None = None,
         imported_folder: Callable[[str], None] | None = None,
         request_cleanup: RequestCleanup | None = None,
         hold_pass: HoldPass | None = None,
@@ -388,6 +389,7 @@ class StepContext:
         self.profile_settings = profile_settings
         """The run's profile settings (``profile.yaml``), when the worker knows them."""
         self._busy_folders: Callable[[], list[BusyFolder]] = busy_folders or list[BusyFolder]
+        self._watched_folders: Callable[[], list[Path]] = watched_folders or list[Path]
         self._imported_folder: Callable[[str], None] = imported_folder or _no_imported
         self._request_cleanup = request_cleanup or _no_cleanup
         self._hold_pass = hold_pass or _no_hold_pass
@@ -525,6 +527,11 @@ class StepContext:
         """Folders other work still needs: pending import decisions of this profile and
         the inputs of its other queued, running or waiting runs (FILES-CLEANUP-7)."""
         return self._busy_folders()
+
+    def watched_folders(self) -> list[Path]:
+        """The profile's watch folders (``on.watch.path`` of its workflows): steps that
+        remove folders must leave these in place (FILES-CLEANUP-18)."""
+        return self._watched_folders()
 
     def imported_folder(self, path: str) -> None:
         """Tell the engine this step imported the album folder ``path``, so other runs'

@@ -45,6 +45,7 @@ def make_plan(
     busy: list[BusyFolder] | None = None,
     known: set[Path] | None = None,
     allow_audio: bool = False,
+    watched: list[Path] | None = None,
 ) -> Plan:
     return plan(
         root,
@@ -56,6 +57,7 @@ def make_plan(
         library_files=lambda ps: {p for p in ps if p in (known or set())},
         importable=lambda ps: {p for p in ps if p.suffix.lower() in MUSIC},
         allow_audio=allow_audio,
+        watched=watched or [],
     )
 
 
@@ -224,6 +226,38 @@ def test_FILES_CLEANUP_9_root_removed_only_when_asked(tmp_path: Path) -> None:
     root2 = tree(tmp_path / "inbox2", "a.nfo")
     execute(make_plan(root2, delete=["*.nfo"], remove_root=True), trash=None, run_id="r")
     assert not root2.exists()
+
+
+def test_FILES_CLEANUP_18_a_watched_folder_is_cleaned_but_never_removed(tmp_path: Path) -> None:
+    """B-055: a manual run gets the whole inbox; remove_root: true must leave it."""
+    inbox = tree(tmp_path / "inbox", "Album/a.nfo", "Other/")
+    p = make_plan(inbox, delete=["**/*.nfo"], remove_root=True, watched=[inbox])
+    assert classes(p) == {"Album/a.nfo": "delete", "Album": "empty", "Other": "empty", ".": "left"}
+    assert next(e for e in p.entries if e.path == ".").reason == "watched"
+    execute(p, trash=None, run_id="r")
+    assert inbox.is_dir()
+    assert os.listdir(inbox) == []
+
+
+def test_FILES_CLEANUP_18_a_watch_runs_album_folder_is_removed(tmp_path: Path) -> None:
+    inbox = tmp_path / "inbox"
+    album = tree(inbox / "Album", "a.nfo")
+    execute(
+        make_plan(album, delete=["*.nfo"], remove_root=True, watched=[inbox]),
+        trash=None,
+        run_id="r",
+    )
+    assert not album.exists()
+    assert inbox.is_dir()
+
+
+def test_FILES_CLEANUP_18_a_watched_folder_inside_the_path_stays(tmp_path: Path) -> None:
+    root = tree(tmp_path / "music", "inbox/a.nfo")
+    p = make_plan(root, delete=["**/*.nfo"], remove_root=True, watched=[root / "inbox"])
+    assert classes(p)["inbox"] == "left"
+    assert "." not in classes(p)  # the root holds the watched folder, so it isn't empty
+    execute(p, trash=None, run_id="r")
+    assert (root / "inbox").is_dir()
 
 
 def test_FILES_CLEANUP_9_changed_files_are_left(tmp_path: Path) -> None:

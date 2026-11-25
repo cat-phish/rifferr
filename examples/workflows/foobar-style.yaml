@@ -238,13 +238,15 @@ steps:
       max: 1200
       original: "{stem}-hires{ext}"
   # The album's folder in the inbox is empty now (or holds only what beets couldn't
-  # import, which stays for checklist line 5): remove the empty folders.
+  # import, which stays for checklist line 5): remove the empty folders, and the album's
+  # folder itself. The inbox stays: a watched folder is never removed (FILES-CLEANUP-18),
+  # so a manual run given the whole inbox only empties it.
   - id: empty-inbox
     uses: files.cleanup
     with:
       path: "{{ run.input }}"
       mode: delete
-      remove_root: false
+      remove_root: true
   # Checklist line 11: "/", ":" and "?" in album, title, artist and album artist become
   # lookalike characters (／ ꞉ ？), so folder and file names keep them instead of beets'
   # "_". Runs on its own before the move, so the move's preview shows the new names.

@@ -51,6 +51,12 @@ decision still waits on (unattended first: a pending album must survive the nigh
   waiting run (F-TRIGGERS dedup), MUST be skipped as a whole and listed as `busy`, with the
   reason. The rest of `path` is cleaned normally.
 
+- FILES-CLEANUP-18: (Decided by the author, 2026-11-25, B-055.) A folder that is the watch path
+  of any workflow of the same profile (`on.watch.path`, interpolated with the profile's vars as
+  the trigger does, whether or not the workflow is armed or trusted) MUST never be removed, by
+  `remove_root` or as an `empty` folder. Its contents are cleaned normally and it is listed as
+  `left` with reason `watched`. So a watch run cleans its album folder with
+  `remove_root: true`, and a manual run given the whole inbox leaves the inbox in place.
 - FILES-CLEANUP-17: A file the backend could import (beets: a format it reads) MUST NOT be
   deleted or moved unless the step sets `allow_audio: true`, even when a `delete` pattern
   matches it. It is listed as `left` with reason `importable`, so unmatched albums beets
@@ -234,3 +240,4 @@ Resolved (author, 2026-11-14):
 - [x] Review queue: `cleanup` items, routes and UI, with a Playwright test (FILES-CLEANUP-14)
 - [x] Trash layout, marker and `files.trash_keep` purge (FILES-CLEANUP-15, -16)
 - [x] Use it in `examples/workflows/foobar-style.yaml`; update `docs/coverage.md` row 4
+- [x] Watched folders are never removed; foobar-style uses `remove_root: true` (FILES-CLEANUP-18, B-055)

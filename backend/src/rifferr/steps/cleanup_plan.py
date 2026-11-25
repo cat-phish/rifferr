@@ -151,7 +151,9 @@ def plan(
     library_files: Callable[[list[Path]], set[Path]],
     importable: Callable[[list[Path]], set[Path]],
     allow_audio: bool,
+    watched: Sequence[Path] = (),
 ) -> Plan:
+    """``watched``: watch folders of the profile, never removed (FILES-CLEANUP-18)."""
     out = Plan(root)
     deletes, keeps = Patterns(delete), Patterns(keep)
     files: list[tuple[str, Path, os.stat_result, EntryKind]] = []
@@ -220,7 +222,10 @@ def plan(
         out.entries.append(CleanupEntry(**common, cls="left"))
 
     if empty_dirs:
-        out.entries += _empty_dirs(root, dirs, files, going, busy_reason, holds_busy, remove_root)
+        watched_real = {Path(os.path.realpath(w)) for w in watched}
+        out.entries += _empty_dirs(
+            root, dirs, files, going, busy_reason, holds_busy, remove_root, watched_real
+        )
     return out
 
 
@@ -232,8 +237,10 @@ def _empty_dirs(
     busy_reason: Callable[[Path], str | None],
     holds_busy: Callable[[Path], bool],
     remove_root: bool,
+    watched: set[Path],
 ) -> list[CleanupEntry]:
-    """Folders with nothing left in them once ``going`` is gone, deepest first."""
+    """Folders with nothing left in them once ``going`` is gone, deepest first. A watched
+    folder stays, listed as ``left`` (FILES-CLEANUP-18)."""
     staying: dict[str, int] = {rel: 0 for rel, _ in dirs}
     for rel, _, _, _ in files:
         if rel not in going:
@@ -247,6 +254,15 @@ def _empty_dirs(
         if rel == "." and not remove_root:
             continue
         st = path.lstat()
+        if Path(os.path.realpath(path)) in watched:
+            empty.append(
+                CleanupEntry(
+                    path=rel, kind="dir", cls="left", reason="watched", mtime_ns=st.st_mtime_ns
+                )
+            )
+            if rel != ".":
+                staying[_parent(rel)] = staying.get(_parent(rel), 0) + 1
+            continue
         empty.append(CleanupEntry(path=rel, kind="dir", cls="empty", mtime_ns=st.st_mtime_ns))
     return empty
 

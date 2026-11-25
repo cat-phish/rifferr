@@ -9,6 +9,7 @@ workflows, and ``review: true`` asks a person first.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Final, Literal, Self, cast
 
@@ -172,6 +173,7 @@ def build_plan(ctx: StepContext, root: Path, options: CleanupOptions) -> Plan:
         library_files=backend.library_files,
         importable=backend.importable,
         allow_audio=options.allow_audio,
+        watched=ctx.watched_folders(),
     )
 
 
@@ -239,6 +241,7 @@ def apply_reviewed(
     backend: LibraryBackend,
     busy: list[BusyFolder],
     run_id: str,
+    watched: Sequence[Path] = (),
 ) -> Outcome:
     """Clean what a person reviewed and chose Delete for (FILES-CLEANUP-14).
 
@@ -260,6 +263,7 @@ def apply_reviewed(
         library_files=backend.library_files,
         importable=backend.importable,
         allow_audio=options.allow_audio,
+        watched=watched,
     )
     reviewed = {e.path: e for e in decision.entries if e.cls in ("delete", "empty")}
     entries = [

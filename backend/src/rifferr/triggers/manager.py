@@ -37,6 +37,7 @@ from rifferr.core.triggers import (
     inbox_state,
     parse_duration,
     top_level,
+    watch_path,
 )
 from rifferr.core.workflow import (
     CALL_TYPE,
@@ -372,8 +373,9 @@ class TriggerManager:
                 vars=merged_vars(profile.vars, wf.vars), profile={"name": profile.name}
             )
             armed.input = interpolate(wf.input, ctx) if wf.input else ""
-            if wf.on.watch is not None:
-                armed.watch_path = Path(interpolate(wf.on.watch.path, ctx))
+            watched = watch_path(wf, profile.vars, profile.name)
+            if watched is not None:
+                armed.watch_path = Path(watched)
             if wf.on.webhook is not None:
                 within = wf.on.webhook.within
                 armed.within = Path(interpolate(within, ctx)) if within else armed.watch_path

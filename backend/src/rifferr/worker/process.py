@@ -97,7 +97,7 @@ from rifferr.steps.registry import load_step_types
 from rifferr.steps.tagscript import proposal as tagscript_proposal
 from rifferr.tagscript.evaluator import run_script
 from rifferr.tagscript.models import TagScript
-from rifferr.worker.cleanup import busy_folders
+from rifferr.worker.cleanup import busy_folders, watched_folders
 from rifferr.worker.gates import cancel_pending_items, gate_albums, reject_gate_lanes, settle
 from rifferr.worker.import_undo import recover_removals, undo_import
 from rifferr.worker.protocol import HEARTBEAT_INTERVAL, WorkerCommand, WorkerMessage, encode
@@ -390,6 +390,7 @@ class Worker:
                 notify=self.notify,
                 profile_settings=self._current_settings(),
                 busy=lambda: busy_folders(self.db, self.profile.name, job.run),
+                watched=lambda: watched_folders(self.profile),
                 imported=lambda path: self._supersede_imports(path, job.run),
                 calls=stored_calls(wf, doc, payload),
                 last_seq=self._next_seq(job.run) - 1 if resume_after else 0,
@@ -636,6 +637,7 @@ class Worker:
                 self.backend,
                 busy_folders(self.db, self.profile.name, decision.run_id),
                 decision.run_id,
+                watched_folders(self.profile),
             )
         except Exception as exc:  # the folder isn't safe any more: nothing was removed
             message = str(exc) if isinstance(exc, CleanupError) else f"{type(exc).__name__}: {exc}"

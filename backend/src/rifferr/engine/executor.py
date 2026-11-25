@@ -151,8 +151,10 @@ class _RunState:
         profile_settings: ProfileFile | None = None,
         busy: Callable[[], list[BusyFolder]] | None = None,
         imported: Callable[[str], None] | None = None,
+        watched: Callable[[], list[Path]] | None = None,
     ) -> None:
         self.run = run
+        self.watched = watched
         self.imported = imported
         self.notify = notify
         self.profile_settings = profile_settings
@@ -258,6 +260,7 @@ class Engine:
         busy: Callable[[], list[BusyFolder]] | None = None,
         calls: Calls | None = None,
         imported: Callable[[str], None] | None = None,
+        watched: Callable[[], list[Path]] | None = None,
     ) -> Run:
         """Validate and create a queued run (RUN-10, RUN-11).
 
@@ -268,6 +271,7 @@ class Engine:
         ``notify``: the profile's notification targets (S-NOTIFY), for ``ctx.notify``.
         ``profile_settings``: ``profile.yaml`` as loaded, for ``ctx.profile_settings``.
         ``busy``: folders other work still needs (FILES-CLEANUP-7), for ``ctx.busy_folders``.
+        ``watched``: the profile's watch folders (FILES-CLEANUP-18), for ``ctx.watched_folders``.
         ``imported``: called with each folder a step imported, for ``ctx.imported_folder``
         (IMPORT-UI-19).
         ``calls``: the workflow files ``wf`` calls, as stored with the job; the run's
@@ -329,6 +333,7 @@ class Engine:
             profile_settings,
             busy,
             imported,
+            watched,
         )
         self._state[run.id].run_supplied = run_supplied
         return run
@@ -814,6 +819,7 @@ class Engine:
                 base_url=state.notify.base_url if state.notify is not None else None,
                 profile_settings=state.profile_settings,
                 busy_folders=state.busy,
+                watched_folders=state.watched,
                 imported_folder=state.imported,
                 request_cleanup=lambda request: self._request_cleanup(state, spec, request),
                 request_cover=lambda request: self._request_cover(state, spec, request),
