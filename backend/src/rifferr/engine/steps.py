@@ -430,7 +430,9 @@ class StepContext:
 
     def interpolate(self, value: str) -> str:
         """``{{ ... }}`` interpolation (C-WORKFLOW) with this step's context, for text a
-        step reads itself (e.g. a script file). Raises ``StepFailure`` on a bad expression."""
+        step reads itself (e.g. a script file). In a step from a called workflow, ``vars``
+        and ``steps`` mean that workflow's, as in its ``with:`` (SUBWORKFLOW-2, -4).
+        Raises ``StepFailure`` on a bad expression."""
         return self._interpolate(value)
 
     def interpolate_template(self, value: str) -> str:

@@ -54,6 +54,7 @@ from rifferr.core.workflow import (
     ValidationError,
     Workflow,
     expand,
+    in_call_scope,
     interpolate,
     validate,
 )
@@ -793,8 +794,10 @@ class Engine:
                     state, spec, plan, stamp, snapshots, show, extras
                 ),
                 profile_dir=state.profile_dir,
-                interpolate=lambda value: self._interpolate_text(state, value),
-                interpolate_template=lambda value: self._interpolate_template_text(state, value),
+                interpolate=lambda value: self._interpolate_text(state, in_call_scope(spec, value)),
+                interpolate_template=lambda value: self._interpolate_template_text(
+                    state, in_call_scope(spec, value)
+                ),
                 open_gate=lambda requests, options, snapshots: self._open_gate(
                     state, spec, requests, options, snapshots
                 ),

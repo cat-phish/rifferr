@@ -5,16 +5,43 @@ from __future__ import annotations
 import textwrap
 
 import pytest
+from pydantic import BaseModel, ConfigDict
 
-from rifferr.backends.base import RUN_MARKER
+from rifferr.backends.base import RUN_MARKER, BackendCapabilities
 from rifferr.core.profile import Redactor
 from rifferr.core.workflow import load_workflow, resolve_calls, stored_reader
-from rifferr.engine import Engine, Run, RunState, StepTypeRegistry
+from rifferr.engine import Engine, Run, RunState, StepContext, StepResult, StepTypeRegistry
 from rifferr.steps.workflow_call import WorkflowCallStep
 from tests.engine.conftest import Harness
 from tests.engine.steps import ALL
 
-REGISTRY = [*ALL, WorkflowCallStep()]
+# Text a step reads at run time, like a tag-script file (B-086).
+FILES = {"limits.txt": "max {{ vars.limit }}{{ vars.tail }} after {{ steps.say.said }}"}
+
+
+class ReadFileParams(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    file: str
+
+
+class ReadFileStep:
+    """Logs a file's text, interpolated by the step at run time (like tags.script)."""
+
+    name = "test.read_file"
+    run_level = True
+    params_model = ReadFileParams
+    requires = BackendCapabilities()
+
+    async def run(self, ctx: StepContext) -> StepResult:
+        params = ctx.params
+        assert isinstance(params, ReadFileParams)
+        text = FILES[params.file]
+        ctx.log(ctx.interpolate(text))
+        ctx.log("template: " + ctx.interpolate_template(text))
+        return StepResult()
+
+
+REGISTRY = [*ALL, WorkflowCallStep(), ReadFileStep()]
 
 ECHO = """\
 name: Echo
@@ -185,3 +212,59 @@ async def test_SUBWORKFLOW_9_a_hold_inside_a_call_holds_only_its_lane(c: CallHar
     await engine.execute(again, resume_after=run.suspended_after)
     assert again.state is RunState.succeeded
     assert c.logs(run)[-2:] == ["seen: C", "seen: C"]
+
+
+LIMITS = """\
+name: Limits
+vars:
+  limit: {default: "6"}
+  tail: {description: passed by the caller}
+steps:
+  - id: say
+    uses: test.echo
+    with: {message: hi, outputs: {said: hello}}
+  - id: read
+    uses: test.read_file
+    with: {file: limits.txt}
+"""
+
+
+async def test_SUBWORKFLOW_2_files_read_at_run_time_see_the_called_workflows_vars(
+    c: CallHarness,
+) -> None:
+    """B-086: a script file read by a called step sees that workflow's defaults and the
+    values the call passes, although the top-level workflow declares neither."""
+    caller = """\
+    name: Caller
+    steps:
+      - id: limits
+        uses: workflow
+        with: {workflow: limits.yaml, vars: {tail: " tracks"}}
+    """
+    run = c.call_run(caller, {"limits.yaml": LIMITS})
+    await c.engine.execute(run)
+    assert run.state is RunState.succeeded, c.logs(run)
+    assert c.logs(run)[-2:] == [
+        "max 6 tracks after hello",
+        "template: max 6 tracks after hello",
+    ]
+
+
+async def test_SUBWORKFLOW_2_files_read_by_top_level_steps_are_unchanged(c: CallHarness) -> None:
+    caller = """\
+    name: Caller
+    vars:
+      limit: {default: "9"}
+      tail: {default: "!"}
+    steps:
+      - id: say
+        uses: test.echo
+        with: {message: hi, outputs: {said: top}}
+      - id: read
+        uses: test.read_file
+        with: {file: limits.txt}
+    """
+    run = c.call_run(caller, {})
+    await c.engine.execute(run)
+    assert run.state is RunState.succeeded, c.logs(run)
+    assert c.logs(run)[-1] == "template: max 9! after top"

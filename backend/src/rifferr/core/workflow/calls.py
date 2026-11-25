@@ -69,6 +69,9 @@ class CalledStep(StepSpec):
     """That file's ``name``, a label for the run page (SUBWORKFLOW-10)."""
     narrow: tuple[str, ...] = ()
     """The ``when`` of every call around this step (SUBWORKFLOW-7)."""
+    scope: dict[str, str] = Field(default_factory=dict[str, str])
+    """The called workflow's vars as bound by the call: name -> replacement text
+    (SUBWORKFLOW-2). Used for text the step reads at run time, such as script files."""
     outputs: dict[str, str] = Field(default_factory=dict[str, str])
     """End of a call only: output name -> expression in the run's step ids."""
 
@@ -240,21 +243,15 @@ def _expand_steps(
     narrow: tuple[str, ...],
 ) -> list[StepSpec]:
     """``bound``: var name -> replacement text for the called workflow at ``path``."""
-    prefix = SEPARATOR.join(path) + SEPARATOR if path else ""
-
-    def inner(expr: Expression) -> str:
-        root, *rest = expr.path
-        if path and root == "vars" and len(rest) == 1 and rest[0] in bound:
-            return bound[rest[0]]
-        if path and root == "steps" and len(rest) == 2:
-            return "{{ steps." + prefix + rest[0] + "." + rest[1] + " }}"
-        return expr.text
+    inner = _scope_rewriter(path, bound)
 
     out: list[StepSpec] = []
     for step in wf.steps:
         target = call_target(step)
         if target is None:
-            out.append(_rewritten(step, path, (file, wf.name), narrow, inner) if path else step)
+            out.append(
+                _rewritten(step, path, (file, wf.name), narrow, inner, bound) if path else step
+            )
             continue
         called = calls.get(target)
         try:
@@ -273,6 +270,7 @@ def _expand_steps(
                 values[var] = escape(decl.default)
         when = (*narrow, rewrite(step.when, inner)) if step.when else narrow
         call_path = (*path, step.id)
+        prefix = SEPARATOR.join(path) + SEPARATOR if path else ""
         out += _expand_steps(called, calls, call_path, target, values, when)
         if called.outputs:
             ends = SEPARATOR.join(call_path) + SEPARATOR
@@ -301,12 +299,40 @@ def _scoped(expr: Expression, prefix: str) -> str:
     return expr.text
 
 
+def _scope_rewriter(path: tuple[str, ...], bound: Mapping[str, str]) -> Rewrite:
+    """Rewrites an expression written inside the called workflow at ``path`` into the
+    run's context: its vars to what the call bound (SUBWORKFLOW-2), its step ids to the
+    expanded ids (SUBWORKFLOW-4)."""
+    prefix = SEPARATOR.join(path) + SEPARATOR if path else ""
+
+    def inner(expr: Expression) -> str:
+        root, *rest = expr.path
+        if path and root == "vars" and len(rest) == 1 and rest[0] in bound:
+            return bound[rest[0]]
+        if path and root == "steps" and len(rest) == 2:
+            return "{{ steps." + prefix + rest[0] + "." + rest[1] + " }}"
+        return expr.text
+
+    return inner
+
+
+def in_call_scope(step: StepSpec, text: str) -> str:
+    """``text`` that ``step`` reads at run time (a script file, a rules file), with its
+    ``{{ }}`` expressions scoped like the step's own ``with:`` values. Unchanged for a
+    step of the top-level workflow, and for the end of a call, whose ``outputs`` are
+    already in the run's step ids."""
+    if not isinstance(step, CalledStep) or not step.call_path or step.uses == CALL_TYPE:
+        return text
+    return rewrite(text, _scope_rewriter(step.call_path, step.scope))
+
+
 def _rewritten(
     step: StepSpec,
     path: tuple[str, ...],
     file: tuple[str, str],
     narrow: tuple[str, ...],
     fn: Rewrite,
+    bound: Mapping[str, str],
 ) -> CalledStep:
     return CalledStep(
         id=SEPARATOR.join((*path, step.id)),
@@ -319,6 +345,7 @@ def _rewritten(
         workflow=file[0],
         workflow_name=file[1],
         narrow=narrow,
+        scope=dict(bound),
         **({"apply": step.apply} if "apply" in step.model_fields_set else {}),
     )
 

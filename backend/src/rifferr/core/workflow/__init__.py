@@ -6,6 +6,7 @@ from rifferr.core.workflow.calls import (
     Calls,
     WorkflowCallParams,
     expand,
+    in_call_scope,
     resolve_calls,
     stored_reader,
 )
@@ -68,6 +69,7 @@ __all__ = [
     "expand",
     "find_expressions",
     "format_path",
+    "in_call_scope",
     "interpolate",
     "load_workflow",
     "resolve_calls",
