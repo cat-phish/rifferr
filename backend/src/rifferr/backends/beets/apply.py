@@ -36,11 +36,13 @@ from rifferr.core.changeset import (
     diff_effects,
     find_conflicts,
 )
-from rifferr.core.covers import ART_FIELD, sha256_hex
+from rifferr.core.covers import ART_FIELD, ART_KEPT_FIELD, sha256_hex
 from rifferr.core.snapshot import FieldValue
 
 #: Bookkeeping fields a ChangeSet can't touch; computed fields are refused too.
-READ_ONLY: Final = frozenset({"id", "path", "album_id", "mtime", "added", "artpath", ART_ADOPTED})
+READ_ONLY: Final = frozenset(
+    {"id", "path", "album_id", "mtime", "added", "artpath", ART_ADOPTED, ART_KEPT_FIELD}
+)
 
 
 def load(lib: Library, ref: TargetRef) -> Item | Album | None:

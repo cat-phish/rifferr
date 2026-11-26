@@ -12,7 +12,7 @@ from PIL import Image
 from rifferr.artstore import ArtStore
 from rifferr.backends.base import RUN_MARKER
 from rifferr.core.changeset import ChangeSet, ChangeSource, FieldChange, TargetChange, TargetRef
-from rifferr.core.covers import ART_FIELD, sniff_image
+from rifferr.core.covers import ART_FIELD, ART_KEPT_FIELD, sniff_image
 from rifferr.core.selection import Selection
 from rifferr.engine import RunState, StepTypeRegistry
 from rifferr.engine.undo import UndoContext, undo_entry
@@ -91,3 +91,65 @@ async def test_COVERS_RESIZE_1_COVERS_RESIZE_5_beets_keeps_original_and_undoes(
     assert not kept.exists()
     restored = Path(str(backend.query(Selection())[0].fields["artpath"]))
     assert restored.read_bytes() == big
+
+
+async def test_COVERS_RESIZE_9_the_albums_own_image_stays_as_the_original(
+    beets_env: BeetsEnv,
+) -> None:
+    backend = beets_env.backend(art=True)
+    store = ArtStore(beets_env.root / "art")
+    folder = beets_env.inbox_album()
+    backend.import_folder(folder, "quiet", None, run_id="x", options={"copy": False, "move": False})
+    h = Harness()
+    h.backend = backend  # type: ignore[assignment]
+    h.engine.registry = StepTypeRegistry([*ALL, CoversResizeStep(art_root=store.root)])
+    run = h.run(
+        "name: art\nsteps:\n  - id: art-size\n    uses: covers.resize\n    with: {max: 1200}\n"
+    )
+    with backend.library() as lib:
+        [album] = lib.albums()
+        album[RUN_MARKER] = run.id
+        album.store()
+    [snap] = backend.query(Selection())
+    own = Path(snap.path or "") / "folder.jpg"
+    big = jpeg(2400, 1600)
+    own.write_bytes(big)
+    sha, _ = store.put(big)
+    ref = TargetRef(scope="album", id=snap.id)
+    adopt = ChangeSet(
+        id="cs-art",
+        profile="main",
+        source=ChangeSource(kind="manual", name="test"),
+        created_at=datetime(2026, 11, 22, tzinfo=UTC),
+        targets=[TargetChange(target=ref, changes=[FieldChange(field=ART_FIELD, new=sha)])],
+    )
+    assert backend.apply(adopt).applied
+    [snap] = backend.query(Selection())
+    assert snap.fields["artpath"] == str(own)
+    assert snap.fields[ART_KEPT_FIELD] is True
+
+    await h.engine.execute(run)
+    assert run.state is RunState.succeeded, h.logs(run, "error")
+    images = sorted(p.name for p in own.parent.iterdir() if p.suffix == ".jpg")
+    assert images == ["cover.jpg", "folder.jpg"]  # no folder-hires.jpg copy
+    assert own.read_bytes() == big
+    assert size(own.parent / "cover.jpg") == (1200, 800)
+    [snap] = backend.query(Selection())
+    assert ART_KEPT_FIELD not in snap.fields
+
+    [entry] = h.engine.journal.for_run(run.id)
+    outcome = undo_entry(
+        entry.id,
+        UndoContext(
+            backend=backend,
+            journal=h.engine.journal,
+            store=h.engine.changesets,
+            new_id=lambda: "undo-1",
+            now=h.clock.now,
+            emitter_for=lambda run_id, step: lambda type, data: None,
+            by="tester",
+        ),
+    )
+    assert outcome.undone, outcome
+    assert sorted(p.name for p in own.parent.iterdir() if p.suffix == ".jpg") == ["folder.jpg"]
+    assert backend.query(Selection())[0].fields["artpath"] == str(own)

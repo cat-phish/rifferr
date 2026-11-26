@@ -43,6 +43,10 @@ backend protocol instead, so its resize uses Pillow directly, behind an injected
 - COVERS-RESIZE-8: The step MUST need the backend capabilities `query`, `apply`, `art` and
   `move`, and fail validation when they are missing. It MUST be registered through the
   public `rifferr.steps` entry point, and the Pillow resizer through `rifferr.image_resizers`.
+- COVERS-RESIZE-9: When the album's snapshot has `art_kept: true` (its cover is an image it
+  came with, which stays in place when the cover changes, COVERS-SEARCH-16), the step MUST
+  NOT copy the original: that file already is the kept original. Only `art_sha256` changes,
+  and the rationale names the file that stays (B-096).
 
 ## Interfaces
 ```yaml

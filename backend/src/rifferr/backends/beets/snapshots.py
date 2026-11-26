@@ -9,7 +9,7 @@ from typing import Any, Final
 
 from beets.library import Album, Item
 
-from rifferr.core.covers import ART_FIELD
+from rifferr.core.covers import ART_FIELD, ART_KEPT_FIELD
 from rifferr.core.snapshot import AlbumSnapshot, FieldValue, ItemSnapshot
 
 ALBUM_PREFIX = "album-"
@@ -86,7 +86,19 @@ def stored_fields(obj: Item | Album) -> dict[str, FieldValue]:
         sha = art_sha256(obj)
         if sha is not None:
             fields[ART_FIELD] = sha
+            if obj.get(ART_ADOPTED) and _kept_on_replace(obj):
+                fields[ART_KEPT_FIELD] = True
     return fields
+
+
+def _kept_on_replace(album: Album) -> bool:
+    """The album's own art file isn't where beets puts a new cover, so replacing the cover
+    leaves it in place (COVERS-SEARCH-16)."""
+    current = art_file(album)
+    if current is None:
+        return False
+    dest = os.fsdecode(album.art_destination(os.fsencode(current)))
+    return os.path.normpath(dest) != os.path.normpath(current)
 
 
 def item_snapshot(item: Item) -> ItemSnapshot:

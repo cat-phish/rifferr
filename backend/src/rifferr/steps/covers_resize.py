@@ -24,7 +24,7 @@ from rifferr.core.changeset import (
     ProposedFieldChange,
     TargetRef,
 )
-from rifferr.core.covers import ART_FIELD, sniff_image
+from rifferr.core.covers import ART_FIELD, ART_KEPT_FIELD, sniff_image
 from rifferr.core.moves import MovePlan
 from rifferr.core.snapshot import AlbumSnapshot
 from rifferr.covers.resize import ImageResizer, OutputFormat, ResizeError, load_resizers
@@ -138,9 +138,15 @@ class CoversResizeStep:
         kept_name = params.kept_name(posixpath.basename(path))
         kept = posixpath.join(folder, kept_name)
         size = f"{new_info.width}x{new_info.height}" if new_info else "?"
-        rationale = f"cover {info.width}x{info.height} -> {size}; original kept as {kept_name}"
-        change = ProposedFieldChange(field=ART_FIELD, old=sha, new=new_sha)
         ref = TargetRef(scope="album", id=album.id)
+        change = ProposedFieldChange(field=ART_FIELD, old=sha, new=new_sha)
+        if album.fields.get(ART_KEPT_FIELD) is True:  # COVERS-RESIZE-9
+            stays = posixpath.basename(path)
+            rationale = f"cover {info.width}x{info.height} -> {size}; original stays as {stays}"
+            ctx.propose(ChangeSetProposal(changes=[change], rationale=rationale), ref)
+            ctx.log(f"{label}: {rationale}", target=album.id)
+            return "resized"
+        rationale = f"cover {info.width}x{info.height} -> {size}; original kept as {kept_name}"
         existing = ctx.backend.file_sha256(kept)
         try:
             if existing is None:

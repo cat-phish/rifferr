@@ -129,11 +129,14 @@ still run it as a `beets.command` step.
   new image (same sha256, e.g. a `folder.jpg` the album came with, COVERS-SEARCH-12), the
   backend MUST use that file where it is (`artpath` set to it, nothing copied or renamed)
   and remember that it is the album's own image (B-096). A later move names it like any
-  cover (`art_filename`).
+  cover (`art_filename`). While that file isn't at the name beets gives a new cover, the
+  album's snapshot MUST show the read-only field `art_kept: true`: replacing the cover
+  leaves the file where it is. At that name, a replacement overwrites it after saving it to
+  the art store like any replaced cover.
 - COVERS-SEARCH-17: Undo of an `art` change (JOURNAL-4) MUST restore the old file from the
   journal's art store, or remove the art (`artpath` cleared, file deleted only if it is the one
   this change wrote, by sha256) when there was none. The album's own image (COVERS-SEARCH-16)
-  MUST never be deleted: removing or replacing such art only stops using it as the cover. It MUST conflict, without changing
+  MUST never be deleted: removing such art only stops using it as the cover. It MUST conflict, without changing
   anything, when the current art isn't the one the change wrote.
 - COVERS-SEARCH-18: `FakeBackend` MUST implement `set_art` and art in snapshots in memory with
   the same semantics; the backend contract suite MUST cover both.
