@@ -95,6 +95,29 @@ function Value({
 
 /** A value that opens the tag grid's editor on click (LIBRARY-MOVE-18, final review). A
  * pending edit shows as old → new until Apply; the before-run tooltip stays. */
+/** A small pencil marking a value as editable (REVIEW-14). Decorative: the button
+ * around it carries the label. */
+function Pencil() {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      data-testid="edit-pencil"
+      style={{ opacity: 0.55, flexShrink: 0, color: "var(--mantine-color-dimmed)" }}
+    >
+      <path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17v3z" />
+      <path d="M13.5 6.5l3 3" />
+    </svg>
+  );
+}
+
 function EditableValue({
   row,
   field,
@@ -127,20 +150,23 @@ function EditableValue({
             setOpen(true);
           }}
           style={{
-            cursor: "text",
+            cursor: "pointer",
             borderRadius: 4,
             padding: "0 4px",
             background: edit ? "var(--mantine-color-yellow-light)" : undefined,
           }}
         >
-          {edit ? (
-            <Text span size="sm">
-              <s style={{ opacity: 0.6 }}>{show(edit.old) || "(none)"}</s> →{" "}
-              <b>{edit.op === "delete" ? "(deleted)" : show(edit.new) || "(empty)"}</b>
-            </Text>
-          ) : (
-            children
-          )}
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            {edit ? (
+              <Text span size="sm">
+                <s style={{ opacity: 0.6 }}>{show(edit.old) || "(none)"}</s> →{" "}
+                <b>{edit.op === "delete" ? "(deleted)" : show(edit.new) || "(empty)"}</b>
+              </Text>
+            ) : (
+              children
+            )}
+            <Pencil />
+          </span>
         </UnstyledButton>
       </Popover.Target>
       <Popover.Dropdown>

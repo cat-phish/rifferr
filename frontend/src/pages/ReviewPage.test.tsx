@@ -726,6 +726,7 @@ test("REVIEW_13 REVIEW_14 an edit gate holds edits; Discard edits is apart from 
   const input = await screen.findByLabelText("albumtype value");
   fireEvent.change(input, { target: { value: "album" } });
   fireEvent.keyDown(input, { key: "Enter" });
+  expect(within(check).getAllByTestId("edit-pencil").length).toBeGreaterThan(0);
   const bar = await within(check).findByTestId("album-check-held");
   expect(bar).toHaveTextContent("1 edit held, written when you continue");
   const puts = () => calls.filter((c) => c.method === "PUT" && c.path === "/api/reviews/g1/edits");
@@ -754,6 +755,41 @@ test("REVIEW_13 REVIEW_14 an edit gate holds edits; Discard edits is apart from 
   expect(nth(puts(), 1).body).toEqual({ edits: [] });
   expect(posts(calls, "/api/reviews/g1/decision")).toHaveLength(0);
   expect(within(card).getByRole("button", { name: "Continue" })).toBeInTheDocument();
+});
+
+test("REVIEW_QUEUE_20 a tall item repeats its actions at the bottom", async () => {
+  const height = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
+  const Observer = globalThis.ResizeObserver;
+  Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
+    configurable: true,
+    get: () => 1200,
+  });
+  globalThis.ResizeObserver = class {
+    constructor(private cb: () => void) {}
+    observe() {
+      this.cb();
+    }
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+  try {
+    const { calls } = setup({
+      queue: () => [gateItem()],
+      extra: { "POST /api/reviews/g1/decision": () => ({ ...gate(), state: "continued" }) },
+    });
+    renderApp("/review?profile=main");
+    const card = await screen.findByTestId("queue-item");
+    const bottom = await within(card).findByTestId("item-actions-bottom");
+    expect(within(bottom).getByRole("button", { name: "Reject" })).toBeInTheDocument();
+    expect(within(card).getAllByRole("button", { name: "Continue" })).toHaveLength(2);
+    fireEvent.click(within(bottom).getByRole("button", { name: "Continue" }));
+    await waitFor(() => {
+      expect(posts(calls, "/api/reviews/g1/decision")).toHaveLength(1);
+    });
+  } finally {
+    if (height) Object.defineProperty(HTMLElement.prototype, "offsetHeight", height);
+    globalThis.ResizeObserver = Observer;
+  }
 });
 
 test("REVIEW_QUEUE_13 reject with on_reject stop, and a gate that can't be decided", async () => {

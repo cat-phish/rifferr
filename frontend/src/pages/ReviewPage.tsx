@@ -25,7 +25,7 @@ import { CleanupDecisionView } from "../components/CleanupDecisionView";
 import { FileChangeSetView } from "../components/FileChangeSetView";
 import { MoveConflictView } from "../components/MoveConflictView";
 import { PruneDecisionView } from "../components/PruneDecisionView";
-import { ActionsSlotContext, HeaderActions } from "../components/HeaderActions";
+import { ActionsSlotContext, FooterSlotContext, HeaderActions } from "../components/HeaderActions";
 import { DecidedContext, ItemIdContext, jobOf } from "../components/Decided";
 import { Diff } from "../components/Diff";
 import { GATE_TABLE, GateChanges } from "../components/GateChanges";
@@ -945,6 +945,9 @@ function QueueItemCard({ item, focus }: { item: QueueItem; focus: string | null 
   );
 }
 
+/** Taller than this, a queue item repeats its actions at its bottom (REVIEW-QUEUE-20). */
+const TALL_ITEM_PX = 600;
+
 function ItemCard({
   item,
   focused,
@@ -959,8 +962,23 @@ function ItemCard({
   const selection = useContext(SelectionContext);
   const kind = bulkKind(item);
   const [slot, setSlot] = useState<HTMLDivElement | null>(null);
+  const [footer, setFooter] = useState<HTMLDivElement | null>(null);
+  // A tall item repeats its actions at the bottom (REVIEW-QUEUE-20).
+  const [card, setCard] = useState<HTMLDivElement | null>(null);
+  const [tall, setTall] = useState(false);
+  useEffect(() => {
+    if (card === null || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      setTall(card.offsetHeight > TALL_ITEM_PX);
+    });
+    observer.observe(card);
+    return () => {
+      observer.disconnect();
+    };
+  }, [card]);
   return (
     <Card
+      ref={setCard}
       withBorder
       padding="xs"
       data-testid="queue-item"
@@ -993,8 +1011,22 @@ function ItemCard({
           <div ref={setSlot} data-testid="item-actions" style={{ marginLeft: "auto" }} />
         </Group>
         <ItemIdContext.Provider value={item.id}>
-          <ActionsSlotContext.Provider value={slot}>{children}</ActionsSlotContext.Provider>
+          <ActionsSlotContext.Provider value={slot}>
+            <FooterSlotContext.Provider value={tall ? footer : null}>
+              {children}
+            </FooterSlotContext.Provider>
+          </ActionsSlotContext.Provider>
         </ItemIdContext.Provider>
+        {tall && (
+          <div
+            ref={setFooter}
+            data-testid="item-actions-bottom"
+            style={{
+              borderTop: "1px solid var(--mantine-color-default-border)",
+              paddingTop: 6,
+            }}
+          />
+        )}
       </Stack>
     </Card>
   );
