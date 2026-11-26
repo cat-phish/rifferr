@@ -122,12 +122,6 @@ def chosen(backend: FakeBackend, label: str) -> dict[str, Any]:
                 "albumartist_sort": "Compilation",
             },
         ),
-        (
-            "Modern Girlfriends",
-            [],
-            "Anthology",
-            {"album": "X (Anthology)", "albumkind": "anthology"},
-        ),
     ],
 )
 def test_TAGS_CHOOSE_5_album_kind_options(
@@ -152,8 +146,16 @@ def test_TAGS_CHOOSE_5_album_kind_options_are_idempotent(
 
 
 def test_TAGS_CHOOSE_5_anthology_replaces_the_compilation_suffix() -> None:
-    backend = backend_for("Modern Girlfriends", album="Tapes (Compilation)")
+    backend = backend_for(
+        "Modern Girlfriends", album="Tapes (Compilation)", albumtypes=["album", "compilation"]
+    )
     assert chosen(backend, "Anthology") == {"album": "Tapes (Anthology)", "albumkind": "anthology"}
+
+
+def test_TAGS_CHOOSE_13_this_is_one_artist_changes_only_a_compilation() -> None:
+    """known_name_option is Anthology: a band name with a joiner is left as it is."""
+    assert step_params("album-kind").known_name_option == "Anthology"
+    assert chosen(backend_for("Simon & Garfunkel"), "Anthology") == {}
 
 
 @pytest.mark.parametrize(

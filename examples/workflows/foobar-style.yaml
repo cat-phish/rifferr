@@ -122,8 +122,9 @@ steps:
   # Any option can be chosen, or the fields typed in. The album artist and its sort name
   # become the kind's label; the individual artists go to the multi-valued `albumartists`
   # (from MusicBrainz, or the album artist split at its joiners; editable in review).
-  # "This is one artist" adds the album artist to the known names and leaves the album
-  # unchanged. Albums already given a kind aren't asked again.
+  # "This is one artist" adds the album artist to the known names; a compilation becomes
+  # an anthology, any other album is left unchanged. Skip leaves the album as it is (no
+  # kind, no suffix). Albums already given a kind aren't asked again.
   - id: album-kind
     uses: tags.choose
     with:
@@ -133,7 +134,7 @@ steps:
         ^albumkind::. rf_count_albumartists:2.. ,
         ^albumkind::. rf_joined_albumartist:1
       known_name: albumartist
-      known_name_option: Single artist
+      known_name_option: Anthology
       show: [albumartist, albumartists, albumtypes]
       options:
         - label: Collaboration
@@ -185,11 +186,16 @@ steps:
                 albumkind: compilation
                 albumartist: "{{ vars.label_compilation }}"
                 albumartist_sort: "{{ vars.label_compilation }}"
+        # Only for compilations; it's also what "This is one artist" applies, so that
+        # button makes one artist's compilation an anthology and leaves any other album
+        # (an "A & B" band name) as it is.
         - label: Anthology
           suggest: { when: "albumtypes:compilation comp:0" }
           actions:
-            - *drop-collection-suffix
-            - set:
+            - when: "albumtypes:compilation"
+              replace: { fields: [album], regex: '\s*\((?:Compilation|Anthology)\)$', with: "" }
+            - when: "albumtypes:compilation"
+              set:
                 album: "$album (Anthology)"
                 albumkind: anthology
       custom: [albumartist, albumartists, albumkind]
