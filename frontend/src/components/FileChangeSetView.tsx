@@ -1,4 +1,4 @@
-import { Alert, Button, Group, Stack, Table, Text } from "@mantine/core";
+import { Alert, Button, Group, Stack, Table, Text, Tooltip } from "@mantine/core";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, ok } from "../api/client";
@@ -55,7 +55,22 @@ const KIND_SAYS: Record<FileEffect["kind"], string> = {
 /** A FileChangeSet in the review queue (S-LIBRARY-MOVE LIBRARY-MOVE-16): the album's old
  * and new folder and each file's old and new name. It is accepted or rejected as a whole,
  * so an album never ends up split across folders. */
-export function FileChangeSetView({ id, changeset }: { id: string; changeset: ChangeSet }) {
+/** Where the album can be sent back to instead (REVIEW-QUEUE-22). */
+export interface SendBack {
+  runId: string;
+  album: string;
+  to: string;
+}
+
+export function FileChangeSetView({
+  id,
+  changeset,
+  back,
+}: {
+  id: string;
+  changeset: ChangeSet;
+  back?: SendBack | null;
+}) {
   const queryClient = useQueryClient();
   const markDecided = useMarkDecided();
   const [note, setNote] = useState("");
@@ -72,6 +87,20 @@ export function FileChangeSetView({ id, changeset }: { id: string; changeset: Ch
       void queryClient.invalidateQueries({ queryKey: ["review"] });
     },
   });
+  const sendBack = useMutation({
+    mutationFn: async (b: SendBack) =>
+      ok(
+        await api.POST("/api/runs/{run_id}/lanes/{album_id}/back", {
+          params: { path: { run_id: b.runId, album_id: b.album } },
+          body: { to_step: b.to },
+        }),
+      ),
+    onSuccess: () => {
+      markDecided();
+      void queryClient.invalidateQueries({ queryKey: ["review"] });
+    },
+  });
+  const busy = decide.isPending || sendBack.isPending;
   const files = changeset.files ?? [];
   const { from, to } = folders(files);
   const copy = files.some((f) => f.mode === "copy");
@@ -148,14 +177,23 @@ export function FileChangeSetView({ id, changeset }: { id: string; changeset: Ch
           <Text size="xs" c="dimmed">
             Accepted or rejected as a whole album, never file by file.
           </Text>
-          {!decide.isSuccess && <NoteField value={note} onChange={setNote} />}
+          {!decide.isSuccess && !sendBack.isSuccess && (
+            <NoteField value={note} onChange={setNote} />
+          )}
         </>
       )}
       {decide.error && <Alert color="red">{decide.error.message}</Alert>}
-      {decide.isSuccess ? (
+      {sendBack.error && <Alert color="red">{sendBack.error.message}</Alert>}
+      {decide.isSuccess || sendBack.isSuccess ? (
         <HeaderActions>
           <Text size="sm" c="dimmed" data-testid="decision-sent">
-            {decide.variables === "accept" ? (copy ? "Copying…" : "Moving…") : "Rejecting…"}
+            {sendBack.isSuccess
+              ? `Sent back to ${sendBack.variables.to}…`
+              : decide.variables === "accept"
+                ? copy
+                  ? "Copying…"
+                  : "Moving…"
+                : "Rejecting…"}
           </Text>
         </HeaderActions>
       ) : (
@@ -163,7 +201,7 @@ export function FileChangeSetView({ id, changeset }: { id: string; changeset: Ch
           <HeaderActions>
             <Button
               size="xs"
-              disabled={decide.isPending}
+              disabled={busy}
               loading={decide.isPending && decide.variables === "accept"}
               onClick={() => {
                 decide.mutate("accept");
@@ -171,18 +209,43 @@ export function FileChangeSetView({ id, changeset }: { id: string; changeset: Ch
             >
               {copy ? "Copy album" : "Move album"}
             </Button>
-            <Button
-              size="xs"
-              color="red"
-              variant="light"
-              disabled={decide.isPending}
-              loading={decide.isPending && decide.variables === "reject"}
-              onClick={() => {
-                decide.mutate("reject");
-              }}
+            {back && (
+              <Tooltip
+                multiline
+                w={300}
+                label={`Discard this move and reopen ${back.to} for this album. Tags already written stay.`}
+              >
+                <Button
+                  size="xs"
+                  variant="default"
+                  disabled={busy}
+                  loading={sendBack.isPending}
+                  onClick={() => {
+                    sendBack.mutate(back);
+                  }}
+                >
+                  Back to {back.to}
+                </Button>
+              </Tooltip>
+            )}
+            <Tooltip
+              multiline
+              w={300}
+              label="Leaves the album in staging with its tags as they are now, and ends its part of the run."
             >
-              Reject
-            </Button>
+              <Button
+                size="xs"
+                color="red"
+                variant="light"
+                disabled={busy}
+                loading={decide.isPending && decide.variables === "reject"}
+                onClick={() => {
+                  decide.mutate("reject");
+                }}
+              >
+                Reject
+              </Button>
+            </Tooltip>
           </HeaderActions>
         </>
       )}

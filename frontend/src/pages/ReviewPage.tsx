@@ -974,7 +974,15 @@ function QueueItemCard({ item, focus }: { item: QueueItem; focus: string | null 
           {item.changeset.rationale}
         </Text>
       )}
-      <FileChangeSetView id={item.id} changeset={item.changeset} />
+      <FileChangeSetView
+        id={item.id}
+        changeset={item.changeset}
+        back={
+          item.back_to && item.back_album
+            ? { runId: item.run_id, album: item.back_album, to: item.back_to }
+            : null
+        }
+      />
     </ItemCard>
   ) : (
     <ChangeSetCard key={item.id} item={item} focused={focus === item.id} />

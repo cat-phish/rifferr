@@ -283,3 +283,43 @@ test("COVERS_RESIZE_6 a plain library move shows no rationale line", async () =>
   await screen.findByText("Library move");
   expect(screen.queryByTestId("file-changeset-rationale")).toBeNull();
 });
+
+test("REVIEW_QUEUE_22 the move card offers Back to the earlier gate", async () => {
+  const { calls } = mockApi({
+    "GET /api/profiles": () => PROFILES,
+    "GET /api/review": () => [
+      {
+        busy: false,
+        kind: "changeset",
+        id: "cs1",
+        profile: "main",
+        run_id: RUN,
+        workflow: "into-library",
+        step_id: "into-library",
+        created_at: T0,
+        changeset: changeset(),
+        state: "proposed",
+        back_to: "final-write",
+        back_album: "album-1",
+      } satisfies S["QueueItem"],
+    ],
+    [`POST /api/runs/${RUN}/lanes/album-1/back`]: () => ({
+      key: "album-1",
+      label: "Abbey Road",
+      state: "active",
+      position: "final-write",
+      holds: [],
+      steps: {},
+    }),
+  });
+  renderApp("/review?profile=main");
+  const card = await screen.findByTestId("file-changeset");
+  const item = card.closest<HTMLElement>('[data-testid="queue-item"]') as HTMLElement;
+  const actions = within(item).getByTestId("item-actions");
+  expect(within(actions).getByRole("button", { name: "Reject" })).toBeInTheDocument();
+  fireEvent.click(within(actions).getByRole("button", { name: "Back to final-write" }));
+  await waitFor(() => {
+    const posted = calls.filter((c: Call) => c.path === `/api/runs/${RUN}/lanes/album-1/back`);
+    expect(posted.map((c) => c.body)).toEqual([{ to_step: "final-write" }]);
+  });
+});
