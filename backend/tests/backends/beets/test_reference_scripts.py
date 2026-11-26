@@ -11,7 +11,7 @@ from tests.backends.beets.conftest import BeetsEnv, seed
 from tests.tagscript.test_reference_scripts import (
     COMPILATIONS,
     DATES,
-    LIKELY_EP,
+    LIKELY_TYPE,
     PATH_CHARACTERS,
     RELEASE_TYPES,
     all_changes,
@@ -64,10 +64,10 @@ def test_TAGSCRIPT_7_dates_script_on_beets(
     assert changes(backend, load("dates.yaml")) == expected
 
 
-@pytest.mark.parametrize(("fields", "n", "seconds", "expected"), LIKELY_EP)
-def test_ALBUM_FACTS_1_likely_ep_script_on_beets(
+@pytest.mark.parametrize(("fields", "n", "seconds", "expected"), LIKELY_TYPE)
+def test_ALBUM_FACTS_1_likely_type_script_on_beets(
     beets_env: BeetsEnv, fields: dict[str, Any], n: int, seconds: float, expected: dict[str, Any]
 ) -> None:
     backend = beets_env.backend()
     seed(backend, [{"albumartist": "Band", "album": "A", **fields, "items": tracks(n, seconds)}])
-    assert changes(backend, load("likely-ep.yaml")) == expected
+    assert changes(backend, load("likely-type.yaml")) == expected

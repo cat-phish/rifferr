@@ -4,22 +4,29 @@
 # It can also run on its own, e.g. on albums already in the library. Trust it on its
 # own (`rifferr trust`): trusting a workflow that calls it doesn't trust it.
 name: Release-type suffixes
-description: EP / Single suffixes from the release type (compilations get theirs from album-kind).
+description: Likely Single / EP, and EP / Single suffixes from the release type (compilations get theirs from album-kind).
 vars:
+  single_max_tracks:
+    description: Albums with at most this many tracks may be singles (likely-type)
+    default: "3"
+  single_max_seconds:
+    description: and at most this total length in seconds (1199 = under 20 minutes)
+    default: "1199"
   ep_max_tracks:
-    description: Albums with at most this many tracks may be EPs (likely-ep)
+    description: Otherwise, albums with at most this many tracks may be EPs (likely-type)
     default: "6"
   ep_max_seconds:
     description: and at most this total length in seconds (1799 = under 30 minutes)
     default: "1799"
 steps:
-  # Few, short tracks and not marked EP or single: proposed as an EP, for review (B-044).
-  # Runs first, so an accepted EP gets its " (EP)" suffix from release-types below.
-  - id: likely-ep
+  # Few, short tracks and not marked EP or single: proposed as a Single (at most 3 tracks,
+  # under 20 minutes; B-092) or else an EP (B-044), for review. Runs first, so an
+  # accepted Single or EP gets its " (Single)" / " (EP)" suffix from release-types below.
+  - id: likely-type
     uses: tags.script
     apply: review
     with:
-      script: likely-ep.yaml
+      script: likely-type.yaml
   # EP / Single from albumtype or the album name, plus the " (EP)" / " (Single)"
   # suffix. Applied without review: the rules are mechanical and every change can be
   # undone from the run page.

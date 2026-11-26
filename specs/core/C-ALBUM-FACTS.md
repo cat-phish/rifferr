@@ -83,7 +83,7 @@ As implemented (2026-11-23; pure `rifferr.core.facts`, beets config in
   changes. Matching of joiners and known names ignores case.
 - Setting an `rf_` field is a script error when the action runs (TAGSCRIPT-15), shown in
   preview, rather than a parse-time validation error.
-- B-044: `examples/scripts/likely-ep.yaml` (`release-suffixes.yaml` step `likely-ep`,
+- B-044: `examples/scripts/likely-type.yaml`, was `likely-ep.yaml` (`release-suffixes.yaml` step `likely-type`, which also proposes a Single first, B-092,
   `apply: review`, limits in that workflow's vars `ep_max_tracks` / `ep_max_seconds`).
 
 ## Examples

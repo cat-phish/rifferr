@@ -1,0 +1,18 @@
+# Checklist "album type" pass: an album with few, short tracks that isn't marked as an EP
+# or single is proposed as a Single (B-092, author 2026-11-25) or else an EP (B-044), for
+# review. The Single check runs first; an album it marks is no longer a candidate for EP.
+# The limits come from the calling workflow's vars. Uses Rifferr's computed album facts
+# (C-ALBUM-FACTS): rf_items is the number of tracks, rf_length the total length in seconds.
+scope: album
+idempotence: fail
+actions:
+  - name: likely-single
+    when: >-
+      rf_items:..{{ vars.single_max_tracks }} rf_length:..{{ vars.single_max_seconds }}
+      ^albumtype:ep ^albumtype:single
+    set: { albumtype: single }
+  - name: likely-ep
+    when: >-
+      rf_items:..{{ vars.ep_max_tracks }} rf_length:..{{ vars.ep_max_seconds }}
+      ^albumtype:ep ^albumtype:single
+    set: { albumtype: ep }

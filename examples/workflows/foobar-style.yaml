@@ -102,7 +102,7 @@ steps:
     with:
       command: ftintitle
   # Release-type suffixes live in their own file, so other import workflows can call
-  # them too. Its steps run here as suffixes/release-types and suffixes/likely-ep;
+  # them too. Its steps run here as suffixes/likely-type and suffixes/release-types;
   # compilation and anthology suffixes come from album-kind below.
   - id: suffixes
     uses: workflow

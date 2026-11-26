@@ -34,7 +34,12 @@ TYPES: dict[str, type] = {
 
 
 #: release-suffixes.yaml's var defaults, for scripts that use them.
-VARS = {"{{ vars.ep_max_tracks }}": "6", "{{ vars.ep_max_seconds }}": "1799"}
+VARS = {
+    "{{ vars.single_max_tracks }}": "3",
+    "{{ vars.single_max_seconds }}": "1199",
+    "{{ vars.ep_max_tracks }}": "6",
+    "{{ vars.ep_max_seconds }}": "1799",
+}
 
 
 def interpolate(text: str) -> str:
@@ -151,15 +156,20 @@ DATES: list[tuple[dict[str, Any], dict[str, Any]]] = [
 ]
 
 
-#: likely-ep.yaml: (album fields, tracks, seconds per track, expected changes).
-LIKELY_EP: list[tuple[dict[str, Any], int, float, dict[str, Any]]] = [
+#: likely-type.yaml: (album fields, tracks, seconds per track, expected changes).
+LIKELY_TYPE: list[tuple[dict[str, Any], int, float, dict[str, Any]]] = [
+    ({"albumtype": "album"}, 2, 270.0, {"albumtype": "single"}),  # 9 minutes
+    ({"albumtype": "album"}, 3, 399.0, {"albumtype": "single"}),  # 19:57
+    ({"albumtype": "album"}, 3, 400.0, {"albumtype": "ep"}),  # exactly 20 minutes
+    ({"albumtype": "album"}, 3, 500.0, {"albumtype": "ep"}),  # 25 minutes
+    ({"albumtype": "album"}, 4, 60.0, {"albumtype": "ep"}),
     ({"albumtype": "album"}, 5, 240.0, {"albumtype": "ep"}),
     ({"albumtype": "album"}, 6, 299.0, {"albumtype": "ep"}),  # 29:54
     ({"albumtype": "album"}, 6, 300.0, {}),  # exactly 30 minutes
     ({"albumtype": "album"}, 7, 120.0, {}),
-    ({"albumtype": "ep"}, 4, 240.0, {}),
-    ({"albumtype": "single"}, 2, 200.0, {}),
-    ({}, 3, 200.0, {"albumtype": "ep"}),
+    ({"albumtype": "ep"}, 2, 240.0, {}),
+    ({"albumtype": "single"}, 5, 200.0, {}),
+    ({}, 3, 200.0, {"albumtype": "single"}),
 ]
 
 
@@ -219,14 +229,14 @@ def tracks(n: int, seconds: float) -> list[dict[str, Any]]:
     return [{"title": f"t{i}", "track": i, "length": seconds} for i in range(1, n + 1)]
 
 
-@pytest.mark.parametrize(("fields", "n", "seconds", "expected"), LIKELY_EP)
-def test_ALBUM_FACTS_1_likely_ep_script(
+@pytest.mark.parametrize(("fields", "n", "seconds", "expected"), LIKELY_TYPE)
+def test_ALBUM_FACTS_1_likely_type_script(
     fields: dict[str, Any], n: int, seconds: float, expected: dict[str, Any]
 ) -> None:
     backend = FakeBackend.from_fixture(
         {"albums": [{"album": "A", **fields, "items": tracks(n, seconds)}]}, field_types=TYPES
     )
-    assert changes(backend, load("likely-ep.yaml")) == expected
+    assert changes(backend, load("likely-type.yaml")) == expected
 
 
 # -- idempotence (TAGSCRIPT-19) -----------------------------------------------------------
@@ -284,7 +294,7 @@ def test_TAGSCRIPT_19_dates_script_is_idempotent(fields: dict[str, Any]) -> None
 @given(
     albums,
     st.sampled_from(
-        ["release-types.yaml", "compilation.yaml", "path-characters.yaml", "likely-ep.yaml"]
+        ["release-types.yaml", "compilation.yaml", "path-characters.yaml", "likely-type.yaml"]
     ),
 )
 def test_TAGSCRIPT_19_reference_scripts_are_idempotent(fields: dict[str, Any], name: str) -> None:
