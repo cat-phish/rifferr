@@ -19,6 +19,7 @@ from beets.library import Album, Item, Library
 
 from rifferr.artstore import ArtStore, art_problem
 from rifferr.backends.beets.snapshots import (
+    ART_ADOPTED,
     album_id,
     art_file,
     item_id,
@@ -35,11 +36,11 @@ from rifferr.core.changeset import (
     diff_effects,
     find_conflicts,
 )
-from rifferr.core.covers import ART_FIELD
+from rifferr.core.covers import ART_FIELD, sha256_hex
 from rifferr.core.snapshot import FieldValue
 
 #: Bookkeeping fields a ChangeSet can't touch; computed fields are refused too.
-READ_ONLY: Final = frozenset({"id", "path", "album_id", "mtime", "added", "artpath"})
+READ_ONLY: Final = frozenset({"id", "path", "album_id", "mtime", "added", "artpath", ART_ADOPTED})
 
 
 def load(lib: Library, ref: TargetRef) -> Item | Album | None:
@@ -127,17 +128,21 @@ def apply(
         for t in changes.targets:
             obj = objects[t.target]
             assert obj is not None, "check() refuses unknown targets"
+            arts = [c for c in t.changes if c.field == ART_FIELD]
             for c in t.changes:
                 if c.field == ART_FIELD:
-                    assert art is not None, "check() refuses art without a store"
-                    assert isinstance(obj, Album), "check() refuses art on items"
-                    _set_art(obj, art, None if c.op == "delete" else str(c.new))
-                elif c.op == "delete":
+                    continue
+                if c.op == "delete":
                     if c.field in obj:
                         del obj[c.field]
                 else:
                     obj[c.field] = c.new
             obj.store()  # Album.store() carries album fields to its items
+            for c in arts:
+                assert art is not None, "check() refuses art without a store"
+                assert isinstance(obj, Album), "check() refuses art on items"
+                _set_art(obj, art, None if c.op == "delete" else str(c.new))
+                obj.store(inherit=False)  # artpath and the adopted mark stay on the album
         reloaded = (lib.get_album(a.id) for a in albums if a.id is not None)
         albums = [a for a in reloaded if a is not None]
         after = _state(albums)
@@ -158,21 +163,59 @@ def apply(
 
 def _set_art(album: Album, art: ArtStore, sha: str | None) -> None:
     """Set or remove the album's cover (COVERS-SEARCH-16, -17). Any image this would
-    replace or delete is copied into the art store first, so undo can bring it back."""
+    replace or delete is copied into the art store first, so undo can bring it back.
+
+    An image already in the album folder with the new bytes is used where it is, not
+    copied, and marked as the album's own; removing or replacing such art keeps its file."""
     current = art_file(album)
+    adopted = bool(album.get(ART_ADOPTED))
     if current is not None:
         art.put_file(Path(current))
+    if ART_ADOPTED in album:
+        del album[ART_ADOPTED]
     if sha is None:
-        if current is not None:
+        if current is not None and not adopted:
             os.remove(current)
         album.artpath = None
         return
+    own = _own_image(album, art, sha)
+    if own is not None:
+        if current is not None and not adopted and not os.path.samefile(current, own):
+            os.remove(current)
+        album.artpath = os.fsencode(own)
+        album[ART_ADOPTED] = 1
+        return
+    if adopted:
+        album.artpath = None  # so beets' set_art doesn't remove the album's own file
+        current = None
     source = art.find(sha)
     assert source is not None, "check() refuses images not in the store"
     dest = album.art_destination(os.fsencode(source))
     if os.path.isfile(dest) and (current is None or not os.path.samefile(dest, current)):
         art.put_file(Path(os.fsdecode(dest)))  # an image beets would overwrite
     album.set_art(os.fsencode(source), copy=True)
+
+
+def _own_image(album: Album, art: ArtStore, sha: str) -> str | None:
+    """A file directly in the album folder whose bytes are the image ``sha``."""
+    source = art.find(sha)
+    if source is None:
+        return None
+    try:
+        folder = os.fsdecode(album.item_dir())
+        entries = sorted(os.scandir(folder), key=lambda e: e.name)
+    except (ValueError, OSError):
+        return None
+    size = source.stat().st_size
+    for entry in entries:
+        if not entry.is_file(follow_symlinks=False) or entry.stat().st_size != size:
+            continue
+        try:
+            if sha256_hex(Path(entry.path).read_bytes()) == sha:
+                return entry.path
+        except OSError:
+            continue
+    return None
 
 
 def _albums(lib: Library, objects: Iterable[Item | Album | None]) -> list[Album]:

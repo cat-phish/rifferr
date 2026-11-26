@@ -125,10 +125,15 @@ still run it as a `beets.command` step.
   `BeetsBackend` is beets' `Album.set_art` (file placed in the album folder, named by beets'
   `art_filename`, `artpath` set) followed by `store()`. A current art sha256 that differs from
   the expected old value MUST be a conflict (CHANGESET-8). Backends without `art` MUST reject
-  the change with a clear error.
+  the change with a clear error. When a file directly in the album folder already holds the
+  new image (same sha256, e.g. a `folder.jpg` the album came with, COVERS-SEARCH-12), the
+  backend MUST use that file where it is (`artpath` set to it, nothing copied or renamed)
+  and remember that it is the album's own image (B-096). A later move names it like any
+  cover (`art_filename`).
 - COVERS-SEARCH-17: Undo of an `art` change (JOURNAL-4) MUST restore the old file from the
   journal's art store, or remove the art (`artpath` cleared, file deleted only if it is the one
-  this change wrote, by sha256) when there was none. It MUST conflict, without changing
+  this change wrote, by sha256) when there was none. The album's own image (COVERS-SEARCH-16)
+  MUST never be deleted: removing or replacing such art only stops using it as the cover. It MUST conflict, without changing
   anything, when the current art isn't the one the change wrote.
 - COVERS-SEARCH-18: `FakeBackend` MUST implement `set_art` and art in snapshots in memory with
   the same semantics; the backend contract suite MUST cover both.

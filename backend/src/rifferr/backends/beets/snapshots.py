@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import math
 import os
-from typing import Any
+from typing import Any, Final
 
 from beets.library import Album, Item
 
@@ -14,7 +14,10 @@ from rifferr.core.snapshot import AlbumSnapshot, FieldValue, ItemSnapshot
 
 ALBUM_PREFIX = "album-"
 ITEM_PREFIX = "item-"
-_SKIP = {"id", "path"}
+ART_ADOPTED: Final = "rifferr_art_adopted"
+"""Album flexible attribute: its art file is an image the album came with, used in place
+(COVERS-SEARCH-16). Removing the art keeps that file. Hidden from snapshots."""
+_SKIP = {"id", "path", ART_ADOPTED}
 
 
 def album_id(album: Album) -> str:

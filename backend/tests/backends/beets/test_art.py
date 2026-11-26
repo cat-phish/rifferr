@@ -124,3 +124,43 @@ def test_COVERS_SEARCH_16_an_image_beets_would_overwrite_is_kept(beets_env: Beet
     backend.apply(changeset(ref, set_art(ref, None, sha)))
     assert store.has(sha256_hex(jpeg(500, 500, b"user's own")))
     assert art_of(backend)[0] == sha
+
+
+def test_COVERS_SEARCH_16_the_albums_own_image_is_used_in_place(beets_env: BeetsEnv) -> None:
+    backend, store, album = setup(beets_env)
+    ref = album_ref(album)
+    own = Path(album.path or "") / "folder.jpg"
+    own.write_bytes(jpeg(500, 500, b"came with it"))
+    sha, _ = store.put(own.read_bytes())
+    backend.apply(changeset(ref, set_art(ref, None, sha)))
+    assert art_of(backend) == (sha, str(own))
+    assert not (own.parent / "cover.jpg").exists()  # no copy
+    (snapshot,) = backend.query(Selection())
+    assert "rifferr_art_adopted" not in snapshot.fields
+    assert all("rifferr_art_adopted" not in i.fields for i in snapshot.items)
+
+
+def test_COVERS_SEARCH_17_removing_the_albums_own_image_keeps_the_file(
+    beets_env: BeetsEnv,
+) -> None:
+    backend, store, album = setup(beets_env)
+    ref = album_ref(album)
+    own = Path(album.path or "") / "folder.jpg"
+    own.write_bytes(jpeg(500, 500, b"came with it"))
+    sha, _ = store.put(own.read_bytes())
+    backend.apply(changeset(ref, set_art(ref, None, sha)))
+    backend.apply(changeset(ref, set_art(ref, sha, None)))  # undo
+    assert art_of(backend) == (None, None)
+    assert own.is_file()
+    # Replacing it with another cover keeps the file too.
+    backend.apply(changeset(ref, set_art(ref, None, sha)))
+    other, _ = store.put(jpeg(900, 900, b"downloaded"))
+    backend.apply(changeset(ref, set_art(ref, sha, other)))
+    now, path = art_of(backend)
+    assert now == other
+    assert path is not None
+    assert path.endswith("cover.jpg")
+    assert own.is_file()
+    # A downloaded cover is still removed from the folder.
+    backend.apply(changeset(ref, set_art(ref, other, None)))
+    assert not Path(path).exists()
