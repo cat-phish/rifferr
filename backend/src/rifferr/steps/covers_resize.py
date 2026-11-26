@@ -141,8 +141,10 @@ class CoversResizeStep:
         ref = TargetRef(scope="album", id=album.id)
         change = ProposedFieldChange(field=ART_FIELD, old=sha, new=new_sha)
         if album.fields.get(ART_KEPT_FIELD) is True:  # COVERS-RESIZE-9
-            stays = posixpath.basename(path)
-            rationale = f"cover {info.width}x{info.height} -> {size}; original stays as {stays}"
+            rationale = (
+                f"cover {info.width}x{info.height} -> {size}; the album's own"
+                f" {posixpath.basename(path)} stays in the folder as the original"
+            )
             ctx.propose(ChangeSetProposal(changes=[change], rationale=rationale), ref)
             ctx.log(f"{label}: {rationale}", target=album.id)
             return "resized"

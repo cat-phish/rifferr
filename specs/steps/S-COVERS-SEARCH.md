@@ -129,10 +129,10 @@ still run it as a `beets.command` step.
   new image (same sha256, e.g. a `folder.jpg` the album came with, COVERS-SEARCH-12), the
   backend MUST use that file where it is (`artpath` set to it, nothing copied or renamed)
   and remember that it is the album's own image (B-096). A later move names it like any
-  cover (`art_filename`). While that file isn't at the name beets gives a new cover, the
-  album's snapshot MUST show the read-only field `art_kept: true`: replacing the cover
-  leaves the file where it is. At that name, a replacement overwrites it after saving it to
-  the art store like any replaced cover.
+  cover (`art_filename`). The album's snapshot MUST show the read-only field
+  `art_kept: true` while its cover is such a file. Replacing the cover leaves the file in
+  the folder; when it has the name the new cover gets (`cover.jpg`), it MUST first be
+  renamed `<name>-original<ext>` (numbered if taken), never overwritten (author, 2026-11-25).
 - COVERS-SEARCH-17: Undo of an `art` change (JOURNAL-4) MUST restore the old file from the
   journal's art store, or remove the art (`artpath` cleared, file deleted only if it is the one
   this change wrote, by sha256) when there was none. The album's own image (COVERS-SEARCH-16)

@@ -7,7 +7,7 @@ from pathlib import Path
 from rifferr.artstore import ArtStore
 from rifferr.backends.beets import BeetsBackend
 from rifferr.core.changeset import FieldChange, TargetRef
-from rifferr.core.covers import ART_FIELD, sha256_hex
+from rifferr.core.covers import ART_FIELD, ART_KEPT_FIELD, sha256_hex
 from rifferr.core.selection import Selection
 from rifferr.core.snapshot import AlbumSnapshot
 from tests.backends.beets.conftest import BeetsEnv
@@ -164,3 +164,25 @@ def test_COVERS_SEARCH_17_removing_the_albums_own_image_keeps_the_file(
     # A downloaded cover is still removed from the folder.
     backend.apply(changeset(ref, set_art(ref, other, None)))
     assert not Path(path).exists()
+
+
+def test_COVERS_SEARCH_16_an_own_cover_jpg_is_kept_as_cover_original(
+    beets_env: BeetsEnv,
+) -> None:
+    backend, store, album = setup(beets_env)
+    ref = album_ref(album)
+    own = Path(album.path or "") / "cover.jpg"
+    own.write_bytes(jpeg(500, 500, b"came with it"))
+    sha, _ = store.put(own.read_bytes())
+    backend.apply(changeset(ref, set_art(ref, None, sha)))
+    (snapshot,) = backend.query(Selection())
+    assert snapshot.fields[ART_KEPT_FIELD] is True
+    other, _ = store.put(jpeg(900, 900, b"downloaded"))
+    backend.apply(changeset(ref, set_art(ref, sha, other)))
+    kept = own.with_name("cover-original.jpg")
+    assert sha256_hex(kept.read_bytes()) == sha
+    assert art_of(backend) == (other, str(own))
+    # Undo: the album's own image is the cover again, where it now is.
+    backend.apply(changeset(ref, set_art(ref, other, sha)))
+    assert art_of(backend) == (sha, str(kept))
+    assert not own.exists()

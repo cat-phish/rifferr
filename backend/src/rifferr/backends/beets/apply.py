@@ -187,8 +187,11 @@ def _set_art(album: Album, art: ArtStore, sha: str | None) -> None:
         album.artpath = os.fsencode(own)
         album[ART_ADOPTED] = 1
         return
-    if adopted:
+    if adopted and current is not None:
         album.artpath = None  # so beets' set_art doesn't remove the album's own file
+        dest = os.fsdecode(album.art_destination(os.fsencode(current)))
+        if os.path.normpath(dest) == os.path.normpath(current):
+            os.rename(current, _free_name(current, "-original"))  # never overwritten
         current = None
     source = art.find(sha)
     assert source is not None, "check() refuses images not in the store"
@@ -196,6 +199,15 @@ def _set_art(album: Album, art: ArtStore, sha: str | None) -> None:
     if os.path.isfile(dest) and (current is None or not os.path.samefile(dest, current)):
         art.put_file(Path(os.fsdecode(dest)))  # an image beets would overwrite
     album.set_art(os.fsencode(source), copy=True)
+
+
+def _free_name(path: str, suffix: str) -> str:
+    """``<stem><suffix><ext>`` next to ``path``, numbered when that name is taken."""
+    stem, ext = os.path.splitext(path)
+    candidate, n = f"{stem}{suffix}{ext}", 2
+    while os.path.lexists(candidate):
+        candidate, n = f"{stem}{suffix}-{n}{ext}", n + 1
+    return candidate
 
 
 def _own_image(album: Album, art: ArtStore, sha: str) -> str | None:
