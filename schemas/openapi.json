@@ -5201,6 +5201,30 @@
         "additionalProperties": false,
         "description": "One thing that waits for a decision (REVIEW-QUEUE-1). ``kind`` says which of\n``changeset`` / ``gate`` / ``import_decision`` / ``cleanup_decision`` /\n``cover_review`` / ``move_conflict`` is set (IMPORT-UI-7, FILES-CLEANUP-14,\nCOVERS-SEARCH-21, LIBRARY-MOVE-5a).",
         "properties": {
+          "back_album": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The album (lane key) ``back_to`` sends back",
+            "title": "Back Album"
+          },
+          "back_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "For a ChangeSet holding one album: the nearest earlier review gate it can be sent back to (REVIEW-QUEUE-22, LANES-17)",
+            "title": "Back To"
+          },
           "busy": {
             "default": false,
             "description": "A decision job holds it; it isn't waiting any more (REVIEW-QUEUE-19)",
@@ -6329,6 +6353,23 @@
           "url"
         ],
         "title": "SearchLink",
+        "type": "object"
+      },
+      "SendBackBody": {
+        "additionalProperties": false,
+        "description": "Send an album back to an earlier review gate (C-LANES LANES-17).",
+        "properties": {
+          "to_step": {
+            "description": "Id of a review step the album passed",
+            "minLength": 1,
+            "title": "To Step",
+            "type": "string"
+          }
+        },
+        "required": [
+          "to_step"
+        ],
+        "title": "SendBackBody",
         "type": "object"
       },
       "ShowFields": {
@@ -12130,6 +12171,98 @@
         "summary": "Import Undo",
         "tags": [
           "dashboard"
+        ]
+      }
+    },
+    "/api/runs/{run_id}/lanes/{album_id}/back": {
+      "post": {
+        "description": "Send a waiting album back to an earlier review gate it passed (C-LANES LANES-17,\nREVIEW-QUEUE-22): its pending ChangeSets are rejected and the gate opens again for\nit. What was already applied stays.",
+        "operationId": "send_back_api_runs__run_id__lanes__album_id__back_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "album_id",
+            "required": true,
+            "schema": {
+              "title": "Album Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendBackBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LaneOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Send Back",
+        "tags": [
+          "runs"
         ]
       }
     },

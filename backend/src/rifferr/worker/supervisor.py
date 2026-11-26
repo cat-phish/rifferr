@@ -49,7 +49,13 @@ from rifferr.engine.choices import decision_actions
 from rifferr.engine.events import Event, EventSink, profile_stream
 from rifferr.engine.undo import run_entries, undoable
 from rifferr.trust import workflow_hash
-from rifferr.worker.gates import cancel_lanes, cancel_pending_items, reject_gate_lanes, settle
+from rifferr.worker.gates import (
+    cancel_lanes,
+    cancel_pending_items,
+    reject_gate_lanes,
+    send_lane_back,
+    settle,
+)
 from rifferr.worker.protocol import (
     HUNG_AFTER,
     MAX_MESSAGE,
@@ -448,6 +454,23 @@ class WorkerSupervisor:
             )
             if outcome.settled == "requeued":  # another lane was released meanwhile
                 await self._wake(gate.profile)
+
+    async def send_back(self, run_id: str, key: str, to_step: str) -> None:
+        """Send a waiting album back to an earlier review gate of its run (C-LANES
+        LANES-17). Raises ``KeyError`` for an unknown run or lane, ``ValueError`` while
+        the run isn't waiting, ``SendBackError`` when the lane can't go back."""
+        if self._shutting_down:
+            raise RuntimeError("server is shutting down")
+        job = self.db.job_for_run(run_id)
+        if job is None:
+            raise KeyError(run_id)
+        if job.state != "waiting_review":
+            raise ValueError(f"run {run_id} is {job.state}, not waiting for review")
+        settled = send_lane_back(
+            self.db, run_id, key, to_step, lambda t, step, d: self._emit_run(run_id, t, step, d)
+        )
+        if settled == "requeued":
+            await self._wake(job.profile)
 
     async def decide_overdue_gates(self) -> list[str]:
         """Decide every pending gate whose deadline passed with its ``on_timeout``

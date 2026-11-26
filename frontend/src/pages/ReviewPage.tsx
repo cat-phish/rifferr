@@ -1128,6 +1128,20 @@ function ChangeSetCard({ item, focused }: { item: QueueItem; focused: boolean })
       void queryClient.invalidateQueries({ queryKey: ["review"] });
     },
   });
+  const back = useMutation({
+    mutationFn: async () =>
+      ok(
+        await api.POST("/api/runs/{run_id}/lanes/{album_id}/back", {
+          params: { path: { run_id: item.run_id, album_id: item.back_album ?? "" } },
+          body: { to_step: item.back_to ?? "" },
+        }),
+      ),
+    onSuccess: () => {
+      markDecided();
+      setSent(`Sent back to ${item.back_to ?? ""}…`);
+      void queryClient.invalidateQueries({ queryKey: ["review"] });
+    },
+  });
   if (!cs) return null;
   const conflicted = item.state === "conflicted";
   const targets = current.data?.targets;
@@ -1135,8 +1149,8 @@ function ChangeSetCard({ item, focused }: { item: QueueItem; focused: boolean })
     targets?.find((t) => targetKey(t.target) === targetKey(row.target))?.label ??
     `${row.target.scope} ${row.target.id}`;
   const missing = new Set(targets?.filter((t) => t.missing).map((t) => targetKey(t.target)));
-  const busy = decide.isPending || repropose.isPending || sent !== null;
-  const error = decide.error ?? repropose.error;
+  const busy = decide.isPending || repropose.isPending || back.isPending || sent !== null;
+  const error = decide.error ?? repropose.error ?? back.error;
   const allChecked = checked.size === rows.length;
 
   return (
@@ -1286,17 +1300,42 @@ function ChangeSetCard({ item, focused }: { item: QueueItem; focused: boolean })
                 {allChecked ? "Accept" : "Accept selected"}
               </Button>
             )}
-            <Button
-              size="xs"
-              color="red"
-              variant="light"
-              loading={decide.isPending}
-              onClick={() => {
-                decide.mutate({ decision: "reject" });
-              }}
+            {item.back_to && item.back_album && (
+              <Tooltip
+                multiline
+                w={300}
+                label={`Discard this and reopen ${item.back_to} for this album. Tags already written stay.`}
+              >
+                <Button
+                  size="xs"
+                  variant="default"
+                  loading={back.isPending}
+                  onClick={() => {
+                    back.mutate();
+                  }}
+                >
+                  Back to {item.back_to}
+                </Button>
+              </Tooltip>
+            )}
+            <Tooltip
+              multiline
+              w={300}
+              disabled={!isFileMove(item)}
+              label="Leaves the album in staging with its tags as they are now, and ends its part of the run."
             >
-              Reject
-            </Button>
+              <Button
+                size="xs"
+                color="red"
+                variant="light"
+                loading={decide.isPending}
+                onClick={() => {
+                  decide.mutate({ decision: "reject" });
+                }}
+              >
+                Reject
+              </Button>
+            </Tooltip>
           </HeaderActions>
         </>
       )}

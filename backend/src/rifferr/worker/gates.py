@@ -26,7 +26,7 @@ from rifferr.appdb import (
     AppReviewGates,
 )
 from rifferr.core.review import REJECTED_AT_REVIEW, ReviewGate
-from rifferr.engine.lanes import FINAL_LANE_STATES, lane_json
+from rifferr.engine.lanes import FINAL_LANE_STATES, Lane, lane_json
 
 #: (event type, step id, data) -> None; puts an event on the run's stream.
 EmitRun = Callable[[str, str | None, dict[str, JsonValue]], None]
@@ -88,6 +88,53 @@ def reject_gate_lanes(
         lane.state, lane.position, lane.holds = "rejected", None, []
         emit("lane.finished", None, lane_json(lane))
     return RejectOutcome(settle(db, run_id, emit), rejected)
+
+
+REVIEW_STEP = "review"
+
+
+def back_targets(order: Sequence[tuple[str, str]], lane: Lane, before: str | None) -> list[str]:
+    """The review gates a lane may be sent back to (C-LANES LANES-17): ``review`` steps
+    earlier than ``before`` (the step holding the lane) that the lane already ran,
+    nearest first. ``order`` is the run's steps as (id, uses)."""
+    ids = [sid for sid, _ in order]
+    bound = ids.index(before) if before in ids else len(ids)
+    return [
+        sid for sid, uses in reversed(order[:bound]) if uses == REVIEW_STEP and sid in lane.steps
+    ]
+
+
+class SendBackError(ValueError):
+    """The lane can't be sent back to that step (LANES-17)."""
+
+
+def send_lane_back(db: AppDB, run_id: str, key: str, to_step: str, emit: EmitRun) -> Settled:
+    """Send a waiting lane back to an earlier review gate (LANES-17): its pending
+    ChangeSets become rejected, and the lane resumes at ``to_step``, so the gate opens
+    again for this album only. What was already applied stays. The caller checks that
+    ``to_step`` is one of ``back_targets``."""
+    store = AppLanes(db)
+    lane = store.load(run_id).get(key)
+    if lane is None:
+        raise KeyError(key)
+    if lane.state != "waiting":
+        raise SendBackError(f"album {lane.label} is {lane.state}, not waiting")
+    other = [h.kind for h in lane.holds if h.kind != "changeset"]
+    if other:
+        raise SendBackError(f"album {lane.label} also waits on a {other[0]}; decide that first")
+    changesets = AppChangeSets(db)
+    for hold in lane.holds:
+        stored = changesets.get(hold.ref)
+        if stored is not None and stored.state in ("proposed", "conflicted"):
+            changesets.set_state(hold.ref, "rejected", resolved_by=f"back:{to_step}")
+            emit("changeset.rejected", stored.changeset.step_id, {"changeset_id": hold.ref})
+    # No holds left: the run's next resume makes the lane active at ``to_step`` (LANES-8).
+    lane.position, lane.holds = to_step, []
+    store.save(run_id, [lane])
+    emit(
+        "run.step.log", to_step, {"stream": "info", "line": f"{lane.label}: sent back to {to_step}"}
+    )
+    return settle(db, run_id, emit)
 
 
 def settle(db: AppDB, run_id: str, emit: EmitRun) -> Settled:

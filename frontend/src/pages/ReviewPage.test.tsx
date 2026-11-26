@@ -600,6 +600,38 @@ test("REVIEW_QUEUE_12 accept all, reject, and errors", async () => {
   expect(within(item("cs3")).getByRole("button", { name: "Accept selected" })).toBeDisabled();
 });
 
+test("REVIEW_QUEUE_22 Back to the earlier gate sends the album back", async () => {
+  const { calls } = setup({
+    queue: () => [{ ...csItem("cs1", NEW_RUN), back_to: "final-write", back_album: "a1" }],
+    extra: {
+      [`POST /api/runs/${NEW_RUN}/lanes/a1/back`]: () => ({
+        key: "a1",
+        label: "Band - Live",
+        state: "waiting",
+        position: "final-write",
+        holds: [],
+        steps: {},
+      }),
+    },
+  });
+  renderApp("/review?profile=main");
+  const button = await screen.findByRole("button", { name: "Back to final-write" });
+  fireEvent.click(button);
+  await waitFor(() => {
+    expect(posts(calls, `/api/runs/${NEW_RUN}/lanes/a1/back`)).toHaveLength(1);
+  });
+  expect(nth(posts(calls, `/api/runs/${NEW_RUN}/lanes/a1/back`), 0).body).toEqual({
+    to_step: "final-write",
+  });
+});
+
+test("REVIEW_QUEUE_22 no Back button without an earlier gate", async () => {
+  setup({ queue: () => [csItem("cs1", NEW_RUN)] });
+  renderApp("/review?profile=main");
+  await screen.findByRole("button", { name: "Reject" });
+  expect(screen.queryByRole("button", { name: /^Back to/ })).not.toBeInTheDocument();
+});
+
 test("REVIEW_QUEUE_12 conflicted ChangeSet: expected, current, proposed; propose again", async () => {
   const { calls } = setup({
     queue: () => [csItem("cs2", NEW_RUN, "conflicted")],

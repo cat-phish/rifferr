@@ -22,12 +22,13 @@ from rifferr.api.models import (
     RunCreated,
     RunDetail,
     RunSummary,
+    SendBackBody,
     StepState,
     StepStatusOut,
 )
 from rifferr.api.routes.workflows import check, error_out, find_workflow, get_profile
 from rifferr.api.state import ServerState, State
-from rifferr.appdb import AppJournal, AppLanes, Job
+from rifferr.appdb import AppChangeSets, AppJournal, AppLanes, Job
 from rifferr.core.profile import merged_vars
 from rifferr.core.workflow import CalledStep, WorkflowLoadError, expand, load_workflow
 from rifferr.core.workflow.interpolation import (
@@ -37,6 +38,7 @@ from rifferr.core.workflow.interpolation import (
 )
 from rifferr.engine.lanes import Lane, counts
 from rifferr.engine.undo import run_entries
+from rifferr.worker.gates import SendBackError, back_targets
 from rifferr.workflow_calls import called_hashes, stored_calls
 
 router = APIRouter(prefix="/api", tags=["runs"])
@@ -188,17 +190,7 @@ async def get_run(run_id: str, state: State) -> RunDetail:
         raise not_found(f"run {run_id}")
     undoable = len(run_entries(AppJournal(state.db), run_id))
     stored = AppLanes(state.db).load(run_id).values()
-    lanes = [
-        LaneOut(
-            key=lane.key,
-            label=lane.label,
-            state=lane.state,
-            position=lane.position,
-            holds=[LaneHold(kind=h.kind, ref=h.ref) for h in lane.holds],
-            steps=dict(lane.steps),
-        )
-        for lane in stored
-    ]
+    lanes = [lane_out(lane) for lane in stored]
     return RunDetail(
         **summary(job, counts(stored)).model_dump(),
         steps=steps(state, job),
@@ -217,6 +209,32 @@ async def cancel_run(run_id: str, state: State) -> Accepted:
     except KeyError:
         raise not_found(f"run {run_id}") from None
     return Accepted(id=run_id)
+
+
+@router.post(
+    "/runs/{run_id}/lanes/{album_id}/back", response_model=LaneOut, responses=ERROR_RESPONSES
+)
+async def send_back(run_id: str, album_id: str, body: SendBackBody, state: State) -> LaneOut:
+    """Send a waiting album back to an earlier review gate it passed (C-LANES LANES-17,
+    REVIEW-QUEUE-22): its pending ChangeSets are rejected and the gate opens again for
+    it. What was already applied stays."""
+    job = state.db.job_for_run(run_id)
+    lane = AppLanes(state.db).load(run_id).get(album_id) if job is not None else None
+    if job is None or lane is None:
+        raise not_found(f"album {album_id} in run {run_id}")
+    allowed = back_targets(step_order(job), lane, held_step(state, lane))
+    if body.to_step not in allowed:
+        raise ApiError(
+            400, "bad_request", f"{body.to_step} isn't an earlier review gate this album passed"
+        )
+    try:
+        await state.supervisor.send_back(run_id, album_id, body.to_step)
+    except SendBackError as exc:
+        raise ApiError(409, "not_waiting", str(exc)) from None
+    except ValueError as exc:
+        raise ApiError(409, "not_waiting", str(exc)) from None
+    sent = AppLanes(state.db).load(run_id)[album_id]
+    return lane_out(sent)
 
 
 @router.get(
@@ -273,13 +291,46 @@ def summary(job: Job, lane_counts: dict[str, int] | None = None) -> RunSummary:
     )
 
 
-def steps(state: ServerState, job: Job) -> list[StepState]:
-    """Step list from the stored workflow text, statuses folded from events (API-6)."""
+def _run_steps(job: Job) -> list[Any]:
+    """The run's steps from its stored workflow text, called workflows expanded."""
     try:
         wf, doc = load_workflow(str(job.payload.get("source", "")), "<run>")
     except WorkflowLoadError:
         return []
-    wf = expand(wf, stored_calls(wf, doc, job.payload))
+    return list(expand(wf, stored_calls(wf, doc, job.payload)).steps)
+
+
+def step_order(job: Job) -> list[tuple[str, str]]:
+    """The run's steps as (id, uses), in order (LANES-17)."""
+    return [(s.id, s.uses) for s in _run_steps(job)]
+
+
+def held_step(state: ServerState, lane: Lane) -> str | None:
+    """The step of the first ChangeSet holding a lane, else its position (LANES-17)."""
+    store = AppChangeSets(state.db)
+    for hold in lane.holds:
+        stored = store.get(hold.ref) if hold.kind == "changeset" else None
+        if stored is not None:
+            return stored.changeset.step_id
+    return lane.position
+
+
+def lane_out(lane: Lane) -> LaneOut:
+    return LaneOut(
+        key=lane.key,
+        label=lane.label,
+        state=lane.state,
+        position=lane.position,
+        holds=[LaneHold(kind=h.kind, ref=h.ref) for h in lane.holds],
+        steps=dict(lane.steps),
+    )
+
+
+def steps(state: ServerState, job: Job) -> list[StepState]:
+    """Step list from the stored workflow text, statuses folded from events (API-6)."""
+    run_steps = _run_steps(job)
+    if not run_steps:
+        return []
     out = {
         s.id: StepState(
             id=s.id,
@@ -289,7 +340,7 @@ def steps(state: ServerState, job: Job) -> list[StepState]:
             workflow=s.workflow if isinstance(s, CalledStep) else None,
             workflow_name=s.workflow_name if isinstance(s, CalledStep) else None,
         )
-        for s in wf.steps
+        for s in run_steps
     }
     for event in state.db.events_since(job.run, 0):
         step = out.get(event.step_id or "")

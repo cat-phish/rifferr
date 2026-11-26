@@ -9,6 +9,7 @@ import pytest
 
 from rifferr.appdb import AppLanes
 from rifferr.core.selection import Selection
+from rifferr.worker.gates import SendBackError, back_targets
 from tests.worker.conftest import wf
 from tests.worker.test_gates import RUN, TAG, Harness, gate_with, serving
 
@@ -99,3 +100,58 @@ async def test_LANES_13_cancel_while_waiting_cancels_open_lanes(h: Harness) -> N
     assert h.state() == "cancelled"
     assert lane_states(h) == {"A": "done", "B": "cancelled"}
     assert [e.data["state"] for e in h.events("lane.finished")][-1] == "cancelled"
+
+
+# -- LANES-17: back to an earlier review gate ------------------------------------------
+
+CHECK_ALL = "{id: check, uses: review, with: {message: 'Check $album'}}"
+PROPOSE_ALL = "{id: comp, uses: test.propose, with: {set: {genre: Pop}}}"
+
+
+async def _held_at_comp(h: Harness) -> dict[str, str]:
+    """A and B continued at `check`, both held by `comp`'s ChangeSet: album -> ChangeSet."""
+    gate = await h.waiting(wf(TAG, CHECK_ALL, PROPOSE_ALL, AFTER), "A", "B")
+    await h.supervisor.decide_gate(gate.id, "continue", by="ui")
+    await h.until(lambda: len(h.changesets.for_run(RUN, "proposed")) == 2)
+    await h.until(lambda: h.state() == "waiting_review")
+    lanes = AppLanes(h.db).load(RUN).values()
+    return {lane.label: lane.holds[0].ref for lane in lanes}
+
+
+async def test_LANES_17_back_reopens_the_gate_for_that_album_only(h: Harness) -> None:
+    held = await _held_at_comp(h)
+    key = {lane.label: lane.key for lane in AppLanes(h.db).load(RUN).values()}
+    lane = AppLanes(h.db).load(RUN)[key["A"]]
+    order = [("tag", "test.tag"), ("check", "review"), ("comp", "test.propose"), ("after", "x")]
+    assert back_targets(order, lane, "comp") == ["check"]
+    assert back_targets(order, lane, "check") == []
+    await h.supervisor.send_back(RUN, key["A"], "check")
+    stored = h.changesets.get(held["A"])
+    assert stored is not None
+    assert stored.state == "rejected"
+    await h.until(lambda: any(g.state == "pending" for g in h.gates.for_run(RUN)))
+    await h.until(lambda: h.state() == "waiting_review")
+    (again,) = [g for g in h.gates.for_run(RUN) if g.state == "pending"]
+    assert [a.target.id for a in again.albums] == [key["A"]]
+    assert lane_states(h) == {"A": "waiting", "B": "waiting"}
+    other = h.changesets.get(held["B"])
+    assert other is not None
+    assert other.state == "proposed"
+    assert "A: sent back to check" in h.logs()
+    # Continue: A gets a new ChangeSet from `comp`.
+    await h.supervisor.decide_gate(again.id, "continue", by="ui")
+    await h.until(lambda: len(h.changesets.for_run(RUN, "proposed")) == 2)
+    for stored in h.changesets.for_run(RUN, "proposed"):
+        await h.supervisor.decide(stored.changeset.id, accept=True, by="ui")
+    await h.until(lambda: h.state() == "succeeded")
+    assert lane_states(h) == {"A": "done", "B": "done"}
+
+
+async def test_LANES_17_only_a_lane_waiting_on_changesets_goes_back(h: Harness) -> None:
+    gate = await h.waiting(wf(TAG, CHECK_ALL, PROPOSE_ALL, AFTER), "A")
+    (lane,) = AppLanes(h.db).load(RUN).values()
+    with pytest.raises(SendBackError, match="waits on a gate"):
+        await h.supervisor.send_back(RUN, lane.key, "check")
+    assert h.gates.get(gate.id) is not None
+    with pytest.raises(KeyError):
+        await h.supervisor.send_back(RUN, "nope", "check")

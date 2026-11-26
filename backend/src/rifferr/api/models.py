@@ -412,6 +412,14 @@ class QueueItem(_Model):
         default=False,
         description="A decision job holds it; it isn't waiting any more (REVIEW-QUEUE-19)",
     )
+    back_to: str | None = Field(
+        default=None,
+        description="For a ChangeSet holding one album: the nearest earlier review gate it"
+        " can be sent back to (REVIEW-QUEUE-22, LANES-17)",
+    )
+    back_album: str | None = Field(
+        default=None, description="The album (lane key) ``back_to`` sends back"
+    )
 
 
 class BeforeRun(_Model):
@@ -532,6 +540,12 @@ class GateEditsBody(_Model):
     """The whole list of edits held on an ``edit: true`` gate (S-REVIEW REVIEW-14)."""
 
     edits: list[HeldEdit] = Field(max_length=5000)
+
+
+class SendBackBody(_Model):
+    """Send an album back to an earlier review gate (C-LANES LANES-17)."""
+
+    to_step: str = Field(min_length=1, description="Id of a review step the album passed")
 
 
 class GateDecisionBody(_Model):

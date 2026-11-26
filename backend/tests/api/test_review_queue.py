@@ -21,7 +21,7 @@ from rifferr.core.changeset import (
 from rifferr.core.review import GateAlbum, ReviewGate
 from rifferr.engine import Event
 from rifferr.engine.lanes import Hold, Lane
-from tests.api.conftest import ECHO, Api
+from tests.api.conftest import ECHO, Api, wf
 from tests.api.test_library import stream
 
 T0 = datetime(2026, 11, 13, 12, 0, tzinfo=UTC)
@@ -440,3 +440,53 @@ async def test_UI_REFRESH_23_runs_of_one_workflow(api: Api) -> None:
     assert sorted(r["workflow"] for r in every) == ["other", "tagging"]
     one = (await api.client.get("/api/runs", params={"workflow": "tagging"})).json()
     assert [r["workflow"] for r in one] == ["tagging"]
+
+
+# -- REVIEW-QUEUE-22: back to an earlier review gate -----------------------------------
+
+BACK_SOURCE = wf(
+    "{id: check, uses: review}",
+    "{id: p, uses: test.echo, with: {message: hi}}",
+)
+
+
+def _held_lane(api: Api, *, passed_check: bool = True) -> Job:
+    db = api.state.db
+    job = db.submit("main", {"source": BACK_SOURCE, "vars": {}}, workflow="tagging")
+    assert db.claim_next("main") is not None
+    assert db.suspend(job.run, "p", ["cs1"], [])
+    AppChangeSets(db).add(changeset("cs1", job.run))
+    ran = {"check": "succeeded", "p": "succeeded"} if passed_check else {"p": "succeeded"}
+    AppLanes(db).save(
+        job.run, [Lane("a1", "Band - Live", "waiting", None, [Hold("changeset", "cs1")], ran)]
+    )
+    return job
+
+
+async def test_REVIEW_QUEUE_22_changeset_item_names_the_gate_it_can_go_back_to(api: Api) -> None:
+    _held_lane(api)
+    (item,) = (await api.client.get("/api/review?profile=main")).json()
+    assert item["back_to"] == "check"
+    assert item["back_album"] == "a1"
+
+
+async def test_REVIEW_QUEUE_22_no_back_when_the_album_passed_no_gate(api: Api) -> None:
+    job = _held_lane(api, passed_check=False)
+    (item,) = (await api.client.get("/api/review?profile=main")).json()
+    assert item["back_to"] is None
+    r = await api.client.post(f"/api/runs/{job.run}/lanes/a1/back", json={"to_step": "check"})
+    assert r.status_code == 400
+
+
+async def test_REVIEW_QUEUE_22_back_rejects_the_changeset_and_requeues(api: Api) -> None:
+    job = _held_lane(api)
+    r = await api.client.post(f"/api/runs/{job.run}/lanes/a1/back", json={"to_step": "check"})
+    assert r.status_code == 200, r.text
+    assert r.json()["position"] == "check"
+    assert r.json()["holds"] == []
+    stored = AppChangeSets(api.state.db).get("cs1")
+    assert stored is not None
+    assert stored.state == "rejected"
+    assert stored.resolved_by == "back:check"
+    r = await api.client.post(f"/api/runs/{job.run}/lanes/zz/back", json={"to_step": "check"})
+    assert r.status_code == 404

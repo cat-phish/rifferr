@@ -1158,6 +1158,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs/{run_id}/lanes/{album_id}/back": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send Back
+         * @description Send a waiting album back to an earlier review gate it passed (C-LANES LANES-17,
+         *     REVIEW-QUEUE-22): its pending ChangeSets are rejected and the gate opens again for
+         *     it. What was already applied stays.
+         */
+        post: operations["send_back_api_runs__run_id__lanes__album_id__back_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs/{run_id}/undo": {
         parameters: {
             query?: never;
@@ -3340,6 +3362,16 @@ export interface components {
          */
         QueueItem: {
             /**
+             * Back Album
+             * @description The album (lane key) ``back_to`` sends back
+             */
+            back_album?: string | null;
+            /**
+             * Back To
+             * @description For a ChangeSet holding one album: the nearest earlier review gate it can be sent back to (REVIEW-QUEUE-22, LANES-17)
+             */
+            back_to?: string | null;
+            /**
              * Busy
              * @description A decision job holds it; it isn't waiting any more (REVIEW-QUEUE-19)
              * @default false
@@ -3731,6 +3763,17 @@ export interface components {
              * @description http(s) URL; {artist}, {album}, {year}, {catalognum}, {barcode} and {query} are filled in, percent-encoded
              */
             url: string;
+        };
+        /**
+         * SendBackBody
+         * @description Send an album back to an earlier review gate (C-LANES LANES-17).
+         */
+        SendBackBody: {
+            /**
+             * To Step
+             * @description Id of a review step the album passed
+             */
+            to_step: string;
         };
         /**
          * ShowFields
@@ -7603,6 +7646,69 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobQueued"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    send_back_api_runs__run_id__lanes__album_id__back_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+                album_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SendBackBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LaneOut"];
                 };
             };
             /** @description Bad Request */

@@ -37,6 +37,7 @@ from rifferr.api.models import (
     UndoBody,
 )
 from rifferr.api.readonly import READ_ONLY_RESPONSES, ask
+from rifferr.api.routes.runs import held_step, step_order
 from rifferr.api.state import ServerState, State
 from rifferr.appdb import (
     HOLDING_CHANGESETS,
@@ -46,6 +47,7 @@ from rifferr.appdb import (
     AppCoverReviews,
     AppImportDecisions,
     AppJournal,
+    AppLanes,
     AppMoveConflicts,
     AppPruneDecisions,
     AppReviewGates,
@@ -69,6 +71,7 @@ from rifferr.core.moves import MoveConflict
 from rifferr.core.review import ReviewGate
 from rifferr.engine.changesets import StoredChangeSet
 from rifferr.engine.choices import ChoiceDecisionError
+from rifferr.worker.gates import back_targets
 
 router = APIRouter(prefix="/api", tags=["review"])
 
@@ -98,10 +101,33 @@ async def review_queue(
             workflows[run_id] = job.workflow if job is not None else None
         return workflows[run_id]
 
+    backs: dict[str, dict[str, tuple[str, str]]] = {}
+
+    def back(run_id: str, cs_id: str) -> tuple[str, str] | None:
+        """(gate step, album) a ChangeSet's album can be sent back to (REVIEW-QUEUE-22)."""
+        if run_id not in backs:
+            job = state.db.job_for_run(run_id)
+            found: dict[str, tuple[str, str]] = {}
+            if job is not None and job.state == "waiting_review":
+                order = step_order(job)
+                for lane in AppLanes(state.db).load(run_id).values():
+                    if lane.state != "waiting" or any(h.kind != "changeset" for h in lane.holds):
+                        continue
+                    targets = back_targets(order, lane, held_step(state, lane))
+                    for hold in lane.holds if targets else []:
+                        # A ChangeSet holding several albums can't send one back.
+                        found[hold.ref] = (
+                            (targets[0], lane.key) if hold.ref not in found else ("", "")
+                        )
+            backs[run_id] = found
+        hit = backs[run_id].get(cs_id)
+        return hit if hit is not None and hit[0] else None
+
     items: list[QueueItem] = []
     for stored in AppChangeSets(state.db).waiting(profile, run):
         cs = stored.changeset
         assert cs.run_id is not None
+        to = back(cs.run_id, cs.id)
         items.append(
             QueueItem(
                 kind="changeset",
@@ -113,6 +139,8 @@ async def review_queue(
                 created_at=cs.created_at,
                 changeset=cs,
                 state=stored.state,
+                back_to=to[0] if to else None,
+                back_album=to[1] if to else None,
             )
         )
     for gate in AppReviewGates(state.db).pending(profile, run):
