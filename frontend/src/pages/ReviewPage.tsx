@@ -13,6 +13,7 @@ import {
   Tabs,
   Text,
   Title,
+  Tooltip,
 } from "@mantine/core";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
@@ -69,6 +70,8 @@ interface Selection {
   selected: Map<string, QueueItem>;
   kind: BulkKind | null;
   toggle: (item: QueueItem) => void;
+  /** Select every one of `items`, or clear them when all are selected (REVIEW-QUEUE-21). */
+  toggleAll: (items: QueueItem[]) => void;
 }
 
 /** Items picked to decide together (F-DASHBOARD DASHBOARD-13). */
@@ -76,6 +79,7 @@ const SelectionContext = createContext<Selection>({
   selected: new Map(),
   kind: null,
   toggle: () => undefined,
+  toggleAll: () => undefined,
 });
 
 interface DecidedEntry {
@@ -137,6 +141,14 @@ export function ReviewPage({
         const next = new Map(old);
         if (next.has(item.id)) next.delete(item.id);
         else next.set(item.id, item);
+        return next;
+      });
+    },
+    toggleAll: (group) => {
+      setPicked((old) => {
+        const next = new Map(old);
+        if (group.every((i) => next.has(i.id))) for (const i of group) next.delete(i.id);
+        else for (const i of group) next.set(i.id, i);
         return next;
       });
     },
@@ -676,6 +688,30 @@ function AtThisStep({ entries }: { entries: readonly PipelineEntry[] }) {
   );
 }
 
+/** "Select all N" for a step's items that can be decided together (REVIEW-QUEUE-21): shown
+ * when at least two of them share a bulk kind the current selection allows. */
+function SelectAll({ items }: { items: QueueItem[] }) {
+  const selection = useContext(SelectionContext);
+  const first = items.map(bulkKind).find((k) => k !== null) ?? null;
+  const group = items.filter((i) => bulkKind(i) === first);
+  if (first === null || group.length < 2) return null;
+  const all = group.every((i) => selection.selected.has(i.id));
+  const some = group.some((i) => selection.selected.has(i.id));
+  return (
+    <Checkbox
+      size="xs"
+      label={`Select all ${String(group.length)}`}
+      data-testid="select-all"
+      checked={all}
+      indeterminate={some && !all}
+      disabled={selection.kind !== null && selection.kind !== first}
+      onChange={() => {
+        selection.toggleAll(group);
+      }}
+    />
+  );
+}
+
 /** One workflow step's waiting items, oldest first (REVIEW-QUEUE-11, UI-REFRESH-13). */
 function StepSectionCard({ section, focus }: { section: StepSection; focus: string | null }) {
   const queryClient = useQueryClient();
@@ -708,6 +744,7 @@ function StepSectionCard({ section, focus }: { section: StepSection; focus: stri
             <Text size="xs" c="dimmed" data-testid="step-count">
               {count(section.items.length, "item")}
             </Text>
+            <SelectAll items={section.items} />
           </Group>
           {proposed.length > 0 && (
             <Group gap="xs">
@@ -992,15 +1029,23 @@ function ItemCard({
         <Group justify="space-between" wrap="wrap" gap="xs">
           <Group gap="xs" wrap="nowrap">
             {kind !== null && (
-              <Checkbox
-                aria-label="Select"
-                data-testid="select-item"
-                checked={selection.selected.has(item.id)}
-                disabled={selection.kind !== null && selection.kind !== kind}
-                onChange={() => {
-                  selection.toggle(item);
-                }}
-              />
+              <Tooltip
+                label={
+                  selection.kind !== null && selection.kind !== kind
+                    ? "Only items of the same kind can be selected together"
+                    : "Select for a bulk action: decide several of this kind at once"
+                }
+              >
+                <Checkbox
+                  aria-label="Select for bulk action"
+                  data-testid="select-item"
+                  checked={selection.selected.has(item.id)}
+                  disabled={selection.kind !== null && selection.kind !== kind}
+                  onChange={() => {
+                    selection.toggle(item);
+                  }}
+                />
+              </Tooltip>
             )}
             {title}
             <AlbumLabel item={item} />

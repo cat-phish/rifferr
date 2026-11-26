@@ -111,3 +111,19 @@ test("DASHBOARD_13 several items of one kind are decided together, failures repo
     expect(screen.queryByTestId("bulk-bar")).toBeNull();
   });
 });
+
+test("REVIEW_QUEUE_21 select all picks every item of the step, and again clears them", async () => {
+  mockApi({
+    "GET /api/profiles": () => PROFILES,
+    "GET /api/review": () => [item(gate("g1")), item(gate("g2")), item(gate("g3"))],
+  });
+  renderApp("/review?profile=main");
+  const all = await screen.findByLabelText("Select all 3");
+  expect(screen.getAllByLabelText("Select for bulk action")).toHaveLength(3);
+  fireEvent.click(all);
+  expect(await screen.findByTestId("bulk-bar")).toHaveTextContent("3 items selected");
+  fireEvent.click(all);
+  await waitFor(() => {
+    expect(screen.queryByTestId("bulk-bar")).toBeNull();
+  });
+});

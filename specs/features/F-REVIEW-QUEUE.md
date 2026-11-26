@@ -38,6 +38,7 @@ the M1 queue page it will grow from. Import decisions and cover picks join the q
 - REVIEW-QUEUE-18: A Playwright test MUST cover, against the e2e temp profile: a run whose `tags.script` step proposes for review and then a `review` gate; partially accept the ChangeSet in the queue; continue the gate; see the run finish; undo the run from its page.
 - REVIEW-QUEUE-19: An item a decision job holds (a decision row claimed by any job but an import lookup, or a ChangeSet with a queued or running decision job) MUST be marked `busy` in `GET /api/review`, and the UI MUST NOT list or count it as waiting. A failed job releases it, so it waits again with its error (author, 2026-11-22: decided imports came back while their jobs queued).
 - REVIEW-QUEUE-20: (Asked for by the author, 2026-11-25.) A queue item taller than 600 px MUST repeat its main actions (the header row's buttons, UI-REFRESH-10) at its bottom, behind a divider, so a long review is decided without scrolling back up. Both copies act the same.
+- REVIEW-QUEUE-21: (Asked for by the author, 2026-11-25.) The checkbox that selects an item for a bulk action (F-DASHBOARD DASHBOARD-13) MUST say so: a tooltip "Select for a bulk action" (or why it is disabled) and an accessible name "Select for bulk action". A step with at least two items of one bulk kind MUST offer "Select all N" next to its item count; it selects them all, or clears them when all are selected.
 
 ## Interfaces
 ```python
@@ -154,3 +155,4 @@ Note (2026-11-14, F-DASHBOARD): a review gate can be decided per album (`albums`
 - [x] run page: waiting link, undo run
 - [x] Playwright test (REVIEW-QUEUE-18)
 - [x] Tall items repeat their actions at the bottom (REVIEW-QUEUE-20).
+- [x] Bulk-select checkbox explained; "Select all N" per step (REVIEW-QUEUE-21).
