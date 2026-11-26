@@ -509,3 +509,17 @@ test("UI_SHELL_12 color scheme follows the OS", () => {
   );
   expect(document.documentElement).toHaveAttribute("data-mantine-color-scheme", "dark");
 });
+
+test("UI_SHELL_14 the phone menu button opens the navigation and a move closes it", async () => {
+  mockApi({
+    "GET /api/profiles": () => PROFILES,
+    "GET /api/runs": () => [],
+  });
+  renderApp("/workflows");
+  fireEvent.click(await screen.findByTestId("nav-burger"));
+  expect(screen.getByTestId("nav-burger")).toHaveAttribute("aria-label", "Close menu");
+  fireEvent.click(screen.getByRole("link", { name: "Runs" }));
+  await waitFor(() => {
+    expect(screen.getByTestId("nav-burger")).toHaveAttribute("aria-label", "Open menu");
+  });
+});

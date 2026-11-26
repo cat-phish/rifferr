@@ -2,6 +2,7 @@ import {
   ActionIcon,
   AppShell,
   Badge,
+  Burger,
   Button,
   Group,
   Menu,
@@ -100,6 +101,10 @@ function Shell({ children }: { children: React.ReactNode }) {
   const open = match?.[1] === undefined ? null : decodeURIComponent(match[1]);
   const openWorkflow = open === OTHER_WORKFLOW ? "" : open;
   const [reviewOpen, setReviewOpen] = useStoredFlag("rifferr.nav.review-open", true);
+  // On a phone the navigation sits behind a menu button and closes after each move
+  // (UI-SHELL-14).
+  const [menuAt, setMenuAt] = useState<string | null>(null);
+  const menuOpen = menuAt === pathname;
   const nav: { label: string; to: string; active: boolean; count?: number }[] = [
     { label: "Dashboard", to: "/", active: pathname === "/" },
     { label: "Runs", to: "/runs", active: pathname.startsWith("/runs") },
@@ -113,11 +118,27 @@ function Shell({ children }: { children: React.ReactNode }) {
     { label: "Scripts", to: "/scripts", active: pathname.startsWith("/scripts") },
   ];
   return (
-    <AppShell header={{ height: 56 }} navbar={{ width: 200, breakpoint: "sm" }} padding="md">
+    <AppShell
+      header={{ height: 56 }}
+      navbar={{ width: 200, breakpoint: "sm", collapsed: { mobile: !menuOpen } }}
+      padding={{ base: "xs", sm: "md" }}
+    >
       <AppShell.Header>
-        <Group h="100%" px="md" justify="space-between">
-          <Title order={3}>Rifferr</Title>
-          <Group gap="sm">
+        <Group h="100%" px={{ base: "xs", sm: "md" }} justify="space-between" wrap="nowrap">
+          <Group gap="xs" wrap="nowrap">
+            <Burger
+              opened={menuOpen}
+              onClick={() => {
+                setMenuAt(menuOpen ? null : pathname);
+              }}
+              hiddenFrom="sm"
+              size="sm"
+              aria-label={menuOpen ? "Close menu" : "Open menu"}
+              data-testid="nav-burger"
+            />
+            <Title order={3}>Rifferr</Title>
+          </Group>
+          <Group gap="sm" wrap="nowrap">
             <Select
               aria-label="Profile"
               data-testid="profile"
@@ -132,7 +153,7 @@ function Shell({ children }: { children: React.ReactNode }) {
                 if (v !== null) setProfile(v);
               }}
               allowDeselect={false}
-              w={220}
+              w={{ base: 130, sm: 220 }}
             />
             <AccountMenu />
           </Group>
@@ -156,7 +177,7 @@ function Shell({ children }: { children: React.ReactNode }) {
                 n.count !== undefined && (n.count > 0 || sub) ? (
                   <Group gap={4} wrap="nowrap">
                     {n.count > 0 && (
-                      <Badge size="sm" circle data-testid="review-count">
+                      <Badge size="sm" data-testid="review-count">
                         {n.count}
                       </Badge>
                     )}
@@ -200,7 +221,6 @@ function Shell({ children }: { children: React.ReactNode }) {
                       rightSection={
                         <Badge
                           size="sm"
-                          circle
                           variant="light"
                           color={w.count === 0 ? "gray" : undefined}
                           data-testid="review-workflow-count"

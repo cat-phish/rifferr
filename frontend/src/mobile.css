@@ -1,0 +1,9 @@
+/* Phone widths (F-UI-SHELL UI-SHELL-14): a wide table scrolls sideways inside its card
+   instead of pushing the page wider than the screen. */
+@media (max-width: 48em) {
+  .mantine-Table-table {
+    display: block;
+    overflow-x: auto;
+    max-width: 100%;
+  }
+}

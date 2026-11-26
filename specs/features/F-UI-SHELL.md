@@ -30,6 +30,7 @@ trusted at save time (SECURITY-10).
 - UI-SHELL-11: User-visible text MUST name beets concepts plainly (query, template, flexible attribute) and link to beets docs where they appear.
 - UI-SHELL-12: Color scheme MUST follow the OS (light/dark).
 - UI-SHELL-13: A Playwright test MUST run the two-step M0 workflow (`examples/workflows/two-step.yaml`: `beets.import` of a fixture album, then a `shell` step listing the imported files) end to end. `pnpm e2e` builds the frontend and starts `rifferr serve --no-browser` on a free port against a temp config, data and beets directory, signs in through `/auth/exchange` with the token file, reviews and trusts the workflow, starts it with its `inbox` var, and asserts the log shows output from both steps and the run succeeds.
+- UI-SHELL-14: At phone widths (below Mantine `sm`) the navigation MUST sit behind a menu button and close after each move; no page MAY be wider than the screen: a wide table scrolls sideways inside its card (author, 2026-11-26).
 
 ### F-API and F-SECURITY additions this spec needs
 - API-16 (new): `GET /api/workflows` and `GET /api/workflows/{name}` MUST include the workflow's declared vars (`name`, `default`, `description`, `profile_value`), and list vars without a default that the profile doesn't set as `missing_vars`. Those don't make a workflow invalid (they are supplied at start); every other validation error still does.

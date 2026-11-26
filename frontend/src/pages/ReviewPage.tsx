@@ -548,7 +548,7 @@ function ReviewOverview({
                     data-testid="overview-stage"
                   >
                     {t.label}{" "}
-                    <Badge size="sm" variant="light" circle color={n === 0 ? "gray" : undefined}>
+                    <Badge size="sm" variant="light" color={n === 0 ? "gray" : undefined}>
                       {String(n)}
                     </Badge>
                   </Anchor>
@@ -588,7 +588,6 @@ function StageTabButton({
           <Badge
             size="sm"
             variant="light"
-            circle
             color={n === 0 ? "gray" : undefined}
             data-testid="stage-count"
           >

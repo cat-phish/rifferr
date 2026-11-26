@@ -1,4 +1,5 @@
 import "@mantine/core/styles.css";
+import "./mobile.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router";
