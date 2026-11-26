@@ -152,10 +152,26 @@ def test_TAGS_CHOOSE_5_anthology_replaces_the_compilation_suffix() -> None:
     assert chosen(backend, "Anthology") == {"album": "Tapes (Anthology)", "albumkind": "anthology"}
 
 
-def test_TAGS_CHOOSE_13_this_is_one_artist_changes_only_a_compilation() -> None:
-    """known_name_option is Anthology: a band name with a joiner is left as it is."""
-    assert step_params("album-kind").known_name_option == "Anthology"
-    assert chosen(backend_for("Simon & Garfunkel"), "Anthology") == {}
+def test_TAGS_CHOOSE_13_artist_names_remembers_one_artist_or_splits_several() -> None:
+    params = step_params("artist-names")
+    assert params.known_name == "albumartist"
+    assert params.known_name_option == "One artist"
+    (one,) = [o for o in params.options if o.label == "One artist"]
+    assert one.actions == []
+    (several,) = [o for o in params.options if o.label == "Several artists"]
+    backend = backend_for("A & B / AC/DC")
+    script = TagScript(idempotence="fail", actions=list(several.actions))
+    (album,) = backend.query(Selection())
+    result = run_script(script, album, backend)
+    assert result.error is None
+    assert check_idempotence(script, result, backend).ok
+    assert {d.field: d.after for d in result.diffs()} == {"albumartists": ["A", "B", "AC/DC"]}
+
+
+def test_TAGS_CHOOSE_13_album_kind_no_longer_asks_about_names() -> None:
+    params = step_params("album-kind")
+    assert params.known_name is None
+    assert "rf_joined_albumartist" not in (params.query or "")
 
 
 @pytest.mark.parametrize(
@@ -199,5 +215,5 @@ def test_TAGS_CHOOSE_9_genre_rules_file_parses_and_ranks() -> None:
 
 
 def test_TAGS_CHOOSE_1_reference_steps_validate() -> None:
-    for step_id in ("album-kind", "dates-missing", "genre-bucket"):
+    for step_id in ("artist-names", "album-kind", "dates-missing", "genre-bucket"):
         step_params(step_id)

@@ -113,17 +113,18 @@ Other changes:
       subgenres: { tag: SUBGENRE, multi: true }
       albumkind: ALBUMKIND
   ```
-- **Artist-name rules.** The example workflow's `album-kind` step asks about album artists
-  with a joiner ("A & B"). List the joiners, and band names that contain one, in a file next
-  to the beets config, and name it under `rifferr`. "This is one artist" in the review adds
-  a name to it, so the file must be writable:
+- **Artist-name rules.** The example workflow's `artist-names` step asks whether an album
+  artist with a joiner ("A & B") is one act or several. List the joiners, and band names
+  that contain one, in a file next to the beets config, and name it under `rifferr`.
+  Choosing "One artist" in the review adds the name to it, so the file must be writable:
   ```yaml
   rifferr:
     artist_names: artist-names.yaml   # relative to the beets directory
   ```
   ```yaml
   # ~/rifferr-test/beets/artist-names.yaml
-  joiners: [" & ", " / ", ", ", " x "]
+  # Matched without regard to case; the spaces are part of each joiner.
+  joiners: [" & ", " and ", " / ", ", ", " x ", " with ", " vs ", " vs. ", " + ", "; ", " - "]
   names: [AC/DC, Simon & Garfunkel]
   ```
 
@@ -263,7 +264,8 @@ What to expect:
   written there. The inbox keeps only files nothing has touched.
 - Release-type suffixes and missing covers run next. A cover that no
   provider finds well enough waits for you to choose one.
-- Choices wait in the queue too, one card per step: the album kind of splits,
+- Choices wait in the queue too, one card per step: whether an album artist with a
+  joiner ("A & B") is one act or several, the album kind of splits,
   collaborations, soundtracks and compilations, a release date that's missing, and every
   album's broad genre. The likely option is preselected; pick another or type values.
 - Each album's **library move** waits in the review queue, showing the old and new

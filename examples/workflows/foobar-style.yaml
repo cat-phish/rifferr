@@ -108,11 +108,34 @@ steps:
     uses: workflow
     with:
       workflow: release-suffixes.yaml
-  # Checklist lines 7, 9, 10, 18: every album with several album artists, an album artist
-  # with a joiner ("A & B", "A / B"; joiners and known band names like AC/DC are in the
-  # artist-name rules, `rifferr.artist_names` in the beets config) and every soundtrack or
-  # compilation waits in the review queue for its kind (author, 2026-11-23). The likely
-  # one is preselected:
+  # Checklist lines 7, 9, 10, 18, first question: is an album artist with a joiner one
+  # act or several (author, 2026-11-25)? Asked when the album artist contains a joiner
+  # outside the known names and MusicBrainz didn't list the artists separately. Joiners
+  # and known names (AC/DC, Simon & Garfunkel) are the artist-name rules,
+  # `rifferr.artist_names` in the beets config. "One artist" remembers the name there, so
+  # it's never asked again, and changes nothing; "Several artists" puts the names into the
+  # multi-valued `albumartists`, cut at the joiners, so album-kind below asks about a
+  # split or collaboration. `albumartists` can also be typed in, here and in the final
+  # review. Skip leaves the album as it is.
+  - id: artist-names
+    uses: tags.choose
+    with:
+      query: "rf_joined_albumartist:1 rf_count_albumartists:..1"
+      show: [albumartist, albumartists, artist]
+      known_name: albumartist
+      known_name_option: One artist
+      options:
+        - label: One artist
+          actions: []
+        - label: Several artists
+          suggest: { when: "rf_share_multi_artist_tracks:51.." }
+          actions:
+            - copy: { from: albumartist, to: albumartists }
+            - split: { field: albumartists, by_joiners: true }
+      custom: [albumartists]
+  # Checklist lines 7, 9, 10, 18, second question: every album with several album artists
+  # and every soundtrack or compilation waits in the review queue for its kind (author,
+  # 2026-11-23). The likely one is preselected:
   #   - collaboration when most tracks credit several artists (featured artists are in the
   #     titles by now),
   #   - split with 2 to 4 album artists,
@@ -120,21 +143,18 @@ steps:
   #   - compilation when beets flags various artists (`comp`), anthology for one
   #     artist's compilation, otherwise nothing.
   # Any option can be chosen, or the fields typed in. The album artist and its sort name
-  # become the kind's label; the individual artists go to the multi-valued `albumartists`
-  # (from MusicBrainz, or the album artist split at its joiners; editable in review).
-  # "This is one artist" adds the album artist to the known names; a compilation becomes
-  # an anthology, any other album is left unchanged. Skip leaves the album as it is (no
-  # kind, no suffix). Albums already given a kind aren't asked again.
+  # become the kind's label; the individual artists stay in the multi-valued
+  # `albumartists`. If artist-names was skipped, Split and Collaboration still copy the
+  # album artist there first, cut at the joiners, so the names aren't lost. Skip leaves
+  # the album as it is (no kind, no suffix). Albums already given a kind aren't asked
+  # again.
   - id: album-kind
     uses: tags.choose
     with:
       query: >-
         ^albumkind::. albumtypes:soundtrack ,
         ^albumkind::. albumtypes:compilation ,
-        ^albumkind::. rf_count_albumartists:2.. ,
-        ^albumkind::. rf_joined_albumartist:1
-      known_name: albumartist
-      known_name_option: Anthology
+        ^albumkind::. rf_count_albumartists:2..
       show: [albumartist, albumartists, albumtypes]
       options:
         - label: Collaboration
@@ -143,12 +163,9 @@ steps:
             - &artists-from-albumartist
               when: "^albumkind::. rf_count_albumartists:..1"
               copy: { from: albumartist, to: albumartists }
-            - &artists-at-joiners
-              when: "^albumkind::. rf_count_albumartists:..1"
-              replace: { fields: [albumartists], regex: '\s*(?:&|/|,| - | x | and )\s*', with: ";" }
             - &artists-split
               when: "^albumkind::. rf_count_albumartists:..1"
-              split: { field: albumartists, by: ";" }
+              split: { field: albumartists, by_joiners: true }
             - set:
                 albumkind: collab
                 albumartist: "{{ vars.label_collab }}"
@@ -157,7 +174,6 @@ steps:
           suggest: { when: "rf_count_albumartists:2..4" }
           actions:
             - *artists-from-albumartist
-            - *artists-at-joiners
             - *artists-split
             - set:
                 albumkind: split
@@ -186,16 +202,11 @@ steps:
                 albumkind: compilation
                 albumartist: "{{ vars.label_compilation }}"
                 albumartist_sort: "{{ vars.label_compilation }}"
-        # Only for compilations; it's also what "This is one artist" applies, so that
-        # button makes one artist's compilation an anthology and leaves any other album
-        # (an "A & B" band name) as it is.
         - label: Anthology
           suggest: { when: "albumtypes:compilation comp:0" }
           actions:
-            - when: "albumtypes:compilation"
-              replace: { fields: [album], regex: '\s*\((?:Compilation|Anthology)\)$', with: "" }
-            - when: "albumtypes:compilation"
-              set:
+            - *drop-collection-suffix
+            - set:
                 album: "$album (Anthology)"
                 albumkind: anthology
       custom: [albumartist, albumartists, albumkind]
