@@ -76,27 +76,21 @@ function reorder(segs: DiffSegment[]): DiffSegment[] {
   return out;
 }
 
-const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
-
-/** User-perceived characters, so accents and emoji are never split. */
-function graphemes(s: string): string[] {
-  return Array.from(segmenter.segment(s), (g) => g.segment);
-}
-
-function sameLength(segs: DiffSegment[]): number {
-  return segs.reduce((n, s) => (s.kind === "same" ? n + graphemes(s.text).length : n), 0);
+/**
+ * Words: runs of letters and digits (apostrophes inside a word included), each run of
+ * whitespace, and every other character on its own, so `/`, `-` and `(` are their own
+ * tokens and a path diffs by folder name.
+ */
+function words(s: string): string[] {
+  return s.match(/[\p{L}\p{M}\p{N}]+(?:['’][\p{L}\p{M}\p{N}]+)*|\s+|./gsu) ?? [];
 }
 
 /**
- * Diff two values. Character level, or word level when the values share fewer
- * than half their characters (then a character diff is mostly noise).
+ * Diff two values by whole words (author, 2026-11-25): a changed word or folder name
+ * is marked whole, never letter by letter.
  */
 export function diffText(oldText: string, newText: string): DiffSegment[] {
   if (oldText === newText) return oldText ? [{ kind: "same", text: oldText }] : [];
-  const chars = lcsDiff(graphemes(oldText), graphemes(newText));
-  const longest = Math.max(graphemes(oldText).length, graphemes(newText).length);
-  if (sameLength(chars) * 2 >= longest) return chars;
-  const words = (s: string) => s.split(/(\s+)/).filter((w) => w !== "");
   return lcsDiff(words(oldText), words(newText));
 }
 

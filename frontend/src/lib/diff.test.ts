@@ -9,19 +9,29 @@ describe("diffText", () => {
     ]);
   });
 
-  it("UI_REFRESH_4_character_change_inside_a_word", () => {
+  it("UI_REFRESH_4_a_changed_word_is_marked_whole", () => {
     expect(diffText("Colour", "Color")).toEqual([
-      { kind: "same", text: "Colo" },
-      { kind: "removed", text: "u" },
-      { kind: "same", text: "r" },
+      { kind: "removed", text: "Colour" },
+      { kind: "added", text: "Color" },
     ]);
   });
 
-  it("UI_REFRESH_4_mostly_different_values_diff_by_word", () => {
-    const segs = diffText("The Wall", "Animals live");
-    for (const s of segs) if (s.kind !== "same") expect(s.text).not.toMatch(/^[a-z]$/i);
-    expect(oldOf(segs)).toBe("The Wall");
-    expect(newOf(segs)).toBe("Animals live");
+  it("UI_REFRESH_4_a_path_diffs_by_folder_name", () => {
+    expect(diffText("/r/staging/Lady Gaga/MAYHEM", "/r/library/Lady Gaga/MAYHEM")).toEqual([
+      { kind: "same", text: "/r/" },
+      { kind: "removed", text: "staging" },
+      { kind: "added", text: "library" },
+      { kind: "same", text: "/Lady Gaga/MAYHEM" },
+    ]);
+  });
+
+  it("UI_REFRESH_4_punctuation_is_its_own_word", () => {
+    expect(diffText("Let's Have a War - Waste", "Let's Have a War ／ Waste")).toEqual([
+      { kind: "same", text: "Let's Have a War " },
+      { kind: "removed", text: "-" },
+      { kind: "added", text: "／" },
+      { kind: "same", text: " Waste" },
+    ]);
   });
 
   it("UI_REFRESH_4_removed_comes_before_added", () => {
