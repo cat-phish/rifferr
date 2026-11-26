@@ -139,6 +139,8 @@ class GateOptions:
     on_reject: OnReject = "stop"
     timeout: timedelta | None = None
     on_timeout: GateDecision | None = None
+    edit: bool = False
+    """Values may be edited at the gate, held until continue (REVIEW-13 .. -15)."""
 
 
 #: The engine's side of ``ctx.open_gate``: requests, options, snapshots -> gate id.

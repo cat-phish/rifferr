@@ -1864,6 +1864,12 @@
     "With_review": {
       "additionalProperties": false,
       "properties": {
+        "edit": {
+          "default": false,
+          "description": "Show each album's final check and let the reviewer edit any field or the cover; edits are written only when the album is continued",
+          "title": "Edit",
+          "type": "boolean"
+        },
         "message": {
           "anyOf": [
             {

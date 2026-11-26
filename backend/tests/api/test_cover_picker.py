@@ -110,6 +110,28 @@ async def test_COVER_PICKER_14_search_by_album_takes_the_folder_from_the_library
     assert both.status_code == 400
 
 
+async def test_COVER_PICKER_22_a_held_choice_is_stored_not_set(
+    api: Api, shop: Shop, images: respx.MockRouter
+) -> None:
+    album = await first_album(api)
+    await post(api, "/api/covers/search", {"profile": "main", "query": Q, "providers": ["shop"]})
+    await until(lambda: events(api.state.db, "covers.done"))
+    best = events(api.state.db, "covers.done")[0]["ranked"][0]["id"]
+    url = f"/api/profiles/main/albums/{album['id']}/cover"
+    r = await post(api, url, {"candidate_id": best, "hold": True})
+    assert r.status_code == 202, r.text
+    held = r.json()
+    assert held["sha256"] == sha256_hex(jpeg(1000, 1000))
+    assert held["changeset_id"] is None
+    assert held["job_id"] is None
+    assert (await api.client.get("/api/profiles/main/changes")).json() == []  # nothing queued
+    art = await api.client.get(f"/api/profiles/main/art/{held['sha256']}")
+    assert art.status_code == 200
+    assert sha256_hex(art.content) == held["sha256"]
+    assert (await api.client.get("/api/profiles/main/art/" + "0" * 64)).status_code == 404
+    assert (await api.client.get("/api/profiles/main/art/nope")).status_code == 400
+
+
 async def test_COVER_PICKER_14_album_cover_is_an_undoable_manual_changeset(
     api: Api, shop: Shop, images: respx.MockRouter
 ) -> None:

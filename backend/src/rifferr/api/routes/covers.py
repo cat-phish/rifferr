@@ -341,6 +341,26 @@ async def album_art(
     return response
 
 
+@router.get(
+    "/profiles/{profile}/art/{sha256}",
+    response_class=Response,
+    responses={**ERROR_RESPONSES, 200: IMAGE_RESPONSE},
+)
+async def stored_art(profile: str, sha256: str, state: State) -> Response:
+    """An image of the profile's art store by its sha256, e.g. a cover held at a review
+    gate (COVER-PICKER-22). Stored images never change, so it may be cached for long."""
+    if not SHA256.fullmatch(sha256):
+        raise ApiError(400, "bad_request", "not a sha256")
+    found = state.covers.store(get_profile(state, profile).name).find(sha256)
+    if found is None:
+        raise not_found(f"art {sha256}")
+    data = await asyncio.to_thread(found.read_bytes)
+    response = _image_response(data)
+    response.headers["ETag"] = f'"{sha256}"'
+    response.headers["Cache-Control"] = "private, max-age=31536000, immutable"
+    return response
+
+
 # -- cover reviews (COVERS-SEARCH-21) ------------------------------------------------------
 
 
@@ -456,6 +476,8 @@ async def set_album_cover(
     except DownloadError as exc:
         raise ApiError(422, "bad_image", str(exc)) from None
     sha, _ = await asyncio.to_thread(service.store(p.name).put, image.data)
+    if body.hold:  # COVER-PICKER-22: kept for a held edit, not set
+        return AlbumCoverQueued(sha256=sha)
     size = f"{image.info.width}x{image.info.height}"
     rationale = f"cover from {found.provider} ({size}), chosen in the cover picker" + (
         f": {found.source_url}" if found.source_url else ""

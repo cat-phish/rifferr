@@ -66,6 +66,7 @@ Own images (upload and paste):
 
 Manual search links:
 - COVER-PICKER-20: The picker MUST show one link per entry of the profile's `covers.search_links` (Interfaces), labelled "Search <name>", next to the upload buttons. Each link's URL is its template with the placeholders filled from the query form as it is now, so editing the form changes the links. Placeholders: `{artist}`, `{album}`, `{year}`, `{catalognum}`, `{barcode}`, and `{query}` (artist and album joined by a space). Each value is percent-encoded as one URL component; an empty field fills in as empty. The link opens in a new tab with `rel="noopener noreferrer"`. Rifferr never fetches these URLs: the user finds an image there, copies it, and pastes or uploads it (COVER-PICKER-17).
+- COVER-PICKER-22: (Approved by the author, 2026-11-25.) At an `edit: true` review gate (S-REVIEW REVIEW-14) choosing a cover MUST NOT set it: `POST /api/profiles/{profile}/albums/{album_id}/cover` with `hold: true` downloads and checks the image, keeps it in the art store, and returns its sha256 without a ChangeSet; the gate holds an `art_sha256` edit with it. `GET /api/profiles/{profile}/art/{sha256}` serves an image of the art store, so a held cover can be shown.
 - COVER-PICKER-21: Without `covers.search_links` in `profile.yaml`, the list MUST be Google Images and Amazon (Interfaces). An empty list shows no links. Profile validation MUST refuse an entry whose template doesn't start with `https://` or `http://`, has an unknown placeholder, or puts a placeholder in the scheme or host (before the first `/` after `://`), and MUST refuse two entries with the same name. `GET /api/profiles/{profile}/covers` returns the list.
 
 Library grid:
@@ -261,6 +262,7 @@ All resolved by the user on 2026-11-14:
 5. ~~Album mode at once or through review?~~ At once, as a manual edit (COVER-PICKER-14).
 
 ## Tasks
+- [x] Held cover choice for `edit: true` gates (COVER-PICKER-22).
 - [x] `size_score` and `filtered` on candidates and candidate events; schemas, TS client
 - [x] `cover-query`, album `cover` route, `album_id` in search; manual ChangeSet on `art_sha256`
 - [x] `GET`/`PUT` profile covers with ruamel round-trip and hash guard; profile reload

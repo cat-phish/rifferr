@@ -23,11 +23,16 @@
       },
       "AlbumCoverBody": {
         "additionalProperties": false,
-        "description": "Set an album's cover outside a run (COVER-PICKER-14). ``old_sha256`` is the art the\nuser saw; a different current one comes back as a conflict.",
+        "description": "Set an album's cover outside a run (COVER-PICKER-14). ``old_sha256`` is the art the\nuser saw; a different current one comes back as a conflict. With ``hold`` the image is\nonly kept in the art store and its sha256 returned, for a held edit (COVER-PICKER-22).",
         "properties": {
           "candidate_id": {
             "title": "Candidate Id",
             "type": "string"
+          },
+          "hold": {
+            "default": false,
+            "title": "Hold",
+            "type": "boolean"
           },
           "old_sha256": {
             "anyOf": [
@@ -51,12 +56,28 @@
         "additionalProperties": false,
         "properties": {
           "changeset_id": {
-            "title": "Changeset Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "None with ``hold``",
+            "title": "Changeset Id"
           },
           "job_id": {
-            "title": "Job Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "None with ``hold``",
+            "title": "Job Id"
           },
           "queued_behind": {
             "items": {
@@ -71,8 +92,6 @@
           }
         },
         "required": [
-          "changeset_id",
-          "job_id",
           "sha256"
         ],
         "title": "AlbumCoverQueued",
@@ -2643,6 +2662,25 @@
         "title": "GateDecisionBody",
         "type": "object"
       },
+      "GateEditsBody": {
+        "additionalProperties": false,
+        "description": "The whole list of edits held on an ``edit: true`` gate (S-REVIEW REVIEW-14).",
+        "properties": {
+          "edits": {
+            "items": {
+              "$ref": "#/components/schemas/HeldEdit"
+            },
+            "maxItems": 5000,
+            "title": "Edits",
+            "type": "array"
+          }
+        },
+        "required": [
+          "edits"
+        ],
+        "title": "GateEditsBody",
+        "type": "object"
+      },
       "GridColumns": {
         "additionalProperties": false,
         "description": "Default tag-grid columns per scope (TAG-GRID-3). Unset: the UI's built-in default.",
@@ -2705,6 +2743,35 @@
           }
         },
         "title": "Health",
+        "type": "object"
+      },
+      "HeldEdit": {
+        "additionalProperties": false,
+        "description": "Edits to one album or item, held on an ``edit: true`` gate until its album is\ncontinued (REVIEW-14). Each change's ``old`` is the value the reviewer saw.",
+        "properties": {
+          "album": {
+            "description": "The album id the target belongs to",
+            "title": "Album",
+            "type": "string"
+          },
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/FieldChange"
+            },
+            "minItems": 1,
+            "title": "Changes",
+            "type": "array"
+          },
+          "target": {
+            "$ref": "#/components/schemas/TargetRef"
+          }
+        },
+        "required": [
+          "target",
+          "album",
+          "changes"
+        ],
+        "title": "HeldEdit",
         "type": "object"
       },
       "HookAccepted": {
@@ -5507,6 +5574,20 @@
               }
             ],
             "title": "Decided By"
+          },
+          "edit": {
+            "default": false,
+            "description": "Values may be edited here (REVIEW-13)",
+            "title": "Edit",
+            "type": "boolean"
+          },
+          "edits": {
+            "description": "Edits held until their album is continued (REVIEW-14, -15)",
+            "items": {
+              "$ref": "#/components/schemas/HeldEdit"
+            },
+            "title": "Edits",
+            "type": "array"
           },
           "id": {
             "title": "Id",
@@ -9133,6 +9214,95 @@
         ]
       }
     },
+    "/api/profiles/{profile}/art/{sha256}": {
+      "get": {
+        "description": "An image of the profile's art store by its sha256, e.g. a cover held at a review\ngate (COVER-PICKER-22). Stored images never change, so it may be cached for long.",
+        "operationId": "stored_art_api_profiles__profile__art__sha256__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sha256",
+            "required": true,
+            "schema": {
+              "title": "Sha256",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "A JPEG or PNG image"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Stored Art",
+        "tags": [
+          "covers"
+        ]
+      }
+    },
     "/api/profiles/{profile}/beets-config": {
       "get": {
         "description": "The keys in the profile's beets config that run code, and its trust (SEC-62).",
@@ -11198,6 +11368,89 @@
         ]
       }
     },
+    "/api/reviews/{gate_id}/edits": {
+      "put": {
+        "description": "Replace the edits held on an ``edit: true`` gate (S-REVIEW REVIEW-14). Nothing is\nwritten until the album is continued (REVIEW-15).",
+        "operationId": "hold_gate_edits_api_reviews__gate_id__edits_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "gate_id",
+            "required": true,
+            "schema": {
+              "title": "Gate Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GateEditsBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewGate"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Hold Gate Edits",
+        "tags": [
+          "review"
+        ]
+      }
+    },
     "/api/runs": {
       "get": {
         "description": "Newest first; one workflow's with ``workflow`` (UI-REFRESH-23).",
@@ -11422,6 +11675,88 @@
         "summary": "Get Run",
         "tags": [
           "runs"
+        ]
+      }
+    },
+    "/api/runs/{run_id}/albums/{album_id}/before": {
+      "get": {
+        "description": "The same for any album of a run, e.g. at an ``edit: true`` gate (REVIEW-13).",
+        "operationId": "album_before_run_api_runs__run_id__albums__album_id__before_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "album_id",
+            "required": true,
+            "schema": {
+              "title": "Album Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeforeRun"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Album Before Run",
+        "tags": [
+          "review"
         ]
       }
     },

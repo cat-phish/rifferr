@@ -23,7 +23,7 @@ from rifferr.core.imports import (
 from rifferr.core.moves import MoveChoice, MoveConflict
 from rifferr.core.profile import GridColumns
 from rifferr.core.prune import PruneChoice, PruneDecision
-from rifferr.core.review import ReviewGate
+from rifferr.core.review import HeldEdit, ReviewGate
 from rifferr.core.snapshot import FieldValue
 from rifferr.engine.changesets import CurrentTarget
 
@@ -528,6 +528,12 @@ class ImportLookupBody(_Model):
     album: str | None = Field(default=None, max_length=MAX_LOOKUP_TEXT)
 
 
+class GateEditsBody(_Model):
+    """The whole list of edits held on an ``edit: true`` gate (S-REVIEW REVIEW-14)."""
+
+    edits: list[HeldEdit] = Field(max_length=5000)
+
+
 class GateDecisionBody(_Model):
     decision: Literal["continue", "reject"]
     note: str | None = Field(default=None, max_length=2000)
@@ -689,15 +695,17 @@ class CoverQueryAnswer(_Model):
 
 class AlbumCoverBody(_Model):
     """Set an album's cover outside a run (COVER-PICKER-14). ``old_sha256`` is the art the
-    user saw; a different current one comes back as a conflict."""
+    user saw; a different current one comes back as a conflict. With ``hold`` the image is
+    only kept in the art store and its sha256 returned, for a held edit (COVER-PICKER-22)."""
 
     candidate_id: str
     old_sha256: str | None = None
+    hold: bool = False
 
 
 class AlbumCoverQueued(_Model):
-    changeset_id: str
-    job_id: str
+    changeset_id: str | None = Field(default=None, description="None with ``hold``")
+    job_id: str | None = Field(default=None, description="None with ``hold``")
     sha256: str
     queued_behind: list[str] = Field(default_factory=list[str])
 

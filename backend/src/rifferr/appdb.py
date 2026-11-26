@@ -10,7 +10,7 @@ import importlib.resources
 import json
 import re
 import sqlite3
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -27,7 +27,7 @@ from rifferr.core.imports import ImportDecision, ImportDecisionState
 from rifferr.core.moves import MoveConflict
 from rifferr.core.notify import Notification, QueueRef
 from rifferr.core.prune import PruneDecision
-from rifferr.core.review import GateState, ReviewGate
+from rifferr.core.review import GateState, HeldEdit, ReviewGate
 from rifferr.core.snapshot import AlbumSnapshot
 from rifferr.core.triggers import DedupRecord
 from rifferr.engine.changesets import StoredChangeSet
@@ -63,6 +63,7 @@ JobKind = Literal[
     "choice_apply",
     "move_retry",
     "prune_apply",
+    "gate_apply",
 ]
 
 #: ChangeSet states that still hold a suspended run (CHANGESET-7).
@@ -911,6 +912,21 @@ class AppReviewGates:
             raise GateResolvedError(gate_id, gate.state)
         return gate
 
+    def set_edits(self, gate_id: str, edits: Sequence[HeldEdit]) -> ReviewGate:
+        """Replace a pending gate's held edits (REVIEW-14). Raises ``KeyError`` for an
+        unknown gate and ``GateResolvedError`` once it isn't pending."""
+        body = json.dumps([e.model_dump(mode="json") for e in edits])
+        cur = self._conn.execute(
+            "UPDATE review_gates SET edits = ? WHERE id = ? AND state = 'pending'",
+            (body, gate_id),
+        )
+        gate = self.get(gate_id)
+        if gate is None:
+            raise KeyError(gate_id)
+        if cur.rowcount != 1:
+            raise GateResolvedError(gate_id, gate.state)
+        return gate
+
     def decide_albums(
         self, gate_id: str, albums: Iterable[str], state: Literal["continued", "rejected"]
     ) -> ReviewGate:
@@ -969,6 +985,7 @@ class AppReviewGates:
                 "decided_by": row["decided_by"],
                 "note": row["note"],
                 "album_decisions": json.loads(row["album_decisions"] or "{}"),
+                "edits": [HeldEdit.model_validate(e) for e in json.loads(row["edits"] or "[]")],
             }
         )
 

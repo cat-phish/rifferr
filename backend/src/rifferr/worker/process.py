@@ -73,6 +73,7 @@ from rifferr.engine import (
     StepTypeRegistry,
 )
 from rifferr.engine.changesets import (
+    ApplyOutcome,
     SnapshotIndex,
     apply_changeset,
     build_changesets,
@@ -316,6 +317,9 @@ class Worker:
             return
         if job.kind == "review_reject":
             self._reject_at_review(job)
+            return
+        if job.kind == "gate_apply":
+            self._apply_gate_edits(job)
             return
         if job.kind == "manual_apply":
             self._apply_manual(job)
@@ -1285,6 +1289,103 @@ class Worker:
         error = "; ".join(errors) or None
         self._finish_job(job, "failed" if errors else "succeeded", error, {"outcomes": outcomes})
 
+    # -- held edits of an `edit: true` gate (S-REVIEW REVIEW-15) ------------------------
+
+    def _apply_gate_edits(self, job: Job) -> None:
+        """Write each album's held edits as one ChangeSet, then continue the albums whose
+        edits all applied. An album with a conflicted or refused edit gets nothing written
+        and stays undecided with its edits held; the job fails naming them."""
+        payload = job.payload
+        gate = self.gates.get(str(payload.get("gate_id")))
+        if gate is None or gate.state != "pending":
+            self._finish_job(job, "failed", "the review gate is no longer pending")
+            return
+        raw = payload.get("albums")
+        wanted = [str(a) for a in raw] if isinstance(raw, list) else gate.undecided()  # pyright: ignore[reportUnknownVariableType, reportUnknownArgumentType]
+        albums = [a for a in wanted if a in gate.undecided()]
+        by = payload.get("by")
+        decider = by if isinstance(by, str) else None
+        note = payload.get("note")
+        emit = self._changeset_emitter(gate.run_id, gate.step_id)
+        done: list[str] = []
+        errors: list[str] = []
+        for album in albums:
+            held = [e for e in gate.edits if e.album == album]
+            if not held:
+                done.append(album)
+                continue
+            cs = ChangeSet(
+                id=new_ulid(),
+                profile=gate.profile,
+                run_id=gate.run_id,
+                step_id=gate.step_id,
+                source=ChangeSource(kind="manual", name="review"),
+                rationale="edited at the review",
+                created_at=datetime.now(UTC),
+                targets=[TargetChange(target=e.target, changes=list(e.changes)) for e in held],
+            )
+            self.changesets.add(cs)
+            emit("changeset.proposed", proposed_event(cs))
+            try:
+                outcome = apply_changeset(
+                    cs,
+                    backend=self.backend,
+                    journal=self.journal,
+                    store=self.changesets,
+                    new_id=new_ulid,
+                    now=lambda: datetime.now(UTC),
+                    emit=emit,
+                    resolved_by=decider,
+                )
+            except Exception as exc:
+                outcome = None
+                problem = f"{type(exc).__name__}: {exc}"
+            else:
+                problem = _problem(outcome)
+            if outcome is not None and outcome.state == "applied":
+                done.append(album)
+                continue
+            stored = self.changesets.get(cs.id)
+            if stored is not None and stored.state in ("proposed", "conflicted"):
+                # It mustn't hold the run (CHANGESET-7): the album's edits stay held.
+                reject_changeset(cs.id, store=self.changesets, emit=emit, resolved_by=decider)
+            label = next((a.label for a in gate.albums if a.target.id == album), album)
+            errors.append(f"{label}: {problem}")
+            emit("run.step.log", {"stream": "error", "line": f"{label}: not written: {problem}"})
+        if done:
+            self._continue_gate_albums(gate, done, decider, note if isinstance(note, str) else None)
+        error = "; ".join(errors) or None
+        result: dict[str, JsonValue] = {"continued": list[JsonValue](done)}
+        self._finish_job(job, "failed" if errors else "succeeded", error, result)
+
+    def _continue_gate_albums(
+        self, gate: ReviewGate, albums: list[str], by: str | None, note: str | None
+    ) -> None:
+        """Decide ``albums`` of ``gate`` as continued, as the supervisor does without held
+        edits (REVIEW-7, DASHBOARD-11), and let the run go on once nothing holds it."""
+        current = self.gates.get(gate.id) or gate
+        self.gates.set_edits(gate.id, [e for e in current.edits if e.album not in albums])
+        final = set(albums) == set(current.undecided())
+        data: dict[str, JsonValue] = {
+            "gate_id": gate.id,
+            "decision": "continue",
+            "decided_by": by,
+            "albums": list[JsonValue](albums),
+        }
+        if note is not None:
+            data["note"] = note
+        emit = self._changeset_emitter(gate.run_id, gate.step_id)
+        if not final or current.album_decisions:
+            self.gates.decide_albums(gate.id, albums, "continued")
+        if final:
+            decided = self.gates.decide(gate.id, "continued", by=by, note=note)
+            data["decided_at"] = decided.decided_at.isoformat() if decided.decided_at else None
+            emit("review.resolved", data)
+        else:
+            emit("review.decided", data)
+            self.lanes.drop_hold(gate.run_id, albums, gate.id)
+        self._resume_if_released(gate.run_id)
+
     # -- a waiting move follows its album (S-LIBRARY-MOVE LIBRARY-MOVE-19) ------------
 
     def _album_ids(self, cs: ChangeSet) -> set[str]:
@@ -1736,3 +1837,15 @@ def _main_read_only(
 def _olds(cs: ChangeSet) -> list[tuple[str, str, str]]:
     """What a ChangeSet expects to find: each field change's target, field and old value."""
     return [(t.target.id, c.field, repr(c.old)) for t in cs.targets for c in t.changes]
+
+
+def _problem(outcome: ApplyOutcome) -> str:
+    """Why a held edit wasn't written: its conflicts or the backend's refusals."""
+    if outcome.problems:
+        return "; ".join(f"{p.target.label()} {p.field}: {p.message}" for p in outcome.problems)
+    if outcome.entry is not None and outcome.entry.conflicts:
+        return "; ".join(
+            f"{c.target.label()} {c.field}: changed meanwhile to {c.current!r}"
+            for c in outcome.entry.conflicts
+        )
+    return outcome.error or outcome.state

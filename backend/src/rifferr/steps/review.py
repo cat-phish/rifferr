@@ -38,6 +38,11 @@ class ReviewParams(BaseModel):
         description="On reject, stop the run (stop) or also undo its applied tag changes "
         "(undo). Imports are never undone.",
     )
+    edit: bool = Field(
+        default=False,
+        description="Show each album's final check and let the reviewer edit any field or "
+        "the cover; edits are written only when the album is continued",
+    )
     timeout: Duration | None = Field(
         default=None, description="Decide automatically after this long, e.g. 3d"
     )
@@ -83,6 +88,7 @@ class ReviewStep:
             on_reject=params.on_reject,
             timeout=timeout,
             on_timeout=(params.on_timeout or "reject") if timeout is not None else None,
+            edit=params.edit,
         )
         gate_id = ctx.open_gate(requests, options)
         ctx.log(f"waiting for review of {len(requests)} album(s)")

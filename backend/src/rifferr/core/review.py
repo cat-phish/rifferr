@@ -11,7 +11,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from rifferr.core.changeset import FieldEffect, TargetRef
+from rifferr.core.changeset import FieldChange, FieldEffect, TargetRef
 from rifferr.core.snapshot import FieldValue
 
 GateState = Literal["pending", "continued", "rejected", "cancelled"]
@@ -43,6 +43,17 @@ class GateAlbum(BaseModel):
     imported_by_run: bool = False
 
 
+class HeldEdit(BaseModel):
+    """Edits to one album or item, held on an ``edit: true`` gate until its album is
+    continued (REVIEW-14). Each change's ``old`` is the value the reviewer saw."""
+
+    model_config = _FROZEN
+
+    target: TargetRef
+    album: str = Field(description="The album id the target belongs to")
+    changes: list[FieldChange] = Field(min_length=1)
+
+
 class ReviewGate(BaseModel):
     model_config = _FROZEN
 
@@ -64,6 +75,11 @@ class ReviewGate(BaseModel):
     album_decisions: dict[str, Literal["continued", "rejected"]] = Field(
         default_factory=dict[str, Literal["continued", "rejected"]],
         description="Albums decided on their own while the gate is pending (DASHBOARD-11)",
+    )
+    edit: bool = Field(default=False, description="Values may be edited here (REVIEW-13)")
+    edits: list[HeldEdit] = Field(
+        default_factory=list[HeldEdit],
+        description="Edits held until their album is continued (REVIEW-14, -15)",
     )
 
     def undecided(self) -> list[str]:

@@ -1173,6 +1173,7 @@ class Engine:
             on_timeout=options.on_timeout,
             created_at=now,
             deadline=now + options.timeout if options.timeout is not None else None,
+            edit=options.edit,
         )
         self.gates.add(gate)
         state.gates.setdefault(spec.id, []).append(gate.id)

@@ -294,6 +294,31 @@ async def test_REVIEW_QUEUE_6_gate_of_a_run_not_yet_waiting(api: Api) -> None:
     assert (r.status_code, r.json()["error"]["code"]) == (409, "not_waiting")
 
 
+async def test_REVIEW_14_edits_are_held_only_on_an_edit_gate(api: Api) -> None:
+    db = api.state.db
+    run = waiting_run(db, gates=["g1", "g2"]).run
+    gates = AppReviewGates(db)
+    gates.add(gate("g1", run))
+    gates.add(gate("g2", run).model_copy(update={"id": "g2", "edit": True}))
+    one = {
+        "target": {"scope": "album", "id": "a1"},
+        "album": "a1",
+        "changes": [{"field": "label", "op": "set", "old": "L", "new": "Apple"}],
+    }
+    r = await api.client.put("/api/reviews/g1/edits", json={"edits": [one]})
+    assert r.status_code == 400  # not an edit gate
+    r = await api.client.put("/api/reviews/g2/edits", json={"edits": [one]})
+    assert r.status_code == 200, r.text
+    assert r.json()["edits"][0]["changes"][0]["new"] == "Apple"
+    other = {**one, "album": "a9", "target": {"scope": "album", "id": "a9"}}
+    r = await api.client.put("/api/reviews/g2/edits", json={"edits": [other]})
+    assert r.status_code == 400  # not one of the gate's albums
+    listed = (await api.client.get("/api/review")).json()
+    g2 = next(i for i in listed if i["id"] == "g2")
+    assert g2["gate"]["edit"] is True
+    assert len(g2["gate"]["edits"]) == 1
+
+
 # -- REVIEW-QUEUE-7 -----------------------------------------------------------------------
 
 

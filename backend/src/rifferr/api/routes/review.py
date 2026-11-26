@@ -23,6 +23,7 @@ from rifferr.api.models import (
     CurrentValues,
     Decision,
     GateDecisionBody,
+    GateEditsBody,
     ImportDecisionBody,
     ImportLookupBody,
     JobQueued,
@@ -36,7 +37,7 @@ from rifferr.api.models import (
     UndoBody,
 )
 from rifferr.api.readonly import READ_ONLY_RESPONSES, ask
-from rifferr.api.state import State
+from rifferr.api.state import ServerState, State
 from rifferr.appdb import (
     HOLDING_CHANGESETS,
     AppChangeSets,
@@ -242,10 +243,24 @@ async def before_run(changeset_id: str, state: State) -> BeforeRun:
     journal), and the files' tags before the import. Reads only the app DB."""
     cs = _stored(state, changeset_id).changeset
     album_id = cs.album.id if cs.album is not None else None
-    result = BeforeRun(album_id=album_id)
     if cs.run_id is None or album_id is None:
-        return result
-    for entry in AppJournal(state.db).for_run(cs.run_id):
+        return BeforeRun(album_id=album_id)
+    return _before(state, cs.run_id, album_id)
+
+
+@router.get(
+    "/runs/{run_id}/albums/{album_id}/before",
+    response_model=BeforeRun,
+    responses=ERROR_RESPONSES,
+)
+async def album_before_run(run_id: str, album_id: str, state: State) -> BeforeRun:
+    """The same for any album of a run, e.g. at an ``edit: true`` gate (REVIEW-13)."""
+    return _before(state, run_id, album_id)
+
+
+def _before(state: ServerState, run_id: str, album_id: str) -> BeforeRun:
+    result = BeforeRun(album_id=album_id)
+    for entry in AppJournal(state.db).for_run(run_id):
         if entry.state not in ("applied", "partial") or entry.undo_of or entry.undone_by:
             continue
         for effect in entry.effects:
@@ -256,7 +271,7 @@ async def before_run(changeset_id: str, state: State) -> BeforeRun:
                 result.items.setdefault(effect.target.id, {}).setdefault(
                     effect.field, effect.before
                 )
-    for decision in AppImportDecisions(state.db).for_run(cs.run_id):
+    for decision in AppImportDecisions(state.db).for_run(run_id):
         if decision.album_id == album_id:
             result.folder = decision.items
     return result
@@ -358,6 +373,26 @@ async def decide_gate(gate_id: str, body: GateDecisionBody, state: State) -> Rev
     gate = AppReviewGates(state.db).get(gate_id)
     assert gate is not None
     return gate
+
+
+@router.put("/reviews/{gate_id}/edits", response_model=ReviewGate, responses=ERROR_RESPONSES)
+async def hold_gate_edits(gate_id: str, body: GateEditsBody, state: State) -> ReviewGate:
+    """Replace the edits held on an ``edit: true`` gate (S-REVIEW REVIEW-14). Nothing is
+    written until the album is continued (REVIEW-15)."""
+    gates = AppReviewGates(state.db)
+    gate = gates.get(gate_id)
+    if gate is None:
+        raise not_found(f"review gate {gate_id}")
+    if not gate.edit:
+        raise ApiError(400, "bad_request", "this review gate doesn't allow edits")
+    open_albums = set(gate.undecided())
+    wrong = sorted({e.album for e in body.edits} - open_albums)
+    if wrong:
+        raise ApiError(400, "bad_request", f"not undecided albums of the gate: {', '.join(wrong)}")
+    try:
+        return gates.set_edits(gate_id, body.edits)
+    except GateResolvedError as exc:
+        raise ApiError(409, "already_resolved", str(exc)) from None
 
 
 @router.get("/choices/{review_id}", response_model=ChoiceReview, responses=ERROR_RESPONSES)

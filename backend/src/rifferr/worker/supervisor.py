@@ -390,6 +390,20 @@ class WorkerSupervisor:
             if set(targets) != set(undecided) and not AppLanes(self.db).load(gate.run_id):
                 raise GateAlbumsError("this run has no lanes; decide the whole gate")
         final = set(targets) == set(undecided)
+        held = [e for e in gate.edits if e.album in targets]
+        if decision == "continue" and held:
+            # REVIEW-15: write the held edits first; the worker then decides the albums.
+            apply: dict[str, JsonValue] = {
+                "gate_id": gate_id,
+                "albums": list[JsonValue](targets),
+                "by": by,
+                "note": note,
+            }
+            self.db.submit_job(gate.profile, "gate_apply", apply, gate.run_id)
+            await self._wake(gate.profile)
+            return
+        if decision == "reject" and held:  # REVIEW-15: discarded, never written
+            gates.set_edits(gate_id, [e for e in gate.edits if e.album not in targets])
         verdict: Literal["continued", "rejected"] = (
             "continued" if decision == "continue" else "rejected"
         )
