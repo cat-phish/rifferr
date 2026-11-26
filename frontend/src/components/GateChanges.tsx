@@ -131,8 +131,8 @@ export function GateChanges({ album, profile }: { album: GateAlbum; profile: str
         <Table.Thead>
           <Table.Tr>
             <Table.Th w={180}>Changed by this run</Table.Th>
-            <Table.Th>Where</Table.Th>
             <Table.Th>Before → after</Table.Th>
+            <Table.Th>Where</Table.Th>
             <Table.Th>By step</Table.Th>
           </Table.Tr>
         </Table.Thead>
@@ -141,17 +141,6 @@ export function GateChanges({ album, profile }: { album: GateAlbum; profile: str
             <Table.Tr key={r.key} data-testid="gate-change-row">
               <Table.Td ff="monospace" data-testid="gate-change-field">
                 <FieldName row={r} />
-              </Table.Td>
-              <Table.Td data-testid="gate-change-where">
-                {r.tracks.length > 1 ? (
-                  <Tooltip label={r.tracks.join("\n")} style={{ whiteSpace: "pre-line" }}>
-                    <Text span fz="sm" td="underline dotted">
-                      {r.where}
-                    </Text>
-                  </Tooltip>
-                ) : (
-                  r.where
-                )}
               </Table.Td>
               <Table.Td data-testid="gate-change">
                 {r.field === ART_FIELD ? (
@@ -166,6 +155,17 @@ export function GateChanges({ album, profile }: { album: GateAlbum; profile: str
                     new={formatValue(r.after)}
                     empty="—"
                   />
+                )}
+              </Table.Td>
+              <Table.Td data-testid="gate-change-where">
+                {r.tracks.length > 1 ? (
+                  <Tooltip label={r.tracks.join("\n")} style={{ whiteSpace: "pre-line" }}>
+                    <Text span fz="sm" td="underline dotted">
+                      {r.where}
+                    </Text>
+                  </Tooltip>
+                ) : (
+                  r.where
                 )}
               </Table.Td>
               <Table.Td>
