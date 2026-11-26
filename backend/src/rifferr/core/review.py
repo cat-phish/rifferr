@@ -24,6 +24,16 @@ REJECTED_AT_REVIEW = "rejected_at_review"
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
 
 
+class GateChange(FieldEffect):
+    """One net change of the run, with the steps that made it (REVIEW-4)."""
+
+    steps: list[str] = Field(
+        default_factory=list[str],
+        description="Ids of the steps whose ChangeSets changed this field, in run order; "
+        "'manual' for an edit made by hand",
+    )
+
+
 class GateAlbum(BaseModel):
     """One album as the reviewer sees it at the gate (REVIEW-3)."""
 
@@ -33,9 +43,13 @@ class GateAlbum(BaseModel):
     label: str
     message: str | None = None
     shown: dict[str, FieldValue] = Field(default_factory=dict[str, FieldValue])
-    changes: list[FieldEffect] = Field(
-        default_factory=list[FieldEffect],
+    changes: list[GateChange] = Field(
+        default_factory=list[GateChange],
         description="The run's changes to the album and its items so far (REVIEW-4)",
+    )
+    items: dict[str, str] = Field(
+        default_factory=dict[str, str],
+        description="Track label of each item id, e.g. '3. Come Together' (REVIEW-4)",
     )
     conflicted: list[str] = Field(
         default_factory=list[str], description="Ids of the run's conflicted ChangeSets"

@@ -2187,24 +2187,6 @@ export interface components {
             penalized: boolean;
         };
         /**
-         * FieldEffect
-         * @description What applying actually changed, including propagated item fields (CHANGESET-11).
-         */
-        FieldEffect: {
-            /** After */
-            after: boolean | number | string | string[] | null;
-            /** Before */
-            before: boolean | number | string | string[] | null;
-            /**
-             * Existed Before
-             * @default true
-             */
-            existed_before: boolean;
-            /** Field */
-            field: string;
-            target: components["schemas"]["TargetRef"];
-        };
-        /**
          * FileEffect
          * @description One file of a FileChangeSet: the ``files`` change kind (S-LIBRARY-MOVE).
          *
@@ -2274,7 +2256,7 @@ export interface components {
              * Changes
              * @description The run's changes to the album and its items so far (REVIEW-4)
              */
-            changes?: components["schemas"]["FieldEffect"][];
+            changes?: components["schemas"]["GateChange"][];
             /**
              * Conflicted
              * @description Ids of the run's conflicted ChangeSets
@@ -2285,6 +2267,13 @@ export interface components {
              * @default false
              */
             imported_by_run: boolean;
+            /**
+             * Items
+             * @description Track label of each item id, e.g. '3. Come Together' (REVIEW-4)
+             */
+            items?: {
+                [key: string]: string;
+            };
             /** Label */
             label: string;
             /** Message */
@@ -2293,6 +2282,29 @@ export interface components {
             shown?: {
                 [key: string]: boolean | number | string | string[] | null;
             };
+            target: components["schemas"]["TargetRef"];
+        };
+        /**
+         * GateChange
+         * @description One net change of the run, with the steps that made it (REVIEW-4).
+         */
+        GateChange: {
+            /** After */
+            after: boolean | number | string | string[] | null;
+            /** Before */
+            before: boolean | number | string | string[] | null;
+            /**
+             * Existed Before
+             * @default true
+             */
+            existed_before: boolean;
+            /** Field */
+            field: string;
+            /**
+             * Steps
+             * @description Ids of the steps whose ChangeSets changed this field, in run order; 'manual' for an edit made by hand
+             */
+            steps?: string[];
             target: components["schemas"]["TargetRef"];
         };
         /** GateDecisionBody */

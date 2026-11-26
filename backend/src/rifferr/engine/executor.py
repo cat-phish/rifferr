@@ -92,7 +92,13 @@ from rifferr.engine.prune import (
     PruneDecisionStore,
     RemovalJournal,
 )
-from rifferr.engine.review import GateStore, InMemoryGateStore, conflicted_for, fold_changes
+from rifferr.engine.review import (
+    GateStore,
+    InMemoryGateStore,
+    conflicted_for,
+    fold_changes,
+    track_labels,
+)
 from rifferr.engine.run import PassRecord, Run, RunState, Scalar, StepRecord
 from rifferr.engine.steps import (
     ChoiceRequest,
@@ -1145,7 +1151,13 @@ class Engine:
     ) -> str:
         run = state.run
         entries = self.journal.for_run(run.id)
-        changesets = self.changesets.for_run(run.id, "conflicted")
+        every = self.changesets.for_run(run.id)
+        changesets = [s for s in every if s.state == "conflicted"]
+        step_of = {
+            s.changeset.id: s.changeset.step_id
+            or ("manual" if s.changeset.source.kind == "manual" else s.changeset.source.name)
+            for s in every
+        }
         albums: list[GateAlbum] = []
         for request in requests:
             album = snapshots.album(request.album_id)
@@ -1157,7 +1169,8 @@ class Engine:
                     label=label(album),
                     message=request.message,
                     shown=dict(request.shown),
-                    changes=fold_changes(entries, album),
+                    changes=fold_changes(entries, album, step_of),
+                    items=track_labels(album),
                     conflicted=conflicted_for(changesets, album),
                     imported_by_run=album.fields.get(RUN_MARKER) == run.id,
                 )

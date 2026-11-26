@@ -2310,84 +2310,6 @@
         "title": "FieldComparison",
         "type": "object"
       },
-      "FieldEffect": {
-        "additionalProperties": false,
-        "description": "What applying actually changed, including propagated item fields (CHANGESET-11).",
-        "properties": {
-          "after": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "integer"
-              },
-              {
-                "type": "number"
-              },
-              {
-                "type": "string"
-              },
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "After"
-          },
-          "before": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "integer"
-              },
-              {
-                "type": "number"
-              },
-              {
-                "type": "string"
-              },
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Before"
-          },
-          "existed_before": {
-            "default": true,
-            "title": "Existed Before",
-            "type": "boolean"
-          },
-          "field": {
-            "title": "Field",
-            "type": "string"
-          },
-          "target": {
-            "$ref": "#/components/schemas/TargetRef"
-          }
-        },
-        "required": [
-          "target",
-          "field",
-          "before",
-          "after"
-        ],
-        "title": "FieldEffect",
-        "type": "object"
-      },
       "FileEffect": {
         "additionalProperties": false,
         "description": "One file of a FileChangeSet: the ``files`` change kind (S-LIBRARY-MOVE).\n\n``size`` and ``sha256`` describe the source when planned; they are what the copy\nis verified against (LIBRARY-MOVE-7, -8). ``state`` is journaled per file (-9).",
@@ -2543,7 +2465,7 @@
           "changes": {
             "description": "The run's changes to the album and its items so far (REVIEW-4)",
             "items": {
-              "$ref": "#/components/schemas/FieldEffect"
+              "$ref": "#/components/schemas/GateChange"
             },
             "title": "Changes",
             "type": "array"
@@ -2560,6 +2482,14 @@
             "default": false,
             "title": "Imported By Run",
             "type": "boolean"
+          },
+          "items": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Track label of each item id, e.g. '3. Come Together' (REVIEW-4)",
+            "title": "Items",
+            "type": "object"
           },
           "label": {
             "title": "Label",
@@ -2614,6 +2544,92 @@
           "label"
         ],
         "title": "GateAlbum",
+        "type": "object"
+      },
+      "GateChange": {
+        "additionalProperties": false,
+        "description": "One net change of the run, with the steps that made it (REVIEW-4).",
+        "properties": {
+          "after": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After"
+          },
+          "before": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before"
+          },
+          "existed_before": {
+            "default": true,
+            "title": "Existed Before",
+            "type": "boolean"
+          },
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "steps": {
+            "description": "Ids of the steps whose ChangeSets changed this field, in run order; 'manual' for an edit made by hand",
+            "items": {
+              "type": "string"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "target": {
+            "$ref": "#/components/schemas/TargetRef"
+          }
+        },
+        "required": [
+          "target",
+          "field",
+          "before",
+          "after"
+        ],
+        "title": "GateChange",
         "type": "object"
       },
       "GateDecisionBody": {

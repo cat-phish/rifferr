@@ -11,6 +11,8 @@ const ADDED = { color: tc("diffAdded"), fontWeight: 600 } as const;
  * and struck through, added parts green. Text nodes only (REVIEW-QUEUE-17).
  * An unchanged value is dimmed (UI-REFRESH-5).
  *
+ * Values with nothing in common show as `old → new` instead of an inline diff.
+ *
  * `side` picks what to show: `both` (one cell, removed then added), or `old` / `new`
  * for side-by-side columns, where each shows its own value with its own changes marked.
  */
@@ -37,6 +39,23 @@ export function Diff({
   }
   const showRemoved = side !== "new";
   const showAdded = side !== "old";
+  // Nothing in common (a number, a date, a new value): one value replaced by another,
+  // shown apart so they don't read as one (REVIEW-4).
+  if (side === "both" && !segs.some((s) => s.kind === "same" && s.text.trim() !== "")) {
+    return (
+      <Text span fz={fz} data-diff="replaced">
+        <span style={REMOVED} data-seg="removed">
+          {old || empty}
+        </span>
+        <span style={{ color: "var(--mantine-color-dimmed)" }} aria-label="becomes">
+          {" → "}
+        </span>
+        <span style={ADDED} data-seg="added">
+          {next || empty}
+        </span>
+      </Text>
+    );
+  }
   return (
     <Text span fz={fz} data-diff="changed">
       {showRemoved && old === "" && (

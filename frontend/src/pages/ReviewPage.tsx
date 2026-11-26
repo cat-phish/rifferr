@@ -28,6 +28,7 @@ import { PruneDecisionView } from "../components/PruneDecisionView";
 import { ActionsSlotContext, HeaderActions } from "../components/HeaderActions";
 import { DecidedContext, ItemIdContext, jobOf } from "../components/Decided";
 import { Diff } from "../components/Diff";
+import { GATE_TABLE, GateChanges } from "../components/GateChanges";
 import { useFold } from "../components/Fold";
 import { NoteField } from "../components/NoteField";
 import { TokenBadge } from "../components/MatchBadge";
@@ -1339,6 +1340,7 @@ function GateCard({
                     }}
                   />
                 )}
+                <GateChanges album={album} />
               </Stack>
             ) : (
               <GateAlbumView album={album} />
@@ -1440,10 +1442,8 @@ function GateCard({
 function GateAlbumView({ album }: { album: GateAlbum }) {
   const { profile } = useProfile();
   const shown = Object.entries(album.shown ?? {});
-  const changes = album.changes ?? [];
   const conflicted = album.conflicted ?? [];
   const foldShown = useFold(shown);
-  const foldChanges = useFold(changes);
   return (
     <Stack gap={4} data-testid="gate-album">
       <Group gap="xs">
@@ -1452,7 +1452,7 @@ function GateAlbumView({ album }: { album: GateAlbum }) {
       </Group>
       {album.message && <Text size="sm">{album.message}</Text>}
       {shown.length > 0 && (
-        <Table fz="sm" withRowBorders={false} verticalSpacing={2} data-testid="gate-shown">
+        <Table {...GATE_TABLE} data-testid="gate-shown">
           <Table.Tbody>
             {foldShown.shown.map(([field, value]) => (
               <Table.Tr key={field}>
@@ -1466,41 +1466,7 @@ function GateAlbumView({ album }: { album: GateAlbum }) {
         </Table>
       )}
       {foldShown.control}
-      {changes.length > 0 ? (
-        <>
-          <Table fz="sm" withRowBorders={false} verticalSpacing={2} data-testid="gate-changes">
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>Changed by this run</Table.Th>
-                <Table.Th>Field</Table.Th>
-                <Table.Th>Before → after</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {foldChanges.shown.map((c) => (
-                <Table.Tr key={`${targetKey(c.target)}/${c.field}`}>
-                  <Table.Td>
-                    {c.target.scope === "album" ? "album" : `item ${c.target.id}`}
-                  </Table.Td>
-                  <Table.Td ff="monospace">{c.field}</Table.Td>
-                  <Table.Td data-testid="gate-change">
-                    <Diff
-                      old={c.existed_before ? formatValue(c.before) : ""}
-                      new={formatValue(c.after)}
-                      empty="—"
-                    />
-                  </Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-          {foldChanges.control}
-        </>
-      ) : (
-        <Text size="xs" c="dimmed">
-          No tag changes by this run so far.
-        </Text>
-      )}
+      <GateChanges album={album} />
       {conflicted.length > 0 && (
         <Text size="sm" style={{ color: tc("warning") }}>
           ⚠ Conflicted ChangeSets:{" "}

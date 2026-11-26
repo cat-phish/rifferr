@@ -261,6 +261,26 @@ async def test_REVIEW_4_changes_so_far_fold_the_runs_journal(h: Harness) -> None
     assert gated.label == "Artist - Hits3"
 
 
+async def test_REVIEW_4_each_change_names_its_steps_and_tracks_their_label(h: Harness) -> None:
+    run = h.run(
+        wf(
+            "{id: one, uses: test.propose, apply: auto, with: {set: {album: Hits2}}}",
+            "{id: two, uses: test.propose, apply: auto, with: {set: {album: Hits3}}}",
+            "{id: items, uses: test.propose, apply: auto, with: {item_set: {title: New}}}",
+            GATE,
+        )
+    )
+    album(h, run, "Hits")
+    await h.engine.execute(run)
+    (gate,) = gates(h)
+    (gated,) = gate.albums
+    steps = {(c.target.scope, c.field): c.steps for c in gated.changes}
+    assert steps[("album", "album")] == ["one", "two"]
+    assert steps[("item", "title")] == ["items"]
+    item = next(c.target.id for c in gated.changes if c.target.scope == "item")
+    assert gated.items[item].startswith("1. ")
+
+
 async def test_REVIEW_4_undone_entries_are_left_out(h: Harness) -> None:
     run = h.run(wf("{id: one, uses: test.propose, apply: auto, with: {set: {year: 2002}}}"))
     album(h, run, "A", year=2001)

@@ -33,3 +33,10 @@ test("UI_REFRESH_4_side_by_side_columns_show_their_own_changes", () => {
   expect(old).toHaveTextContent("01 First.flac");
   expect(old.querySelector('[data-seg="added"]')).toBeNull();
 });
+
+test("REVIEW_4 values with nothing in common show apart as old → new", () => {
+  const cell = show("0", "1982");
+  expect(cell).toHaveTextContent("0 → 1982");
+  expect(cell.querySelector('[data-seg="removed"]')).toHaveTextContent(/^0$/);
+  expect(cell.querySelector('[data-seg="added"]')).toHaveTextContent(/^1982$/);
+});
