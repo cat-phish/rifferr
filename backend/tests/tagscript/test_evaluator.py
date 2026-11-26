@@ -5,9 +5,11 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 
 from rifferr.backends.fake import FakeBackend
 from rifferr.core.changeset import TargetRef
+from rifferr.core.facts import ArtistNames
 from rifferr.core.snapshot import AlbumSnapshot
 from rifferr.tagscript.evaluator import (
     FieldDiff,
@@ -209,6 +211,27 @@ def test_TAGSCRIPT_9_split_and_join() -> None:
 def test_TAGSCRIPT_9_split_on_a_list_flattens() -> None:
     r = run(library(), {"set": {"genres": ["a/b", "c"]}}, {"split": {"field": "genres", "by": "/"}})
     assert diffs(r)[(r.album.id, "genres")] == ["a", "b", "c"]
+
+
+def test_TAGSCRIPT_9_split_by_joiners_keeps_known_names() -> None:
+    backend = library()
+    backend.names = ArtistNames(joiners=(" & ", " / ", " + "), names=("AC/DC", "Simon & Garfunkel"))
+    r = run(
+        backend,
+        {"set": {"artists_text": "A & B / C + Simon & Garfunkel"}},
+        {"split": {"field": "artists_text", "by_joiners": True, "into": "artists"}},
+        {"set": {"band": "AC/DC"}},
+        {"split": {"field": "band", "by_joiners": True, "into": "bands"}},
+    )
+    d = diffs(r)
+    assert d[(r.album.id, "artists")] == ["A", "B", "C", "Simon & Garfunkel"]
+    assert d[(r.album.id, "bands")] == ["AC/DC"]
+
+
+@pytest.mark.parametrize("spec", [{"field": "a"}, {"field": "a", "by": ";", "by_joiners": True}])
+def test_TAGSCRIPT_9_split_needs_exactly_one_way(spec: dict[str, Any]) -> None:
+    with pytest.raises(ValidationError, match="exactly one"):
+        TagScript.model_validate({"actions": [{"split": spec}]})
 
 
 def test_TAGSCRIPT_9_join_leaves_strings() -> None:

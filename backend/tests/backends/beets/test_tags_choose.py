@@ -7,6 +7,8 @@ import pytest
 
 from rifferr.backends.beets.genres import genre_root, tree_path
 from rifferr.core.selection import Selection
+from rifferr.tagscript.evaluator import run_script
+from rifferr.tagscript.models import TagScript
 from tests.backends.beets.conftest import BeetsEnv, seed
 
 RULES = '# known bands\njoiners: [" & ", "/"]\nnames: [Simon & Garfunkel]  # duo\n'
@@ -56,3 +58,25 @@ def test_TAGS_CHOOSE_13_without_a_rules_file_says_how_to_set_one(beets_env: Beet
     backend = beets_env.backend("")
     with pytest.raises(ValueError, match=r"rifferr\.artist_names"):
         backend.add_artist_name("AC/DC")
+
+
+def test_TAGSCRIPT_9_split_by_joiners_uses_the_profile_rules(beets_env: BeetsEnv) -> None:
+    (beets_env.beetsdir / "artist-names.yaml").write_text(RULES)
+    backend = beets_env.backend("rifferr:\n  artist_names: artist-names.yaml\n")
+    seed(
+        backend,
+        [{"albumartist": "A & B/Simon & Garfunkel", "album": "X", "items": [{"title": "t"}]}],
+    )
+    (album,) = backend.query(Selection())
+    script = TagScript.model_validate(
+        {
+            "actions": [
+                {"copy": {"from": "albumartist", "to": "albumartists"}},
+                {"split": {"field": "albumartists", "by_joiners": True}},
+            ]
+        }
+    )
+    result = run_script(script, album, backend)
+    assert result.error is None
+    (diff,) = [d for d in result.diffs() if d.field == "albumartists"]
+    assert diff.after == ["A", "B", "Simon & Garfunkel"]

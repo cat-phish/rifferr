@@ -1073,9 +1073,23 @@
       "additionalProperties": false,
       "properties": {
         "by": {
-          "minLength": 1,
-          "title": "By",
-          "type": "string"
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "By"
+        },
+        "by_joiners": {
+          "default": false,
+          "description": "Cut at the artist-name rules' joiners, outside known names (C-ALBUM-FACTS ALBUM-FACTS-7) instead of at `by`",
+          "title": "By Joiners",
+          "type": "boolean"
         },
         "field": {
           "title": "Field",
@@ -1100,8 +1114,7 @@
         }
       },
       "required": [
-        "field",
-        "by"
+        "field"
       ],
       "title": "SplitSpec",
       "type": "object"

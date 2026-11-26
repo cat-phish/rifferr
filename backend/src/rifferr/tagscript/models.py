@@ -101,9 +101,20 @@ class SplitSpec(BaseModel):
     model_config = _SPEC
 
     field: FieldName
-    by: Annotated[str, Field(min_length=1)]
+    by: Annotated[str, Field(min_length=1)] | None = None
+    by_joiners: bool = Field(
+        default=False,
+        description="Cut at the artist-name rules' joiners, outside known names "
+        "(C-ALBUM-FACTS ALBUM-FACTS-7) instead of at `by`",
+    )
     into: FieldName | None = None
     strip: bool = True
+
+    @model_validator(mode="after")
+    def _one_way(self) -> Self:
+        if (self.by is None) == (not self.by_joiners):
+            raise ValueError("split needs exactly one of 'by' or 'by_joiners: true'")
+        return self
 
 
 class JoinSpec(BaseModel):

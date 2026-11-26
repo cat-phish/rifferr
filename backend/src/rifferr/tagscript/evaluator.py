@@ -18,7 +18,7 @@ from typing import Protocol
 import regex
 
 from rifferr.core.changeset import TargetRef, same_value
-from rifferr.core.facts import PREFIX
+from rifferr.core.facts import PREFIX, ArtistNames
 from rifferr.core.snapshot import AlbumSnapshot, FieldValue, ItemSnapshot
 from rifferr.tagscript.models import (
     PLACEHOLDER,
@@ -58,6 +58,10 @@ class Evaluator(Protocol):
 
     def album_facts(self, album: AlbumSnapshot) -> dict[str, FieldValue]:
         """Computed facts of ``album`` (C-ALBUM-FACTS), from its working values."""
+        ...
+
+    def artist_names(self) -> ArtistNames:
+        """The artist-name rules (ALBUM-FACTS-7), for ``split: {by_joiners: true}``."""
         ...
 
 
@@ -396,7 +400,16 @@ def _apply(
         s = action.split
         value = f.get(s.field)
         if isinstance(value, str | list):
-            put(s.into or s.field, split_values(value, s.by, strip=s.strip))
+            if s.by is not None:
+                parts = split_values(value, s.by, strip=s.strip)
+            else:  # by_joiners (TAGSCRIPT-9)
+                names = ev.artist_names()
+                parts = [
+                    p
+                    for v in ([value] if isinstance(value, str) else value)
+                    for p in names.split(v)
+                ]
+            put(s.into or s.field, parts)
     elif isinstance(action, JoinAction):
         j = action.join
         value = f.get(j.field)

@@ -8,6 +8,7 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from rifferr.backends.fake import FakeBackend
+from rifferr.core.facts import ArtistNames
 from rifferr.core.selection import Selection
 from rifferr.tagscript.evaluator import check_idempotence, run_script
 from rifferr.tagscript.models import TagScript
@@ -140,3 +141,27 @@ def test_TAGSCRIPT_19_replace_check_reports_exactly_second_pass_changes(
     second = run_script(s, snapshot, fb, start=first.working)
     changed = second.working != first.working
     assert check_idempotence(s, first, fb).ok == (not changed)
+
+
+@SETTINGS
+@given(
+    albums,
+    field,
+    st.none() | field,
+    st.lists(st.sampled_from([" & ", " / ", ", ", " x ", " and ", " + ", "; ", " - "]), max_size=4),
+    st.lists(text.filter(lambda t: t.strip() != ""), max_size=2),
+)
+def test_TAGSCRIPT_19_split_by_joiners_is_idempotent(
+    album: dict[str, Any], f: str, into: str | None, joiners: list[str], known: list[str]
+) -> None:
+    fb = backend(album, ["t"])
+    fb.names = ArtistNames(joiners=tuple(joiners), names=tuple(known))
+    (snapshot,) = fb.query(Selection())
+    s = TagScript.model_validate(
+        {"actions": [{"split": {"field": f, "by_joiners": True, "into": into}}]}
+    )
+    first = run_script(s, snapshot, fb)
+    if first.error is not None:
+        return
+    check = check_idempotence(s, first, fb)
+    assert check.ok, (f, into, joiners, known, check.issues, check.error)
