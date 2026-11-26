@@ -102,7 +102,8 @@ steps:
     with:
       command: ftintitle
   # Release-type suffixes live in their own file, so other import workflows can call
-  # them too. Its steps run here as suffixes/release-types and suffixes/compilations.
+  # them too. Its steps run here as suffixes/release-types and suffixes/likely-ep;
+  # compilation and anthology suffixes come from album-kind below.
   - id: suffixes
     uses: workflow
     with:
@@ -115,7 +116,9 @@ steps:
   #   - collaboration when most tracks credit several artists (featured artists are in the
   #     titles by now),
   #   - split with 2 to 4 album artists,
-  #   - soundtrack when beets says so, otherwise nothing.
+  #   - soundtrack when beets says so,
+  #   - compilation when beets flags various artists (`comp`), anthology for one
+  #     artist's compilation, otherwise nothing.
   # Any option can be chosen, or the fields typed in. The album artist and its sort name
   # become the kind's label; the individual artists go to the multi-valued `albumartists`
   # (from MusicBrainz, or the album artist split at its joiners; editable in review).
@@ -166,12 +169,29 @@ steps:
                 albumkind: soundtrack
                 albumartist: "{{ vars.label_soundtrack }}"
                 albumartist_sort: "{{ vars.label_soundtrack }}"
+        # Compilation vs anthology (author, 2026-11-25): a compilation collects tracks by
+        # various artists (beets' `comp` flag) and sorts under the Compilation label like
+        # splits; an anthology collects one artist's earlier releases, best-ofs, demos or
+        # tapes and stays under its album artist. MusicBrainz calls both "compilation"
+        # (`albumtypes`), so `comp` tells them apart. Either one ends the album name with
+        # its suffix, " (Compilation)" or " (Anthology)", replacing the other.
         - label: Compilation
+          suggest: { when: "comp:1" }
           actions:
+            - &drop-collection-suffix
+              replace: { fields: [album], regex: '\s*\((?:Compilation|Anthology)\)$', with: "" }
             - set:
+                album: "$album (Compilation)"
                 albumkind: compilation
                 albumartist: "{{ vars.label_compilation }}"
                 albumartist_sort: "{{ vars.label_compilation }}"
+        - label: Anthology
+          suggest: { when: "albumtypes:compilation comp:0" }
+          actions:
+            - *drop-collection-suffix
+            - set:
+                album: "$album (Anthology)"
+                albumkind: anthology
       custom: [albumartist, albumartists, albumkind]
   # Checklist line 10: splits and collaborations carry their artists in the album name,
   # "A / B - Split EP" (author, 2026-11-23). Before path-characters, which turns the "/"

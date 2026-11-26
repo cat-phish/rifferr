@@ -3,9 +3,9 @@
 # (Compilation) appended if appropriate").
 #
 # Decided by the author (2026-11-13): albums whose beets `albumtypes` (MusicBrainz
-# secondary types) include compilation get " (Compilation)", always through review
-# (the workflow step uses `apply: review`). Whether it should be an Anthology instead
-# is a human call: reject the proposal and fix the name in the tag grid.
+# secondary types) include compilation get " (Compilation)". The foobar-style workflow no
+# longer runs this script: its album-kind choice sets " (Compilation)" or " (Anthology)"
+# (author, 2026-11-25). Kept as a standalone script for other workflows.
 scope: album
 idempotence: fail
 actions:

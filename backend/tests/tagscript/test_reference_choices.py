@@ -116,10 +116,17 @@ def chosen(backend: FakeBackend, label: str) -> dict[str, Any]:
             [],
             "Compilation",
             {
+                "album": "X (Compilation)",
                 "albumkind": "compilation",
                 "albumartist": "Compilation",
                 "albumartist_sort": "Compilation",
             },
+        ),
+        (
+            "Modern Girlfriends",
+            [],
+            "Anthology",
+            {"album": "X (Anthology)", "albumkind": "anthology"},
         ),
     ],
 )
@@ -134,7 +141,7 @@ def test_TAGS_CHOOSE_5_album_kind_options(
 @given(
     st.lists(st.sampled_from(["A", "B", "C D"]), min_size=1, max_size=3),
     st.sampled_from([" & ", " / ", ", "]),
-    st.sampled_from(["Split", "Collaboration", "Soundtrack", "Compilation"]),
+    st.sampled_from(["Split", "Collaboration", "Soundtrack", "Compilation", "Anthology"]),
     st.booleans(),
 )
 def test_TAGS_CHOOSE_5_album_kind_options_are_idempotent(
@@ -142,6 +149,29 @@ def test_TAGS_CHOOSE_5_album_kind_options_are_idempotent(
 ) -> None:
     backend = backend_for(joiner.join(names), albumartists=names if from_mb else [])
     chosen(backend, label)
+
+
+def test_TAGS_CHOOSE_5_anthology_replaces_the_compilation_suffix() -> None:
+    backend = backend_for("Modern Girlfriends", album="Tapes (Compilation)")
+    assert chosen(backend, "Anthology") == {"album": "Tapes (Anthology)", "albumkind": "anthology"}
+
+
+@pytest.mark.parametrize(
+    ("comp", "suggested"),
+    [(True, "Compilation"), (False, "Anthology")],
+)
+def test_TAGS_CHOOSE_2_compilation_for_various_artists_anthology_for_one(
+    comp: bool, suggested: str
+) -> None:
+    backend = backend_for("Someone", comp=comp, albumtypes=["album", "compilation"])
+    (album,) = backend.query(Selection())
+    params = step_params("album-kind")
+    first = next(
+        o.label
+        for o in params.options
+        if o.suggest is not None and backend.matches(o.suggest.when, album)
+    )
+    assert first == suggested
 
 
 def test_TAGS_CHOOSE_9_genre_rules_file_parses_and_ranks() -> None:

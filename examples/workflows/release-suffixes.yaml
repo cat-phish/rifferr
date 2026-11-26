@@ -4,7 +4,7 @@
 # It can also run on its own, e.g. on albums already in the library. Trust it on its
 # own (`rifferr trust`): trusting a workflow that calls it doesn't trust it.
 name: Release-type suffixes
-description: EP / Single and Compilation suffixes from the release type.
+description: EP / Single suffixes from the release type (compilations get theirs from album-kind).
 vars:
   ep_max_tracks:
     description: Albums with at most this many tracks may be EPs (likely-ep)
@@ -28,9 +28,3 @@ steps:
     apply: auto
     with:
       script: release-types.yaml
-  # " (Compilation)" waits for review: some are Anthologies.
-  - id: compilations
-    uses: tags.script
-    apply: review
-    with:
-      script: compilation.yaml

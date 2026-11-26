@@ -119,7 +119,9 @@ a pathological regex is bounded by the read limit.
 3. Which files and words show a vinyl rip in your downloads (`*.log` with "vinyl"? `*.txt`
    rip notes? a `vinyl` folder name?). The example config above is a guess.
 4. Anthology: same suffix style as Compilation (" (Anthology)"), and does it set
-   `albumtype`/`albumkind` too?
+   `albumtype`/`albumkind` too? **Answered (author, 2026-11-25):** album-kind offers
+   Compilation (various artists, beets `comp`) and Anthology (one artist's compilation),
+   each setting its suffix and `albumkind`; anthologies stay under their album artist.
 5. Should 24-bit stay folder-only (B-046)? If yes, coverage row 12 counts 24-bit as done.
 
 ## Tasks
