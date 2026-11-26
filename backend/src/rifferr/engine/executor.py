@@ -1171,6 +1171,7 @@ class Engine:
                     shown=dict(request.shown),
                     changes=fold_changes(entries, album, step_of),
                     items=track_labels(album),
+                    fields=dict(album.fields),
                     conflicted=conflicted_for(changesets, album),
                     imported_by_run=album.fields.get(RUN_MARKER) == run.id,
                 )

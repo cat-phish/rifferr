@@ -47,6 +47,11 @@ class GateAlbum(BaseModel):
         default_factory=list[GateChange],
         description="The run's changes to the album and its items so far (REVIEW-4)",
     )
+    fields: dict[str, FieldValue] = Field(
+        default_factory=dict[str, FieldValue],
+        description="The album's fields when the gate opened, e.g. to show a whole date "
+        "when only its day changed (REVIEW-4)",
+    )
     items: dict[str, str] = Field(
         default_factory=dict[str, str],
         description="Track label of each item id, e.g. '3. Come Together' (REVIEW-4)",

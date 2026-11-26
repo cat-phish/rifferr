@@ -1372,7 +1372,7 @@ function GateCard({
                     }}
                   />
                 )}
-                <GateChanges album={album} />
+                <GateChanges album={album} profile={gate.profile} />
               </Stack>
             ) : (
               <GateAlbumView album={album} />
@@ -1498,7 +1498,7 @@ function GateAlbumView({ album }: { album: GateAlbum }) {
         </Table>
       )}
       {foldShown.control}
-      <GateChanges album={album} />
+      <GateChanges album={album} profile={profile ?? ""} />
       {conflicted.length > 0 && (
         <Text size="sm" style={{ color: tc("warning") }}>
           ⚠ Conflicted ChangeSets:{" "}

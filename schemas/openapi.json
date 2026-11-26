@@ -2478,6 +2478,36 @@
             "title": "Conflicted",
             "type": "array"
           },
+          "fields": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "description": "The album's fields when the gate opened, e.g. to show a whole date when only its day changed (REVIEW-4)",
+            "title": "Fields",
+            "type": "object"
+          },
           "imported_by_run": {
             "default": false,
             "title": "Imported By Run",

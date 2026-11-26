@@ -2263,6 +2263,13 @@ export interface components {
              */
             conflicted?: string[];
             /**
+             * Fields
+             * @description The album's fields when the gate opened, e.g. to show a whole date when only its day changed (REVIEW-4)
+             */
+            fields?: {
+                [key: string]: boolean | number | string | string[] | null;
+            };
+            /**
              * Imported By Run
              * @default false
              */

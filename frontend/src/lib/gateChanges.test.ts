@@ -72,3 +72,28 @@ test("REVIEW_4 different steps or values stay separate rows", () => {
   );
   expect(rows.map((r) => r.where)).toEqual(["album", "1. Song 1", "2. Song 2"]);
 });
+
+test("REVIEW_4 a change to beets' date fields reads as one date", () => {
+  const a = {
+    ...album(
+      [
+        change("album", "a1", "day", 29, 9),
+        change("item", "item-1", "day", 29, 9),
+        change("album", "a1", "releasedate", null, "2018-06-29"),
+      ],
+      1,
+    ),
+    fields: { year: 2018, month: 6, day: 9 },
+  };
+  const rows = groupChanges(a);
+  expect(rows.map((r) => r.label ?? r.field)).toEqual(["date", "releasedate"]);
+  const [date] = rows;
+  expect([date?.before, date?.after]).toEqual(["2018-06-29", "2018-06-09"]);
+  expect(date?.fields).toEqual(["day"]);
+  expect(date?.where).toBe("album and 1. Song 1");
+});
+
+test("REVIEW_4 a date change on tracks only stays its own row", () => {
+  const rows = groupChanges(album([change("item", "item-1", "day", 29, 9)], 2));
+  expect(rows.map((r) => [r.label, r.field])).toEqual([[undefined, "day"]]);
+});

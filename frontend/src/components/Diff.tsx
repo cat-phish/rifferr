@@ -1,6 +1,6 @@
 import { Text } from "@mantine/core";
 import { useMemo } from "react";
-import { diffText } from "../lib/diff";
+import { type DiffSegment, diffText } from "../lib/diff";
 import { tc } from "../theme";
 
 const REMOVED = { color: tc("diffRemoved"), textDecoration: "line-through" } as const;
@@ -11,11 +11,17 @@ const ADDED = { color: tc("diffAdded"), fontWeight: 600 } as const;
  * and struck through, added parts green. Text nodes only (REVIEW-QUEUE-17).
  * An unchanged value is dimmed (UI-REFRESH-5).
  *
- * Values with nothing in common show as `old → new` instead of an inline diff.
+ * Values that are mostly different show as `old → new` instead of an inline diff.
  *
  * `side` picks what to show: `both` (one cell, removed then added), or `old` / `new`
  * for side-by-side columns, where each shows its own value with its own changes marked.
  */
+/** At least 60% of the longer value, and 3 characters, unchanged (REVIEW-4). */
+export function mostlySame(segs: DiffSegment[], old: string, next: string): boolean {
+  const same = segs.filter((s) => s.kind === "same").reduce((n, s) => n + s.text.trim().length, 0);
+  return same >= 3 && same >= 0.6 * Math.max(old.length, next.length);
+}
+
 export function Diff({
   old,
   new: next,
@@ -39,9 +45,10 @@ export function Diff({
   }
   const showRemoved = side !== "new";
   const showAdded = side !== "old";
-  // Nothing in common (a number, a date, a new value): one value replaced by another,
-  // shown apart so they don't read as one (REVIEW-4).
-  if (side === "both" && !segs.some((s) => s.kind === "same" && s.text.trim() !== "")) {
+  // Values that are mostly different (a number, a date, a new name) show apart as
+  // old → new, so they don't read as one (REVIEW-4). The inline diff is kept for a small
+  // edit inside a value that is mostly the same.
+  if (side === "both" && !mostlySame(segs, old, next)) {
     return (
       <Text span fz={fz} data-diff="replaced">
         <span style={REMOVED} data-seg="removed">

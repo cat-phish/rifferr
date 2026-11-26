@@ -18,7 +18,17 @@ export interface ChangeRow {
   where: string;
   /** Every changed track's label, for a tooltip. */
   tracks: string[];
+  /** A name to show instead of the field, e.g. "date" for year/month/day. */
+  label?: string;
+  /** The fields behind a folded row, e.g. ["year", "day"]. */
+  fields?: string[];
 }
+
+/** beets keeps a date as three fields; a change to them reads as one date (REVIEW-4). */
+const DATES = [
+  { label: "date", parts: ["year", "month", "day"] },
+  { label: "original date", parts: ["original_year", "original_month", "original_day"] },
+] as const;
 
 export function groupChanges(album: GateAlbum): ChangeRow[] {
   const labels = album.items ?? {};
@@ -45,10 +55,65 @@ export function groupChanges(album: GateAlbum): ChangeRow[] {
     if (c.target.scope === "album") row.album = true;
     else row.items.push(c.target.id);
   }
-  return [...rows.values()].map((r) => {
+  const out = [...rows.values()].map((r) => {
     const tracks = r.items.map((id) => labels[id] ?? id);
     return { ...r, tracks, where: where(r.album, r.items, labels, total) };
   });
+  return foldDates(out, album.fields ?? {});
+}
+
+/** Rows that change parts of one date on the same album and tracks, by the same steps,
+ * become one row: "date 2018-06-29 → 2018-06-09". The album's fields fill in the parts
+ * that didn't change, so only rows that include the album fold. */
+function foldDates(rows: ChangeRow[], current: Record<string, Change["after"]>): ChangeRow[] {
+  let out = rows;
+  for (const { label, parts } of DATES) {
+    const clusters = new Map<string, ChangeRow[]>();
+    for (const r of out) {
+      if (!r.album || !(parts as readonly string[]).includes(r.field)) continue;
+      const key = JSON.stringify([r.items, r.steps]);
+      clusters.set(key, [...(clusters.get(key) ?? []), r]);
+    }
+    for (const [key, cluster] of clusters) {
+      const changed = new Map(cluster.map((r) => [r.field, r]));
+      const value = (side: "before" | "after") =>
+        ymd(
+          parts.map((p) => {
+            const r = changed.get(p);
+            return r
+              ? side === "before" && !r.existedBefore
+                ? null
+                : r[side]
+              : (current[p] ?? null);
+          }),
+        );
+      const first = cluster[0];
+      if (first === undefined) continue;
+      const row: ChangeRow = {
+        ...first,
+        key: `${label}/${key}`,
+        label,
+        fields: parts.filter((p) => changed.has(p)),
+        before: value("before"),
+        after: value("after"),
+        existedBefore: true,
+      };
+      const index = out.indexOf(first);
+      out = out.filter((r) => !cluster.includes(r));
+      out.splice(Math.min(index, out.length), 0, row);
+    }
+  }
+  return out;
+}
+
+/** "2018-06-29", "2018-06" or "2018"; null when there's no year. */
+function ymd([y, m, d]: Change["after"][]): string | null {
+  const n = (v: Change["after"] | undefined) => (typeof v === "number" && v > 0 ? v : 0);
+  const [year, month, day] = [n(y), n(m), n(d)];
+  if (year === 0) return null;
+  const pad = (v: number) => String(v).padStart(2, "0");
+  if (month === 0) return String(year);
+  return day === 0 ? `${String(year)}-${pad(month)}` : `${String(year)}-${pad(month)}-${pad(day)}`;
 }
 
 function where(album: boolean, items: string[], labels: Record<string, string>, total: number) {
