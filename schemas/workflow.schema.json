@@ -2051,7 +2051,7 @@
             }
           ],
           "default": null,
-          "description": "Offer 'This is one artist': remember this field's value in the artist-name rules (TAGS-CHOOSE-13)",
+          "description": "Remember this field's value in the artist-name rules when the known_name_option is chosen (TAGS-CHOOSE-13)",
           "title": "Known Name"
         },
         "known_name_option": {
@@ -2064,7 +2064,7 @@
             }
           ],
           "default": null,
-          "description": "The label 'This is one artist' decides with; when it names an option, that option's actions apply, otherwise the album stays unchanged",
+          "description": "The option that remembers the name; always offered while the field has a value, even when it changes nothing (its actions may be empty)",
           "title": "Known Name Option"
         },
         "learn": {
@@ -2400,6 +2400,7 @@
       "description": "One outcome a person can choose (TAGS-CHOOSE-1).",
       "properties": {
         "actions": {
+          "description": "Tag-script actions; empty only for the known_name_option (TAGS-CHOOSE-13)",
           "items": {
             "oneOf": [
               {
@@ -2434,7 +2435,6 @@
               }
             ]
           },
-          "minItems": 1,
           "title": "Actions",
           "type": "array"
         },

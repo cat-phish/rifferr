@@ -9,7 +9,7 @@ worker's ``choice_apply`` job). Options are data: no code runs, so no trust is n
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal, Self
+from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -62,7 +62,9 @@ class ChoiceOption(BaseModel):
     suggest: Suggest | None = Field(
         default=None, description="Preselect this option when its query matches (TAGS-CHOOSE-2)"
     )
-    actions: Annotated[list[Action], Field(min_length=1)]
+    actions: list[Action] = Field(
+        description="Tag-script actions; empty only for the known_name_option (TAGS-CHOOSE-13)"
+    )
 
 
 class TagsChooseParams(BaseModel):
@@ -106,13 +108,13 @@ class TagsChooseParams(BaseModel):
     )
     known_name: FieldName | None = Field(
         default=None,
-        description="Offer 'This is one artist': remember this field's value in the "
-        "artist-name rules (TAGS-CHOOSE-13)",
+        description="Remember this field's value in the artist-name rules when the "
+        "known_name_option is chosen (TAGS-CHOOSE-13)",
     )
     known_name_option: str | None = Field(
         default=None,
-        description="The label 'This is one artist' decides with; when it names an option, "
-        "that option's actions apply, otherwise the album stays unchanged",
+        description="The option that remembers the name; always offered while the field has "
+        "a value, even when it changes nothing (its actions may be empty)",
     )
 
     @field_validator("options_from")
@@ -138,7 +140,18 @@ class TagsChooseParams(BaseModel):
             raise ValueError("option labels must be unique")
         if self.known_name_option is not None and self.known_name is None:
             raise ValueError("known_name_option needs known_name")
+        empty = [o.label for o in self.options if not o.actions]
+        if any(label != self.known_name_option for label in empty):
+            raise ValueError("only the known_name_option may have no actions")
         return self
+
+
+def known_name_value(params: TagsChooseParams, album: AlbumSnapshot) -> str | None:
+    """The name the known_name_option remembers (TAGS-CHOOSE-13), if the field has one."""
+    if params.known_name is None:
+        return None
+    raw = album.fields.get(params.known_name)
+    return str(raw) if raw not in (None, "", []) and not isinstance(raw, list) else None
 
 
 def with_facts(backend: LibraryBackend, album: AlbumSnapshot, text: str) -> AlbumSnapshot:
@@ -350,21 +363,31 @@ class TagsChooseStep:
         suggested: str | None = None
         known_actions: list[dict[str, Any]] = []
         for index, option in enumerate(params.options):  # TAGS-CHOOSE-1
-            result = _run(list(option.actions), album, backend)
-            if result.error is not None:
-                ctx.log(f"{album.id}: option {option.label!r}: {result.error}", "warning", album.id)
-                continue
+            changes = False
+            preview: list[ChoicePreview] = []
+            if option.actions:  # empty only for the known_name_option
+                result = _run(list(option.actions), album, backend)
+                if result.error is not None:
+                    ctx.log(
+                        f"{album.id}: option {option.label!r}: {result.error}", "warning", album.id
+                    )
+                    continue
+                changes = bool(result.diffs())
+                preview = _preview(result)
             key = f"o{index}"
+            remembers: str | None = None
             if option.label == params.known_name_option:
                 known_actions = _dump(list(option.actions))
-            if not result.diffs():
+                remembers = known_name_value(params, album)
+            if not changes and remembers is None:
                 continue
             offers.add(
                 ChoiceOffer(
                     key=key,
                     label=option.label,
                     actions=_dump(list(option.actions)),
-                    preview=_preview(result),
+                    preview=preview,
+                    remembers=remembers,
                 )
             )
             if (
@@ -389,7 +412,12 @@ class TagsChooseStep:
             "offered": [o.label for o in offers.offers],
             "suggested": next((o.label for o in offers.offers if o.key == suggested), None),
         }
-        if params.when_single == "auto" and len(offers.offers) == 1 and not params.custom:
+        if (
+            params.when_single == "auto"
+            and len(offers.offers) == 1
+            and not params.custom
+            and offers.offers[0].remembers is None  # remembering a name is the person's call
+        ):
             only = offers.offers[0]  # TAGS-CHOOSE-7
             result = _run(only.actions, album, backend)
             made = proposal(result, f"{ctx.step.id}")
@@ -412,12 +440,7 @@ class TagsChooseStep:
             )
             for f in params.custom
         ]
-        known_value: str | None = None
-        if params.known_name is not None:
-            raw = album.fields.get(params.known_name)
-            known_value = (
-                str(raw) if raw not in (None, "", []) and not isinstance(raw, list) else None
-            )
+        known_value = known_name_value(params, album)
         learn: LearnSettings | None = None
         if params.learn and rules is not None and rules.target is not None:
             assert params.options_from is not None

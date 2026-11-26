@@ -1612,6 +1612,11 @@ export interface components {
             /** Preview */
             preview?: components["schemas"]["ChoicePreview"][];
             /**
+             * Remembers
+             * @description Choosing this option also adds this name to the artist-name rules (TAGS-CHOOSE-13)
+             */
+            remembers?: string | null;
+            /**
              * Rule
              * @description From the rules file (TAGS-CHOOSE-8)
              * @default false

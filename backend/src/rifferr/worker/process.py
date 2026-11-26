@@ -867,8 +867,14 @@ class Worker:
                 known_name=known_name,
                 escape=self.backend.escape_template,
             )
-            if known_name and review.known_name_value is not None:
-                learned.append(self.backend.add_artist_name(review.known_name_value))
+            offer = review.option(option) if isinstance(option, str) else None
+            remembers = (
+                review.known_name_value
+                if known_name
+                else (offer.remembers if offer is not None else None)
+            )
+            if remembers is not None:  # TAGS-CHOOSE-13
+                learned.append(self.backend.add_artist_name(remembers))
             (album,) = self.backend.query(Selection(ids=(review.album_id,)))
             if actions:
                 script = TagScript.model_validate({"idempotence": "off", "actions": actions})

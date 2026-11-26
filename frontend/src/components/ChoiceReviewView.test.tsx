@@ -158,15 +158,37 @@ test("TAGS_CHOOSE_4 a custom list field suggests known values while typing", asy
   expect(options.map((o) => o.textContent)).toEqual(["Punk", "Pop Punk", "Rock"]);
 });
 
-test("TAGS_CHOOSE_13 This is one artist, and skip", async () => {
-  const { calls } = setup(review());
+test("TAGS_CHOOSE_13 the remembering option says so and is chosen like any other", async () => {
+  const { calls } = setup(
+    review({
+      suggested: null,
+      options: [
+        {
+          key: "o0",
+          label: "One artist",
+          actions: [],
+          preview: [],
+          remembers: "A & B",
+          rule: false,
+          matched: 0,
+        },
+      ],
+    }),
+  );
   renderApp("/review?profile=main");
   const card = await screen.findByTestId("choice-review");
-  fireEvent.click(within(card).getByRole("button", { name: "This is one artist" }));
+  expect(within(card).queryByRole("button", { name: "This is one artist" })).toBeNull();
+  expect(within(card).getByTestId("choice-remembers")).toHaveTextContent(
+    "Remembers “A & B” as one artist name",
+  );
+  fireEvent.click(within(within(card).getByTestId("choice-option")).getByRole("radio"));
+  fireEvent.click(within(card).getByRole("button", { name: "Apply" }));
   await waitFor(() => {
     expect(bodies(calls)).toHaveLength(1);
   });
-  expect(bodies(calls)).toEqual([{ known_name: true, decision: "choose", note: null }]);
+  expect(bodies(calls)).toEqual([
+    { known_name: false, decision: "choose", option: "o0", note: null },
+  ]);
 });
 
 test("TAGS_CHOOSE_6 skip, and errors show", async () => {

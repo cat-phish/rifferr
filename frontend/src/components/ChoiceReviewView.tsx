@@ -119,6 +119,12 @@ export function ChoiceReviewView({ review }: { review: ChoiceReview }) {
                 }
               />
               <Stack gap={0} pl={28} data-testid="choice-preview">
+                {o.remembers != null && (
+                  <Text size="xs" c="dimmed" data-testid="choice-remembers">
+                    Remembers &ldquo;{o.remembers}&rdquo; as one artist name, so it isn&rsquo;t
+                    asked again
+                  </Text>
+                )}
                 {(o.preview ?? []).map((p) => (
                   <Text key={`${p.target.id}:${p.field}`} size="xs" c="dimmed" ff="monospace">
                     {p.target.scope === "item" ? `${p.target.id} ` : ""}
@@ -203,21 +209,6 @@ export function ChoiceReviewView({ review }: { review: ChoiceReview }) {
         <>
           <NoteField value={note} onChange={setNote} disabled={decide.isPending} />
           <Group gap="xs" justify="flex-end">
-            {review.known_name && review.known_name_value && (
-              <Button
-                size="xs"
-                variant="light"
-                disabled={decide.isPending}
-                title={`Remember "${review.known_name_value}" as one name, so it isn't flagged again${
-                  review.known_name_option ? `, and choose ${review.known_name_option}` : ""
-                }`}
-                onClick={() => {
-                  decide.mutate({ decision: "choose", known_name: true });
-                }}
-              >
-                This is one artist
-              </Button>
-            )}
             <Button
               size="xs"
               disabled={decide.isPending || picked === ""}

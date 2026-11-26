@@ -52,11 +52,15 @@ waits (non-negotiable 6).
   a rule to the rules file (ruamel round trip, comments kept), shown in the decision response.
   With no such value, each custom value no rule sets yet MUST be appended as a known value
   (a rule without `when`), so a typed bucket joins the list (author, 2026-11-25).
-- TAGS-CHOOSE-13: A choice review MAY offer `known_name: <field>`: a "This is one artist"
-  action that adds the field's current value to the artist-name rules' `names`
-  (C-ALBUM-FACTS ALBUM-FACTS-7; ruamel round trip, comments kept) and decides the review with
-  the option given by `known_name_option`. Later albums with that name are no longer flagged.
-  The rules file can also be edited by hand.
+- TAGS-CHOOSE-13: A choice step MAY set `known_name: <field>` and `known_name_option: <label>`.
+  While the field has a value, the option with that label MUST always be offered, even when it
+  changes nothing (its `actions` may be empty, the only option allowed to), marked with the name
+  it remembers. Choosing it MUST add the field's value to the artist-name rules' `names`
+  (C-ALBUM-FACTS ALBUM-FACTS-7; ruamel round trip, comments kept) and apply its actions. It is
+  never applied without review (TAGS-CHOOSE-7). Later albums with that name are no longer
+  flagged; the rules file can also be edited by hand. (Amended by the author, 2026-11-25: an
+  ordinary option replaces the "This is one artist" button; the API's `known_name: true`
+  still decides with that option.)
 - TAGS-CHOOSE-11: The step's outputs: `choices` (per album: offered, suggested, chosen,
   decided_by), `changesets`.
 - TAGS-CHOOSE-12: A Playwright test MUST cover choosing a non-suggested option, a custom value,
@@ -181,3 +185,4 @@ inside `<profile>/rules/`.
 - [x] Rules file, ranking, `%genre_root` (backends/beets) and `learn`
 - [x] Playwright spec
 - [x] Custom entry suggests the rules file's values; `when` optional; new values learned (TAGS-CHOOSE-4, -8, -10; 2026-11-25)
+- [x] The remembering choice is an ordinary option; the button is gone (TAGS-CHOOSE-13; 2026-11-25)

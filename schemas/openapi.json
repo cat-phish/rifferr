@@ -794,6 +794,18 @@
             "title": "Preview",
             "type": "array"
           },
+          "remembers": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Choosing this option also adds this name to the artist-name rules (TAGS-CHOOSE-13)",
+            "title": "Remembers"
+          },
           "rule": {
             "default": false,
             "description": "From the rules file (TAGS-CHOOSE-8)",

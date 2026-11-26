@@ -450,6 +450,43 @@ async def test_TAGS_CHOOSE_13_known_name_without_an_option_changes_nothing(
     assert h.changesets.for_run(RUN, "applied") == []
 
 
+ARTISTS = """{id: names, uses: tags.choose, with: {
+  show: [albumartist],
+  known_name: albumartist,
+  known_name_option: One artist,
+  options: [
+    {label: One artist, actions: []},
+    {label: Several artists, actions: [{copy: {from: albumartist, to: albumartists}}]}
+  ]}}"""
+
+
+async def test_TAGS_CHOOSE_13_the_remembering_option_is_offered_and_remembers(
+    h: ChooseHarness,
+) -> None:
+    h.album_with("D", [{"title": "a"}], albumartist="Simon & Garfunkel")
+    review = await waiting(h, wf(ARTISTS, AFTER))
+    one = next(o for o in review.options if o.label == "One artist")
+    assert one.remembers == "Simon & Garfunkel"
+    assert one.actions == []
+    await h.supervisor.decide_choice(review.id, "choose", option=one.key)
+    await h.until(lambda: h.state() == "succeeded")
+    assert "Simon & Garfunkel" in h.backend.names.names
+    assert h.changesets.for_run(RUN, "applied") == []
+    stored = h.reviews.get(review.id)
+    assert stored is not None
+    assert stored.chosen == one.key
+
+
+async def test_TAGS_CHOOSE_13_other_options_remember_nothing(h: ChooseHarness) -> None:
+    h.album_with("D", [{"title": "a"}], albumartist="A & B")
+    review = await waiting(h, wf(ARTISTS, AFTER))
+    several = next(o for o in review.options if o.label == "Several artists")
+    assert several.remembers is None
+    await h.supervisor.decide_choice(review.id, "choose", option=several.key)
+    await h.until(lambda: h.state() == "succeeded")
+    assert "A & B" not in h.backend.names.names
+
+
 # -- parameters ----------------------------------------------------------------------
 
 
@@ -460,6 +497,7 @@ async def test_TAGS_CHOOSE_13_known_name_without_an_option_changes_nothing(
         ({"custom": ["a"], "rank_by": "genres"}, "rank_by ranks"),
         ({"custom": ["a"], "learn": True}, "learn needs"),
         ({"custom": ["a"], "known_name_option": "X"}, "needs known_name"),
+        ({"options": [{"label": "A", "actions": []}]}, "only the known_name_option"),
         ({"options_from": "../x.yaml", "custom": ["a"]}, "rules/ folder"),
         (
             {

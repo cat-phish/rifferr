@@ -53,6 +53,11 @@ class ChoiceOffer(BaseModel):
     preview: list[ChoicePreview] = Field(default_factory=list[ChoicePreview])
     rule: bool = Field(default=False, description="From the rules file (TAGS-CHOOSE-8)")
     matched: int = Field(default=0, description="How many rank_by values the rule matches")
+    remembers: str | None = Field(
+        default=None,
+        description="Choosing this option also adds this name to the artist-name rules "
+        "(TAGS-CHOOSE-13)",
+    )
 
 
 class CustomField(BaseModel):
