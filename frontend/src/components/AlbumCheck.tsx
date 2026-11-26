@@ -126,9 +126,12 @@ function EditableValue({
   onEdit,
   readOnly,
   children,
+  before,
 }: {
   row: Row;
   field: string;
+  /** The value before this run, when known (REVIEW-14). */
+  before?: FieldValue | null;
   pending: Pending;
   lists: Set<string>;
   onEdit: (row: Row, field: string, edit: Edit | null) => void;
@@ -178,6 +181,7 @@ function EditableValue({
             problem={undefined}
             isList={Array.isArray(row.fields[field]) || lists.has(field)}
             lists={lists}
+            before={before}
             onDone={(next) => {
               onEdit(row, field, next);
               setOpen(false);
@@ -489,6 +493,7 @@ export function AlbumCheckView({
                       lists={lists}
                       onEdit={onEdit}
                       readOnly={readOnly}
+                      before={f in albumBefore ? (albumBefore[f] ?? null) : undefined}
                     >
                       <Value
                         now={snap.fields[f]}
@@ -529,6 +534,7 @@ export function AlbumCheckView({
                             lists={lists}
                             onEdit={onEdit}
                             readOnly={readOnly}
+                            before={f in was ? (was[f] ?? null) : undefined}
                           >
                             <Value
                               now={it.fields[f]}

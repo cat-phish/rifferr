@@ -757,6 +757,65 @@ test("REVIEW_13 REVIEW_14 an edit gate holds edits; Discard edits is apart from 
   expect(within(card).getByRole("button", { name: "Continue" })).toBeInTheDocument();
 });
 
+test("REVIEW_14 the editor offers the value before this run", async () => {
+  const { calls } = setup({
+    queue: () => [gateItem(gate({ edit: true, on_reject: "stop" }))],
+    extra: {
+      [`GET /api/runs/${NEW_RUN}/albums/a1/before`]: () => ({
+        album_id: "a1",
+        album: { album: "Live", albumartist: "Band" },
+        items: {},
+        folder: [],
+      }),
+      "GET /api/profiles/main/library": () => ({
+        albums: [
+          {
+            id: "a1",
+            path: "/staging/Band/Live",
+            fields: { album: "Live (EP)", albumartist: "Band", albumtype: "ep" },
+            items: [{ id: "i1", path: "x", fields: { track: 1, title: "One" } }],
+          },
+        ],
+        album_fields: [],
+        item_fields: [],
+        truncated: false,
+        field_kinds: {},
+      }),
+      "PUT /api/reviews/g1/edits": (call) => ({
+        ...gate({ edit: true }),
+        edits: (call.body as { edits: S["HeldEdit"][] }).edits,
+      }),
+    },
+  });
+  renderApp("/review?profile=main");
+  const check = await screen.findByTestId("album-check");
+  // No value before the run to offer.
+  fireEvent.click(await within(check).findByRole("button", { name: "Edit albumtype" }));
+  await screen.findByLabelText("albumtype value");
+  expect(screen.queryByTestId("cell-editor-before")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  fireEvent.click(within(check).getByRole("button", { name: "Edit album" }));
+  const input = await screen.findByLabelText("album value");
+  expect(input).toHaveValue("Live (EP)");
+  expect(screen.getByTestId("cell-editor-before")).toHaveTextContent("Before this run: Live");
+  fireEvent.click(screen.getByRole("button", { name: "Use this value" }));
+  expect(input).toHaveValue("Live");
+  fireEvent.keyDown(input, { key: "Enter" });
+  const puts = () => calls.filter((c) => c.method === "PUT" && c.path === "/api/reviews/g1/edits");
+  await waitFor(() => {
+    expect(puts().length).toBe(1);
+  });
+  expect(nth(puts(), 0).body).toEqual({
+    edits: [
+      {
+        target: { scope: "album", id: "a1" },
+        album: "a1",
+        changes: [{ field: "album", op: "set", old: "Live (EP)", new: "Live" }],
+      },
+    ],
+  });
+});
+
 test("REVIEW_QUEUE_20 a tall item repeats its actions at the bottom", async () => {
   const height = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
   const Observer = globalThis.ResizeObserver;

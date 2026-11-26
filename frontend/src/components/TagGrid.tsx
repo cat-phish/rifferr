@@ -533,6 +533,7 @@ export function CellEditor({
   lists,
   onDone,
   onCancel,
+  before,
 }: {
   row: Row;
   field: string;
@@ -542,8 +543,13 @@ export function CellEditor({
   lists: Set<string>;
   onDone: (edit: Edit | null) => void;
   onCancel: () => void;
+  /** The value before this run, offered to fill in when it differs (REVIEW-14). */
+  before?: FieldValue | null;
 }) {
   const current = row.fields[field];
+  const showBefore =
+    before !== undefined && JSON.stringify(before ?? null) !== JSON.stringify(current ?? null);
+  const was = show(before ?? null);
   const [text, setText] = useState(() => initialText(edit, current));
   const [entries, setEntries] = useState(() => initialList(edit, current));
   const commit = () => {
@@ -583,6 +589,23 @@ export function CellEditor({
             }
           }}
         />
+      )}
+      {showBefore && (
+        <Group gap="xs" wrap="nowrap" justify="space-between" data-testid="cell-editor-before">
+          <Text size="xs" c="dimmed" style={{ wordBreak: "break-word" }}>
+            Before this run: {was === "" ? "(empty)" : was}
+          </Text>
+          <Button
+            size="compact-xs"
+            variant="light"
+            onClick={() => {
+              setText(initialText(undefined, before ?? null));
+              setEntries(initialList(undefined, before ?? null));
+            }}
+          >
+            Use this value
+          </Button>
+        </Group>
       )}
       {problem && (
         <Text size="xs" style={{ color: tc("danger") }}>
