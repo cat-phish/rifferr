@@ -225,7 +225,7 @@ steps:
   # album's lane waits. The cover is a ChangeSet, so undo removes it.
   # Albums that already have art skip the search: art beets' fetchart set during import,
   # or a cover image that came in the album folder (folder.jpg, cover.jpg), which becomes
-  # the album's art here (adopt_local). Their cover is checked in the into-library review.
+  # the album's art here (adopt_local). Their cover is checked in the final review.
   - id: art
     uses: covers.search
     with:
@@ -266,6 +266,18 @@ steps:
     with:
       command: replaygain
       args: ["-a"]
+  # The final check before the library, in two steps. final-write (REVIEW-13): the album's
+  # cover, fields and tracks, each editable, with the value before the run on hover. The
+  # edits and a changed cover are held until Continue, which writes them in one journaled
+  # ChangeSet. final-move then plans the move from the written tags.
+  - id: final-write
+    uses: review
+    with:
+      edit: true
+      message: "Last edits for $albumartist - $album before it goes into the library"
+      show: [albumartist, albumartists, albumartist_sort, album, albumtype, albumtypes,
+             year, original_year, label, catalognum, country, media, albumstatus, genre,
+             comp, disctotal, mb_albumid, mb_releasegroupid]
   # Checklist lines 5, 13, 15, 17, 18, 19: rename and move each album from staging into
   # the library, only once a person accepts the move in the review queue (`apply`
   # defaults to review): one decision per album, showing the old and new
@@ -279,7 +291,7 @@ steps:
   #   the: { a: no, format: "{0}, {1}" }
   # `%ifgreater` and `%unpad` are Rifferr's built-in template functions. `albumkind` is
   # the flexible attribute album-kind sets.
-  - id: into-library
+  - id: final-move
     uses: library.move
     with:
       directory: "{{ vars.library }}"
@@ -287,8 +299,8 @@ steps:
       paths: *album-paths
       # DATE ADDED (line 13): the day the album enters the library.
       stamp: { field: date_added }
-      # The final check before the library (LIBRARY-MOVE-18): the review shows the cover with
-      # its size and these fields, plus every field this run changed, marked. The cover
+      # The move's review (LIBRARY-MOVE-18) shows the cover with its size and these fields,
+      # plus every field this run changed, marked; edits belong in final-write. The cover
       # beets' fetchart found during import is reviewed here (author, 2026-11-22).
       show:
         album: [albumartist, albumartists, albumartist_sort, album, albumtype, albumtypes,

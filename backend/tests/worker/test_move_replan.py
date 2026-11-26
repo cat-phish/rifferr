@@ -21,7 +21,7 @@ from tests.worker.conftest import wf
 from tests.worker.test_gates import RUN, Harness, serving
 
 MOVE = wf(
-    "{id: final-review, uses: library.move, with: {directory: /music}}",
+    "{id: final-move, uses: library.move, with: {directory: /music}}",
     "{id: after, uses: test.echo, with: {message: 'after move'}}",
 )
 
