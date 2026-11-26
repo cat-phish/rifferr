@@ -1102,6 +1102,8 @@ class Engine:
             ],
             rationale=extras.rationale if extras is not None else None,
         )
+        if extras is not None and extras.replan is not None:
+            cs = cs.model_copy(update={"replan": extras.replan.model_dump(mode="json")})
         try:
             problems = state.backend.check(cs) if cs.targets else []
         except CapabilityError as exc:

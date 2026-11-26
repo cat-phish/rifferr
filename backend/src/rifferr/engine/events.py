@@ -49,6 +49,7 @@ ENGINE_EVENTS = frozenset(
         # S-LIBRARY-MOVE (LIBRARY-MOVE-5a)
         "move.requested",
         "move.resolved",
+        "changeset.replanned",  # LIBRARY-MOVE-19
         # S-NOTIFY (NOTIFY-4)
         "notify.sent",
         "notify.failed",

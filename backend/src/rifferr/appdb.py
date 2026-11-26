@@ -639,6 +639,26 @@ class AppChangeSets:
         ).fetchone()
         return self._stored(row) if row else None
 
+    def waiting_moves(self, profile: str) -> list[StoredChangeSet]:
+        """The profile's proposed FileChangeSets that can be planned again
+        (LIBRARY-MOVE-19), oldest first."""
+        rows = self._conn.execute(
+            "SELECT * FROM changesets WHERE profile = ? AND state = 'proposed'"
+            " AND json_extract(body, '$.replan') IS NOT NULL ORDER BY created_at",
+            (profile,),
+        ).fetchall()
+        return [self._stored(r) for r in rows]
+
+    def update_proposed(self, changeset: ChangeSet) -> bool:
+        """Replace the body of a ChangeSet that is still ``proposed`` (LIBRARY-MOVE-19).
+        False, with nothing changed, once it was decided."""
+        with self._conn:
+            cur = self._conn.execute(
+                "UPDATE changesets SET body = ? WHERE id = ? AND state = 'proposed'",
+                (changeset.model_dump_json(), changeset.id),
+            )
+        return cur.rowcount == 1
+
     def set_state(
         self,
         changeset_id: str,

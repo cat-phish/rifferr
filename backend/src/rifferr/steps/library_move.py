@@ -18,6 +18,7 @@ from rifferr.core.changeset import ShowFields, Stamp
 from rifferr.core.moves import ArtifactRule, MoveSettings, PathFormat
 from rifferr.core.workflow.template_fields import TEMPLATE_EXTRA
 from rifferr.engine import StepContext, StepFailure, StepResult
+from rifferr.engine.steps import FileExtras
 
 BEETS_PATHS = (
     "https://beets.readthedocs.io/en/stable/reference/config.html#path-format-configuration"
@@ -144,7 +145,7 @@ class LibraryMoveStep:
                 target=album,
             )
             try:
-                ctx.propose_files(plan, params.stamp, params.show)
+                ctx.propose_files(plan, params.stamp, params.show, FileExtras(replan=settings))
             except StepFailure as exc:  # LIBRARY-MOVE-10: this album's lane fails
                 ctx.fail_target(album, str(exc))
                 continue

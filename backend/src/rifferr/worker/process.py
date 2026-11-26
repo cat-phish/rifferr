@@ -53,6 +53,7 @@ from rifferr.core.imports import (
     ImportDecision,
     merge_candidates,
 )
+from rifferr.core.moves import MoveSettings
 from rifferr.core.profile import Profile, ProfileError, ProfileLoadError, Redactor
 from rifferr.core.review import ReviewGate
 from rifferr.core.selection import Selection
@@ -474,6 +475,10 @@ class Worker:
                     f"ChangeSet {changeset_id} conflicted; reject it or propose it again"
                 )
             else:
+                if cs.replan is not None:  # LIBRARY-MOVE-19: move what the album is now
+                    cs, problems = self._refresh_move(cs)
+                    if problems:
+                        raise ValueError("the move conflicts now: " + "; ".join(problems))
                 outcome = apply_changeset(
                     cs,
                     backend=self.backend,
@@ -494,6 +499,18 @@ class Worker:
                             "target": failure.target.id,
                         },
                     )
+                if cs.files and outcome.error is not None:  # LIBRARY-MOVE-10, -19
+                    self._fail_move_lane(cs, outcome.error)
+                    self._finish_job(job, "failed", outcome.error)
+                    if cs.run_id is not None:
+                        run_id = cs.run_id
+                        self.lanes.resolve_hold(run_id, cs.id)
+                        settle(
+                            self.db,
+                            run_id,
+                            lambda type, step, d: self._changeset_emitter(run_id, step)(type, d),
+                        )
+                    return
         except Exception as exc:
             log.warning("review decision on %s failed: %s", changeset_id, exc)
             self._finish_job(job, "failed", f"{type(exc).__name__}: {exc}")
@@ -1188,6 +1205,7 @@ class Worker:
             log.warning("undo failed: %s", exc)
             self._finish_job(job, "failed", f"{type(exc).__name__}: {exc}")
             return
+        self._replan_waiting(None)  # LIBRARY-MOVE-19
         stopped = result.get("stopped_at")
         error = f"undo stopped at journal entry {stopped}" if stopped else None
         self._finish_job(job, "failed" if stopped else "succeeded", error, result)
@@ -1237,6 +1255,7 @@ class Worker:
         by = job.payload.get("by")
         outcomes: dict[str, JsonValue] = {}
         errors: list[str] = []
+        touched: set[str] = set()
         for changeset_id in ids:
             stored = self.changesets.get(changeset_id)
             if stored is None or stored.state != "proposed":
@@ -1259,8 +1278,105 @@ class Worker:
                 errors.append(f"{changeset_id}: {type(exc).__name__}: {exc}")
                 continue
             outcomes[changeset_id] = outcome.state
+            if outcome.state == "applied":
+                touched |= self._album_ids(stored.changeset)
+        if touched:
+            self._replan_waiting(touched)
         error = "; ".join(errors) or None
         self._finish_job(job, "failed" if errors else "succeeded", error, {"outcomes": outcomes})
+
+    # -- a waiting move follows its album (S-LIBRARY-MOVE LIBRARY-MOVE-19) ------------
+
+    def _album_ids(self, cs: ChangeSet) -> set[str]:
+        """The albums a ChangeSet touches: its album targets and its items' albums."""
+        albums = {t.target.id for t in cs.targets if t.target.scope == "album"}
+        items = tuple(t.target.id for t in cs.targets if t.target.scope == "item")
+        if items:
+            try:
+                found = self.backend.query(Selection(ids=items, scope="item"))
+            except QueryError:
+                found = []
+            albums |= {a.id for a in found}
+        return albums
+
+    def _replan_waiting(self, albums: set[str] | None) -> None:
+        """Plan the waiting moves of ``albums`` (all, for ``None``) again."""
+        for stored in self.changesets.waiting_moves(self.profile.name):
+            cs = stored.changeset
+            if cs.album is not None and (albums is None or cs.album.id in albums):
+                try:
+                    self._refresh_move(cs)
+                except Exception as exc:  # one album's trouble mustn't stop the job
+                    log.warning("re-planning %s failed: %s", cs.id, exc)
+
+    def _refresh_move(self, cs: ChangeSet) -> tuple[ChangeSet, list[str]]:
+        """Plan ``cs``'s move again and store a changed plan under the same id. Returns the
+        ChangeSet to apply and the conflicts that stop it (then nothing changes)."""
+        new, problems = self._replan(cs)
+        emit = self._changeset_emitter(cs.run_id, cs.step_id)
+        label = cs.album.label() if cs.album is not None else cs.id
+        for line in problems:
+            emit(
+                "run.step.log",
+                {"stream": "error", "line": f"{label}: the move conflicts now: {line}"},
+            )
+        if new is not cs and self.changesets.update_proposed(new):
+            emit(
+                "changeset.replanned",
+                {"changeset_id": new.id, "album_id": label, "files": len(new.files)},
+            )
+            emit("run.step.log", {"stream": "info", "line": f"{label}: move planned again"})
+            return new, problems
+        return cs, problems
+
+    def _replan(self, cs: ChangeSet) -> tuple[ChangeSet, list[str]]:
+        if cs.replan is None or cs.album is None or cs.run_id is None or cs.step_id is None:
+            return cs, []
+        settings = MoveSettings.model_validate(cs.replan)
+        selection = Selection(ids=(cs.album.id,), scope="album")
+        try:
+            snapshots = self.backend.query(selection)
+            plans = self.backend.plan_moves(
+                selection,
+                mode=settings.mode,
+                formats=settings.formats,
+                directory=Path(settings.directory) if settings.directory else None,
+                artifacts=settings.artifacts,
+            )
+            if not snapshots or not plans:
+                raise QueryError(f"{cs.album.id} is no longer in the library")
+        except (QueryError, TemplateError, CapabilityError) as exc:
+            return cs, [str(exc)]
+        plan = plans[0]
+        if plan.conflicts:
+            return cs, list(plan.conflicts)
+        if not plan.files:
+            return cs, ["its files are already where the move would put them"]
+        stamp = settings.stamp
+        new = file_changeset(
+            plan,
+            stamp,
+            snapshots[0].fields.get(stamp.field) if stamp is not None else None,
+            id=cs.id,
+            profile=cs.profile,
+            run_id=cs.run_id,
+            step_id=cs.step_id,
+            source=cs.source.name,
+            now=datetime.now(UTC),
+            show=cs.show,
+        ).model_copy(update={"replan": cs.replan, "created_at": cs.created_at})
+        if new.files == cs.files and _olds(new) == _olds(cs):
+            return cs, []
+        return new, []
+
+    def _fail_move_lane(self, cs: ChangeSet, error: str) -> None:
+        """LIBRARY-MOVE-10: a move that failed part way fails its album's lane."""
+        if cs.run_id is None or cs.album is None:
+            return
+        emit = self._changeset_emitter(cs.run_id, cs.step_id)
+        emit("run.step.log", {"stream": "error", "line": f"{cs.album.label()}: {error}"})
+        for key in self.lanes.set_state(cs.run_id, [cs.album.id], "failed", only_from=("waiting",)):
+            emit("lane.finished", {"key": key, "state": "failed", "reason": error})
 
     def _finish_job(
         self, job: Job, state: JobState, error: str | None = None, result: JsonValue = None
@@ -1615,3 +1731,8 @@ def _main_read_only(
 
     asyncio.run(serve())
     return 0
+
+
+def _olds(cs: ChangeSet) -> list[tuple[str, str, str]]:
+    """What a ChangeSet expects to find: each field change's target, field and old value."""
+    return [(t.target.id, c.field, repr(c.old)) for t in cs.targets for c in t.changes]

@@ -406,6 +406,21 @@
             ],
             "title": "Rationale"
           },
+          "replan": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/JsonValue"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "With ``files`` from library.move: the step's resolved settings (MoveSettings), to plan the move again when the album changes while it waits (LIBRARY-MOVE-19)",
+            "title": "Replan"
+          },
           "run_id": {
             "anyOf": [
               {

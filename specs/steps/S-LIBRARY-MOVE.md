@@ -148,6 +148,16 @@ effect when this spec is Approved:
     the earliest `old` value among the run's applied ChangeSets, else the file's tag from the
     run's import decision (`FolderItem.tags`, matched by disc and track) when one exists.
   `GET /api/changesets/{id}/before` returns those before values; it reads only the app DB.
+- LIBRARY-MOVE-19: (Approved by the author, 2026-11-25, B-097.) A FileChangeSet of this step
+  waiting in review MUST stay in step with its album. It keeps the step's resolved settings
+  (`replan`, the same `MoveSettings` a move conflict keeps). When a manual ChangeSet or an
+  undo is applied to that album, and again when the FileChangeSet is accepted, the worker
+  MUST plan the album's move again: a different plan replaces the waiting FileChangeSet's
+  files (and stamp) under the same id, so the same review item shows the new plan, and a
+  `changeset.replanned` event names it. A plan that now conflicts (LIBRARY-MOVE-5) MUST NOT
+  change anything; the review item keeps waiting, the conflict is logged, and accepting it
+  MUST fail naming the conflict, moving no file. A move that fails part way when accepted
+  MUST fail the album's lane (LIBRARY-MOVE-10), never finish it as done.
 
 ## Interfaces
 ```python
@@ -268,6 +278,7 @@ cover goes in an `Art` sub-folder (artifact rules).
 3. Resolved 2026-11-18 (author): conflicts are review-queue items with retry (LIBRARY-MOVE-5a).
 
 ## Tasks
+- [x] Re-plan a waiting move when its album changes; accepting a partial move fails the lane (LIBRARY-MOVE-19, B-097).
 - [x] C-CHANGESET amendment: `files` change kind; narrow the file-operation non-goal to deletes.
 - [x] C-JOURNAL amendment: file effects, per-file states, recovery, undo rules (LIBRARY-MOVE-7..15).
 - [x] C-BACKEND amendment: `move` capability; contract tests for `Item.destination()` with path

@@ -1390,6 +1390,13 @@ export interface components {
             profile: string;
             /** Rationale */
             rationale?: string | null;
+            /**
+             * Replan
+             * @description With ``files`` from library.move: the step's resolved settings (MoveSettings), to plan the move again when the album changes while it waits (LIBRARY-MOVE-19)
+             */
+            replan?: {
+                [key: string]: components["schemas"]["JsonValue"];
+            } | null;
             /** Run Id */
             run_id?: string | null;
             /** @description Fields shown with the album in review (LIBRARY-MOVE-17) */

@@ -122,6 +122,9 @@ class FileExtras:
 
     changes: tuple[ProposedFieldChange, ...] = ()
     rationale: str | None = None
+    replan: MoveSettings | None = None
+    """The settings to plan this move again with if the album changes while it waits in
+    review (S-LIBRARY-MOVE LIBRARY-MOVE-19)."""
 
 
 ProposeFiles = Callable[

@@ -13,7 +13,7 @@ from collections.abc import Callable, Iterable, Mapping
 from datetime import datetime
 from typing import Annotated, Final, Literal, Self
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from rifferr.core.selection import Scope
 from rifferr.core.snapshot import FieldValue
@@ -183,6 +183,13 @@ class ChangeSet(BaseModel):
     )
     show: ShowFields | None = Field(
         default=None, description="Fields shown with the album in review (LIBRARY-MOVE-17)"
+    )
+    replan: dict[str, JsonValue] | None = Field(
+        default=None,
+        description=(
+            "With ``files`` from library.move: the step's resolved settings (MoveSettings), "
+            "to plan the move again when the album changes while it waits (LIBRARY-MOVE-19)"
+        ),
     )
 
     @model_validator(mode="after")
