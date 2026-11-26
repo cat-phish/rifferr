@@ -17,7 +17,7 @@ function show(old: string, next: string, side?: "both" | "old" | "new") {
 test("UI_REFRESH_3_removed_text_is_struck_through_not_only_red", () => {
   const cell = show("Intro (Live)", "Intro");
   const removed = cell.querySelector('[data-seg="removed"]') as HTMLElement;
-  expect(removed).toHaveTextContent("(Live)");
+  expect(removed).toHaveTextContent("Intro (Live)");
   expect(removed.style.textDecoration).toBe("line-through");
   expect(removed.style.color).toContain("--rifferr-color-diff-removed");
 });
@@ -41,12 +41,14 @@ test("REVIEW_4 values with nothing in common show apart as old → new", () => {
   expect(cell.querySelector('[data-seg="added"]')).toHaveTextContent(/^1982$/);
 });
 
-test("REVIEW_4 mostly different values show apart; a small edit stays inline", () => {
+test("REVIEW_4 a change in one cell is always old → new, never an inline diff", () => {
   expect(show("29", "9")).toHaveTextContent("29 → 9");
   cleanup();
   expect(show("Alternative", "Alt／Indie")).toHaveTextContent("Alternative → Alt／Indie");
   cleanup();
   const title = show("Let's Have a War - Waste Somebody", "Let's Have a War ／ Waste Somebody");
-  expect(title).not.toHaveTextContent("→");
-  expect(title.querySelector('[data-seg="added"]')).toHaveTextContent("／");
+  expect(title).toHaveTextContent(
+    "Let's Have a War - Waste Somebody → Let's Have a War ／ Waste Somebody",
+  );
+  expect(title.querySelectorAll("[data-seg]")).toHaveLength(2);
 });
