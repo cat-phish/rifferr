@@ -27,10 +27,6 @@ ART_FIELD: Final = "art_sha256"
 """The album field that names its cover by the image's sha256 (COVERS-SEARCH-15). Backends
 with the ``art`` capability compute it from the album's art file and set the art when a
 ChangeSet changes it; ``delete`` removes the art."""
-ART_KEPT_FIELD: Final = "art_kept"
-"""Read-only album field, ``True`` when the album's cover is an image it came with, which
-stays in the album folder when the cover is replaced (COVERS-SEARCH-16): no copy is needed
-to keep it."""
 SHA256: Final = re.compile(r"^[0-9a-f]{64}$")
 BUILTIN_PROVIDERS: Final = ("coverartarchive", "local", "itunes", "deezer")
 Mime = Literal["image/jpeg", "image/png"]

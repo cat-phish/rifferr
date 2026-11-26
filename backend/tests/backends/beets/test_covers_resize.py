@@ -12,7 +12,7 @@ from PIL import Image
 from rifferr.artstore import ArtStore
 from rifferr.backends.base import RUN_MARKER
 from rifferr.core.changeset import ChangeSet, ChangeSource, FieldChange, TargetChange, TargetRef
-from rifferr.core.covers import ART_FIELD, ART_KEPT_FIELD, sniff_image
+from rifferr.core.covers import ART_FIELD, sniff_image
 from rifferr.core.selection import Selection
 from rifferr.engine import RunState, StepTypeRegistry
 from rifferr.engine.undo import UndoContext, undo_entry
@@ -93,7 +93,7 @@ async def test_COVERS_RESIZE_1_COVERS_RESIZE_5_beets_keeps_original_and_undoes(
     assert restored.read_bytes() == big
 
 
-async def test_COVERS_RESIZE_9_the_albums_own_image_stays_as_the_original(
+async def test_COVERS_RESIZE_1_the_albums_own_image_becomes_cover_hires(
     beets_env: BeetsEnv,
 ) -> None:
     backend = beets_env.backend(art=True)
@@ -124,18 +124,14 @@ async def test_COVERS_RESIZE_9_the_albums_own_image_stays_as_the_original(
         targets=[TargetChange(target=ref, changes=[FieldChange(field=ART_FIELD, new=sha)])],
     )
     assert backend.apply(adopt).applied
-    [snap] = backend.query(Selection())
-    assert snap.fields["artpath"] == str(own)
-    assert snap.fields[ART_KEPT_FIELD] is True
+    assert backend.query(Selection())[0].fields["artpath"] == str(own.with_name("cover.jpg"))
 
     await h.engine.execute(run)
     assert run.state is RunState.succeeded, h.logs(run, "error")
     images = sorted(p.name for p in own.parent.iterdir() if p.suffix == ".jpg")
-    assert images == ["cover.jpg", "folder.jpg"]  # no folder-hires.jpg copy
-    assert own.read_bytes() == big
+    assert images == ["cover-hires.jpg", "cover.jpg"]  # no folder.jpg duplicate
+    assert (own.parent / "cover-hires.jpg").read_bytes() == big
     assert size(own.parent / "cover.jpg") == (1200, 800)
-    [snap] = backend.query(Selection())
-    assert ART_KEPT_FIELD not in snap.fields
 
     [entry] = h.engine.journal.for_run(run.id)
     outcome = undo_entry(
@@ -151,5 +147,5 @@ async def test_COVERS_RESIZE_9_the_albums_own_image_stays_as_the_original(
         ),
     )
     assert outcome.undone, outcome
-    assert sorted(p.name for p in own.parent.iterdir() if p.suffix == ".jpg") == ["folder.jpg"]
-    assert backend.query(Selection())[0].fields["artpath"] == str(own)
+    restored = Path(str(backend.query(Selection())[0].fields["artpath"]))
+    assert restored.read_bytes() == big

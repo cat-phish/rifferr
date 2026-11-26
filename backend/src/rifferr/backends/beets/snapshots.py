@@ -9,14 +9,14 @@ from typing import Any, Final
 
 from beets.library import Album, Item
 
-from rifferr.core.covers import ART_FIELD, ART_KEPT_FIELD
+from rifferr.core.covers import ART_FIELD
 from rifferr.core.snapshot import AlbumSnapshot, FieldValue, ItemSnapshot
 
 ALBUM_PREFIX = "album-"
 ITEM_PREFIX = "item-"
 ART_ADOPTED: Final = "rifferr_art_adopted"
-"""Album flexible attribute: its art file is an image the album came with, used in place
-(COVERS-SEARCH-16). Removing the art keeps that file. Hidden from snapshots."""
+"""Album flexible attribute: the file name of the image the album came with, now its cover
+(COVERS-SEARCH-16). Removing the art renames the file back. Hidden from snapshots."""
 _SKIP = {"id", "path", ART_ADOPTED}
 
 
@@ -86,8 +86,6 @@ def stored_fields(obj: Item | Album) -> dict[str, FieldValue]:
         sha = art_sha256(obj)
         if sha is not None:
             fields[ART_FIELD] = sha
-            if obj.get(ART_ADOPTED):
-                fields[ART_KEPT_FIELD] = True
     return fields
 
 

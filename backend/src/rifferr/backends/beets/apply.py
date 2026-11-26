@@ -36,13 +36,11 @@ from rifferr.core.changeset import (
     diff_effects,
     find_conflicts,
 )
-from rifferr.core.covers import ART_FIELD, ART_KEPT_FIELD, sha256_hex
+from rifferr.core.covers import ART_FIELD, sha256_hex
 from rifferr.core.snapshot import FieldValue
 
 #: Bookkeeping fields a ChangeSet can't touch; computed fields are refused too.
-READ_ONLY: Final = frozenset(
-    {"id", "path", "album_id", "mtime", "added", "artpath", ART_ADOPTED, ART_KEPT_FIELD}
-)
+READ_ONLY: Final = frozenset({"id", "path", "album_id", "mtime", "added", "artpath", ART_ADOPTED})
 
 
 def load(lib: Library, ref: TargetRef) -> Item | Album | None:
@@ -167,16 +165,21 @@ def _set_art(album: Album, art: ArtStore, sha: str | None) -> None:
     """Set or remove the album's cover (COVERS-SEARCH-16, -17). Any image this would
     replace or delete is copied into the art store first, so undo can bring it back.
 
-    An image already in the album folder with the new bytes is used where it is, not
-    copied, and marked as the album's own; removing or replacing such art keeps its file."""
+    An image already in the album folder with the new bytes is the album's own: it becomes
+    the cover by renaming it to beets' cover name (no copy), remembering its old name.
+    Removing that art renames it back; replacing it never overwrites it."""
     current = art_file(album)
-    adopted = bool(album.get(ART_ADOPTED))
+    adopted = str(album.get(ART_ADOPTED) or "")
     if current is not None:
         art.put_file(Path(current))
     if ART_ADOPTED in album:
         del album[ART_ADOPTED]
     if sha is None:
-        if current is not None and not adopted:
+        if current is not None and adopted:
+            back = os.path.join(os.path.dirname(current), adopted)
+            if not os.path.lexists(back):
+                os.rename(current, back)  # the name the album came with
+        elif current is not None:
             os.remove(current)
         album.artpath = None
         return
@@ -184,14 +187,24 @@ def _set_art(album: Album, art: ArtStore, sha: str | None) -> None:
     if own is not None:
         if current is not None and not adopted and not os.path.samefile(current, own):
             os.remove(current)
+        dest = os.fsdecode(album.art_destination(os.fsencode(own)))
+        name = os.path.basename(own)
+        if os.path.normpath(dest) != os.path.normpath(own) and not os.path.lexists(dest):
+            os.rename(own, dest)
+            own = dest
         album.artpath = os.fsencode(own)
-        album[ART_ADOPTED] = 1
+        album[ART_ADOPTED] = name
         return
     if adopted and current is not None:
-        album.artpath = None  # so beets' set_art doesn't remove the album's own file
-        dest = os.fsdecode(album.art_destination(os.fsencode(current)))
-        if os.path.normpath(dest) == os.path.normpath(current):
-            os.rename(current, _free_name(current, "-original"))  # never overwritten
+        # The album's own image stops being the cover. A copy made in the same change
+        # (covers.resize keeps the original as cover-hires.jpg) makes it redundant;
+        # otherwise (picked by hand) it stays as cover-original.<ext>. Never overwritten.
+        album.artpath = None  # so beets' set_art doesn't remove it
+        if _twin(current) is not None:
+            os.remove(current)  # also in the art store (put_file above)
+        else:
+            dest = os.fsdecode(album.art_destination(os.fsencode(current)))
+            os.rename(current, _free_name(dest, "-original"))
         current = None
     source = art.find(sha)
     assert source is not None, "check() refuses images not in the store"
@@ -208,6 +221,18 @@ def _free_name(path: str, suffix: str) -> str:
     while os.path.lexists(candidate):
         candidate, n = f"{stem}{suffix}-{n}{ext}", n + 1
     return candidate
+
+
+def _twin(path: str) -> str | None:
+    """Another file next to ``path`` with the same bytes."""
+    data = Path(path).read_bytes()
+    folder = os.path.dirname(path)
+    for entry in sorted(os.scandir(folder), key=lambda e: e.name):
+        if entry.path == path or not entry.is_file(follow_symlinks=False):
+            continue
+        if entry.stat().st_size == len(data) and Path(entry.path).read_bytes() == data:
+            return entry.path
+    return None
 
 
 def _own_image(album: Album, art: ArtStore, sha: str) -> str | None:

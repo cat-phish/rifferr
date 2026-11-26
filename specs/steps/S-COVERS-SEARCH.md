@@ -127,16 +127,17 @@ still run it as a `beets.command` step.
   the expected old value MUST be a conflict (CHANGESET-8). Backends without `art` MUST reject
   the change with a clear error. When a file directly in the album folder already holds the
   new image (same sha256, e.g. a `folder.jpg` the album came with, COVERS-SEARCH-12), the
-  backend MUST use that file where it is (`artpath` set to it, nothing copied or renamed)
-  and remember that it is the album's own image (B-096). A later move names it like any
-  cover (`art_filename`). The album's snapshot MUST show the read-only field
-  `art_kept: true` while its cover is such a file. Replacing the cover leaves the file in
-  the folder; when it has the name the new cover gets (`cover.jpg`), it MUST first be
-  renamed `<name>-original<ext>` (numbered if taken), never overwritten (author, 2026-11-25).
+  backend MUST make that file the cover by renaming it to beets' cover name
+  (`art_filename`, e.g. `cover.jpg`; kept as it is when that name is taken), not by copying
+  it, and remember the name it came with (B-096). When the cover is replaced, that file MUST never be overwritten:
+  if the same change left an identical copy in the folder (`covers.resize` keeps the
+  original as `cover-hires.jpg`), the file MUST be removed as redundant; otherwise (a cover
+  picked by hand) it MUST stay in the folder renamed `cover-original<ext>` (beets' cover
+  name plus `-original`, numbered if taken) (author, 2026-11-25).
 - COVERS-SEARCH-17: Undo of an `art` change (JOURNAL-4) MUST restore the old file from the
   journal's art store, or remove the art (`artpath` cleared, file deleted only if it is the one
   this change wrote, by sha256) when there was none. The album's own image (COVERS-SEARCH-16)
-  MUST never be deleted: removing such art only stops using it as the cover. It MUST conflict, without changing
+  MUST never be deleted: removing such art renames the file back to the name it came with. It MUST conflict, without changing
   anything, when the current art isn't the one the change wrote.
 - COVERS-SEARCH-18: `FakeBackend` MUST implement `set_art` and art in snapshots in memory with
   the same semantics; the backend contract suite MUST cover both.
