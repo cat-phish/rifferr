@@ -27,7 +27,9 @@ waits (non-negotiable 6).
   `review.requested`; other albums continue.
 - TAGS-CHOOSE-4: A choice review MUST show the album, the `show` fields, each option's label
   with a preview of its field changes, the suggestion preselected, and for `custom` an input
-  per field typed by the backend's field type (lists as tag inputs).
+  per field typed by the backend's field type (lists as tag inputs). A custom field that is
+  the `options_from` rules file's target MUST suggest the values its rules set, in file
+  order, while typing; free entry stays allowed (author, 2026-11-25).
 - TAGS-CHOOSE-5: Deciding MUST be `POST /api/choices/{id}/decision {option | custom, values?,
   note?}`. The chosen option's actions (or the custom values, as `set` actions) MUST be proposed
   as one ChangeSet for the album and applied through the engine at once, journaled with the
@@ -38,7 +40,9 @@ waits (non-negotiable 6).
   `custom` MUST apply that option without review. Default `review`.
 - TAGS-CHOOSE-8: Options MAY come from a rules file (`options_from`), each rule giving a
   label, a beets query and actions. Rules are ranked by how many of the album's values in
-  `rank_by` (a list field) they match; ties keep file order.
+  `rank_by` (a list field) they match; ties keep file order. A rule's `when` MAY be left
+  out: such a rule is a known value, suggested in custom entry (TAGS-CHOOSE-4) and never
+  ranked or offered (author, 2026-11-25).
 - TAGS-CHOOSE-9: A rules file MAY set `fallback: {template: ...}`: for values no rule matches,
   each value's template result becomes an extra option label with the rule's actions
   interpolated (`{{ choice }}`). The backend provides `%genre_root{value}` (the top-level parent
@@ -46,6 +50,8 @@ waits (non-negotiable 6).
 - TAGS-CHOOSE-10: Rules files and the choices a person makes with `custom` MAY be remembered:
   with `learn: true`, a custom decision that names a value from `rank_by` with no rule appends
   a rule to the rules file (ruamel round trip, comments kept), shown in the decision response.
+  With no such value, each custom value no rule sets yet MUST be appended as a known value
+  (a rule without `when`), so a typed bucket joins the list (author, 2026-11-25).
 - TAGS-CHOOSE-13: A choice review MAY offer `known_name: <field>`: a "This is one artist"
   action that adds the field's current value to the artist-name rules' `names`
   (C-ALBUM-FACTS ALBUM-FACTS-7; ruamel round trip, comments kept) and decides the review with
@@ -174,3 +180,4 @@ inside `<profile>/rules/`.
 - [x] Review card (radio options, previews, custom inputs)
 - [x] Rules file, ranking, `%genre_root` (backends/beets) and `learn`
 - [x] Playwright spec
+- [x] Custom entry suggests the rules file's values; `when` optional; new values learned (TAGS-CHOOSE-4, -8, -10; 2026-11-25)

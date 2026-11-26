@@ -19,6 +19,7 @@ from rifferr.choice_rules import (
     RulesFile,
     load_rules,
     resolve_rules,
+    rule_values,
     substitute,
 )
 from rifferr.core.changeset import (
@@ -219,6 +220,8 @@ def rule_offers(
     matched: set[str] = set()
     ranked: list[tuple[int, int, ChoiceOffer]] = []
     for index, rule in enumerate(rules.rules):
+        if rule.when is None:  # a known value only (TAGS-CHOOSE-8)
+            continue
         if rank_by is None:
             count = 1 if _matches(backend, rule.when, album) else 0
         else:
@@ -399,11 +402,13 @@ class TagsChooseStep:
         message: str | None = None
         if params.message is not None:
             message = backend.evaluate(params.message, album)
+        known = rule_values(rules) if rules is not None else []
         custom = [
             CustomField(
                 field=f,
                 kind=_custom_kind(backend, f, album.fields.get(f)),
                 value=album.fields.get(f),
+                suggestions=known if rules is not None and f == rules.target else [],
             )
             for f in params.custom
         ]

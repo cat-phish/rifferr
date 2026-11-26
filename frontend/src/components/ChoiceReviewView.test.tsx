@@ -137,6 +137,27 @@ test("TAGS_CHOOSE_4 custom entry with a list field as tag input", async () => {
   ]);
 });
 
+test("TAGS_CHOOSE_4 a custom list field suggests known values while typing", async () => {
+  setup(
+    review({
+      suggested: null,
+      custom: [
+        { field: "genres", kind: "list", value: [], suggestions: ["Punk", "Pop Punk", "Rock"] },
+      ],
+    }),
+  );
+  renderApp("/review?profile=main");
+  const card = await screen.findByTestId("choice-review");
+  fireEvent.click(within(within(card).getByTestId("choice-custom")).getByRole("radio"));
+  const input = within(card)
+    .getAllByLabelText("genres")
+    .find((e) => e.tagName === "INPUT") as HTMLInputElement;
+  fireEvent.focus(input);
+  fireEvent.click(input);
+  const options = await screen.findAllByRole("option");
+  expect(options.map((o) => o.textContent)).toEqual(["Punk", "Pop Punk", "Rock"]);
+});
+
 test("TAGS_CHOOSE_13 This is one artist, and skip", async () => {
   const { calls } = setup(review());
   renderApp("/review?profile=main");

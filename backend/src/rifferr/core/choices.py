@@ -63,6 +63,11 @@ class CustomField(BaseModel):
     field: str
     kind: CustomKind = "text"
     value: FieldValue = None
+    suggestions: list[str] = Field(
+        default_factory=list[str],
+        description="Known values offered while typing; free entry still allowed "
+        "(TAGS-CHOOSE-4: the options_from rules file's values for its target)",
+    )
 
 
 class LearnSettings(BaseModel):

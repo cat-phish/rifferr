@@ -1,5 +1,6 @@
 import {
   Alert,
+  Autocomplete,
   Badge,
   Button,
   Group,
@@ -151,10 +152,25 @@ export function ChoiceReviewView({ review }: { review: ChoiceReview }) {
                         onChange={(next) => {
                           setValues({ ...values, [c.field]: next });
                         }}
+                        data={c.suggestions ?? []}
+                        limit={20}
                         splitChars={[]}
                         acceptValueOnBlur
                         clearable
-                        description="One value per entry; press Enter to add one"
+                        description={hint(c.suggestions, review.learn != null)}
+                      />
+                    ) : (c.suggestions ?? []).length > 0 ? (
+                      <Autocomplete
+                        key={c.field}
+                        size="xs"
+                        label={c.field}
+                        data={c.suggestions ?? []}
+                        limit={20}
+                        value={show(values[c.field] ?? null)}
+                        onChange={(next) => {
+                          setValues({ ...values, [c.field]: next });
+                        }}
+                        description={hint(c.suggestions, review.learn != null)}
                       />
                     ) : (
                       <TextInput
@@ -192,7 +208,9 @@ export function ChoiceReviewView({ review }: { review: ChoiceReview }) {
                 size="xs"
                 variant="light"
                 disabled={decide.isPending}
-                title={`Remember "${review.known_name_value}" as one name, so it isn't flagged again`}
+                title={`Remember "${review.known_name_value}" as one name, so it isn't flagged again${
+                  review.known_name_option ? `, and choose ${review.known_name_option}` : ""
+                }`}
                 onClick={() => {
                   decide.mutate({ decision: "choose", known_name: true });
                 }}
@@ -234,4 +252,12 @@ export function ChoiceReviewView({ review }: { review: ChoiceReview }) {
       )}
     </Stack>
   );
+}
+
+/** The custom input's help (TAGS-CHOOSE-4, -10): known values drop down while typing. */
+function hint(suggestions: string[] | undefined, learns: boolean): string {
+  if ((suggestions ?? []).length === 0) return "One value per entry; press Enter to add one";
+  return learns
+    ? "Type to pick a known value, or a new one (remembered); press Enter to add"
+    : "Type to pick a known value, or a new one; press Enter to add";
 }

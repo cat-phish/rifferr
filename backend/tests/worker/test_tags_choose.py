@@ -353,6 +353,7 @@ async def test_TAGS_CHOOSE_10_learn_appends_a_rule_and_keeps_comments(h: ChooseH
     assert "label: Dream Pop" in text
     assert "'subgenres::^Shoegaze$|^Dream Pop$'" in text
     learned = load_rules(h.rules / "genres.yaml").rules[-1]
+    assert learned.when is not None
     (album,) = h.backend.query(Selection())
     dream = album.model_copy(update={"fields": {**album.fields, "subgenres": ["Dream Pop"]}})
     assert h.backend.matches(learned.when, dream)
@@ -361,6 +362,45 @@ async def test_TAGS_CHOOSE_10_learn_appends_a_rule_and_keeps_comments(h: ChooseH
     assert stored.learned is not None
     assert "Dream Pop" in stored.learned
     assert h.fields("G")["genres"] == ["Dream Pop"]
+
+
+KNOWN = """  - label: Punk
+    actions: [{ set: { genres: [Punk] } }]
+"""
+
+
+async def test_TAGS_CHOOSE_4_custom_list_suggests_the_rules_values(h: ChooseHarness) -> None:
+    genre_album(h)
+    (h.rules / "genres.yaml").write_text(RULES.replace("fallback:", KNOWN + "fallback:"))
+    review = await waiting(h, bucket())
+    (genres,) = review.custom
+    assert genres.suggestions == ["Rock", "Electronic", "Punk"]
+
+
+async def test_TAGS_CHOOSE_8_a_rule_without_when_is_never_offered(h: ChooseHarness) -> None:
+    genre_album(h, "Punk")
+    (h.rules / "genres.yaml").write_text(RULES.replace("fallback:", KNOWN + "fallback:"))
+    review = await waiting(h, bucket())
+    assert [o.label for o in review.options] == ["Rock"]
+
+
+async def test_TAGS_CHOOSE_10_a_new_value_is_learned_without_unmatched_values(
+    h: ChooseHarness,
+) -> None:
+    genre_album(h)
+    review = await waiting(h, bucket(", learn: true"))
+    await h.supervisor.decide_choice(
+        review.id, "choose", option="custom", values={"genres": ["Oi!", "Rock"]}
+    )
+    await h.until(lambda: h.state() == "succeeded")
+    text = (h.rules / "genres.yaml").read_text()
+    assert text.startswith("# genre buckets")
+    rules = load_rules(h.rules / "genres.yaml").rules
+    assert [(r.label, r.when) for r in rules[-1:]] == [("Oi!", None)]
+    assert sum(r.label == "Rock" for r in rules) == 1  # already known: nothing added
+    stored = h.reviews.get(review.id)
+    assert stored is not None
+    assert stored.learned == "genres.yaml: added 'Oi!' to the known values"
 
 
 async def test_TAGS_CHOOSE_8_a_rules_file_outside_rules_fails(h: ChooseHarness) -> None:

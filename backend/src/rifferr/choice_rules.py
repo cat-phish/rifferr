@@ -23,7 +23,7 @@ from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from rifferr.core.changeset import FieldName
 from rifferr.core.snapshot import FieldValue
 from rifferr.profile_store import atomic_write
-from rifferr.tagscript.models import Action, script_path_problem
+from rifferr.tagscript.models import Action, SetAction, script_path_problem
 
 RULES_DIR = "rules"
 #: ``{{ value }}`` (a fallback template) and ``{{ choice }}`` (fallback actions).
@@ -38,7 +38,12 @@ class Rule(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     label: str = Field(min_length=1)
-    when: str = Field(min_length=1, description="Backend query (a beets query)")
+    when: str | None = Field(
+        default=None,
+        min_length=1,
+        description="Backend query (a beets query). Without it the rule is a known value: "
+        "suggested while typing a custom value, never ranked or offered (TAGS-CHOOSE-8)",
+    )
     actions: Annotated[list[Action], Field(min_length=1)]
 
 
@@ -103,12 +108,30 @@ def substitute(value: Any, name: str, text: str) -> Any:
     return value
 
 
+def rule_values(rules: RulesFile) -> list[str]:
+    """Every value the rules' ``set`` actions give the target field, in file order, each
+    once: the known values a custom entry suggests (TAGS-CHOOSE-4)."""
+    out: list[str] = []
+    if rules.target is None:
+        return out
+    for rule in rules.rules:
+        for action in rule.actions:
+            if not isinstance(action, SetAction) or rules.target not in action.set:
+                continue
+            value = action.set[rules.target]
+            for v in value if isinstance(value, list) else [value]:
+                text = str(v).strip()
+                if text and text not in out:
+                    out.append(text)
+    return out
+
+
 def query_literal(value: str) -> str:
     """A regex that matches exactly ``value``, for a learned rule's query."""
     return "^" + re.escape(value).replace("\\ ", " ") + "$"
 
 
-def append_rule(path: Path, label: str, when: str, target: str, value: FieldValue) -> str:
+def append_rule(path: Path, label: str, when: str | None, target: str, value: FieldValue) -> str:
     """Append a rule to the file, keeping comments and order (TAGS-CHOOSE-10). Returns a
     line saying what was added."""
     yaml = YAML()
@@ -129,7 +152,8 @@ def append_rule(path: Path, label: str, when: str, target: str, value: FieldValu
         raise RulesError(f"rules file {path.name}: rules is not a list")
     rule = CommentedMap()
     rule["label"] = label
-    rule["when"] = when
+    if when is not None:
+        rule["when"] = when
     setter = CommentedMap()
     setter[target] = list(value) if isinstance(value, list) else value
     action = CommentedMap()
@@ -139,4 +163,6 @@ def append_rule(path: Path, label: str, when: str, target: str, value: FieldValu
     out = io.StringIO()
     yaml.dump(doc, out)
     atomic_write(path, out.getvalue().encode("utf-8"))
+    if when is None:
+        return f"{path.name}: added {label!r} to the known values"
     return f"{path.name}: added rule {label!r} for {when!r}"

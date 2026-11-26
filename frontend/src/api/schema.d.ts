@@ -2112,6 +2112,11 @@ export interface components {
              * @enum {string}
              */
             kind: "text" | "list";
+            /**
+             * Suggestions
+             * @description Known values offered while typing; free entry still allowed (TAGS-CHOOSE-4: the options_from rules file's values for its target)
+             */
+            suggestions?: string[];
             /** Value */
             value?: boolean | number | string | string[] | null;
         };

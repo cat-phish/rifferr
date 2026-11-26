@@ -42,7 +42,13 @@ from rifferr.appdb import (
 )
 from rifferr.backends.base import CapabilityError, LibraryBackend, QueryError, TemplateError
 from rifferr.backends.loader import load_backend
-from rifferr.choice_rules import append_rule, query_literal, resolve_rules
+from rifferr.choice_rules import (
+    append_rule,
+    load_rules,
+    query_literal,
+    resolve_rules,
+    rule_values,
+)
 from rifferr.core.changeset import ChangeSet, ChangeSource, FieldChange, TargetChange, TargetRef
 from rifferr.core.choices import CUSTOM, ChoiceReview
 from rifferr.core.covers import ART_FIELD
@@ -951,19 +957,28 @@ class Worker:
 
     def _learn(self, review: ChoiceReview, values: dict[str, Any]) -> list[str]:
         """TAGS-CHOOSE-10: the album's rank_by values no rule matched get a rule setting
-        the custom value of the rules file's target."""
+        the custom value of the rules file's target; with none, a value no rule gives yet
+        is added as a known value (a rule without a query)."""
         learn = review.learn
         assert learn is not None
         value = values.get(learn.target)
-        if not learn.unmatched or value in (None, "", []):
+        if value in (None, "", []):
             return []
-        label = ", ".join(str(v) for v in value) if isinstance(value, list) else str(value)
-        # One query term, quoted: backend queries are split at spaces like a shell line.
-        when = shlex.quote(
-            f"{learn.rank_by}::" + "|".join(query_literal(v) for v in learn.unmatched)
-        )
         path = resolve_rules(self.profile.root, learn.rules_file)
-        return [append_rule(path, label, when, learn.target, value)]
+        label = ", ".join(str(v) for v in value) if isinstance(value, list) else str(value)
+        if learn.unmatched:
+            # One query term, quoted: backend queries are split at spaces like a shell line.
+            when = shlex.quote(
+                f"{learn.rank_by}::" + "|".join(query_literal(v) for v in learn.unmatched)
+            )
+            return [append_rule(path, label, when, learn.target, value)]
+        known = set(rule_values(load_rules(path)))
+        given = [str(v).strip() for v in (value if isinstance(value, list) else [value])]
+        return [
+            append_rule(path, v, None, learn.target, [v] if isinstance(value, list) else v)
+            for v in dict.fromkeys(given)
+            if v and v not in known
+        ]
 
     def _retry_move(self, job: Job) -> None:
         """Plan a conflicted album again with its step's settings (LIBRARY-MOVE-5a). Still
