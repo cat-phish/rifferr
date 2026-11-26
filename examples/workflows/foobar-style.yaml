@@ -310,10 +310,11 @@ steps:
                mb_trackid]
       # Images other than the cover go in an Art sub-folder; everything else that came
       # along (rip logs, cue sheets) keeps its place in the album folder.
-      # The kept full-size cover (art-size) stays next to the cover; the first matching rule
+      # The kept full-size cover (art-size) and the album's own cover kept when it was
+      # replaced by hand (COVERS-SEARCH-16) stay next to the cover; the first matching rule
       # wins.
       artifacts:
-        - match: ["*-hires.*"]
+        - match: ["*-hires.*", "*-original.*"]
         - match: ["*.jpg", "*.jpeg", "*.png", "*.gif", "*.webp", "*.tif", "*.tiff", "*.bmp"]
           to: Art
         - "*"
