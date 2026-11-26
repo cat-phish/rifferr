@@ -524,7 +524,7 @@ function initialList(edit: Edit | undefined, current: FieldValue | undefined): s
 }
 
 /** The in-place editor: text, or a list of entries for multi-value fields (TAG-GRID-5). */
-function CellEditor({
+export function CellEditor({
   row,
   field,
   edit,

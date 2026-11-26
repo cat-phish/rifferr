@@ -46,7 +46,14 @@ import { jobOf, useMarkDecided } from "./Decided";
 /** Where the picker is used: a cover review in the queue, or a library album outside a
  * run (F-COVER-PICKER COVER-PICKER-1, -2). */
 export type PickerMode =
-  { kind: "review"; review: CoverReview } | { kind: "album"; albumId: string; label: string };
+  | { kind: "review"; review: CoverReview }
+  | {
+      kind: "album";
+      albumId: string;
+      label: string;
+      /** At an `edit: true` gate the choice is held, not set (COVER-PICKER-22). */
+      onHeld?: (sha256: string, old: string | null) => void;
+    };
 
 interface ProviderStatus {
   name: string;
@@ -318,19 +325,32 @@ function PickerBody({
           }),
         ).job_id;
       }
+      const onHeld = mode.kind === "album" ? mode.onHeld : undefined;
       const queued = ok(
         await api.POST("/api/profiles/{profile}/albums/{album_id}/cover", {
           params: { path: { profile, album_id: albumId ?? "" } },
-          body: { candidate_id: c.id, old_sha256: currentSha ?? null },
+          body: {
+            candidate_id: c.id,
+            old_sha256: currentSha ?? null,
+            hold: onHeld !== undefined,
+          },
         }),
       );
-      pendingChange.current = queued.changeset_id;
+      if (onHeld !== undefined) {
+        onHeld(queued.sha256, currentSha ?? null);
+        return "held";
+      }
+      pendingChange.current = queued.changeset_id ?? null;
       return queued.job_id;
     },
     onMutate: () => {
       setOutcome(null);
     },
     onSuccess: (jobId) => {
+      if (jobId === "held") {
+        setOutcome("Chosen. It is written when you continue the review.");
+        return;
+      }
       pendingJob.current = jobId ?? null;
       if (review !== null) markDecided(jobId ?? null);
       setOutcome("Setting the cover.");

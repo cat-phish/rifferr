@@ -536,6 +536,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/profiles/{profile}/art/{sha256}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stored Art
+         * @description An image of the profile's art store by its sha256, e.g. a cover held at a review
+         *     gate (COVER-PICKER-22). Stored images never change, so it may be cached for long.
+         */
+        get: operations["stored_art_api_profiles__profile__art__sha256__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/profiles/{profile}/beets-config": {
         parameters: {
             query?: never;
@@ -976,6 +997,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/reviews/{gate_id}/edits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Hold Gate Edits
+         * @description Replace the edits held on an ``edit: true`` gate (S-REVIEW REVIEW-14). Nothing is
+         *     written until the album is continued (REVIEW-15).
+         */
+        put: operations["hold_gate_edits_api_reviews__gate_id__edits_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs": {
         parameters: {
             query?: never;
@@ -1009,6 +1051,26 @@ export interface paths {
         };
         /** Get Run */
         get: operations["get_run_api_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{run_id}/albums/{album_id}/before": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Album Before Run
+         * @description The same for any album of a run, e.g. at an ``edit: true`` gate (REVIEW-13).
+         */
+        get: operations["album_before_run_api_runs__run_id__albums__album_id__before_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1245,20 +1307,32 @@ export interface components {
         /**
          * AlbumCoverBody
          * @description Set an album's cover outside a run (COVER-PICKER-14). ``old_sha256`` is the art the
-         *     user saw; a different current one comes back as a conflict.
+         *     user saw; a different current one comes back as a conflict. With ``hold`` the image is
+         *     only kept in the art store and its sha256 returned, for a held edit (COVER-PICKER-22).
          */
         AlbumCoverBody: {
             /** Candidate Id */
             candidate_id: string;
+            /**
+             * Hold
+             * @default false
+             */
+            hold: boolean;
             /** Old Sha256 */
             old_sha256?: string | null;
         };
         /** AlbumCoverQueued */
         AlbumCoverQueued: {
-            /** Changeset Id */
-            changeset_id: string;
-            /** Job Id */
-            job_id: string;
+            /**
+             * Changeset Id
+             * @description None with ``hold``
+             */
+            changeset_id?: string | null;
+            /**
+             * Job Id
+             * @description None with ``hold``
+             */
+            job_id?: string | null;
             /** Queued Behind */
             queued_behind?: string[];
             /** Sha256 */
@@ -2237,6 +2311,14 @@ export interface components {
             note?: string | null;
         };
         /**
+         * GateEditsBody
+         * @description The whole list of edits held on an ``edit: true`` gate (S-REVIEW REVIEW-14).
+         */
+        GateEditsBody: {
+            /** Edits */
+            edits: components["schemas"]["HeldEdit"][];
+        };
+        /**
          * GridColumns
          * @description Default tag-grid columns per scope (TAG-GRID-3). Unset: the UI's built-in default.
          */
@@ -2265,6 +2347,21 @@ export interface components {
              * @constant
              */
             status: "ok";
+        };
+        /**
+         * HeldEdit
+         * @description Edits to one album or item, held on an ``edit: true`` gate until its album is
+         *     continued (REVIEW-14). Each change's ``old`` is the value the reviewer saw.
+         */
+        HeldEdit: {
+            /**
+             * Album
+             * @description The album id the target belongs to
+             */
+            album: string;
+            /** Changes */
+            changes: components["schemas"]["FieldChange"][];
+            target: components["schemas"]["TargetRef"];
         };
         /** HookAccepted */
         HookAccepted: {
@@ -3328,6 +3425,17 @@ export interface components {
             decided_at?: string | null;
             /** Decided By */
             decided_by?: string | null;
+            /**
+             * Edit
+             * @description Values may be edited here (REVIEW-13)
+             * @default false
+             */
+            edit: boolean;
+            /**
+             * Edits
+             * @description Edits held until their album is continued (REVIEW-14, -15)
+             */
+            edits?: components["schemas"]["HeldEdit"][];
             /** Id */
             id: string;
             /** Note */
@@ -5500,6 +5608,66 @@ export interface operations {
             };
         };
     };
+    stored_art_api_profiles__profile__art__sha256__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile: string;
+                sha256: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A JPEG or PNG image */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                    "image/png": string;
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     get_beets_config_api_profiles__profile__beets_config_get: {
         parameters: {
             query?: never;
@@ -6949,6 +7117,68 @@ export interface operations {
             };
         };
     };
+    hold_gate_edits_api_reviews__gate_id__edits_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                gate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GateEditsBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewGate"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     list_runs_api_runs_get: {
         parameters: {
             query?: {
@@ -7061,6 +7291,65 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RunDetail"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    album_before_run_api_runs__run_id__albums__album_id__before_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+                album_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BeforeRun"];
                 };
             };
             /** @description Bad Request */

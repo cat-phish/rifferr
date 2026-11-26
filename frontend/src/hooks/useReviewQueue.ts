@@ -119,8 +119,10 @@ export function useAppEvents(onEvent?: (event: RunEvent) => void): void {
         return;
       }
       void queryClient.invalidateQueries({ queryKey: ["review"] });
-      if (event.type.startsWith("changeset.")) {
+      if (event.type.startsWith("changeset.") || event.type === "job.finished") {
         void queryClient.invalidateQueries({ queryKey: ["changeset-current"] });
+        // The final review's album check shows the album as it is now (LIBRARY-MOVE-18, -19).
+        void queryClient.invalidateQueries({ queryKey: ["album-check"] });
       }
       onEvent?.(event);
     },

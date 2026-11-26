@@ -201,3 +201,23 @@ export function savePrefs(profile: string, scope: Scope, prefs: ColumnPrefs): vo
     // not remembered; still works for this page
   }
 }
+
+/** Edits held on a review gate (REVIEW-14) as pending edits, keyed like the grid's. */
+export function fromHeld(
+  edits: {
+    target: TargetRef;
+    album: string;
+    changes: { field: string; op?: "set" | "delete"; old?: FieldValue; new?: FieldValue }[];
+  }[],
+): Pending {
+  const out: Pending = {};
+  for (const e of edits) {
+    const key = rowKey(e.target);
+    const changes: Record<string, Edit> = { ...(out[key]?.changes ?? {}) };
+    for (const c of e.changes) {
+      changes[c.field] = { op: c.op ?? "set", old: c.old ?? null, new: c.new ?? null };
+    }
+    out[key] = { target: e.target, album: e.album, changes };
+  }
+  return out;
+}

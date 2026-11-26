@@ -547,6 +547,7 @@ test("COVER_PICKER_2 COVER_PICKER_3 COVER_PICKER_14 change cover searches for th
   expect(calls(api.calls, "POST", "/api/profiles/main/albums/a1/cover")[0]?.body).toEqual({
     candidate_id: "c1",
     old_sha256: "ab".repeat(32),
+    hold: false,
   });
   act(() => {
     for (const s of streams) {

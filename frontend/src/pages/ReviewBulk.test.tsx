@@ -28,6 +28,8 @@ function album(id: string, label: string): S["GateAlbum"] {
 
 function gate(id: string, over: Partial<S["ReviewGate"]> = {}): S["ReviewGate"] {
   return {
+    edit: false,
+    edits: [],
     id,
     profile: "main",
     run_id: RUN,

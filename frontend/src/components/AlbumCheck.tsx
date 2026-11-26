@@ -4,7 +4,9 @@ import {
   Group,
   Image,
   Modal,
+  Popover,
   Stack,
+  Switch,
   Table,
   Text,
   Tooltip,
@@ -15,8 +17,21 @@ import { useState } from "react";
 import { api, ok } from "../api/client";
 import type { ChangeSet } from "../api/types";
 import { albumArt } from "../lib/covers";
-import { display, show, type AlbumSnapshot, type FieldValue } from "../lib/grid";
+import {
+  albumRow,
+  display,
+  itemRow,
+  listFields,
+  show,
+  withEdit,
+  type AlbumSnapshot,
+  type Edit,
+  type FieldValue,
+  type Pending,
+  type Row,
+} from "../lib/grid";
 import { CoverPicker } from "./CoverPicker";
+import { CellEditor } from "./TagGrid";
 
 type Before = Record<string, FieldValue>;
 type FolderItem = { tags?: Record<string, FieldValue> };
@@ -26,7 +41,7 @@ const same = (a: FieldValue | undefined, b: FieldValue | undefined) =>
 
 /** Fields to show: the step's `show` list, then every field the run changed (LIBRARY-MOVE-18).
  * Nothing here names a tag: without `show`, only changed fields and the files' imported tags. */
-function fieldList(listed: string[] | undefined, changed: Iterable<string>): string[] {
+function fieldList(listed: string[] | null | undefined, changed: Iterable<string>): string[] {
   const out = [...(listed ?? [])];
   for (const f of changed) if (!out.includes(f)) out.push(f);
   return out;
@@ -78,12 +93,106 @@ function Value({
   );
 }
 
-function Cover({ profile, albumId, label }: { profile: string; albumId: string; label: string }) {
+/** A value that opens the tag grid's editor on click (LIBRARY-MOVE-18, final review). A
+ * pending edit shows as old → new until Apply; the before-run tooltip stays. */
+function EditableValue({
+  row,
+  field,
+  pending,
+  lists,
+  onEdit,
+  readOnly,
+  children,
+}: {
+  row: Row;
+  field: string;
+  pending: Pending;
+  lists: Set<string>;
+  onEdit: (row: Row, field: string, edit: Edit | null) => void;
+  readOnly: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  if (readOnly) return <>{children}</>;
+  const edit = pending[row.key]?.changes[field];
+  return (
+    <Popover opened={open} onChange={setOpen} position="bottom-start" withinPortal trapFocus>
+      <Popover.Target>
+        <UnstyledButton
+          data-testid="check-value"
+          data-field={field}
+          data-pending={edit ? "true" : undefined}
+          aria-label={`Edit ${field}`}
+          onClick={() => {
+            setOpen(true);
+          }}
+          style={{
+            cursor: "text",
+            borderRadius: 4,
+            padding: "0 4px",
+            background: edit ? "var(--mantine-color-yellow-light)" : undefined,
+          }}
+        >
+          {edit ? (
+            <Text span size="sm">
+              <s style={{ opacity: 0.6 }}>{show(edit.old) || "(none)"}</s> →{" "}
+              <b>{edit.op === "delete" ? "(deleted)" : show(edit.new) || "(empty)"}</b>
+            </Text>
+          ) : (
+            children
+          )}
+        </UnstyledButton>
+      </Popover.Target>
+      <Popover.Dropdown>
+        {open && (
+          <CellEditor
+            row={row}
+            field={field}
+            edit={edit}
+            problem={undefined}
+            isList={Array.isArray(row.fields[field]) || lists.has(field)}
+            lists={lists}
+            onDone={(next) => {
+              onEdit(row, field, next);
+              setOpen(false);
+            }}
+            onCancel={() => {
+              setOpen(false);
+            }}
+          />
+        )}
+      </Popover.Dropdown>
+    </Popover>
+  );
+}
+
+const ART = "art_sha256";
+
+function heldCover(e: Edit | undefined): string | null {
+  return e?.op === "set" && typeof e.new === "string" ? e.new : null;
+}
+
+function Cover({
+  profile,
+  albumId,
+  label,
+  heldSha,
+  onHeld,
+}: {
+  profile: string;
+  albumId: string;
+  label: string;
+  /** A cover chosen at an `edit: true` gate, not written yet (COVER-PICKER-22). */
+  heldSha?: string | null;
+  onHeld?: (sha256: string, old: string | null) => void;
+}) {
   const [size, setSize] = useState<string | null>(null);
   const [missing, setMissing] = useState(false);
   const [full, setFull] = useState(false);
   const [picker, setPicker] = useState(false);
-  const src = albumArt(profile, albumId);
+  const src = heldSha
+    ? `/api/profiles/${encodeURIComponent(profile)}/art/${heldSha}`
+    : albumArt(profile, albumId);
   return (
     <Stack gap={4} align="flex-start" data-testid="album-check-cover">
       {missing ? (
@@ -120,6 +229,11 @@ function Cover({ profile, albumId, label }: { profile: string; albumId: string; 
             {size} px
           </Text>
         )}
+        {heldSha && (
+          <Badge size="xs" variant="light" color="yellow" data-testid="cover-held">
+            new, held
+          </Badge>
+        )}
         <Button
           size="compact-xs"
           variant="light"
@@ -150,7 +264,26 @@ function Cover({ profile, albumId, label }: { profile: string; albumId: string; 
         title="Change cover"
         size="90%"
       >
-        {picker && <CoverPicker profile={profile} mode={{ kind: "album", albumId, label }} />}
+        {picker && (
+          <CoverPicker
+            profile={profile}
+            mode={{
+              kind: "album",
+              albumId,
+              label,
+              ...(onHeld
+                ? {
+                    onHeld: (sha: string, old: string | null) => {
+                      onHeld(sha, old);
+                      setPicker(false);
+                      setMissing(false);
+                      setSize(null);
+                    },
+                  }
+                : {}),
+            }}
+          />
+        )}
       </Modal>
     </Stack>
   );
@@ -159,30 +292,82 @@ function Cover({ profile, albumId, label }: { profile: string; albumId: string; 
 /** The album's final check above a FileChangeSet (LIBRARY-MOVE-18): its cover with its size,
  * and the `show` fields of the album and its tracks, each field this run changed marked. */
 export function AlbumCheck({ changeset }: { changeset: ChangeSet }) {
-  const profile = changeset.profile;
-  const albumId = changeset.album?.id ?? null;
+  if (!changeset.album) return null;
+  return (
+    <AlbumCheckView
+      profile={changeset.profile}
+      albumId={changeset.album.id}
+      source={{ kind: "changeset", id: changeset.id }}
+      show={changeset.show ?? undefined}
+      readOnly
+    />
+  );
+}
+
+/** Edits held on an `edit: true` review gate instead of applied (S-REVIEW REVIEW-14). */
+export interface HeldEdits {
+  pending: Pending;
+  onChange: (next: Pending) => void;
+  saving?: boolean;
+}
+
+type BeforeSource = { kind: "changeset"; id: string } | { kind: "run"; runId: string };
+
+/** An album's final check (LIBRARY-MOVE-18, REVIEW-13): cover, fields and tracks, each
+ * editable. Without `held`, Apply writes the edits at once as manual ChangeSets; with it,
+ * the edits are held on the gate and written when the album is continued. */
+export function AlbumCheckView({
+  profile,
+  albumId,
+  source,
+  show: shown,
+  held,
+  readOnly = false,
+}: {
+  profile: string;
+  albumId: string;
+  source: BeforeSource;
+  show?: { album?: string[] | null; item?: string[] | null };
+  held?: HeldEdits;
+  /** The move's review: fields are edited at the final-write gate before it (REVIEW-13). */
+  readOnly?: boolean;
+}) {
+  const changeset = { show: shown };
+  const [local, setLocal] = useState<Pending>({});
+  const pending = held ? held.pending : local;
+  const setPending = (next: Pending | ((p: Pending) => Pending)) => {
+    const value = typeof next === "function" ? next(pending) : next;
+    if (held) held.onChange(value);
+    else setLocal(value);
+  };
+  const [all, setAll] = useState(false);
   const before = useQuery({
-    queryKey: ["changeset-before", changeset.id],
+    queryKey: ["album-before", source, albumId],
     queryFn: async () =>
-      ok(
-        await api.GET("/api/changesets/{changeset_id}/before", {
-          params: { path: { changeset_id: changeset.id } },
-        }),
-      ),
+      source.kind === "changeset"
+        ? ok(
+            await api.GET("/api/changesets/{changeset_id}/before", {
+              params: { path: { changeset_id: source.id } },
+            }),
+          )
+        : ok(
+            await api.GET("/api/runs/{run_id}/albums/{album_id}/before", {
+              params: { path: { run_id: source.runId, album_id: albumId } },
+            }),
+          ),
   });
   const album = useQuery({
     queryKey: ["album-check", profile, albumId],
-    enabled: albumId !== null,
     retry: false,
     queryFn: async () =>
       ok(
         await api.GET("/api/profiles/{profile}/library", {
-          params: { path: { profile }, query: { album: albumId ?? "", scope: "album" } },
+          params: { path: { profile }, query: { album: albumId, scope: "album" } },
         }),
       ),
   });
   const snap: AlbumSnapshot | undefined = album.data?.albums[0];
-  if (albumId === null || snap === undefined) return null;
+  if (snap === undefined) return null;
   const b = before.data;
   const kinds = album.data?.field_kinds ?? {};
   const items = snap.items ?? [];
@@ -195,7 +380,9 @@ export function AlbumCheck({ changeset }: { changeset: ChangeSet }) {
   const albumKnown = new Set(Object.keys(b?.album ?? {}));
   for (const k of Object.keys(folder[0]?.tags ?? {})) if (k in snap.fields) albumKnown.add(k);
   const changedAlbum = [...albumKnown].filter((f) => !same(snap.fields[f], albumBefore[f]));
-  const albumFields = fieldList(changeset.show?.album, changedAlbum);
+  const albumFields = all
+    ? fieldList(fieldList(changeset.show?.album, changedAlbum), Object.keys(snap.fields).sort())
+    : fieldList(changeset.show?.album, changedAlbum);
   const changedItem = new Set<string>();
   items.forEach((it, i) => {
     const was = itemBefore(it.id, it.fields, i);
@@ -203,12 +390,63 @@ export function AlbumCheck({ changeset }: { changeset: ChangeSet }) {
       if (k in it.fields && !same(it.fields[k], was[k]) && !albumFields.includes(k))
         changedItem.add(k);
   });
-  const itemFields = fieldList(changeset.show?.item, changedItem);
+  const shownItems = fieldList(changeset.show?.item, changedItem);
+  const itemFields = all
+    ? fieldList(shownItems, [...new Set(items.flatMap((it) => Object.keys(it.fields)))].sort())
+    : shownItems;
   const label = `${show(snap.fields.albumartist)} - ${show(snap.fields.album)}`;
+  const lists = listFields([snap]);
+  const onEdit = (row: Row, field: string, e: Edit | null) => {
+    setPending((p) => withEdit(p, row, field, e));
+  };
+  const count = Object.values(pending).reduce((n, p) => n + Object.keys(p.changes).length, 0);
+  const aRow = albumRow(snap);
   return (
     <Group align="flex-start" gap="lg" wrap="wrap" data-testid="album-check">
-      <Cover profile={profile} albumId={albumId} label={label} />
+      <Cover
+        profile={profile}
+        albumId={albumId}
+        label={label}
+        heldSha={held ? heldCover(pending[aRow.key]?.changes[ART]) : null}
+        onHeld={
+          held
+            ? (sha, old) => {
+                onEdit(aRow, ART, { op: "set", old: aRow.fields[ART] ?? old ?? null, new: sha });
+              }
+            : undefined
+        }
+      />
       <Stack gap="sm" style={{ flex: 1, minWidth: 280 }}>
+        <Group gap="sm" justify="space-between" data-testid="album-check-edit">
+          <Text size="xs" c="dimmed">
+            {readOnly ? "" : "Click a value to edit it."}
+          </Text>
+          <Switch
+            size="xs"
+            label="All fields"
+            checked={all}
+            onChange={(e) => {
+              setAll(e.currentTarget.checked);
+            }}
+          />
+        </Group>
+        {held && count > 0 && (
+          <Group gap="xs" data-testid="album-check-held">
+            <Text size="sm">
+              {count} edit{count === 1 ? "" : "s"} held, written when you continue
+              {held.saving ? " (saving…)" : ""}
+            </Text>
+            <Button
+              size="compact-sm"
+              variant="default"
+              onClick={() => {
+                setPending({});
+              }}
+            >
+              Discard edits
+            </Button>
+          </Group>
+        )}
         {albumFields.length > 0 && (
           <Table fz="sm" verticalSpacing={2} withRowBorders={false} data-testid="album-check-album">
             <Table.Tbody>
@@ -218,12 +456,21 @@ export function AlbumCheck({ changeset }: { changeset: ChangeSet }) {
                     {f}
                   </Table.Td>
                   <Table.Td>
-                    <Value
-                      now={snap.fields[f]}
-                      before={albumBefore[f]}
-                      known={f in albumBefore}
-                      kind={kinds[f]}
-                    />
+                    <EditableValue
+                      row={aRow}
+                      field={f}
+                      pending={pending}
+                      lists={lists}
+                      onEdit={onEdit}
+                      readOnly={readOnly}
+                    >
+                      <Value
+                        now={snap.fields[f]}
+                        before={albumBefore[f]}
+                        known={f in albumBefore}
+                        kind={kinds[f]}
+                      />
+                    </EditableValue>
                   </Table.Td>
                 </Table.Tr>
               ))}
@@ -249,12 +496,21 @@ export function AlbumCheck({ changeset }: { changeset: ChangeSet }) {
                     <Table.Tr key={it.id} data-item={it.id}>
                       {itemFields.map((f) => (
                         <Table.Td key={f} data-field={f}>
-                          <Value
-                            now={it.fields[f]}
-                            before={was[f]}
-                            known={f in was}
-                            kind={kinds[f]}
-                          />
+                          <EditableValue
+                            row={itemRow(snap, it)}
+                            field={f}
+                            pending={pending}
+                            lists={lists}
+                            onEdit={onEdit}
+                            readOnly={readOnly}
+                          >
+                            <Value
+                              now={it.fields[f]}
+                              before={was[f]}
+                              known={f in was}
+                              kind={kinds[f]}
+                            />
+                          </EditableValue>
                         </Table.Td>
                       ))}
                     </Table.Tr>

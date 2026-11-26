@@ -18,6 +18,7 @@ import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/rea
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { Link, Navigate, useSearchParams } from "react-router";
 import { api, ok } from "../api/client";
+import { AlbumCheckView } from "../components/AlbumCheck";
 import { CoverPicker } from "../components/CoverPicker";
 import { ChoiceReviewView } from "../components/ChoiceReviewView";
 import { CleanupDecisionView } from "../components/CleanupDecisionView";
@@ -38,6 +39,7 @@ import { usePipeline, useReviewQueue, useWorkflowSteps } from "../hooks/useRevie
 import { BULK_ACTIONS, bulkKind, decideAll, type BulkFailure, type BulkKind } from "../lib/bulk";
 import { useAppEventListener } from "../lib/appEvents";
 import { duration, time } from "../lib/format";
+import { fromHeld, toRequest, type Pending } from "../lib/grid";
 import { StatusBadge } from "../components/StatusBadge";
 import {
   count,
@@ -1274,6 +1276,26 @@ function GateCard({
       ),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["review"] }),
   });
+  // REVIEW-14: an `edit: true` gate holds edits until its albums are continued.
+  const [held, setHeld] = useState<Pending>(() => fromHeld(gate.edits ?? []));
+  const saveHeld = useMutation({
+    mutationFn: async (next: Pending) =>
+      ok(
+        await api.PUT("/api/reviews/{gate_id}/edits", {
+          params: { path: { gate_id: gate.id } },
+          body: { edits: toRequest(next) },
+        }),
+      ),
+  });
+  const heldFor = (albumId: string): Pending =>
+    Object.fromEntries(Object.entries(held).filter(([, p]) => p.album === albumId));
+  const onHeld = (albumId: string) => (next: Pending) => {
+    const others = Object.entries(held).filter(([, p]) => p.album !== albumId);
+    const merged = { ...Object.fromEntries(others), ...next };
+    setHeld(merged);
+    saveHeld.mutate(merged);
+  };
+  const heldCount = Object.values(held).reduce((n, p) => n + Object.keys(p.changes).length, 0);
   const decided = perAlbum.data?.album_decisions ?? gate.album_decisions ?? {};
   const several = gate.albums.length > 1;
   const undecided = gate.albums.filter((a) => !(a.target.id in decided)).length;
@@ -1300,7 +1322,27 @@ function GateCard({
         const verdict = decided[album.target.id];
         return (
           <Stack key={targetKey(album.target)} gap={4}>
-            <GateAlbumView album={album} />
+            {gate.edit ? (
+              <Stack gap={4} data-testid="gate-album-edit">
+                <Text fw={500}>{album.label}</Text>
+                {album.message && <Text size="sm">{album.message}</Text>}
+                {verdict === undefined && (
+                  <AlbumCheckView
+                    profile={gate.profile}
+                    albumId={album.target.id}
+                    source={{ kind: "run", runId: gate.run_id }}
+                    show={{ album: Object.keys(album.shown ?? {}) }}
+                    held={{
+                      pending: heldFor(album.target.id),
+                      onChange: onHeld(album.target.id),
+                      saving: saveHeld.isPending,
+                    }}
+                  />
+                )}
+              </Stack>
+            ) : (
+              <GateAlbumView album={album} />
+            )}
             {several && verdict !== undefined && (
               <TokenBadge
                 token={verdict === "continued" ? "success" : "danger"}
@@ -1338,6 +1380,7 @@ function GateCard({
         );
       })}
       {perAlbum.error && <Alert color="red">{perAlbum.error.message}</Alert>}
+      {saveHeld.error && <Alert color="red">{saveHeld.error.message}</Alert>}
       {decide.error && <Alert color="red">{decide.error.message}</Alert>}
       {decide.isSuccess ? (
         <HeaderActions>
@@ -1351,6 +1394,7 @@ function GateCard({
             <NoteField value={note} onChange={setNote} />
             <Text size="xs" c="dimmed" data-testid="reject-says">
               {REJECT_SAYS[gate.on_reject]}
+              {gate.edit && " To drop only your edits, use Discard edits."}
             </Text>
           </Group>
           <HeaderActions>
@@ -1362,7 +1406,11 @@ function GateCard({
                 decide.mutate("continue");
               }}
             >
-              {several && undecided < gate.albums.length ? "Continue the rest" : "Continue"}
+              {several && undecided < gate.albums.length
+                ? "Continue the rest"
+                : gate.edit && heldCount > 0
+                  ? "Write edits and continue"
+                  : "Continue"}
             </Button>
             <Button
               size="xs"
@@ -1374,7 +1422,13 @@ function GateCard({
                 decide.mutate("reject");
               }}
             >
-              {several && undecided < gate.albums.length ? "Reject the rest" : "Reject"}
+              {several && undecided < gate.albums.length
+                ? "Reject the rest"
+                : gate.edit
+                  ? several
+                    ? "Reject albums"
+                    : "Reject album"
+                  : "Reject"}
             </Button>
           </HeaderActions>
         </>

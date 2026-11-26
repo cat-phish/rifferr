@@ -66,6 +66,8 @@ function gate(over: Partial<S["ReviewGate"]> = {}): S["ReviewGate"] {
     run_id: NEW_RUN,
     step_id: "check",
     state: "pending",
+    edit: false,
+    edits: [],
     albums: [
       {
         target: { scope: "album", id: "a1" },
@@ -685,6 +687,73 @@ test("REVIEW_QUEUE_13 gate card: albums, changes, deadline, continue with a note
     decision: "continue",
     note: "looks right",
   });
+});
+
+test("REVIEW_13 REVIEW_14 an edit gate holds edits; Discard edits is apart from Reject album", async () => {
+  const { calls } = setup({
+    queue: () => [gateItem(gate({ edit: true, on_reject: "stop" }))],
+    extra: {
+      [`GET /api/runs/${NEW_RUN}/albums/a1/before`]: () => ({
+        album_id: "a1",
+        album: { album: "Live" },
+        items: {},
+        folder: [],
+      }),
+      "GET /api/profiles/main/library": () => ({
+        albums: [
+          {
+            id: "a1",
+            path: "/staging/Band/Live",
+            fields: { album: "Live (EP)", albumartist: "Band", albumtype: "ep" },
+            items: [{ id: "i1", path: "x", fields: { track: 1, title: "One" } }],
+          },
+        ],
+        album_fields: [],
+        item_fields: [],
+        truncated: false,
+        field_kinds: {},
+      }),
+      "PUT /api/reviews/g1/edits": (call) => ({
+        ...gate({ edit: true }),
+        edits: (call.body as { edits: S["HeldEdit"][] }).edits,
+      }),
+    },
+  });
+  renderApp("/review?profile=main");
+  const card = await screen.findByTestId("queue-item");
+  const check = await within(card).findByTestId("album-check");
+  fireEvent.click(await within(check).findByRole("button", { name: "Edit albumtype" }));
+  const input = await screen.findByLabelText("albumtype value");
+  fireEvent.change(input, { target: { value: "album" } });
+  fireEvent.keyDown(input, { key: "Enter" });
+  const bar = await within(check).findByTestId("album-check-held");
+  expect(bar).toHaveTextContent("1 edit held, written when you continue");
+  const puts = () => calls.filter((c) => c.method === "PUT" && c.path === "/api/reviews/g1/edits");
+  await waitFor(() => {
+    expect(puts().length).toBe(1);
+  });
+  expect(nth(puts(), 0).body).toEqual({
+    edits: [
+      {
+        target: { scope: "album", id: "a1" },
+        album: "a1",
+        changes: [{ field: "albumtype", op: "set", old: "ep", new: "album" }],
+      },
+    ],
+  });
+  expect(
+    within(card).getByRole("button", { name: "Write edits and continue" }),
+  ).toBeInTheDocument();
+  expect(within(card).getByRole("button", { name: "Reject album" })).toBeInTheDocument();
+  expect(within(card).getByTestId("reject-says")).toHaveTextContent("Discard edits");
+  // Discarding only drops the edits; nothing is decided.
+  fireEvent.click(within(bar).getByRole("button", { name: "Discard edits" }));
+  await waitFor(() => {
+    expect(puts().length).toBe(2);
+  });
+  expect(nth(puts(), 1).body).toEqual({ edits: [] });
+  expect(posts(calls, "/api/reviews/g1/decision")).toHaveLength(0);
+  expect(within(card).getByRole("button", { name: "Continue" })).toBeInTheDocument();
 });
 
 test("REVIEW_QUEUE_13 reject with on_reject stop, and a gate that can't be decided", async () => {
