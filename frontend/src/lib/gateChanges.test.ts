@@ -97,3 +97,8 @@ test("REVIEW_4 a date change on tracks only stays its own row", () => {
   const rows = groupChanges(album([change("item", "item-1", "day", 29, 9)], 2));
   expect(rows.map((r) => [r.label, r.field])).toEqual([[undefined, "day"]]);
 });
+
+test("REVIEW_4 without the album's fields a partial date change stays as it is", () => {
+  const rows = groupChanges(album([change("album", "a1", "day", 29, 9)], 1));
+  expect(rows.map((r) => [r.label, r.field])).toEqual([[undefined, "day"]]);
+});

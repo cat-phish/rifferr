@@ -89,6 +89,9 @@ function foldDates(rows: ChangeRow[], current: Record<string, Change["after"]>):
         );
       const first = cluster[0];
       if (first === undefined) continue;
+      // Without the album's fields (a gate from before REVIEW-4's amendment) the parts
+      // that didn't change are unknown: keep the rows as they are.
+      if (parts.some((p) => !changed.has(p) && current[p] === undefined)) continue;
       const row: ChangeRow = {
         ...first,
         key: `${label}/${key}`,
