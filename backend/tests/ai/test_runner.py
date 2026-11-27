@@ -400,3 +400,71 @@ async def test_AI_CORE_22_bad_lookalikes_file_fails_before_request(tmp_path: Pat
     with pytest.raises(AITaskError, match="both preferred and a variant"):
         await h.rt.run_task(PickTask(), PickIn(album="A"))
     assert h.fake.requests == []
+
+
+async def test_AI_CORE_3_request_takes_provider_settings_one_call_per_attempt(
+    tmp_path: Path,
+) -> None:
+    h = Harness(
+        tmp_path,
+        providers=[
+            {
+                "name": "fake",
+                "type": "fake",
+                "model": "m1",
+                "settings": {"temperature": 0.3, "max_output_tokens": 512},
+            }
+        ],
+    )
+    h.fake.script(AIError("down", retryable=True), ANSWER)
+    await h.rt.run_task(PickTask(), PickIn(album="A"))
+    assert len(h.fake.requests) == 2  # the core retried; the provider made one call each
+    req = h.fake.requests[0]
+    assert (req.temperature, req.max_output_tokens) == (0.3, 512)
+
+
+def test_AI_CORE_8_tasks_load_through_entry_points() -> None:
+    from rifferr.ai.registry import load_tasks
+    from rifferr.plugins import AI_TASKS
+
+    class EP:
+        name, value = "test.pick", "tests:PickTask"
+
+        def load(self) -> Any:
+            return PickTask
+
+    class Half:
+        name, value = "half", "tests:Half"
+
+        def load(self) -> Any:
+            return type("Half", (), {"id": "half"})
+
+    groups: list[str] = []
+
+    def eps(group: str) -> list[Any]:
+        groups.append(group)
+        return [EP(), Half()]
+
+    found, errors = load_tasks(eps)
+    assert groups == [AI_TASKS]
+    assert list(found) == ["test.pick"]
+    assert "missing prompt_version" in errors[0]
+
+
+async def test_AI_CORE_11_build_gets_only_input_and_context(h: Harness) -> None:
+    seen: list[tuple[Any, TaskContext]] = []
+
+    class Spy(PickTask):
+        def build(self, inp: PickIn, ctx: TaskContext) -> tuple[str, str]:
+            seen.append((inp, ctx))
+            return super().build(inp, ctx)
+
+    h.fake.script(ANSWER)
+    preview = h.rt.preview(Spy(), PickIn(album="A"))
+    await h.rt.run_task(Spy(), PickIn(album="A"))
+    for inp, ctx in seen:
+        assert inp == PickIn(album="A")
+        assert set(TaskContext.model_fields) == {"files", "lookalikes"}
+        assert dict(ctx.files) == {}
+    assert h.fake.requests[0].user == preview.user  # everything sent is in the preview
+    assert h.fake.requests[0].system == preview.system

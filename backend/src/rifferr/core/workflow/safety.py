@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 import shlex
-from collections.abc import Collection
+from collections.abc import Collection, Mapping
 from typing import Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict
@@ -54,6 +54,8 @@ FindingKind = Literal[
     "tag_field",
     "file_move",
     "rerun",
+    "ai_request",
+    "path_sent",
 ]
 #: beets plugins that copy or move extra files on beets' own move events. ``library.move``
 #: moves files itself, so they don't fire (S-LIBRARY-MOVE LIBRARY-MOVE-6a).
@@ -127,6 +129,7 @@ def _report(wf: Workflow, beets_plugins: frozenset[str] = frozenset()) -> Safety
                     detail=f"{step.uses} applies its changes without review (apply: auto)",
                 )
             )
+        findings += _ai_findings(step.id, step.uses, step.with_)  # AI-CORE-20
         if step.uses == "beets.command":
             findings += _library_command_findings(step.id, step.with_)
             continue
@@ -384,3 +387,47 @@ def _is_local_script(word: str) -> bool:
     if not word.startswith(SCRIPT_PREFIXES):
         return False
     return not word.startswith(SYSTEM_DIRS)
+
+
+#: Fields whose values are file paths: sending them reveals the folder layout (AI-CORE-20).
+PATH_FIELDS: frozenset[str] = frozenset({"path", "artpath"})
+
+
+def _ai_findings(step_id: str, uses: str, params: Mapping[str, Any]) -> list[Finding]:
+    """An ``ai_request`` finding for a step that runs an AI task (AI-CORE-20): ``ai.tag``,
+    or any step with an ``ai`` block (e.g. ``tags.choose``, F-AI-SUGGEST)."""
+    block: Mapping[str, Any] | None
+    if uses == "ai.tag":
+        block = params
+    else:
+        raw = params.get("ai")
+        block = cast("Mapping[str, Any]", raw) if isinstance(raw, Mapping) else None
+    if block is None:
+        return []
+    sent: list[str] = []
+    for key in ("context", "item_context"):
+        value = block.get(key)
+        if isinstance(value, list):
+            sent += [str(v) for v in cast("list[Any]", value)]
+    provider = block.get("provider")
+    where = (
+        f"provider '{provider}'" if isinstance(provider, str) else "the profile's default provider"
+    )
+    fields = ", ".join(sent) if sent else "no album fields"
+    findings = [
+        Finding(
+            step_id=step_id,
+            kind="ai_request",
+            detail=f"sends album data ({fields}) to {where}; it leaves this machine unless "
+            "the provider's host is local",
+        )
+    ]
+    for name in sorted(PATH_FIELDS & set(sent)):
+        findings.append(
+            Finding(
+                step_id=step_id,
+                kind="path_sent",
+                detail=f"sends the file path field '{name}' to the AI provider",
+            )
+        )
+    return findings

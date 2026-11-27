@@ -1,5 +1,5 @@
 # C-AI-CORE: Shared AI core: providers, tasks, validation, cache
-Status: Approved
+Status: Implemented
 Milestone: M4
 
 ## Context
@@ -260,6 +260,29 @@ def match_vocabulary(values: Sequence[str], vocabulary: Sequence[str],
                      mode: Literal["strict", "flag", "open"]
                      ) -> tuple[list[VocabMatch], list[Rejection]]: ...
 ```
+As implemented (2026-11-26; `rifferr.ai`, `rifferr.core.ai`, `rifferr.core.ai_validate`):
+- A task's answer shape is a Pydantic model, `output_model`; the JSON Schema sent to the model
+  is `output_model.model_json_schema()`, and AI-CORE-10's check is `model_validate`. This needs
+  no JSON Schema library. Protocol members (`id`, `prompt_version`, `type`, …) are read-only
+  properties, so plain class attributes satisfy them.
+- `AIRuntime` (`rifferr.ai.runner`) holds one profile's settings, providers, cache, secret
+  lookup and event sink; `run_task(task, input, provider=, retries=, refresh=, target=)` and
+  `preview(...)` are its methods. Failures raise `AITaskError`.
+- The server's `AIService` (`ServerState.ai`) builds runtimes and holds `AIJobs`. Its events
+  (`ai.request`, `ai.response`, `ai.rejected`, `ai.job.*`) go on the profile's stream;
+  `ai.job.*` also reaches `GET /api/events`. Putting `ai.*` events on a run's stream, for a
+  task run by a workflow step, comes with the first step that runs one (S-AI-TAG).
+- The confirmation before a bulk job (AI-CORE-19, last sentence) is UI, built with the first
+  bulk button (F-AI-SUGGEST AI-SUGGEST-14). `AIPreview` gives the numbers:
+  `estimated_input_tokens` (text length / 4) and `estimated_cost_max` (input estimate plus
+  `max_output_tokens`, when priced).
+- `http://` is accepted for loopback, private, link-local and 100.64.0.0/10 addresses, and for
+  `localhost`, single-label names and `.local`, `.lan`, `.home.arpa`, `.internal`, `.ts.net`
+  names.
+- The cache is per profile (`ai_cache` keyed by profile and key), so Open question 3 is
+  answered "per profile".
+- Routes: `POST /api/ai/preview`, `GET /api/ai/jobs/{id}`, `POST /api/ai/jobs/{id}/cancel`.
+
 - App DB (migration): `ai_cache` (key, task, provider_type, model, prompt_version, answer
   JSON, created_at, last_used_at).
 - Events: `ai.request`, `ai.response`, `ai.rejected`, `ai.job.progress`, `ai.job.finished`.
@@ -318,16 +341,16 @@ With the lookalike map above and vocabulary `[Alt／Indie, Garage Rock／Punk, H
    keeps it per profile (the app DB is per profile).
 
 ## Tasks
-- [ ] `AIProvider`, `AITask` protocols, entry point groups, `AIHttp` (AI-CORE-1, -3, -4, -8)
-- [ ] Profile `ai` section and validation; secrets (AI-CORE-5 to -7)
-- [ ] `anthropic` and `openai-compatible` providers with respx tests (AI-CORE-2, -21)
-- [ ] `FakeAIProvider` (AI-CORE-21)
-- [ ] `run_task`: schema validation, file loading, retries, events (AI-CORE-9 to -12, -14, -15)
-- [ ] `core.ai_validate.match_vocabulary` with Hypothesis tests (idempotence; fullwidth and
+- [x] `AIProvider`, `AITask` protocols, entry point groups, `AIHttp` (AI-CORE-1, -3, -4, -8)
+- [x] Profile `ai` section and validation; secrets (AI-CORE-5 to -7)
+- [x] `anthropic` and `openai-compatible` providers with respx tests (AI-CORE-2, -21)
+- [x] `FakeAIProvider` (AI-CORE-21)
+- [x] `run_task`: schema validation, file loading, retries, events (AI-CORE-9 to -12, -14, -15)
+- [x] `core.ai_validate.match_vocabulary` with Hypothesis tests (idempotence; fullwidth and
       lookalike cases) (AI-CORE-13)
-- [ ] `ai.lookalikes` file, validation, prompt line; `examples/rules/lookalikes.yaml` with the
+- [x] `ai.lookalikes` file, validation, prompt line; `examples/rules/lookalikes.yaml` with the
       B-093 lists (AI-CORE-22)
-- [ ] Cache table, TTL, cap (AI-CORE-16, -17)
-- [ ] Preview route; AI jobs with SSE progress and cancel (AI-CORE-18, -19)
-- [ ] Safety report findings (AI-CORE-20)
-- [ ] Optional `price_per_mtok`; reported vs estimated cost (AI-CORE-15, -23)
+- [x] Cache table, TTL, cap (AI-CORE-16, -17)
+- [x] Preview route; AI jobs with SSE progress and cancel (AI-CORE-18, -19)
+- [x] Safety report findings (AI-CORE-20)
+- [x] Optional `price_per_mtok`; reported vs estimated cost (AI-CORE-15, -23)

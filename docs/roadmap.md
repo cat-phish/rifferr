@@ -206,7 +206,7 @@ F-COVER-PICKER.
 Order: C-AI-CORE (providers, tasks, validation, cache) → S-AI-TAG → F-AI-SUGGEST (AI
 suggestions on the genre-bucket choice) → F-SETTINGS (AI section) → F-AI-CHAT.
 
-- [ ] C-AI-CORE: Drafted 2026-11-26, split from S-AI-TAG so every AI feature shares one core. Approved 2026-11-26.
+- [x] C-AI-CORE: Drafted 2026-11-26, split from S-AI-TAG so every AI feature shares one core. Approved and Implemented 2026-11-26.
 - [ ] S-AI-TAG: Drafted 2026-11-18, cut down to the step 2026-11-26. Approved 2026-11-26.
 - [ ] F-AI-SUGGEST: Drafted 2026-11-26 (author's decisions; B-098).  Approved 2026-11-26.
 - [ ] F-SETTINGS: Drafted 2026-11-26. Approved 2026-11-26.

@@ -24,9 +24,12 @@ from starlette.responses import Response
 from starlette.types import Scope
 
 from rifferr import __version__
+from rifferr.ai.cache import AppAICache
+from rifferr.ai.service import AIService
 from rifferr.api import errors
 from rifferr.api.models import Health
 from rifferr.api.routes import (
+    ai,
     covers,
     dashboard,
     hooks,
@@ -50,8 +53,9 @@ from rifferr.api.security import (
     secure,
     write_token_file,
 )
-from rifferr.api.state import ServerState
+from rifferr.api.state import ServerState, publish_profile_event
 from rifferr.appdb import AppDB, SqliteEventSink
+from rifferr.credentials import ProfileSecrets, SecretResolver
 from rifferr.engine import StepTypeRegistry
 from rifferr.notify import Notifier, default_notifier
 from rifferr.notify.service import NotificationService
@@ -239,6 +243,12 @@ def create_api(settings: ApiSettings | None = None) -> FastAPI:
             sleep=settings.notify_sleep or asyncio.sleep,
         )
         state.notifications = notifications
+        state.ai = AIService(  # C-AI-CORE
+            cache=AppAICache(db),
+            load_profile=lambda name: load_profile(root, name),
+            secrets_for=lambda p: ProfileSecrets(p.secrets, SecretResolver()).resolve,
+            emit=lambda profile, type_, data: publish_profile_event(state, profile, type_, data),
+        )
         supervisor.subscribe(notifications.on_event)  # S-NOTIFY rules (NOTIFY-9)
         supervisor.subscribe_problems(notifications.on_worker_problem)
         await notifications.start()  # retries what a stopped server left pending
@@ -288,6 +298,7 @@ def create_api(settings: ApiSettings | None = None) -> FastAPI:
     app.include_router(hooks.router)
     app.include_router(dashboard.router)
     app.include_router(covers.router)
+    app.include_router(ai.router)
     _add_schemas(app, covers.RAW_BODY_SCHEMAS)
 
     @app.get("/healthz", response_model=Health, tags=["health"])

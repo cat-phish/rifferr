@@ -299,7 +299,14 @@ class AIRuntime:
         base: dict[str, JsonValue],
         retries: int,
     ) -> tuple[BaseModel, AIUsage, str]:
-        key = self.secret(p.setting.api_key) if p.setting.api_key else None
+        key: Secret | None = None
+        if p.setting.api_key:
+            try:
+                key = self.secret(p.setting.api_key)
+            except AITaskError:
+                raise
+            except Exception as exc:  # e.g. SecretNotAvailableError: names a ref, not a value
+                raise AITaskError(f"the API key for '{p.setting.name}': {exc}") from None
         redactor = Redactor([key] if key else [])
         config = AIProviderConfig(
             name=p.setting.name,

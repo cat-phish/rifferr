@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Annotated
 
 from fastapi import Depends, Request
+from pydantic import JsonValue
 
+from rifferr.ai.service import AIService
 from rifferr.appdb import AppDB
 from rifferr.covers.service import CoverService
 from rifferr.engine import Event, StepTypeRegistry
-from rifferr.engine.events import PROFILE_STREAM_PREFIX
+from rifferr.engine.events import PROFILE_STREAM_PREFIX, profile_stream
 from rifferr.notify.service import NotificationService
 from rifferr.triggers import TriggerManager
 from rifferr.worker.previews import PreviewSupervisor
@@ -53,8 +56,8 @@ def on_all_stream(event: Event) -> bool:
     ``trigger.*`` events of profile streams (TRIGGERS-24), ``lane.*`` (LANES-2) and step
     starts and ends (UI-REFRESH-14)."""
     if event.type.startswith(
-        ("trigger.", "notify.", "inbox.", "covers.")
-    ):  # TRIGGERS-24, NOTIFY-4, DASHBOARD-15, COVERS-SEARCH-19
+        ("trigger.", "notify.", "inbox.", "covers.", "ai.job.")
+    ):  # TRIGGERS-24, NOTIFY-4, DASHBOARD-15, COVERS-SEARCH-19, AI-CORE-19
         return True
     if event.run_id.startswith(PROFILE_STREAM_PREFIX):
         return False
@@ -127,6 +130,7 @@ class ServerState:
     triggers: TriggerManager | None = None
     notifications: NotificationService | None = None
     covers: CoverService = field(default_factory=lambda: CoverService())
+    ai: AIService | None = None  # C-AI-CORE
 
 
 def server_state(request: Request) -> ServerState:
@@ -136,3 +140,18 @@ def server_state(request: Request) -> ServerState:
 
 State = Annotated[ServerState, Depends(server_state)]
 """Route parameter type for the shared server state."""
+
+
+_log = logging.getLogger(__name__)
+
+
+def publish_profile_event(
+    state: ServerState, profile: str, type_: str, data: dict[str, JsonValue]
+) -> None:
+    """Store an event on the profile's stream and publish it (e.g. ``ai.job.*``)."""
+    try:
+        event = state.db.append_next(profile_stream(profile), type_, data)
+    except Exception:
+        _log.exception("could not store %s", type_)
+        return
+    state.hub.publish(event)

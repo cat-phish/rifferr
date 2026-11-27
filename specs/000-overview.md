@@ -48,7 +48,7 @@ A row gets a link once its spec file exists. Build order: [docs/roadmap.md](../d
 | [C-ALBUM-FACTS](core/C-ALBUM-FACTS.md) | Computed album facts in templates and conditions | 4 | M5 | Implemented |
 | [C-FOLDER-FACTS](core/C-FOLDER-FACTS.md) | Album facts from the files in an album's folder | 4 | M5 | Draft |
 | [C-TEMPLATE-CONDITIONS](core/C-TEMPLATE-CONDITIONS.md) | Template conditions on tag-script actions | 4 | M5 | Implemented |
-| [C-AI-CORE](core/C-AI-CORE.md) | Shared AI core: providers, tasks, validation, cache | 7 | M4 | Approved |
+| [C-AI-CORE](core/C-AI-CORE.md) | Shared AI core: providers, tasks, validation, cache | 7 | M4 | Implemented |
 | [S-TAGS-CHOOSE](steps/S-TAGS-CHOOSE.md) | `tags.choose` step: a review with choices | 2a, 3 | M5 | Implemented |
 | [F-DEV-TOOLING](features/F-DEV-TOOLING.md) | Project skeleton, checks, CI, fixtures | 9, 10 | M0 | Implemented |
 | [F-PACKAGING](features/F-PACKAGING.md) | PyPI package with the frontend, Docker image | 8, 10 | M5 | Draft |
