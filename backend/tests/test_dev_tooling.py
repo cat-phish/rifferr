@@ -65,6 +65,7 @@ def test_DEV_TOOLING_1_entry_point_group_names_are_fixed() -> None:
         "rifferr.template_functions",
         "rifferr.backends",  # added by C-BACKEND
         "rifferr.image_resizers",  # added by S-COVERS-RESIZE
+        "rifferr.ai_tasks",  # added by C-AI-CORE
     )
 
 

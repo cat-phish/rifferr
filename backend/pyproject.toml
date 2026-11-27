@@ -63,6 +63,10 @@ workflow = "rifferr.steps.workflow_call:WorkflowCallStep"
 "library.prune" = "rifferr.steps.library_prune:LibraryPruneStep"
 "covers.resize" = "rifferr.steps.covers_resize:CoversResizeStep"
 
+[project.entry-points."rifferr.ai_providers"]
+anthropic = "rifferr.ai.providers.anthropic:AnthropicProvider"
+"openai-compatible" = "rifferr.ai.providers.openai_compat:OpenAICompatibleProvider"
+
 [project.entry-points."rifferr.cover_providers"]
 coverartarchive = "rifferr.covers.providers:CoverArtArchive"
 itunes = "rifferr.covers.providers:ITunes"

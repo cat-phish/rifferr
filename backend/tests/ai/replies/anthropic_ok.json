@@ -1,0 +1,17 @@
+{
+  "id": "msg_01XFDUDYJgAACzvnptvVoYEL",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-haiku-5-5",
+  "content": [
+    {"type": "text", "text": "Here is the answer."},
+    {
+      "type": "tool_use",
+      "id": "toolu_01A09q90qw90lq917835lq9",
+      "name": "answer",
+      "input": {"suggestions": [{"value": "Alt/Indie", "confidence": 0.8}]}
+    }
+  ],
+  "stop_reason": "tool_use",
+  "usage": {"input_tokens": 812, "output_tokens": 41}
+}

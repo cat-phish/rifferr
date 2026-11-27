@@ -1,0 +1,19 @@
+{
+  "id": "chatcmpl-def456",
+  "object": "chat.completion",
+  "model": "some-model",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {"id": "call_1", "type": "function", "function": {"name": "answer", "arguments": "{\"suggestions\": []}"}}
+        ]
+      },
+      "finish_reason": "tool_calls"
+    }
+  ],
+  "usage": {"prompt_tokens": 300, "completion_tokens": 9, "cost": 0.00042}
+}

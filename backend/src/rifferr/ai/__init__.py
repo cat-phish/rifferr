@@ -1,1 +1,1 @@
-"""AI provider adapters, ai.tag step and chat tools."""
+"""Shared AI core: providers, tasks, validation, cache (C-AI-CORE)."""

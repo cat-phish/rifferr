@@ -12,6 +12,7 @@ AI_PROVIDERS: Final = "rifferr.ai_providers"
 TEMPLATE_FUNCTIONS: Final = "rifferr.template_functions"
 BACKENDS: Final = "rifferr.backends"
 IMAGE_RESIZERS: Final = "rifferr.image_resizers"
+AI_TASKS: Final = "rifferr.ai_tasks"
 
 ALL_GROUPS: Final = (
     STEPS,
@@ -20,4 +21,5 @@ ALL_GROUPS: Final = (
     TEMPLATE_FUNCTIONS,
     BACKENDS,
     IMAGE_RESIZERS,
+    AI_TASKS,
 )

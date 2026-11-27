@@ -1,0 +1,13 @@
+{
+  "id": "chatcmpl-abc123",
+  "object": "chat.completion",
+  "model": "qwen3:14b",
+  "choices": [
+    {
+      "index": 0,
+      "message": {"role": "assistant", "content": "{\"suggestions\": [{\"value\": \"Punk\", \"confidence\": 0.6}]}"},
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {"prompt_tokens": 640, "completion_tokens": 22, "total_tokens": 662}
+}
