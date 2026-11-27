@@ -11,7 +11,7 @@ import {
   Title,
 } from "@mantine/core";
 import { useState, useSyncExternalStore } from "react";
-import { Link, Route, Routes, useLocation } from "react-router";
+import { Link, Route, Routes, useLocation, useNavigate } from "react-router";
 import { auth } from "./api/auth";
 import { signOut } from "./api/session";
 import { useProfile, withProfile } from "./hooks/useProfile";
@@ -94,6 +94,7 @@ function AccountMenu() {
 function Shell({ children }: { children: React.ReactNode }) {
   const { profile, profiles, setProfile } = useProfile();
   const { pathname } = useLocation();
+  const navigate = useNavigate();
   const queue = useReviewQueue(profile);
   useAppEvents();
   const waiting = queue.data?.length ?? 0;
@@ -162,7 +163,8 @@ function Shell({ children }: { children: React.ReactNode }) {
           </Group>
         </Group>
       </AppShell.Header>
-      <AppShell.Navbar p="xs">
+      {/* Scrolls when the folded-out workflow list makes the nav taller than the window. */}
+      <AppShell.Navbar p="xs" style={{ overflowY: "auto" }}>
         {nav.map((n) => {
           const sub = n.to === "/workflows" && workflows.length > 0;
           return (
@@ -173,6 +175,17 @@ function Shell({ children }: { children: React.ReactNode }) {
               label={n.label}
               active={n.active && (!sub || openWorkflow === null)}
               opened={sub && reviewOpen}
+              // Mantine cancels the click of a NavLink with children to fold it; this entry
+              // folds with its own toggle, so a click on it goes to its page instead.
+              onClick={
+                sub
+                  ? (e: React.MouseEvent) => {
+                      if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)
+                        return;
+                      void navigate(withProfile(n.to, profile));
+                    }
+                  : undefined
+              }
               // The count badge is not a chevron: it must not turn (Mantine turns a
               // NavLink's right section when it has children).
               disableRightSectionRotation

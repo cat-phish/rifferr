@@ -524,6 +524,19 @@ test("UI_REFRESH_22 the workflow list under Workflows folds away", async () => {
   });
 });
 
+test("UI_REFRESH_23 the Workflows nav entry opens the hub even with its list folded out", async () => {
+  setup({ queue: () => [csItem("cs1", NEW_RUN)], extra: WORKFLOWS });
+  renderApp("/workflows/tagging?profile=main");
+  await screen.findAllByTestId("review-workflow-link");
+  const entry = screen.getByRole("link", { name: /^Workflows/ });
+  fireEvent.click(entry);
+  await waitFor(() => {
+    expect(currentLocation()).toMatch(/^\/workflows\?profile=main$/);
+  });
+  // The click navigates only; the list stays as it was.
+  expect(screen.getByTestId("review-toggle")).toHaveAccessibleName("Hide workflows");
+});
+
 // -- REVIEW-QUEUE-12 ----------------------------------------------------------------------
 
 test("REVIEW_QUEUE_12 field changes with current values; accept only the checked ones", async () => {

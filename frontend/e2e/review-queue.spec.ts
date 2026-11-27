@@ -39,7 +39,7 @@ test("REVIEW_QUEUE_18 review queue: partial accept, continue the gate, undo the 
   const changeset = page.locator('[data-testid=queue-item][data-kind="changeset"]');
   await expect(changeset).toHaveCount(1);
   const album = changeset.locator('[data-testid=field-change][data-field="album"]');
-  await expect(album.getByTestId("proposed")).toHaveText("Review Sessions (EP)");
+  await expect(album.getByTestId("proposed")).toHaveAttribute("data-new", "Review Sessions (EP)");
   await expect(album.getByTestId("now")).toHaveText("Review Sessions", { timeout: 30_000 });
   await changeset.getByRole("checkbox", { name: /Accept albumdisambig/ }).uncheck();
   await changeset.getByRole("button", { name: "Accept selected" }).click();
