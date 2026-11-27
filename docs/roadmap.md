@@ -203,9 +203,13 @@ F-COVER-PICKER.
 
 **Done when:** a genre step proposes vocabulary-valid values into review.
 
-Order: S-AI-TAG (providers, validation, cache) → F-AI-CHAT.
+Order: C-AI-CORE (providers, tasks, validation, cache) → S-AI-TAG → F-AI-SUGGEST (AI
+suggestions on the genre-bucket choice) → F-SETTINGS (AI section) → F-AI-CHAT.
 
-- [ ] S-AI-TAG: Drafted 2026-11-18; open questions to settle before approval.
+- [ ] C-AI-CORE: Drafted 2026-11-26, split from S-AI-TAG so every AI feature shares one core.
+- [ ] S-AI-TAG: Drafted 2026-11-18, cut down to the step 2026-11-26; open questions to settle.
+- [ ] F-AI-SUGGEST: Drafted 2026-11-26 (author's decisions; B-098).
+- [ ] F-SETTINGS: Drafted 2026-11-26.
 - [ ] F-AI-CHAT: not drafted yet.
 
 ## M5 — Reference workflow and packaging
