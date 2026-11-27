@@ -1,8 +1,9 @@
 """Vocabulary matching and lookalike characters for AI answers (AI-CORE-13, -22).
 
-Pure. A model writes ``Alt/Indie`` where the user's vocabulary has ``Alt／Indie``; the match
-key makes them equal, and the result always takes the user's spelling. The lookalike map
-is user data (non-negotiable 1): without one, only Unicode NFKC folds characters.
+Pure. A model writes ``Alt/Indie`` where the user's vocabulary spells it with the
+fullwidth solidus (U+FF0F); the match key makes them equal, and the result always takes
+the user's spelling. The lookalike map is user data (non-negotiable 1): without one,
+only Unicode NFKC folds characters.
 """
 
 from __future__ import annotations

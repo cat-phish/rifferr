@@ -144,7 +144,8 @@ def test_AI_CORE_4_http_only_for_private_hosts() -> None:
 def test_AI_CORE_23_price_is_optional() -> None:
     ai = load(TWO).ai
     price = ai.providers[0].settings.price_per_mtok
-    assert price is not None and price.currency == "USD"
+    assert price is not None
+    assert price.currency == "USD"
     assert price.cost(1_000_000, 200_000) == Decimal("2.00")
     assert price.cost(None, 10) is None
     assert ai.providers[1].settings.price_per_mtok is None

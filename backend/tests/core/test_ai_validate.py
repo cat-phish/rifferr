@@ -1,3 +1,4 @@
+# ruff: noqa: RUF001  # lookalike characters on purpose (AI-CORE-13)
 """Vocabulary matching and lookalikes (AI-CORE-13, -22)."""
 
 from __future__ import annotations
@@ -32,7 +33,7 @@ def test_AI_CORE_13_known_values_take_the_vocabulary_spelling() -> None:
     got, rejected = match_vocabulary(
         ["Alt/Indie", "garage rock∕punk", "SKA (2nd wave/2-tone)", "r&b"], vocab, "strict"
     )
-    assert [m.value for m in got] == BUCKETS[:2] + ["Ska (2nd Wave／2-Tone)", "R&B"]
+    assert [m.value for m in got] == [*BUCKETS[:2], "Ska (2nd Wave／2-Tone)", "R&B"]
     assert all(m.known for m in got)
     assert rejected == []
 
@@ -53,7 +54,8 @@ def test_AI_CORE_13_open_marks_new_with_preferred_characters() -> None:
 
 def test_AI_CORE_13_flag_keeps_with_warning() -> None:
     got, _ = match_vocabulary(["Folk/Pop"], Vocabulary(BUCKETS, LOOK), "flag")
-    assert got[0].value == "Folk／Pop" and got[0].warnings == ["not_in_vocabulary"]
+    assert got[0].value == "Folk／Pop"
+    assert got[0].warnings == ["not_in_vocabulary"]
     assert not got[0].new
 
 
@@ -87,7 +89,8 @@ def test_AI_CORE_13_clashing_vocabulary_entries_fail() -> None:
 
 def test_AI_CORE_13_empty_values_are_rejected() -> None:
     got, rejected = match_vocabulary(["  "], Vocabulary(BUCKETS, LOOK), "open")
-    assert got == [] and rejected[0].reason == "empty"
+    assert got == []
+    assert rejected[0].reason == "empty"
 
 
 def test_AI_CORE_22_lookalike_file_rules() -> None:
@@ -108,7 +111,8 @@ def test_AI_CORE_22_lookalike_file_rules() -> None:
 
 def test_AI_CORE_22_prompt_line_names_preferred_characters() -> None:
     line = LOOK.prompt_line() or ""
-    assert '"／" instead of "/"' in line and '"꞉" instead of ":"' in line
+    assert '"／" instead of "/"' in line
+    assert '"꞉" instead of ":"' in line
     assert Lookalikes().prompt_line() is None
 
 
