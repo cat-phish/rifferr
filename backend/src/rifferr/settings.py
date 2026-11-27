@@ -93,31 +93,46 @@ def _named(entries: Any) -> bool:
     )
 
 
-def merge(node: Any, new: Any) -> Any:
-    """``new`` written into the existing YAML ``node``: maps are updated key by key (keys
-    no longer there are removed), lists of named maps are matched by ``name`` so each
-    entry keeps its comments, and anything else is replaced."""
+_ABSENT: Any = object()
+
+
+def merge(node: Any, full: Any, sparse: Any = _ABSENT) -> Any:
+    """``full`` written into the existing YAML ``node``. ``sparse`` is the same value
+    without its defaults. A map key is written when it isn't a default, or when the file
+    already has it (so a hand-written default and its comment stay), and is removed when
+    the value no longer has it or it became empty (``None``). Lists of named maps are
+    matched by ``name`` so each entry keeps its comments; anything else is replaced."""
     from ruamel.yaml.comments import CommentedMap, CommentedSeq
 
-    if isinstance(new, Mapping):
+    if sparse is _ABSENT:
+        sparse = full
+    if isinstance(full, Mapping):
         target: Any = node if isinstance(node, CommentedMap) else CommentedMap()
-        for k in [k for k in target if k not in new]:
+        sp: Mapping[str, Any] = sparse if isinstance(sparse, Mapping) else {}  # pyright: ignore[reportUnknownVariableType]
+        keep = [
+            k
+            for k in full  # pyright: ignore[reportUnknownVariableType]
+            if k in sp or (k in target and full[k] is not None)
+        ]
+        for k in [k for k in target if k not in keep]:
             del target[k]
-        for k, v in new.items():  # pyright: ignore[reportUnknownVariableType]
-            target[k] = merge(target.get(k), v)
+        for k in keep:
+            target[k] = merge(target.get(k), full[k], sp.get(k, {}))
         return target
-    if isinstance(new, list):
-        if _named(new) and isinstance(node, CommentedSeq) and _named(list(node)):
-            by_name = {e["name"]: e for e in node}
-            seq = CommentedSeq()
-            for entry in new:  # pyright: ignore[reportUnknownVariableType]
-                seq.append(merge(by_name.get(entry["name"]), entry))
-            return seq
+    if isinstance(full, list):
+        sp_list: list[Any] = sparse if isinstance(sparse, list) else []  # pyright: ignore[reportUnknownVariableType]
         seq = CommentedSeq()
-        for v in new:  # pyright: ignore[reportUnknownVariableType]
-            seq.append(merge(None, v))
+        if _named(full) and isinstance(node, CommentedSeq) and _named(list(node)):
+            by_name = {e["name"]: e for e in node}
+            sp_by_name = {e["name"]: e for e in sp_list if isinstance(e, Mapping)}  # pyright: ignore[reportUnknownMemberType]
+            for entry in full:  # pyright: ignore[reportUnknownVariableType]
+                name = entry["name"]
+                seq.append(merge(by_name.get(name), entry, sp_by_name.get(name, entry)))
+            return seq
+        for i, v in enumerate(full):  # pyright: ignore[reportUnknownVariableType, reportUnknownArgumentType]
+            seq.append(merge(None, v, sp_list[i] if i < len(sp_list) else v))
         return seq
-    return new
+    return full
 
 
 def file_hash(data: bytes) -> str:
@@ -175,14 +190,17 @@ def save_section(
     expected_hash: str,
     env: Mapping[str, str] | None = None,
 ) -> str:
-    """Write ``value`` as the section's key in ``profile.yaml`` (SETTINGS-3). Values equal
-    to the model's defaults are left out of the file; a section with nothing left is
-    removed. Returns the new hash."""
-    new = _plain(value.model_dump(mode="python", exclude_defaults=True))
+    """Write ``value`` as the section's key in ``profile.yaml`` (SETTINGS-3). A default
+    value is written only where the file already has that setting, so hand-written lines
+    and their comments stay; a section with nothing left is removed. Returns the new
+    hash."""
+    full = _plain(value.model_dump(mode="python"))
+    sparse = _plain(value.model_dump(mode="python", exclude_defaults=True))
 
     def change(data: Any) -> None:
-        if new:
-            data[section.key] = merge(data.get(section.key), new)
+        merged = merge(data.get(section.key), full, sparse)
+        if merged:
+            data[section.key] = merged
         elif section.key in data:
             del data[section.key]
 

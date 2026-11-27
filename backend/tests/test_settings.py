@@ -19,6 +19,8 @@ vars: {inbox: /srv/inbox}  # where imports come from
 ai:
   # tuned for the local box
   concurrency: 1
+  timeout: 60s  # NAS is slow
+  # providers below
   providers:
     - name: local  # ollama on the NAS
       type: openai-compatible
@@ -72,7 +74,7 @@ def test_SETTINGS_3_writes_only_its_key_and_keeps_comments(root: Path) -> None:
     assert "concurrency: 3" in text
     assert "model: qwen3:8b" in text
     assert "output: 0.5" in text
-    assert "timeout" not in text  # defaults stay out of the file
+    assert "cache_ttl" not in text  # defaults stay out of the file
     assert text.index("name: claude") < text.index("name: local")
 
 
@@ -93,7 +95,9 @@ def test_SETTINGS_2_an_invalid_profile_is_not_written(root: Path) -> None:
     assert path(root).read_text(encoding="utf-8") == before
 
 
-def test_SETTINGS_3_all_defaults_removes_the_section(root: Path) -> None:
+def test_SETTINGS_3_all_defaults_add_no_section(root: Path) -> None:
+    text = path(root).read_text(encoding="utf-8")
+    path(root).write_text(text[: text.index("ai:")], encoding="utf-8")
     save_section(root, "main", AI, AISettings(), h(root), env={})
     assert "ai:" not in path(root).read_text(encoding="utf-8")
 
@@ -115,3 +119,21 @@ def test_SETTINGS_6_link_and_unlink_a_key_name(root: Path) -> None:
     assert "secrets" not in text
     with pytest.raises(KeyError):
         link_key(root, "main", "nope", plan)
+
+
+def test_SETTINGS_3_hand_written_defaults_and_their_comments_stay(root: Path) -> None:
+    value = AISettings.model_validate(
+        {
+            "concurrency": 1,
+            "providers": [
+                {"name": "local", "type": "openai-compatible", "model": "qwen3", "enabled": True}
+            ],
+        }
+    )
+    save_section(root, "main", AI, value, h(root), env={})
+    text = path(root).read_text(encoding="utf-8")
+    assert "timeout: 60s  # NAS is slow\n  # providers below" in text  # default, kept
+    assert "cache_ttl" not in text  # default the file never had: not added
+    assert "enabled" not in text
+    assert "base_url" not in text  # cleared: removed
+    assert "- name: local  # ollama on the NAS" in text

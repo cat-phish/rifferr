@@ -95,10 +95,12 @@ class SettingsSection(Protocol):
 
 ### As implemented (2026-11-26)
 - `rifferr.settings`: `SECTIONS` registry (one entry, `AISection`, key `ai`, model `AISettings`).
-  `save_section` dumps the value without defaults and merges it into the file's own YAML nodes:
-  map keys are updated in place, and lists of named maps (`providers`) are matched by `name`, so
-  comments stay with their entries. The whole profile is revalidated before an atomic write.
-  A section left with only defaults is removed from the file.
+  `save_section` merges the value into the file's own YAML nodes: map keys are updated in place,
+  and lists of named maps (`providers`) are matched by `name`, so comments stay with their
+  entries. A default value is written only where the file already has that setting (author,
+  2026-11-26), so hand-written lines such as `timeout: 60s  # NAS is slow` and their comments
+  stay; defaults the file never had are not added. A setting cleared to empty is removed. The
+  whole profile is revalidated before an atomic write.
 - Routes under `/api/profiles/{profile}/settings`: `GET` lists sections. `GET|PUT /{section}`
   takes `{values, base_hash}`; it answers 400 `invalid_settings` with `details: [{field,
   message}]`, or 409 `conflict`. `PUT|DELETE /ai/providers/{name}/key` and
