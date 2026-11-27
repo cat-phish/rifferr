@@ -24,6 +24,7 @@ import { RunPage } from "./pages/RunPage";
 import { RunsPage } from "./pages/RunsPage";
 import { ScriptPage } from "./pages/ScriptPage";
 import { ScriptsPage } from "./pages/ScriptsPage";
+import { SettingsPage } from "./pages/SettingsPage";
 import { SignedOut } from "./pages/SignedOut";
 import { WorkflowHubPage } from "./pages/WorkflowHubPage";
 import { WorkflowsPage } from "./pages/WorkflowsPage";
@@ -48,6 +49,7 @@ export function App() {
         <Route path="/scripts/:name" element={<ScriptPage />} />
         <Route path="/library" element={<LibraryPage />} />
         <Route path="/review" element={<ReviewPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
       </Routes>
     </Shell>
   );
@@ -116,6 +118,7 @@ function Shell({ children }: { children: React.ReactNode }) {
     },
     { label: "Library", to: "/library", active: pathname.startsWith("/library") },
     { label: "Scripts", to: "/scripts", active: pathname.startsWith("/scripts") },
+    { label: "Settings", to: "/settings", active: pathname.startsWith("/settings") },
   ];
   return (
     <AppShell
