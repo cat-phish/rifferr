@@ -376,13 +376,18 @@ async function startAIStub(): Promise<{ port: number; close: () => void }> {
     ],
   };
   const server = createServer((req, res) => {
-    req.resume();
+    let body = "";
+    req.on("data", (chunk: Buffer) => {
+      body += chunk.toString();
+    });
     req.on("end", () => {
+      // The Settings page's Test connection (F-SETTINGS SETTINGS-7) asks for {"ok": true}.
+      const content = body.includes("connection test") ? { ok: true } : answer;
       res.setHeader("content-type", "application/json");
       res.end(
         JSON.stringify({
           model: "stub-1",
-          choices: [{ message: { role: "assistant", content: JSON.stringify(answer) } }],
+          choices: [{ message: { role: "assistant", content: JSON.stringify(content) } }],
           usage: { prompt_tokens: 120, completion_tokens: 40 },
         }),
       );

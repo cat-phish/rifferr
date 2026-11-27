@@ -1,5 +1,5 @@
 # F-SETTINGS: Settings page, AI section first
-Status: Approved
+Status: Implemented
 Milestone: M4
 
 ## Context
@@ -89,10 +89,35 @@ class SettingsSection(Protocol):
 1. Should changing a provider's host or adding a remote provider ask for confirmation, like
    trusting a workflow? This draft only shows a notice.
 2. Keyring name: `rifferr/<profile>/<provider>`, or let the user type a name?
+3. A run resumed after a review gate uses the settings saved since it started (the worker
+   loads the profile per job, as cover settings already do). Keep that, or store the settings
+   with the run so a resumed run keeps the ones it started with?
+
+### As implemented (2026-11-26)
+- `rifferr.settings`: `SECTIONS` registry (one entry, `AISection`, key `ai`, model `AISettings`).
+  `save_section` dumps the value without defaults and merges it into the file's own YAML nodes:
+  map keys are updated in place, and lists of named maps (`providers`) are matched by `name`, so
+  comments stay with their entries. The whole profile is revalidated before an atomic write.
+  A section left with only defaults is removed from the file.
+- Routes under `/api/profiles/{profile}/settings`: `GET` lists sections. `GET|PUT /{section}`
+  takes `{values, base_hash}`; it answers 400 `invalid_settings` with `details: [{field,
+  message}]`, or 409 `conflict`. `PUT|DELETE /ai/providers/{name}/key` and
+  `POST /ai/providers/{name}/test` handle keys and the connection test. DELETE takes an empty JSON
+  body, because every mutating request is JSON-only.
+- Keys: keyring service `rifferr`, entry `<profile>/<provider>`, secret name `ai-<provider>`.
+  Without a keyring, the key route answers 409 `no_keyring`, giving the variable
+  `RIFFERR_<PROFILE>_<PROVIDER>_KEY` and the `secrets` line to add. The page shows the same
+  instructions.
+- Test connection runs the internal `connection.test` task, which sends a fixed message with no
+  album data. It is not an entry point, is never cached and has no retries. If the key shows up
+  in a provider error, it is masked.
+- SETTINGS-4: the worker now reads the saved profile for each run job (`WorkerAI` included). A
+  run that pauses at a review gate and resumes later starts a new job, so it picks up settings
+  saved in between. See open question 3.
 
 ## Tasks
-- [ ] Section registry, GET/PUT with schema, ruamel write, 409 (SETTINGS-1 to -4)
-- [ ] AI section form (SETTINGS-5)
-- [ ] Write-only keys with keyring and env fallback (SETTINGS-6)
-- [ ] Test connection (SETTINGS-7)
-- [ ] Security checks and Playwright test (SETTINGS-8)
+- [x] Section registry, GET/PUT with schema, ruamel write, 409 (SETTINGS-1 to -4)
+- [x] AI section form (SETTINGS-5)
+- [x] Write-only keys with keyring and env fallback (SETTINGS-6)
+- [x] Test connection (SETTINGS-7)
+- [x] Security checks and Playwright test (SETTINGS-8)

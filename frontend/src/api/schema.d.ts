@@ -7996,9 +7996,9 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: {
+        requestBody: {
             content: {
-                "application/json": components["schemas"]["ClearKeyBody"] | null;
+                "application/json": components["schemas"]["ClearKeyBody"];
             };
         };
         responses: {

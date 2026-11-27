@@ -65,7 +65,7 @@ A row gets a link once its spec file exists. Build order: [docs/roadmap.md](../d
 | [F-DASHBOARD](features/F-DASHBOARD.md) | Queue dashboard: inbox, runs in progress, review, recent imports with undo | 2a | M2 | Implemented |
 | F-COVER-PICKER | Cover search UI | 6 | M3 | Implemented |
 | [F-AI-SUGGEST](features/F-AI-SUGGEST.md) | AI suggestions on a choice review | 7 | M4 | Implemented |
-| [F-SETTINGS](features/F-SETTINGS.md) | Settings page, AI section first | 7 | M4 | Approved |
+| [F-SETTINGS](features/F-SETTINGS.md) | Settings page, AI section first | 7 | M4 | Implemented |
 | F-AI-CHAT | Chat panel and tools | 7 | M4 | Planned |
 | F-PACKAGING | PyPI and Docker packaging | 8, 10 | M5 | Planned |
 

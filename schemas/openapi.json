@@ -12669,18 +12669,11 @@
           "content": {
             "application/json": {
               "schema": {
-                "anyOf": [
-                  {
-                    "$ref": "#/components/schemas/ClearKeyBody"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Body"
+                "$ref": "#/components/schemas/ClearKeyBody"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {

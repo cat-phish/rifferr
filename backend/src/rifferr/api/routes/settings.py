@@ -296,9 +296,7 @@ async def set_key(profile: str, provider: str, body: KeyBody, state: State) -> K
 
 
 @router.delete("/ai/providers/{provider}/key", response_model=KeyResult, responses=ERROR_RESPONSES)
-async def clear_key(
-    profile: str, provider: str, state: State, body: ClearKeyBody | None = None
-) -> KeyResult:
+async def clear_key(profile: str, provider: str, state: State, body: ClearKeyBody) -> KeyResult:
     """Remove the key from the keyring and the provider's ``api_key`` (SETTINGS-6)."""
     p = get_profile(state, profile)
     _provider(p, provider)
