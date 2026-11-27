@@ -70,6 +70,17 @@ class AISection:
 SECTIONS: dict[str, SettingsSection] = {s.id: s for s in [AISection()]}
 
 
+def section_hashes(profile: Profile) -> dict[str, str]:
+    """A hash of each section's loaded values, recorded with every run job so the run
+    log can say when settings changed between its jobs (SETTINGS-9). Built from the
+    values, not the file text, so a comment or reordering is not a change. Sections hold
+    secret names only, never keys (SETTINGS-6)."""
+    return {
+        id: hashlib.sha256(section.read(profile).model_dump_json().encode()).hexdigest()[:16]
+        for id, section in SECTIONS.items()
+    }
+
+
 # -- writing --------------------------------------------------------------------------
 
 

@@ -26,7 +26,9 @@ environment (non-negotiable 5).
   to a temporary file and rename it into place. When the file changed on disk since the `GET`
   (its hash is sent back as `base_hash`), the `PUT` MUST be a 409 and write nothing.
 - SETTINGS-4: After a write, the profile's worker and the server MUST use the new settings for
-  runs that start afterwards. A run already going keeps the settings it started with.
+  runs that start afterwards. A run already going keeps the settings it started with. A run
+  that resumes after a pause (a review gate, RUN-14) MUST use the settings saved at the time it
+  resumes, so a fix such as a new key or host reaches runs that are waiting.
 - SETTINGS-5: The AI section MUST show and edit: the providers (name, type from the installed
   `rifferr.ai_providers`, model, `base_url`, enabled, order; the first enabled one is the
   default; an optional price per million input and output tokens, AI-CORE-23, left empty by
@@ -48,6 +50,12 @@ environment (non-negotiable 5).
 - SETTINGS-8: All settings routes are mutating endpoints under F-SECURITY: JSON-only, Origin
   and Host checks, signed-in session. Only the signed-in user of the instance may change
   them.
+- SETTINGS-9: Each job of a run MUST record a hash of every settings section it uses, in its
+  `run.started` or `run.resumed` event (`data.settings`, section id to hash). When a resumed
+  job's hashes differ from the previous job's, the engine MUST emit `run.settings_changed`
+  with the ids of the changed sections, and the run page MUST show it in the run log. The
+  hash covers the loaded values, so an edit that keeps every value the same is not a change.
+  It holds no secrets: keys stay in the keyring and only their secret names are in a section.
 
 ## Interfaces
 ```python
@@ -89,9 +97,9 @@ class SettingsSection(Protocol):
 1. Should changing a provider's host or adding a remote provider ask for confirmation, like
    trusting a workflow? This draft only shows a notice.
 2. Keyring name: `rifferr/<profile>/<provider>`, or let the user type a name?
-3. A run resumed after a review gate uses the settings saved since it started (the worker
-   loads the profile per job, as cover settings already do). Keep that, or store the settings
-   with the run so a resumed run keeps the ones it started with?
+3. ~~A run resumed after a review gate uses the settings saved since it started. Keep that, or
+   store the settings with the run?~~ Answered (author, 2026-11-27): keep the saved settings,
+   and note in the run log when they changed since the run's previous job (SETTINGS-4, -9).
 
 ### As implemented (2026-11-26)
 - `rifferr.settings`: `SECTIONS` registry (one entry, `AISection`, key `ai`, model `AISettings`).
@@ -116,6 +124,12 @@ class SettingsSection(Protocol):
 - SETTINGS-4: the worker now reads the saved profile for each run job (`WorkerAI` included). A
   run that pauses at a review gate and resumes later starts a new job, so it picks up settings
   saved in between. See open question 3.
+- SETTINGS-9: `settings.section_hashes` hashes each `SECTIONS` entry's loaded values (sha256 of
+  the model's JSON, 16 hex digits). The worker passes them and the previous job's hashes (from
+  the run's latest `run.started`/`run.resumed` event) to `Engine.create_run`. The engine adds
+  them to its start event and emits `run.settings_changed` `{sections: [...]}` right after
+  `run.resumed`. A run with no stored hashes reports nothing. Only registered sections count;
+  cover settings join once they have a section.
 
 ## Tasks
 - [x] Section registry, GET/PUT with schema, ruamel write, 409 (SETTINGS-1 to -4)
@@ -123,3 +137,4 @@ class SettingsSection(Protocol):
 - [x] Write-only keys with keyring and env fallback (SETTINGS-6)
 - [x] Test connection (SETTINGS-7)
 - [x] Security checks and Playwright test (SETTINGS-8)
+- [x] Settings hash per job and `run.settings_changed` in the run log (SETTINGS-9)

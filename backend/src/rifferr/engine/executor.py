@@ -174,6 +174,8 @@ class _RunState:
         self.work_dir = work_dir
         self.secrets = secrets
         self.run_supplied: frozenset[str] = frozenset()
+        self.settings: dict[str, str] | None = None
+        self.previous_settings: dict[str, str] | None = None
         """Names of the variables this run's caller set (SEC-21)."""
         self.cancel = asyncio.Event()
         self.holds: dict[str, list[str]] = {}
@@ -271,6 +273,8 @@ class Engine:
         calls: Calls | None = None,
         imported: Callable[[str], None] | None = None,
         watched: Callable[[], list[Path]] | None = None,
+        settings: Mapping[str, str] | None = None,
+        previous_settings: Mapping[str, str] | None = None,
     ) -> Run:
         """Validate and create a queued run (RUN-10, RUN-11).
 
@@ -288,6 +292,9 @@ class Engine:
         steps are ``wf`` with every call expanded (S-SUBWORKFLOW).
         ``run_input`` / ``trigger``: ``{{ run.input }}`` / ``{{ run.trigger }}``
         (TRIGGERS-5, -6); without an input the workflow's ``input`` is used.
+        ``settings``: a hash per settings section this job uses, recorded in its
+        ``run.started`` / ``run.resumed`` event; ``previous_settings``: the ones the run's
+        previous job recorded, to report a change (SETTINGS-9).
         """
         supplied = {**profile_vars, **(run_vars or {})}
         errors = validate(
@@ -346,6 +353,10 @@ class Engine:
             watched,
         )
         self._state[run.id].run_supplied = run_supplied
+        self._state[run.id].settings = dict(settings) if settings is not None else None
+        self._state[run.id].previous_settings = (
+            dict(previous_settings) if previous_settings is not None else None
+        )
         return run
 
     def cancel(self, run_id: str) -> None:
@@ -390,16 +401,27 @@ class Engine:
             return
         run.transition(RunState.running)
         run.started_at = self.clock.now()
+        stamp: dict[str, JsonValue] = (
+            {"settings": cast(dict[str, JsonValue], dict(state.settings))}
+            if state.settings is not None
+            else {}
+        )
         if not resuming:
-            self._emit(run, "run.started", None, {"workflow": run.workflow, "profile": run.profile})
+            self._emit(
+                run,
+                "run.started",
+                None,
+                {"workflow": run.workflow, "profile": run.profile, **stamp},
+            )
         else:
             resumed = [lane.key for lane in lanes.values() if lane.state == "active"]
             self._emit(
                 run,
                 "run.resumed",
                 None,
-                {"after": resume_after, "lanes": cast(list[JsonValue], list(resumed))},
+                {"after": resume_after, "lanes": cast(list[JsonValue], list(resumed)), **stamp},
             )
+            self._report_settings_change(state)
         start = 0
         if resuming:
             positions = [
@@ -555,6 +577,20 @@ class Engine:
             if not lane.final:
                 self._end_lane(state, lane, "cancelled")
         self.lanes.save(state.run.id, state.lanes.values())
+
+    def _report_settings_change(self, state: _RunState) -> None:
+        """SETTINGS-9: say which settings sections changed since the previous job."""
+        now, before = state.settings, state.previous_settings
+        if now is None or before is None:
+            return
+        changed = sorted(k for k in now.keys() | before.keys() if now.get(k) != before.get(k))
+        if changed:
+            self._emit(
+                state.run,
+                "run.settings_changed",
+                None,
+                {"sections": cast(list[JsonValue], changed)},
+            )
 
     def _emit_lane(self, state: _RunState, type: str, lane: Lane) -> None:
         self._emit(state.run, type, None, lane_json(lane))

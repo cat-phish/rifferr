@@ -295,6 +295,24 @@ test("UI_SHELL_6 vars form requires missing vars and starts with vars and hash",
 
 // -- UI-SHELL-7 / -8 ----------------------------------------------------------------------------
 
+test("SETTINGS_9 run log notes settings changed since the run last ran", async () => {
+  mockApi({ "GET /api/profiles": () => PROFILES, "GET /api/runs/R1": () => runDetail() });
+  renderApp("/runs/R1?profile=main");
+  await screen.findByTestId("steps");
+  const source = FakeEventSource.last("/api/runs/R1/events");
+  act(() => {
+    source.emit("run.resumed", ev(7, "run.resumed", null, { settings: { ai: "b" } }), 7);
+    source.emit(
+      "run.settings_changed",
+      ev(8, "run.settings_changed", null, { sections: ["ai"] }),
+      8,
+    );
+  });
+  const [note] = screen.getAllByTestId("log-line");
+  expect(note).toHaveAttribute("data-stream", "info");
+  expect(note).toHaveTextContent("Settings changed since this run last ran (ai).");
+});
+
 test("UI_SHELL_7 run page streams steps and log, dedupes by seq, closes on run.finished", async () => {
   mockApi({ "GET /api/profiles": () => PROFILES, "GET /api/runs/R1": () => runDetail() });
   renderApp("/runs/R1?profile=main");

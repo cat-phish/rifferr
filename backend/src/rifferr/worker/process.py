@@ -98,6 +98,7 @@ from rifferr.engine.steps import NotifyTargets
 from rifferr.engine.undo import UndoContext, UndoError, undo_entry, undo_run
 from rifferr.notify import ProfileTargets, default_notifier
 from rifferr.profile_store import app_db_path, config_root, load_profile
+from rifferr.settings import section_hashes
 from rifferr.steps.cleanup_plan import CleanupError
 from rifferr.steps.files_cleanup import apply_reviewed, outcome_counts
 from rifferr.steps.library_prune import drop_albums, file_exists
@@ -366,6 +367,7 @@ class Worker:
         resume_after = payload.get("resume_after")
         assert resume_after is None or isinstance(resume_after, str)
         settings = self._current_settings()  # saved settings apply from here (SETTINGS-4)
+        history = self.db.events_since(job.run, 0) if resume_after is not None else []
         engine = Engine(
             self.registry,
             _ForwardSink(self.send, self._sent, self._record_run_state),
@@ -408,9 +410,11 @@ class Worker:
                 imported=lambda path: self._supersede_imports(path, job.run),
                 calls=stored_calls(wf, doc, payload),
                 last_seq=self._next_seq(job.run) - 1 if resume_after else 0,
+                settings=section_hashes(settings),
+                previous_settings=previous_settings(history),
             )
             if resume_after is not None:
-                engine.restore_steps(run, step_records(self.db.events_since(job.run, 0)))
+                engine.restore_steps(run, step_records(history))
         except (WorkflowLoadError, RunValidationError) as exc:
             self._fail_unstarted(job, str(exc))
             return
@@ -1646,6 +1650,18 @@ class Worker:
             data={"status": "failed", "error": error},
         )
         self.send(WorkerMessage(kind="event", event=event))
+
+
+def previous_settings(events: Iterable[Event]) -> dict[str, str] | None:
+    """The settings hashes the run's latest job recorded (SETTINGS-9), or ``None`` when no
+    job recorded any, such as a run started before this was added."""
+    found: dict[str, str] | None = None
+    for e in events:
+        if e.type in ("run.started", "run.resumed"):
+            stamp = e.data.get("settings")
+            if isinstance(stamp, dict):
+                found = {str(k): str(v) for k, v in stamp.items()}
+    return found
 
 
 def step_records(events: Iterable[Event]) -> dict[str, StepRecord]:

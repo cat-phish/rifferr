@@ -32,6 +32,7 @@ const RUN_EVENTS = [
   "run.step.finished",
   "run.waiting_review",
   "run.resumed",
+  "run.settings_changed",
   "run.finished",
   "lane.started",
   "lane.waiting",

@@ -18,9 +18,10 @@ from rifferr.backends.fake import FakeBackend
 from rifferr.core.review import ReviewGate
 from rifferr.core.selection import Selection
 from rifferr.engine import StepTypeRegistry
+from rifferr.engine.events import Event
 from rifferr.profile_store import config_root, create_profile, load_profile
 from rifferr.steps.review import ReviewStep
-from rifferr.worker.process import Commands, Worker
+from rifferr.worker.process import Commands, Worker, previous_settings
 from rifferr.worker.protocol import WorkerCommand, WorkerMessage
 from rifferr.worker.supervisor import WorkerSupervisor
 from tests.engine.steps import ALL
@@ -537,3 +538,58 @@ async def test_REVIEW_11_pending_gate_survives_server_and_worker_restarts(
         await second.until(lambda: second.state() == "succeeded")
         assert "after: continue" in second.logs()
     second.db.close()
+
+
+# -- F-SETTINGS SETTINGS-9: settings changed between a run's jobs ---------------------
+
+
+def _profile_yaml() -> Path:
+    return config_root() / "profiles" / "main" / "profile.yaml"
+
+
+async def test_SETTINGS_9_each_job_records_its_settings_hashes(h: Harness) -> None:
+    gate = await h.waiting()
+    (started,) = h.events("run.started")
+    assert set(started.data["settings"]) == {"ai"}
+    await h.supervisor.decide_gate(gate.id, "continue", by="ui")
+    await h.until(lambda: h.state() == "succeeded")
+    (resumed,) = h.events("run.resumed")
+    assert resumed.data["settings"] == started.data["settings"]
+    assert h.events("run.settings_changed") == []
+
+
+async def test_SETTINGS_9_resume_after_a_settings_change_says_so(h: Harness) -> None:
+    gate = await h.waiting()
+    path = _profile_yaml()
+    path.write_text(path.read_text(encoding="utf-8") + "ai:\n  timeout: 90s\n", encoding="utf-8")
+    await h.supervisor.decide_gate(gate.id, "continue", by="ui")
+    await h.until(lambda: h.state() == "succeeded")
+    (changed,) = h.events("run.settings_changed")
+    assert changed.data == {"sections": ["ai"]}
+    types = h.types()
+    assert types.index("run.resumed") + 1 == types.index("run.settings_changed")
+
+
+async def test_SETTINGS_9_an_edit_that_keeps_the_values_is_not_a_change(h: Harness) -> None:
+    gate = await h.waiting()
+    path = _profile_yaml()
+    path.write_text(
+        path.read_text(encoding="utf-8") + "ai:\n  timeout: 60s  # the default, written out\n",
+        encoding="utf-8",
+    )
+    await h.supervisor.decide_gate(gate.id, "continue", by="ui")
+    await h.until(lambda: h.state() == "succeeded")
+    assert h.events("run.settings_changed") == []
+    assert "settings" in h.events("run.resumed")[0].data
+
+
+def test_SETTINGS_9_a_run_from_before_hashes_reports_no_change() -> None:
+    now = datetime.now(UTC)
+    old = [Event(seq=1, ts=now, run_id=RUN, type="run.started", data={"workflow": "w"})]
+    assert previous_settings(old) is None
+    stamped = [
+        *old,
+        Event(seq=2, ts=now, run_id=RUN, type="run.resumed", data={"settings": {"ai": "a"}}),
+        Event(seq=3, ts=now, run_id=RUN, type="run.resumed", data={"settings": {"ai": "b"}}),
+    ]
+    assert previous_settings(stamped) == {"ai": "b"}

@@ -55,6 +55,20 @@ export function applyEvent(view: RunView, e: RunEvent): RunView {
     case "run.waiting_review":
       next.status = "waiting_review";
       break;
+    case "run.settings_changed": {
+      // SETTINGS-9: the run resumed with settings saved since its previous job.
+      const sections = Array.isArray(e.data.sections) ? e.data.sections.map(String) : [];
+      next.log = [
+        ...view.log,
+        line(
+          e,
+          "info",
+          `Settings changed since this run last ran (${sections.join(", ")}). ` +
+            "Steps from here use the saved settings.",
+        ),
+      ];
+      break;
+    }
     case "run.step.started":
       setStep({ status: "running" });
       break;

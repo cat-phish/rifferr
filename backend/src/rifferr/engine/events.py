@@ -13,6 +13,7 @@ ENGINE_EVENTS = frozenset(
     {
         "run.started",
         "run.resumed",
+        "run.settings_changed",  # F-SETTINGS SETTINGS-9
         "run.step.started",
         "run.step.finished",
         "run.waiting_review",
