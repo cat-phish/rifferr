@@ -39,7 +39,7 @@ import type { ChangeSet, GateAlbum, QueueItem, ReviewGate } from "../api/types";
 import { useProfile, withProfile } from "../hooks/useProfile";
 import { usePipeline, useReviewQueue, useWorkflowSteps } from "../hooks/useReviewQueue";
 import { BULK_ACTIONS, bulkKind, decideAll, type BulkFailure, type BulkKind } from "../lib/bulk";
-import { SuggestAllButton, suggestable } from "../components/AISuggestions";
+import { AIRequestPreview, SuggestAllButton, suggestable } from "../components/AISuggestions";
 import { useAppEventListener } from "../lib/appEvents";
 import { duration, time } from "../lib/format";
 import { fromHeld, toRequest, type Pending } from "../lib/grid";
@@ -1184,6 +1184,7 @@ function ChangeSetCard({ item, focused }: { item: QueueItem; focused: boolean })
       }
     >
       {cs.rationale && <Text size="sm">{cs.rationale}</Text>}
+      {cs.ai_input && <SentToAI changeset={cs} />}
       {conflicted && (
         <Text size="sm" style={{ color: tc("warning") }} data-testid="conflict-note">
           ⚠ This ChangeSet conflicted: a field changed after the step proposed it. Propose it again
@@ -1652,3 +1653,37 @@ function FieldNotes({ row }: { row: FieldRow }) {
 const WARNINGS: Record<string, string> = {
   not_in_vocabulary: "not in the vocabulary; tick it to accept",
 };
+
+/** "Show what was sent" for a ChangeSet from an AI step: the request again, from the input
+ * it keeps (S-AI-TAG AI-TAG-12). */
+function SentToAI({ changeset }: { changeset: ChangeSet }) {
+  const [open, setOpen] = useState(false);
+  const ai = changeset.ai_input;
+  if (!ai) return null;
+  return (
+    <>
+      <Anchor
+        component="button"
+        type="button"
+        size="xs"
+        onClick={() => {
+          setOpen(true);
+        }}
+      >
+        Show what was sent
+      </Anchor>
+      <AIRequestPreview
+        profile={changeset.profile}
+        task={ai.task}
+        input={ai.input}
+        provider={ai.provider ?? null}
+        cacheKey={`changeset:${changeset.id}`}
+        opened={open}
+        onClose={() => {
+          setOpen(false);
+        }}
+        title="What the AI request sent"
+      />
+    </>
+  );
+}

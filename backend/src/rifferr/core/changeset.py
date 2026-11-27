@@ -166,6 +166,17 @@ class ShowFields(BaseModel):
     item: list[FieldName] = Field(default_factory=list[str])
 
 
+class ChangeSetAI(BaseModel):
+    """The AI request a ChangeSet came from: its task, provider and exact input, so review
+    can show what was sent (AI-CORE-18, S-AI-TAG AI-TAG-12)."""
+
+    model_config = _FROZEN
+
+    task: str = Field(min_length=1, description="The AI task id, e.g. 'tag'")
+    provider: str | None = None
+    input: dict[str, JsonValue]
+
+
 class ChangeSet(BaseModel):
     """Proposed field changes to one album and/or its items (CHANGESET-1, -14), and/or
     file moves of one album (``files``, S-LIBRARY-MOVE)."""
@@ -191,6 +202,9 @@ class ChangeSet(BaseModel):
     )
     show: ShowFields | None = Field(
         default=None, description="Fields shown with the album in review (LIBRARY-MOVE-17)"
+    )
+    ai_input: ChangeSetAI | None = Field(
+        default=None, description="From an AI step: the request it came from (AI-TAG-12)"
     )
     replan: dict[str, JsonValue] | None = Field(
         default=None,

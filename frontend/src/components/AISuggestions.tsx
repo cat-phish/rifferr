@@ -168,24 +168,53 @@ function AIPreviewModal({
   onClose: () => void;
 }) {
   const input = review.ai_input ?? null;
+  return (
+    <AIRequestPreview
+      profile={review.profile}
+      task={TASK}
+      input={input}
+      provider={input?.provider ?? null}
+      cacheKey={`choice:${review.id}`}
+      opened={opened}
+      onClose={onClose}
+    />
+  );
+}
+
+/** The prompt an AI task sends for `input`, the provider and host, and the estimate; for
+ * any task (AI-CORE-18). Sends nothing to the AI. */
+export function AIRequestPreview({
+  profile,
+  task,
+  input,
+  provider,
+  cacheKey,
+  opened,
+  onClose,
+  title = "What the AI request sends",
+}: {
+  profile: string;
+  task: string;
+  input: Record<string, unknown> | null;
+  provider: string | null;
+  cacheKey: string;
+  opened: boolean;
+  onClose: () => void;
+  title?: string;
+}) {
   const preview = useQuery({
-    queryKey: ["ai-preview", review.id],
+    queryKey: ["ai-preview", cacheKey],
     enabled: opened && input !== null,
     queryFn: async () =>
       ok(
         await api.POST("/api/ai/preview", {
-          body: {
-            profile: review.profile,
-            task: TASK,
-            input: input ?? {},
-            provider: input?.provider ?? null,
-          },
+          body: { profile, task, input: input ?? {}, provider },
         }),
       ),
   });
   const p = preview.data;
   return (
-    <Modal opened={opened} onClose={onClose} title="What the AI request sends" size="lg">
+    <Modal opened={opened} onClose={onClose} title={title} size="lg">
       {preview.error && <Alert color="red">{preview.error.message}</Alert>}
       {p && (
         <Stack gap="xs" data-testid="ai-preview">

@@ -292,3 +292,17 @@ async def test_AI_TAG_11_outputs_sum_the_usage(h: TagHarness) -> None:
     }
     assert (out["input_tokens"], out["output_tokens"]) == (200, 40)
     assert out["cost"] == ""  # no price configured: unknown
+
+
+# -- AI-TAG-12: the request is kept for review ----------------------------------------
+
+
+async def test_AI_TAG_12_the_changeset_keeps_the_request_input(h: TagHarness) -> None:
+    h.ai.fake.script(answer(f("mood", "gloomy")))
+    run = await h.go(step(context=["albumartist"]), A)
+    (cs,) = h.changesets(run)
+    ai = cs.changeset.ai_input
+    assert ai is not None
+    assert (ai.task, ai.provider) == ("tag", None)
+    assert ai.input["album_context"] == {"albumartist": "Joy Division"}
+    assert TagTask().input_model.model_validate(ai.input).fields == ["mood"]

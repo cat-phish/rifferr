@@ -23,6 +23,7 @@ from pydantic import ValidationError as PydanticValidationError
 from rifferr.backends.base import RUN_MARKER, CapabilityError, LibraryBackend
 from rifferr.core.changeset import (
     ChangeSet,
+    ChangeSetAI,
     ChangeSetProposal,
     ChangeSource,
     FieldChange,
@@ -805,8 +806,8 @@ class Engine:
                 secrets=state.secrets,
                 on_secret=state.redactor.add,
                 redact=state.redactor.redact,
-                propose=lambda proposal, current, snapshots: self._propose(
-                    state, spec, proposal, current, snapshots
+                propose=lambda proposal, current, snapshots, ai_input: self._propose(
+                    state, spec, proposal, current, snapshots, ai_input
                 ),
                 propose_files=lambda plan, stamp, snapshots, show, extras: self._propose_files(
                     state, spec, plan, stamp, snapshots, show, extras
@@ -1024,6 +1025,7 @@ class Engine:
         proposal: ChangeSetProposal,
         current: TargetRef | None,
         snapshots: SnapshotIndex,
+        ai_input: ChangeSetAI | None = None,
     ) -> list[ChangeSet]:
         run = state.run
         step_type = self.registry.step_type(spec.uses)
@@ -1040,6 +1042,7 @@ class Engine:
                 step_id=spec.id,
                 source=source,
                 created_at=self.clock.now(),
+                ai_input=ai_input,
             )
 
         try:

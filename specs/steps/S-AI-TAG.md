@@ -1,5 +1,5 @@
 # S-AI-TAG: `ai.tag` step: AI-proposed field values as ChangeSets
-Status: Approved
+Status: Implemented
 Milestone: M4
 
 ## Context
@@ -72,9 +72,10 @@ named the old ones.
 - AI-TAG-11: The step's outputs MUST include `requests`, `cached`, `proposed`, `rejected`,
   `input_tokens`, `output_tokens` and `cost` (sums of the task results' usage, AI-CORE-15).
   The run page MUST show the token totals, and the cost when known.
-- AI-TAG-12: The review view of an `ai.tag` ChangeSet MUST link to the preview (AI-CORE-18) for
-  its album, with `input` = `{workflow, step_id, album_id}`.
-
+- AI-TAG-12: Each ChangeSet MUST keep the request it came from as `ai_input`
+  (`{task, provider, input}`, the task's exact input). The review view of an `ai.tag`
+  ChangeSet MUST link to the preview (AI-CORE-18) of that input. A re-proposed ChangeSet
+  keeps it.
 ## Interfaces
 ```yaml
 - id: genres
@@ -113,6 +114,9 @@ named the old ones.
 ```
 - `FieldChange` gains `confidence: float | None = None` and `warnings: list[str] = []`
   (additive change to `schemas/changeset-proposal.schema.json`).
+- `ChangeSet` gains `ai_input: {task, provider, input} | None` (additive). Steps set it
+  with `ctx.propose(proposal, ai_input=ChangeSetAI(...))`; it isn't part of the proposal
+  schema, so shell steps can't set it.
 - Modules: `rifferr.ai.tasks.tag` (the `AITask`), `rifferr.steps.ai_tag` (the step).
 
 ## Examples
@@ -151,11 +155,8 @@ can change, and only after review.
    edits the vocabulary file after confirmation? Or leave that to F-AI-CHAT?
 4. One request per album (this draft), or several small albums per request to save tokens?
    Batching makes caching and per-album failure coarser.
-5. AI-TAG-12 can't work as written: `input = {workflow, step_id, album_id}` would need the
-   server to rebuild the album's request, but only the worker reads the library (non-negotiable
-   2, one beets worker per profile). Proposal: the step stores the exact task input on the
-   ChangeSet (a new optional `ai_input`, additive to the published schema), and the review
-   view previews that, as choice reviews do (F-AI-SUGGEST). (agent, 2026-11-26)
+5. ~~AI-TAG-12 preview input?~~ Resolved 2026-11-26 (author): the ChangeSet keeps the
+   task input as `ai_input`, and review previews that (AI-TAG-12).
 
 As implemented (2026-11-26; `rifferr.steps.ai_tag`, `rifferr.ai.tasks.tag`,
 `rifferr.core.ai_validate.check_field_values`):
@@ -183,4 +184,4 @@ As implemented (2026-11-26; `rifferr.steps.ai_tag`, `rifferr.ai.tasks.tag`,
 - [x] `ai.tag` step: lanes, `when`, `only_empty`, `on_error`, proposals (AI-TAG-1 to -4, -8, -9)
 - [x] `FieldChange.confidence` / `warnings`, schema and TS client regenerated (AI-TAG-10)
 - [x] Outputs and run page usage (AI-TAG-11)
-- [ ] Review-view preview link (AI-TAG-12): waits on open question 5
+- [x] `ai_input` on the ChangeSet; review-view preview link (AI-TAG-12)

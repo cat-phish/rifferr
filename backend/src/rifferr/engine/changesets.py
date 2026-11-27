@@ -19,6 +19,7 @@ from rifferr.backends.base import ChangeSetRejected, LibraryBackend
 from rifferr.core.changeset import (
     ChangeProblem,
     ChangeSet,
+    ChangeSetAI,
     ChangeSetProposal,
     ChangeSetState,
     ChangeSource,
@@ -212,8 +213,10 @@ def new_changeset(
     step_id: str | None,
     source: ChangeSource,
     created_at: datetime,
+    ai_input: ChangeSetAI | None = None,
 ) -> ChangeSet:
     return ChangeSet(
+        ai_input=ai_input,
         id=id,
         profile=profile,
         run_id=run_id,

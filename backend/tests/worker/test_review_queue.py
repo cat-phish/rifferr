@@ -10,7 +10,14 @@ from pathlib import Path
 import pytest
 
 from rifferr.backends.fake import FakeBackend
-from rifferr.core.changeset import ChangeSet, ChangeSource, FieldChange, TargetChange, TargetRef
+from rifferr.core.changeset import (
+    ChangeSet,
+    ChangeSetAI,
+    ChangeSource,
+    FieldChange,
+    TargetChange,
+    TargetRef,
+)
 from rifferr.core.selection import Selection
 from rifferr.engine.changesets import CurrentTarget, current_values, repropose_targets
 from tests.worker.test_review import RUN, Harness, serving
@@ -222,3 +229,18 @@ def test_REVIEW_QUEUE_5_repropose_targets_take_old_from_current_and_drop_no_ops(
     assert repropose_targets(cs, [CurrentTarget(target=a, label="A", missing=True)]) == []
     (only,) = repropose_targets(cs, now, accepted=[0])
     assert [c.field for c in only.changes] == ["album"]
+
+
+async def test_AI_TAG_12_a_reproposed_changeset_keeps_its_ai_input(h: Harness) -> None:
+    old_id = await _conflicted(h)
+    old = h.changesets.get(old_id)
+    assert old is not None
+    ai = ChangeSetAI(task="tag", provider="claude", input={"album": "A"})
+    body = old.changeset.model_copy(update={"ai_input": ai}).model_dump_json()
+    h.db._conn.execute("UPDATE changesets SET body = ? WHERE id = ?", (body, old_id))  # pyright: ignore[reportPrivateUsage]
+    job_id = await h.supervisor.repropose(old_id)
+    await h.until(lambda: (j := h.db.job(job_id)) is not None and j.state == "succeeded")
+    (new_id,) = h.pending()
+    new = h.changesets.get(new_id)
+    assert new is not None
+    assert new.changeset.ai_input == ai

@@ -584,6 +584,17 @@
         "additionalProperties": false,
         "description": "Proposed field changes to one album and/or its items (CHANGESET-1, -14), and/or\nfile moves of one album (``files``, S-LIBRARY-MOVE).",
         "properties": {
+          "ai_input": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChangeSetAI"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "From an AI step: the request it came from (AI-TAG-12)"
+          },
           "album": {
             "anyOf": [
               {
@@ -705,6 +716,42 @@
           "targets"
         ],
         "title": "ChangeSet",
+        "type": "object"
+      },
+      "ChangeSetAI": {
+        "additionalProperties": false,
+        "description": "The AI request a ChangeSet came from: its task, provider and exact input, so review\ncan show what was sent (AI-CORE-18, S-AI-TAG AI-TAG-12).",
+        "properties": {
+          "input": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Input",
+            "type": "object"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "task": {
+            "description": "The AI task id, e.g. 'tag'",
+            "minLength": 1,
+            "title": "Task",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task",
+          "input"
+        ],
+        "title": "ChangeSetAI",
         "type": "object"
       },
       "ChangeSetDetail": {

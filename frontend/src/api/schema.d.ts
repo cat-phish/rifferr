@@ -1663,6 +1663,8 @@ export interface components {
          *     file moves of one album (``files``, S-LIBRARY-MOVE).
          */
         ChangeSet: {
+            /** @description From an AI step: the request it came from (AI-TAG-12) */
+            ai_input?: components["schemas"]["ChangeSetAI"] | null;
             /** @description With ``files``: the album they belong to (LIBRARY-MOVE-18) */
             album?: components["schemas"]["TargetRef"] | null;
             /**
@@ -1701,6 +1703,24 @@ export interface components {
              * @description Empty only when ``files`` isn't
              */
             targets: components["schemas"]["TargetChange"][];
+        };
+        /**
+         * ChangeSetAI
+         * @description The AI request a ChangeSet came from: its task, provider and exact input, so review
+         *     can show what was sent (AI-CORE-18, S-AI-TAG AI-TAG-12).
+         */
+        ChangeSetAI: {
+            /** Input */
+            input: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Provider */
+            provider?: string | null;
+            /**
+             * Task
+             * @description The AI task id, e.g. 'tag'
+             */
+            task: string;
         };
         /**
          * ChangeSetDetail

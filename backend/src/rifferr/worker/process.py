@@ -1171,6 +1171,7 @@ class Worker:
                 rationale=cs.rationale,
                 created_at=datetime.now(UTC),
                 targets=targets,
+                ai_input=cs.ai_input,
             )
             if targets
             else None

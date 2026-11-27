@@ -20,6 +20,7 @@ from rifferr.backends.base import BackendCapabilities, CapabilityError, LibraryB
 from rifferr.core.ai_validate import CheckedValue, OnUnknown
 from rifferr.core.changeset import (
     ChangeSet,
+    ChangeSetAI,
     ChangeSetProposal,
     ChangeSource,
     FieldChange,
@@ -294,7 +295,10 @@ async def _tag_album(
             rationale=f"AI tagging by {answer.provider} ({answer.model}), "
             f"prompt version {answer.prompt_version}",
             targets=changes,
-        )
+        ),
+        ai_input=ChangeSetAI(
+            task=TAG_TASK, provider=params.provider, input=inp.model_dump(mode="json")
+        ),
     )
     made = ctx.proposed[start:]
     totals.proposed += len(made)

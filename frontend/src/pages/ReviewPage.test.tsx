@@ -1399,3 +1399,42 @@ test("AI_TAG_10 rationale, confidence and warnings show; a warned change starts 
     note: null,
   });
 });
+
+test("AI_TAG_12 an AI ChangeSet links to what its request sent", async () => {
+  const input = { album: "Band - Live", fields: ["mood"], targets: [] };
+  const { calls } = setup({
+    queue: () => [
+      csItem("cs1", NEW_RUN, "proposed", {
+        ...aiChangeset(),
+        ai_input: { task: "tag", provider: "claude", input },
+      }),
+    ],
+    extra: {
+      "POST /api/ai/preview": () => ({
+        task: "tag",
+        provider: "claude",
+        type: "anthropic",
+        model: "claude-haiku-5-5",
+        host: "api.anthropic.com",
+        system: "You help a person tag their music library.",
+        user: "Album: Band - Live",
+        output_schema: {},
+        sends: ["album label"],
+        estimated_input_tokens: 120,
+        max_output_tokens: 1024,
+        estimated_cost_max: null,
+        currency: null,
+        cached: true,
+      }),
+    },
+  });
+  renderApp("/review?profile=main");
+  fireEvent.click(await screen.findByRole("button", { name: "Show what was sent" }));
+  expect(await screen.findByTestId("ai-preview")).toHaveTextContent("Album: Band - Live");
+  expect(nth(posts(calls, "/api/ai/preview"), 0).body).toEqual({
+    profile: "main",
+    task: "tag",
+    input,
+    provider: "claude",
+  });
+});

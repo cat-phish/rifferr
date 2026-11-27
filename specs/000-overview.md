@@ -41,7 +41,7 @@ A row gets a link once its spec file exists. Build order: [docs/roadmap.md](../d
 | [S-FILES-CLEANUP](steps/S-FILES-CLEANUP.md) | `files.cleanup` step | 3 | M2 | Implemented |
 | [S-SUBWORKFLOW](steps/S-SUBWORKFLOW.md) | `workflow` (call another workflow) step | 3 | M2 | Implemented |
 | S-COVERS-SEARCH | `covers.search` step and provider protocol | 6 | M3 | Implemented |
-| [S-AI-TAG](steps/S-AI-TAG.md) | `ai.tag` step: AI-proposed field values as ChangeSets | 7 | M4 | Approved |
+| [S-AI-TAG](steps/S-AI-TAG.md) | `ai.tag` step: AI-proposed field values as ChangeSets | 7 | M4 | Implemented |
 | [S-LIBRARY-MOVE](steps/S-LIBRARY-MOVE.md) | `library.move` step: journaled rename, move and copy | 2, 3, 8 | M5 | Implemented |
 | [C-TEMPLATE-FUNCTIONS](core/C-TEMPLATE-FUNCTIONS.md) | Rifferr template functions in beets templates | 1, 4 | M5 | Implemented |
 | [C-FILE-TAGS](core/C-FILE-TAGS.md) | Flexible attributes written as file tags | 1, 8 | M5 | Implemented |

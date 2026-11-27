@@ -13,6 +13,7 @@ from pydantic import BaseModel, JsonValue
 from rifferr.backends.base import BackendCapabilities, LibraryBackend
 from rifferr.core.changeset import (
     ChangeSet,
+    ChangeSetAI,
     ChangeSetProposal,
     ProposedFieldChange,
     ShowFields,
@@ -121,7 +122,9 @@ class StepType(Protocol):
 
 Emit = Callable[[str, dict[str, JsonValue]], None]
 #: The engine's side of ``ctx.propose``: proposal, current target -> the ChangeSets made.
-Propose = Callable[[ChangeSetProposal, TargetRef | None, SnapshotIndex], list[ChangeSet]]
+Propose = Callable[
+    [ChangeSetProposal, TargetRef | None, SnapshotIndex, ChangeSetAI | None], list[ChangeSet]
+]
 
 
 #: The engine's side of ``ctx.propose_files``: one album's plan, optional stamp -> ChangeSet.
@@ -307,7 +310,10 @@ OnHold = Callable[[str, str, str, str | None], None]
 
 
 def _no_propose(
-    proposal: ChangeSetProposal, current: TargetRef | None, s: SnapshotIndex
+    proposal: ChangeSetProposal,
+    current: TargetRef | None,
+    s: SnapshotIndex,
+    ai_input: ChangeSetAI | None,
 ) -> list[ChangeSet]:
     raise StepFailure("this run can't propose ChangeSets")
 
@@ -526,7 +532,13 @@ class StepContext:
         self._snapshots.add(albums)
         return albums
 
-    def propose(self, proposal: ChangeSetProposal, current: TargetRef | None = None) -> list[str]:
+    def propose(
+        self,
+        proposal: ChangeSetProposal,
+        current: TargetRef | None = None,
+        *,
+        ai_input: ChangeSetAI | None = None,
+    ) -> list[str]:
         """Propose changes to albums or items this step got from ``albums()`` (CHANGESET-3).
 
         ``current`` resolves the short form ``changes``. Missing ``old`` values come
@@ -534,7 +546,7 @@ class StepContext:
         returns their ids (empty if nothing changes). The step's ``apply`` policy then
         applies them right away (``auto``) or leaves them for review (``review``).
         """
-        made = self._propose(proposal, current, self._snapshots)
+        made = self._propose(proposal, current, self._snapshots, ai_input)
         self.proposed.extend(made)
         return [cs.id for cs in made]
 
