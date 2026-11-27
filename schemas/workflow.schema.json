@@ -2033,6 +2033,18 @@
       "additionalProperties": false,
       "description": "``with:`` of a ``tags.choose`` step.",
       "properties": {
+        "ai": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/With_tags_choose__ChoiceAIParams"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Offer AI suggestions on the review (F-AI-SUGGEST)"
+        },
         "custom": {
           "description": "Fields offered for free entry",
           "items": {
@@ -2393,6 +2405,79 @@
         "style"
       ],
       "title": "CaseSpec",
+      "type": "object"
+    },
+    "With_tags_choose__ChoiceAIParams": {
+      "additionalProperties": false,
+      "description": "``with.ai``: what an AI suggestion request sends (AI-SUGGEST-1). When it runs by\nitself is the profile's setting; ``mode`` is only this workflow's default.",
+      "properties": {
+        "allow_new": {
+          "default": true,
+          "description": "May suggest values no option has",
+          "title": "Allow New",
+          "type": "boolean"
+        },
+        "context": {
+          "description": "Album fields sent to the AI",
+          "items": {
+            "type": "string"
+          },
+          "title": "Context",
+          "type": "array"
+        },
+        "guidance": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Markdown notes for the AI, relative to the profile directory",
+          "title": "Guidance"
+        },
+        "max_suggestions": {
+          "default": 3,
+          "maximum": 10,
+          "minimum": 1,
+          "title": "Max Suggestions",
+          "type": "integer"
+        },
+        "mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "off",
+                "unsure",
+                "always"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "off | unsure | always; Settings can override it",
+          "title": "Mode"
+        },
+        "provider": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "One of the profile's AI providers",
+          "title": "Provider"
+        }
+      },
+      "title": "ChoiceAIParams",
       "type": "object"
     },
     "With_tags_choose__ChoiceOption": {

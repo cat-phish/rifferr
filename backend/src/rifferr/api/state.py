@@ -56,7 +56,7 @@ def on_all_stream(event: Event) -> bool:
     ``trigger.*`` events of profile streams (TRIGGERS-24), ``lane.*`` (LANES-2) and step
     starts and ends (UI-REFRESH-14)."""
     if event.type.startswith(
-        ("trigger.", "notify.", "inbox.", "covers.", "ai.job.")
+        ("trigger.", "notify.", "inbox.", "covers.", "ai.job.", "choice.ai_")
     ):  # TRIGGERS-24, NOTIFY-4, DASHBOARD-15, COVERS-SEARCH-19, AI-CORE-19
         return True
     if event.run_id.startswith(PROFILE_STREAM_PREFIX):

@@ -754,6 +754,7 @@ class WorkerSupervisor:
         known_name: bool = False,
         note: str | None = None,
         by: str | None = None,
+        ai_suggestion: int | None = None,
     ) -> str | None:
         """Answer a choice review (TAGS-CHOOSE-5, -6). ``choose`` queues the worker job that
         applies the option (or the custom values) as one ChangeSet and returns its id;
@@ -788,6 +789,7 @@ class WorkerSupervisor:
                 "known_name": known_name,
                 "note": note,
                 "by": by,
+                "ai_suggestion": ai_suggestion,
             }
             queued = self.db.submit_job(claimed.profile, "choice_apply", payload, claimed.run_id)
             store.set_claim(review_id, queued.id)

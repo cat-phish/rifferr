@@ -31,7 +31,7 @@ from rifferr.core.changeset import (
     Stamp,
     TargetRef,
 )
-from rifferr.core.choices import ChoiceReview
+from rifferr.core.choices import ChoiceReview, with_ai
 from rifferr.core.covers import CoverReview
 from rifferr.core.files import BusyFolder, CleanupDecision
 from rifferr.core.ids import new_ulid
@@ -101,6 +101,7 @@ from rifferr.engine.review import (
 )
 from rifferr.engine.run import PassRecord, Run, RunState, Scalar, StepRecord
 from rifferr.engine.steps import (
+    AIAccess,
     ChoiceRequest,
     CleanupRequest,
     CoverRequest,
@@ -212,8 +213,10 @@ class Engine:
         moves: MoveConflictStore | None = None,
         prunes: PruneDecisionStore | None = None,
         removals: RemovalJournal | None = None,
+        ai: AIAccess | None = None,
     ) -> None:
         self.registry = registry
+        self.ai = ai
         self.prunes: PruneDecisionStore = prunes or InMemoryPruneStore()
         self.removals: RemovalJournal = removals or InMemoryRemovals()
         self.moves: MoveConflictStore = moves or InMemoryMoveConflictStore()
@@ -685,7 +688,10 @@ class Engine:
             learn=request.learn,
             on_reject=request.on_reject,
             created_at=self.clock.now(),
+            ai_input=request.ai_input,
         )
+        if request.ai is not None:
+            review = with_ai(review, request.ai)  # AI-SUGGEST-8: ready before the notice
         self.choices.add(review)
         self._hold(state, review.album_id, "choice", review.id)
         data: dict[str, JsonValue] = {
@@ -694,6 +700,7 @@ class Engine:
             "label": review.label,
             "options": len(review.options),
             "suggested": review.suggested,
+            "ai_suggestions": len(review.ai.suggestions) if review.ai else 0,
         }
         self._emit(run, "choice.requested", spec.id, data)
         return review.id
@@ -836,6 +843,9 @@ class Engine:
                 hold_pass=lambda kind, ref, label: self._hold_pass(state, kind, ref, label),
                 request_prune=lambda request: self._request_prune(state, spec, request),
                 removals=self.removals,
+                ai=self.ai,
+                ai_emit=lambda type_, data: self._emit_from_step(state, spec.id, type_, data),
+                workflow=state.run.workflow,
             )
             result = await self._run_cancellable(state, step_type.run(ctx))
             if state.cancel.is_set():

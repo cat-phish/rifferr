@@ -46,6 +46,11 @@ ENGINE_EVENTS = frozenset(
         # S-TAGS-CHOOSE (TAGS-CHOOSE-3, -5)
         "choice.requested",
         "choice.resolved",
+        "choice.ai_suggested",  # F-AI-SUGGEST AI-SUGGEST-9
+        # C-AI-CORE (AI-CORE-15)
+        "ai.request",
+        "ai.response",
+        "ai.rejected",
         # S-LIBRARY-MOVE (LIBRARY-MOVE-5a)
         "move.requested",
         "move.resolved",

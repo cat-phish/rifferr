@@ -19,7 +19,7 @@ from pydantic import BaseModel, JsonValue
 
 from rifferr.api.security import SessionRecord
 from rifferr.core.changeset import ApplyResult, ChangeSet, ChangeSetState, JournalEntry
-from rifferr.core.choices import ChoiceReview
+from rifferr.core.choices import ChoiceAI, ChoiceReview, with_ai
 from rifferr.core.covers import CoverReview
 from rifferr.core.files import CleanupDecision
 from rifferr.core.ids import new_ulid
@@ -1291,6 +1291,28 @@ class AppChoiceReviews:
 
     def set_claim(self, review_id: str, job: str | None) -> None:
         self._conn.execute("UPDATE choice_reviews SET claim = ? WHERE id = ?", (job, review_id))
+
+    def store_ai(self, review_id: str, ai: ChoiceAI) -> ChoiceReview:
+        """Store AI suggestions on a pending, unclaimed review (AI-SUGGEST-9); a suggested
+        rule that isn't offered becomes an extra option. Raises like ``claim``."""
+        with self._conn:
+            self._conn.execute("BEGIN IMMEDIATE")
+            review = self.get(review_id)
+            if review is None:
+                raise KeyError(review_id)
+            if review.state != "pending":
+                raise ChoiceResolvedError(review_id, review.state)
+            row = self._conn.execute(
+                "SELECT claim FROM choice_reviews WHERE id = ?", (review_id,)
+            ).fetchone()
+            if row["claim"] is not None:
+                raise ChoiceBusyError(review_id)
+            updated = with_ai(review, ai)
+            self._conn.execute(
+                "UPDATE choice_reviews SET body = ? WHERE id = ?",
+                (updated.model_dump_json(), review_id),
+            )
+        return updated
 
     def release(self, review: ChoiceReview) -> None:
         """Save ``review`` and drop the claim."""

@@ -67,6 +67,9 @@ workflow = "rifferr.steps.workflow_call:WorkflowCallStep"
 anthropic = "rifferr.ai.providers.anthropic:AnthropicProvider"
 "openai-compatible" = "rifferr.ai.providers.openai_compat:OpenAICompatibleProvider"
 
+[project.entry-points."rifferr.ai_tasks"]
+"choice.suggest" = "rifferr.ai.tasks.choice_suggest:ChoiceSuggestTask"
+
 [project.entry-points."rifferr.cover_providers"]
 coverartarchive = "rifferr.covers.providers:CoverArtArchive"
 itunes = "rifferr.covers.providers:ITunes"

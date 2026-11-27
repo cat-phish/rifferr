@@ -9,9 +9,10 @@ worker's ``choice_apply`` job). Options are data: no code runs, so no trust is n
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
 
 from rifferr.backends.base import BackendCapabilities, LibraryBackend, QueryError, TemplateError
 from rifferr.choice_rules import (
@@ -28,16 +29,24 @@ from rifferr.core.changeset import (
 )
 from rifferr.core.choices import (
     CUSTOM,
+    SUGGEST_TASK,
+    ChoiceAI,
+    ChoiceAISuggestion,
     ChoiceOffer,
     ChoicePreview,
+    ChoiceSuggestInput,
     CustomField,
     CustomKind,
     LearnSettings,
+    SuggestMode,
+    SuggestOption,
+    SuggestRule,
+    rules_unsure,
 )
 from rifferr.core.snapshot import AlbumSnapshot, FieldValue, label
 from rifferr.core.workflow.template_fields import TEMPLATE_EXTRA
 from rifferr.engine import StepContext, StepFailure, StepResult
-from rifferr.engine.steps import ChoiceRequest
+from rifferr.engine.steps import AIUnavailableError, ChoiceRequest
 from rifferr.steps.tagscript import proposal
 from rifferr.tagscript.evaluator import ScriptResult, run_script
 from rifferr.tagscript.models import Action, TagScript, script_path_problem
@@ -64,6 +73,26 @@ class ChoiceOption(BaseModel):
     )
     actions: list[Action] = Field(
         description="Tag-script actions; empty only for the known_name_option (TAGS-CHOOSE-13)"
+    )
+
+
+class ChoiceAIParams(BaseModel):
+    """``with.ai``: what an AI suggestion request sends (AI-SUGGEST-1). When it runs by
+    itself is the profile's setting; ``mode`` is only this workflow's default."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    context: list[FieldName] = Field(
+        default_factory=list[str], description="Album fields sent to the AI"
+    )
+    guidance: str | None = Field(
+        default=None, description="Markdown notes for the AI, relative to the profile directory"
+    )
+    provider: str | None = Field(default=None, description="One of the profile's AI providers")
+    max_suggestions: int = Field(default=3, ge=1, le=10)
+    allow_new: bool = Field(default=True, description="May suggest values no option has")
+    mode: SuggestMode | None = Field(
+        default=None, description="off | unsure | always; Settings can override it"
     )
 
 
@@ -116,6 +145,9 @@ class TagsChooseParams(BaseModel):
         description="The option that remembers the name; always offered while the field has "
         "a value, even when it changes nothing (its actions may be empty)",
     )
+    ai: ChoiceAIParams | None = Field(
+        default=None, description="Offer AI suggestions on the review (F-AI-SUGGEST)"
+    )
 
     @field_validator("options_from")
     @classmethod
@@ -143,6 +175,11 @@ class TagsChooseParams(BaseModel):
         empty = [o.label for o in self.options if not o.actions]
         if any(label != self.known_name_option for label in empty):
             raise ValueError("only the known_name_option may have no actions")
+        if self.ai is not None and self.when_single == "auto":  # AI-SUGGEST-15
+            raise ValueError(
+                "ai can't be combined with when_single: auto; AI suggestions always wait "
+                "for a person"
+            )
         return self
 
 
@@ -260,6 +297,7 @@ def rule_offers(
             actions=_dump(list(rule.actions)),
             preview=_preview(result),
             rule=True,
+            description=rule.description,
             matched=count,
         )
         ranked.append((count, len(ranked), offer))
@@ -327,7 +365,7 @@ class TagsChooseStep:
             try:
                 if params.query is not None and not _matches(backend, params.query, album):
                     continue
-                outcome = self._album(ctx, params, rules, album)
+                outcome = await self._album(ctx, params, rules, album)
             except (QueryError, TemplateError) as exc:
                 ctx.fail_target(album.id, str(exc))
                 continue
@@ -351,7 +389,7 @@ class TagsChooseStep:
             }
         )
 
-    def _album(
+    async def _album(
         self,
         ctx: StepContext,
         params: TagsChooseParams,
@@ -451,13 +489,21 @@ class TagsChooseStep:
                 target=rules.target,
                 unmatched=unmatched,
             )
+        shown: dict[str, FieldValue] = {f: album.fields.get(f) for f in params.show}
+        ai_input: ChoiceSuggestInput | None = None
+        ai: ChoiceAI | None = None
+        if params.ai is not None and ctx.ai_configured:
+            ai_input = _ai_input(params, params.ai, rules, album, album_label, message, shown,
+                                 offers.offers)  # fmt: skip
+            if _auto(ctx, params.ai, ai_input):
+                ai = await _ask(ctx, ai_input, album.id)
         review_id = ctx.request_choice(
             ChoiceRequest(
                 album_id=album.id,
                 label=album_label,
                 options=offers.offers,
                 message=message,
-                shown={f: album.fields.get(f) for f in params.show},
+                shown=shown,
                 suggested=suggested,
                 custom=custom,
                 known_name=params.known_name if known_value is not None else None,
@@ -468,9 +514,92 @@ class TagsChooseStep:
                 known_name_actions=known_actions if known_value is not None else [],
                 learn=learn,
                 on_reject=params.on_reject,
+                ai_input=ai_input,
+                ai=ai,
             )
         )
+        if ai is not None:
+            record["ai_suggestions"] = [x.label for x in ai.suggestions]
         return {**record, "review_id": review_id, "chosen": None, "decided_by": None}
+
+
+def _json(value: FieldValue) -> JsonValue:
+    if isinstance(value, list):
+        return [str(v) for v in value]
+    return value
+
+
+def _ai_input(
+    params: TagsChooseParams,
+    ai: ChoiceAIParams,
+    rules: RulesFile | None,
+    album: AlbumSnapshot,
+    album_label: str,
+    message: str | None,
+    shown: dict[str, FieldValue],
+    offers: list[ChoiceOffer],
+) -> ChoiceSuggestInput:
+    """What a suggestion request sends; fixed with the review (AI-SUGGEST-2)."""
+    return ChoiceSuggestInput(
+        album=album_label,
+        message=message,
+        shown={k: _json(v) for k, v in shown.items()},
+        rank_by=params.rank_by,
+        rank_values=rank_values(album, params.rank_by) if params.rank_by else [],
+        options=[
+            SuggestOption(
+                key=o.key,
+                label=o.label,
+                description=o.description,
+                rule=o.rule,
+                fallback=o.key.startswith("f"),
+                matched=o.matched,
+            )
+            for o in offers
+        ],
+        rules=[
+            SuggestRule(label=r.label, description=r.description, actions=_dump(list(r.actions)))
+            for r in (rules.rules if rules is not None else [])
+        ],
+        custom=list(params.custom),
+        context={f: _json(album.fields.get(f)) for f in ai.context},
+        guidance=ai.guidance,
+        provider=ai.provider,
+        max_suggestions=ai.max_suggestions,
+        allow_new=ai.allow_new,
+    )
+
+
+def _auto(ctx: StepContext, ai: ChoiceAIParams, inp: ChoiceSuggestInput) -> bool:
+    """Whether to ask the AI now, before the review opens (AI-SUGGEST-7)."""
+    settings = ctx.profile_settings.ai.suggest if ctx.profile_settings is not None else None
+    if settings is None:
+        mode = ai.mode or "unsure"
+    else:
+        mode = settings.mode_for(ctx.workflow, ctx.step.id, ai.mode)
+    if mode == "always":
+        return True
+    return mode == "unsure" and rules_unsure(inp.options)
+
+
+async def _ask(ctx: StepContext, inp: ChoiceSuggestInput, album_id: str) -> ChoiceAI:
+    """Ask once; a failure becomes a note on the review, never a failed lane (AI-SUGGEST-8)."""
+    try:
+        answer = await ctx.ask_ai(SUGGEST_TASK, inp, provider=inp.provider, target=album_id)
+    except AIUnavailableError as exc:
+        ctx.log(f"{album_id}: AI suggestion failed: {exc}", "warning", album_id)
+        return ChoiceAI(auto=True, error=str(exc), at=datetime.now(UTC))
+    raw = answer.value if isinstance(answer.value, list) else []
+    return ChoiceAI(
+        suggestions=[ChoiceAISuggestion.model_validate(x) for x in raw],
+        provider=answer.provider,
+        model=answer.model,
+        prompt_version=answer.prompt_version,
+        usage=answer.usage,
+        cached=answer.cached,
+        auto=True,
+        at=datetime.now(UTC),
+    )
 
 
 __all__ = ["CUSTOM", "TagsChooseParams", "TagsChooseStep"]

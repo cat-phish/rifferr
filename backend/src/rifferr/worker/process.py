@@ -105,6 +105,7 @@ from rifferr.steps.registry import load_step_types
 from rifferr.steps.tagscript import proposal as tagscript_proposal
 from rifferr.tagscript.evaluator import run_script
 from rifferr.tagscript.models import TagScript
+from rifferr.worker.ai import WorkerAI
 from rifferr.worker.cleanup import busy_folders, watched_folders
 from rifferr.worker.gates import cancel_pending_items, gate_albums, reject_gate_lanes, settle
 from rifferr.worker.import_undo import recover_removals, undo_import
@@ -380,6 +381,7 @@ class Worker:
             moves=self.moves,
             prunes=self.prunes,
             removals=AppRemovalJournal(self.db, self.profile.name),
+            ai=WorkerAI(self.profile, self.db),  # C-AI-CORE, F-AI-SUGGEST
         )
         try:
             wf, doc = load_workflow(source, source_name)
@@ -856,6 +858,7 @@ class Worker:
         raw_values = payload.get("values")
         values = cast(dict[str, Any], raw_values) if isinstance(raw_values, dict) else None
         known_name = payload.get("known_name") is True
+        from_ai = _ai_source(review, payload.get("ai_suggestion"))
         emit = self._changeset_emitter(review.run_id, review.step_id)
         changeset_id: str | None = None
         learned: list[str] = []
@@ -885,7 +888,9 @@ class Worker:
                 if made is not None:
                     snapshots = SnapshotIndex()
                     snapshots.add([album])
-                    rationale = f"{label} (chosen in review)" + (f": {note}" if note else "")
+                    rationale = f"{label} ({from_ai}chosen in review)" + (
+                        f": {note}" if note else ""
+                    )  # AI-SUGGEST-6: says when the choice was an AI suggestion
                     built = build_changesets(
                         made.model_copy(update={"rationale": rationale}),
                         current=None,
@@ -1870,3 +1875,13 @@ def _problem(outcome: ApplyOutcome) -> str:
             for c in outcome.entry.conflicts
         )
     return outcome.error or outcome.state
+
+
+def _ai_source(review: ChoiceReview, rank: object) -> str:
+    """``"AI suggestion from <provider> (<model>), "`` when the person chose an AI
+    suggestion (AI-SUGGEST-6), else ``""``."""
+    if not isinstance(rank, int) or isinstance(rank, bool) or review.ai is None:
+        return ""
+    if not any(s.rank == rank for s in review.ai.suggestions):
+        return ""
+    return f"AI suggestion from {review.ai.provider} ({review.ai.model}), "

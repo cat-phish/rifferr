@@ -780,6 +780,9 @@ class ChoiceDecisionBody(_Model):
     values: dict[str, FieldValue] | None = Field(default=None, max_length=100)
     known_name: bool = False
     note: str | None = Field(default=None, max_length=2000)
+    ai_suggestion: int | None = Field(
+        default=None, ge=1, le=10, description="The rank of the AI suggestion chosen (AI-SUGGEST-6)"
+    )
 
 
 class ChoiceDecided(_Model):

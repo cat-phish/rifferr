@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from rifferr.core.changeset import TargetRef
 from rifferr.core.snapshot import FieldValue
@@ -53,6 +53,12 @@ class ChoiceOffer(BaseModel):
     preview: list[ChoicePreview] = Field(default_factory=list[ChoicePreview])
     rule: bool = Field(default=False, description="From the rules file (TAGS-CHOOSE-8)")
     matched: int = Field(default=0, description="How many rank_by values the rule matches")
+    description: str | None = Field(
+        default=None, description="The rule's own description (AI-SUGGEST-3)"
+    )
+    from_ai: bool = Field(
+        default=False, description="Added because an AI suggestion named this rule (AI-SUGGEST-5)"
+    )
     remembers: str | None = Field(
         default=None,
         description="Choosing this option also adds this name to the artist-name rules "
@@ -127,9 +133,135 @@ class ChoiceReview(BaseModel):
     learned: str | None = Field(
         default=None, description="What the decision added to a rules file (TAGS-CHOOSE-10, -13)"
     )
+    ai_input: ChoiceSuggestInput | None = Field(
+        default=None, description="What an AI suggestion request sends (AI-SUGGEST-2)"
+    )
+    ai: ChoiceAI | None = Field(default=None, description="AI suggestions (AI-SUGGEST-9)")
 
     def hold_key(self) -> str:
         return self.album_id
 
     def option(self, key: str) -> ChoiceOffer | None:
         return next((o for o in self.options if o.key == key), None)
+
+
+# -- AI suggestions (F-AI-SUGGEST) ----------------------------------------------------
+
+SuggestMode = Literal["off", "unsure", "always"]
+#: The AI task that suggests options for a choice review (AI-SUGGEST-4).
+SUGGEST_TASK = "choice.suggest"
+
+
+class SuggestOption(BaseModel):
+    """An option the review offers, as the AI sees it (AI-SUGGEST-2)."""
+
+    model_config = _FROZEN
+
+    key: str
+    label: str
+    description: str | None = None
+    rule: bool = False
+    fallback: bool = False
+    matched: int = 0
+
+
+class SuggestRule(BaseModel):
+    """A rule of the rules file. ``actions`` are kept for choosing it, never sent."""
+
+    model_config = _FROZEN
+
+    label: str
+    description: str | None = None
+    actions: list[dict[str, Any]] = Field(default_factory=list[dict[str, Any]])
+
+
+class ChoiceSuggestInput(BaseModel):
+    """The ``choice.suggest`` task's input, fixed when the review is created."""
+
+    model_config = _FROZEN
+
+    album: str
+    message: str | None = None
+    shown: dict[str, JsonValue] = Field(default_factory=dict[str, JsonValue])
+    rank_by: str | None = None
+    rank_values: list[str] = Field(default_factory=list[str])
+    options: list[SuggestOption] = Field(default_factory=list[SuggestOption])
+    rules: list[SuggestRule] = Field(default_factory=list[SuggestRule])
+    custom: list[str] = Field(default_factory=list[str])
+    context: dict[str, JsonValue] = Field(default_factory=dict[str, JsonValue])
+    guidance: str | None = None
+    provider: str | None = None
+    max_suggestions: int = Field(default=3, ge=1, le=10)
+    allow_new: bool = True
+
+
+class ChoiceAISuggestion(BaseModel):
+    """One ranked AI suggestion (AI-SUGGEST-4, -5). Exactly one of ``option`` (an offered
+    option's key, or a rule the AI named) and ``values`` (a new custom value) is set."""
+
+    model_config = _FROZEN
+
+    rank: int
+    label: str
+    option: str | None = None
+    rule: str | None = Field(default=None, description="A rules-file label not offered")
+    values: dict[str, list[str]] = Field(default_factory=dict[str, list[str]])
+    new: bool = False
+    confidence: float = Field(ge=0, le=1)
+    rationale: str = ""
+
+
+class ChoiceAI(BaseModel):
+    """AI suggestions stored with a review (AI-SUGGEST-9)."""
+
+    model_config = _FROZEN
+
+    suggestions: list[ChoiceAISuggestion] = Field(default_factory=list[ChoiceAISuggestion])
+    provider: str | None = None
+    model: str | None = None
+    prompt_version: int | None = None
+    usage: dict[str, JsonValue] = Field(default_factory=dict[str, JsonValue])
+    cached: bool = False
+    auto: bool = Field(default=False, description="Asked when the review opened (AI-SUGGEST-8)")
+    at: datetime | None = None
+    error: str | None = None
+
+
+def rules_unsure(options: list[SuggestOption]) -> bool:
+    """Whether ``unsure`` mode asks the AI (AI-SUGGEST-7): no option, only fallback
+    options, or a tie between the top two ranked rule options."""
+    if not options:
+        return True
+    if all(o.fallback for o in options):
+        return True
+    ranked = [o for o in options if o.rule]
+    return len(ranked) >= 2 and ranked[0].matched == ranked[1].matched
+
+
+def with_ai(review: ChoiceReview, ai: ChoiceAI) -> ChoiceReview:
+    """``review`` with ``ai`` stored; a suggested rule that isn't offered becomes an extra
+    option (``a<n>``, ``from_ai``) so choosing it is an ordinary decision (AI-SUGGEST-6)."""
+    options = [o for o in review.options if not o.from_ai]
+    rules = {r.label: r for r in (review.ai_input.rules if review.ai_input else [])}
+    suggestions: list[ChoiceAISuggestion] = []
+    for s in ai.suggestions:
+        if s.rule is not None and s.rule in rules:
+            rule = rules[s.rule]
+            key = f"a{len([o for o in options if o.from_ai])}"
+            options.append(
+                ChoiceOffer(
+                    key=key,
+                    label=rule.label,
+                    actions=rule.actions,
+                    rule=True,
+                    description=rule.description,
+                    from_ai=True,
+                )
+            )
+            s = s.model_copy(update={"option": key})
+        suggestions.append(s)
+    stored = ai.model_copy(update={"suggestions": suggestions})
+    return review.model_copy(update={"options": options, "ai": stored})
+
+
+ChoiceReview.model_rebuild()

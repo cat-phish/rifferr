@@ -45,6 +45,11 @@ class Rule(BaseModel):
         "suggested while typing a custom value, never ranked or offered (TAGS-CHOOSE-8)",
     )
     actions: Annotated[list[Action], Field(min_length=1)]
+    description: str | None = Field(
+        default=None,
+        max_length=500,
+        description="What this label means; shown in review and sent to the AI (AI-SUGGEST-3)",
+    )
 
 
 class Fallback(BaseModel):

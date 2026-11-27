@@ -155,3 +155,19 @@ def test_AI_CORE_23_bad_prices_are_errors() -> None:
     base = "ai:\n  providers:\n    - name: a\n      type: anthropic\n      model: m\n"
     assert errors(base + "      settings: {price_per_mtok: {input: -1, output: 1}}\n")
     assert errors(base + "      settings: {price_per_mtok: {input: 1}}\n")
+
+
+def test_AI_SUGGEST_7_mode_precedence() -> None:
+    ai = load(
+        "ai:\n  suggest:\n    mode: off\n    steps:\n      foobar-style/genre-bucket: always\n"
+    ).ai
+    s = ai.suggest
+    assert s.mode_for("foobar-style", "genre-bucket", "unsure") == "always"  # Settings win
+    assert s.mode_for("other", "genre-bucket", "unsure") == "unsure"  # then the step
+    assert s.mode_for("other", "genre-bucket", None) == "off"  # then the profile
+    assert load("backend: beets\n").ai.suggest.mode == "unsure"
+
+
+def test_AI_SUGGEST_7_bad_modes_and_step_refs() -> None:
+    assert errors("ai:\n  suggest: {mode: sometimes}\n")
+    assert errors("ai:\n  suggest:\n    steps: {genre-bucket: always}\n")

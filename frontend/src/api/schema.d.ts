@@ -185,6 +185,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/choices/ai-suggest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Suggest Bulk
+         * @description Start an AI job over waiting choice reviews (AI-SUGGEST-11). Reviews that already
+         *     have suggestions are skipped unless ``refresh``. Progress: ``ai.job.progress`` and each
+         *     review's ``choice.ai_suggested``.
+         */
+        post: operations["suggest_bulk_api_choices_ai_suggest_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/choices/ai-suggest/estimate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Suggest Estimate
+         * @description The count and estimated tokens (and cost when priced) for a bulk request, for the
+         *     confirmation (AI-CORE-19, AI-SUGGEST-14). Sends nothing.
+         */
+        post: operations["suggest_estimate_api_choices_ai_suggest_estimate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/choices/{review_id}": {
         parameters: {
             query?: never;
@@ -196,6 +239,27 @@ export interface paths {
         get: operations["get_choice_api_choices__review_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/choices/{review_id}/ai-suggest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Suggest One
+         * @description Ask the AI for suggestions on one waiting choice review (AI-SUGGEST-10). Nothing is
+         *     decided: the suggestions wait for the person (AI-SUGGEST-15).
+         */
+        post: operations["suggest_one_api_choices__review_id__ai_suggest_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1703,6 +1767,73 @@ export interface components {
             targets: components["schemas"]["ManualChange"][];
         };
         /**
+         * ChoiceAI
+         * @description AI suggestions stored with a review (AI-SUGGEST-9).
+         */
+        ChoiceAI: {
+            /** At */
+            at?: string | null;
+            /**
+             * Auto
+             * @description Asked when the review opened (AI-SUGGEST-8)
+             * @default false
+             */
+            auto: boolean;
+            /**
+             * Cached
+             * @default false
+             */
+            cached: boolean;
+            /** Error */
+            error?: string | null;
+            /** Model */
+            model?: string | null;
+            /** Prompt Version */
+            prompt_version?: number | null;
+            /** Provider */
+            provider?: string | null;
+            /** Suggestions */
+            suggestions?: components["schemas"]["ChoiceAISuggestion"][];
+            /** Usage */
+            usage?: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+        };
+        /**
+         * ChoiceAISuggestion
+         * @description One ranked AI suggestion (AI-SUGGEST-4, -5). Exactly one of ``option`` (an offered
+         *     option's key, or a rule the AI named) and ``values`` (a new custom value) is set.
+         */
+        ChoiceAISuggestion: {
+            /** Confidence */
+            confidence: number;
+            /** Label */
+            label: string;
+            /**
+             * New
+             * @default false
+             */
+            new: boolean;
+            /** Option */
+            option?: string | null;
+            /** Rank */
+            rank: number;
+            /**
+             * Rationale
+             * @default
+             */
+            rationale: string;
+            /**
+             * Rule
+             * @description A rules-file label not offered
+             */
+            rule?: string | null;
+            /** Values */
+            values?: {
+                [key: string]: string[];
+            };
+        };
+        /**
          * ChoiceDecided
          * @description ``job_id`` is the worker job that applies the choice (``choose``); ``None``
          *     otherwise.
@@ -1718,6 +1849,11 @@ export interface components {
          *     ``known_name: true`` is "This is one artist" (TAGS-CHOOSE-13).
          */
         ChoiceDecisionBody: {
+            /**
+             * Ai Suggestion
+             * @description The rank of the AI suggestion chosen (AI-SUGGEST-6)
+             */
+            ai_suggestion?: number | null;
             /**
              * Decision
              * @enum {string}
@@ -1749,6 +1885,17 @@ export interface components {
             actions?: {
                 [key: string]: unknown;
             }[];
+            /**
+             * Description
+             * @description The rule's own description (AI-SUGGEST-3)
+             */
+            description?: string | null;
+            /**
+             * From Ai
+             * @description Added because an AI suggestion named this rule (AI-SUGGEST-5)
+             * @default false
+             */
+            from_ai: boolean;
             /**
              * Key
              * @description Stable id of the option within the review
@@ -1799,6 +1946,10 @@ export interface components {
          * @description An album waiting in the review queue for a choice (TAGS-CHOOSE-3).
          */
         ChoiceReview: {
+            /** @description AI suggestions (AI-SUGGEST-9) */
+            ai?: components["schemas"]["ChoiceAI"] | null;
+            /** @description What an AI suggestion request sends (AI-SUGGEST-2) */
+            ai_input?: components["schemas"]["ChoiceSuggestInput"] | null;
             /** Album Id */
             album_id: string;
             /** Changeset Id */
@@ -1881,6 +2032,99 @@ export interface components {
              * @description Key of the suggested option
              */
             suggested?: string | null;
+        };
+        /** ChoiceSuggestBody */
+        ChoiceSuggestBody: {
+            /**
+             * Refresh
+             * @description Ask again without the cache
+             * @default false
+             */
+            refresh: boolean;
+        };
+        /**
+         * ChoiceSuggestBulkBody
+         * @description Which waiting choice reviews to ask about: ``ids``, or all of a profile (one step).
+         */
+        ChoiceSuggestBulkBody: {
+            /** Ids */
+            ids?: string[] | null;
+            /** Profile */
+            profile?: string | null;
+            /**
+             * Refresh
+             * @default false
+             */
+            refresh: boolean;
+            /** Step Id */
+            step_id?: string | null;
+        };
+        /**
+         * ChoiceSuggestEstimate
+         * @description What a bulk request would cost, before anything is sent (AI-CORE-19).
+         */
+        ChoiceSuggestEstimate: {
+            /** Cached */
+            cached: number;
+            /** Cost Max */
+            cost_max?: string | null;
+            /** Currency */
+            currency?: string | null;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Max Output Tokens */
+            max_output_tokens: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * ChoiceSuggestInput
+         * @description The ``choice.suggest`` task's input, fixed when the review is created.
+         */
+        ChoiceSuggestInput: {
+            /** Album */
+            album: string;
+            /**
+             * Allow New
+             * @default true
+             */
+            allow_new: boolean;
+            /** Context */
+            context?: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Custom */
+            custom?: string[];
+            /** Guidance */
+            guidance?: string | null;
+            /**
+             * Max Suggestions
+             * @default 3
+             */
+            max_suggestions: number;
+            /** Message */
+            message?: string | null;
+            /** Options */
+            options?: components["schemas"]["SuggestOption"][];
+            /** Provider */
+            provider?: string | null;
+            /** Rank By */
+            rank_by?: string | null;
+            /** Rank Values */
+            rank_values?: string[];
+            /** Rules */
+            rules?: components["schemas"]["SuggestRule"][];
+            /** Shown */
+            shown?: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+        };
+        /** ChoiceSuggestStarted */
+        ChoiceSuggestStarted: {
+            /** Job */
+            job: string | null;
+            /** Total */
+            total: number;
         };
         /**
          * CleanupDecided
@@ -3969,6 +4213,47 @@ export interface components {
              */
             workflow_name?: string | null;
         };
+        /**
+         * SuggestOption
+         * @description An option the review offers, as the AI sees it (AI-SUGGEST-2).
+         */
+        SuggestOption: {
+            /** Description */
+            description?: string | null;
+            /**
+             * Fallback
+             * @default false
+             */
+            fallback: boolean;
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /**
+             * Matched
+             * @default 0
+             */
+            matched: number;
+            /**
+             * Rule
+             * @default false
+             */
+            rule: boolean;
+        };
+        /**
+         * SuggestRule
+         * @description A rule of the rules file. ``actions`` are kept for choosing it, never sent.
+         */
+        SuggestRule: {
+            /** Actions */
+            actions?: {
+                [key: string]: unknown;
+            }[];
+            /** Description */
+            description?: string | null;
+            /** Label */
+            label: string;
+        };
         /** TargetChange */
         TargetChange: {
             /** Changes */
@@ -4847,6 +5132,126 @@ export interface operations {
             };
         };
     };
+    suggest_bulk_api_choices_ai_suggest_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChoiceSuggestBulkBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChoiceSuggestStarted"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    suggest_estimate_api_choices_ai_suggest_estimate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChoiceSuggestBulkBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChoiceSuggestEstimate"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     get_choice_api_choices__review_id__get: {
         parameters: {
             query?: never;
@@ -4857,6 +5262,68 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChoiceReview"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    suggest_one_api_choices__review_id__ai_suggest_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                review_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChoiceSuggestBody"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

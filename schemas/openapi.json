@@ -856,6 +856,165 @@
         "title": "CheckResult",
         "type": "object"
       },
+      "ChoiceAI": {
+        "additionalProperties": false,
+        "description": "AI suggestions stored with a review (AI-SUGGEST-9).",
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "auto": {
+            "default": false,
+            "description": "Asked when the review opened (AI-SUGGEST-8)",
+            "title": "Auto",
+            "type": "boolean"
+          },
+          "cached": {
+            "default": false,
+            "title": "Cached",
+            "type": "boolean"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "prompt_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Version"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "suggestions": {
+            "items": {
+              "$ref": "#/components/schemas/ChoiceAISuggestion"
+            },
+            "title": "Suggestions",
+            "type": "array"
+          },
+          "usage": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Usage",
+            "type": "object"
+          }
+        },
+        "title": "ChoiceAI",
+        "type": "object"
+      },
+      "ChoiceAISuggestion": {
+        "additionalProperties": false,
+        "description": "One ranked AI suggestion (AI-SUGGEST-4, -5). Exactly one of ``option`` (an offered\noption's key, or a rule the AI named) and ``values`` (a new custom value) is set.",
+        "properties": {
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "new": {
+            "default": false,
+            "title": "New",
+            "type": "boolean"
+          },
+          "option": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Option"
+          },
+          "rank": {
+            "title": "Rank",
+            "type": "integer"
+          },
+          "rationale": {
+            "default": "",
+            "title": "Rationale",
+            "type": "string"
+          },
+          "rule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A rules-file label not offered",
+            "title": "Rule"
+          },
+          "values": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Values",
+            "type": "object"
+          }
+        },
+        "required": [
+          "rank",
+          "label",
+          "confidence"
+        ],
+        "title": "ChoiceAISuggestion",
+        "type": "object"
+      },
       "ChoiceDecided": {
         "additionalProperties": false,
         "description": "``job_id`` is the worker job that applies the choice (``choose``); ``None``\notherwise.",
@@ -879,6 +1038,20 @@
         "additionalProperties": false,
         "description": "Answer a choice review (TAGS-CHOOSE-5). ``choose`` takes an ``option`` key from the\nreview, or ``custom`` with ``values`` for the review's custom fields;\n``known_name: true`` is \"This is one artist\" (TAGS-CHOOSE-13).",
         "properties": {
+          "ai_suggestion": {
+            "anyOf": [
+              {
+                "maximum": 10.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The rank of the AI suggestion chosen (AI-SUGGEST-6)",
+            "title": "Ai Suggestion"
+          },
           "decision": {
             "enum": [
               "choose",
@@ -973,6 +1146,24 @@
             },
             "title": "Actions",
             "type": "array"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The rule's own description (AI-SUGGEST-3)",
+            "title": "Description"
+          },
+          "from_ai": {
+            "default": false,
+            "description": "Added because an AI suggestion named this rule (AI-SUGGEST-5)",
+            "title": "From Ai",
+            "type": "boolean"
           },
           "key": {
             "description": "Stable id of the option within the review",
@@ -1104,6 +1295,28 @@
         "additionalProperties": false,
         "description": "An album waiting in the review queue for a choice (TAGS-CHOOSE-3).",
         "properties": {
+          "ai": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChoiceAI"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "AI suggestions (AI-SUGGEST-9)"
+          },
+          "ai_input": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChoiceSuggestInput"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What an AI suggestion request sends (AI-SUGGEST-2)"
+          },
           "album_id": {
             "title": "Album Id",
             "type": "string"
@@ -1355,6 +1568,262 @@
           "created_at"
         ],
         "title": "ChoiceReview",
+        "type": "object"
+      },
+      "ChoiceSuggestBody": {
+        "additionalProperties": false,
+        "properties": {
+          "refresh": {
+            "default": false,
+            "description": "Ask again without the cache",
+            "title": "Refresh",
+            "type": "boolean"
+          }
+        },
+        "title": "ChoiceSuggestBody",
+        "type": "object"
+      },
+      "ChoiceSuggestBulkBody": {
+        "additionalProperties": false,
+        "description": "Which waiting choice reviews to ask about: ``ids``, or all of a profile (one step).",
+        "properties": {
+          "ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 1000,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ids"
+          },
+          "profile": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile"
+          },
+          "refresh": {
+            "default": false,
+            "title": "Refresh",
+            "type": "boolean"
+          },
+          "step_id": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Id"
+          }
+        },
+        "title": "ChoiceSuggestBulkBody",
+        "type": "object"
+      },
+      "ChoiceSuggestEstimate": {
+        "additionalProperties": false,
+        "description": "What a bulk request would cost, before anything is sent (AI-CORE-19).",
+        "properties": {
+          "cached": {
+            "title": "Cached",
+            "type": "integer"
+          },
+          "cost_max": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Max"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "input_tokens": {
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "max_output_tokens": {
+            "title": "Max Output Tokens",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "cached",
+          "input_tokens",
+          "max_output_tokens"
+        ],
+        "title": "ChoiceSuggestEstimate",
+        "type": "object"
+      },
+      "ChoiceSuggestInput": {
+        "additionalProperties": false,
+        "description": "The ``choice.suggest`` task's input, fixed when the review is created.",
+        "properties": {
+          "album": {
+            "title": "Album",
+            "type": "string"
+          },
+          "allow_new": {
+            "default": true,
+            "title": "Allow New",
+            "type": "boolean"
+          },
+          "context": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Context",
+            "type": "object"
+          },
+          "custom": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Custom",
+            "type": "array"
+          },
+          "guidance": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guidance"
+          },
+          "max_suggestions": {
+            "default": 3,
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Max Suggestions",
+            "type": "integer"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/SuggestOption"
+            },
+            "title": "Options",
+            "type": "array"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "rank_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank By"
+          },
+          "rank_values": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Rank Values",
+            "type": "array"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/SuggestRule"
+            },
+            "title": "Rules",
+            "type": "array"
+          },
+          "shown": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Shown",
+            "type": "object"
+          }
+        },
+        "required": [
+          "album"
+        ],
+        "title": "ChoiceSuggestInput",
+        "type": "object"
+      },
+      "ChoiceSuggestStarted": {
+        "additionalProperties": false,
+        "properties": {
+          "job": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "job",
+          "total"
+        ],
+        "title": "ChoiceSuggestStarted",
         "type": "object"
       },
       "CleanupDecided": {
@@ -6706,6 +7175,86 @@
         "title": "StepState",
         "type": "object"
       },
+      "SuggestOption": {
+        "additionalProperties": false,
+        "description": "An option the review offers, as the AI sees it (AI-SUGGEST-2).",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "fallback": {
+            "default": false,
+            "title": "Fallback",
+            "type": "boolean"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "matched": {
+            "default": 0,
+            "title": "Matched",
+            "type": "integer"
+          },
+          "rule": {
+            "default": false,
+            "title": "Rule",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "key",
+          "label"
+        ],
+        "title": "SuggestOption",
+        "type": "object"
+      },
+      "SuggestRule": {
+        "additionalProperties": false,
+        "description": "A rule of the rules file. ``actions`` are kept for choosing it, never sent.",
+        "properties": {
+          "actions": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Actions",
+            "type": "array"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label"
+        ],
+        "title": "SuggestRule",
+        "type": "object"
+      },
       "TargetChange": {
         "additionalProperties": false,
         "properties": {
@@ -8184,6 +8733,150 @@
         ]
       }
     },
+    "/api/choices/ai-suggest": {
+      "post": {
+        "description": "Start an AI job over waiting choice reviews (AI-SUGGEST-11). Reviews that already\nhave suggestions are skipped unless ``refresh``. Progress: ``ai.job.progress`` and each\nreview's ``choice.ai_suggested``.",
+        "operationId": "suggest_bulk_api_choices_ai_suggest_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChoiceSuggestBulkBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChoiceSuggestStarted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Suggest Bulk",
+        "tags": [
+          "ai"
+        ]
+      }
+    },
+    "/api/choices/ai-suggest/estimate": {
+      "post": {
+        "description": "The count and estimated tokens (and cost when priced) for a bulk request, for the\nconfirmation (AI-CORE-19, AI-SUGGEST-14). Sends nothing.",
+        "operationId": "suggest_estimate_api_choices_ai_suggest_estimate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChoiceSuggestBulkBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChoiceSuggestEstimate"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Suggest Estimate",
+        "tags": [
+          "ai"
+        ]
+      }
+    },
     "/api/choices/{review_id}": {
       "get": {
         "operationId": "get_choice_api_choices__review_id__get",
@@ -8253,6 +8946,89 @@
         "summary": "Get Choice",
         "tags": [
           "review"
+        ]
+      }
+    },
+    "/api/choices/{review_id}/ai-suggest": {
+      "post": {
+        "description": "Ask the AI for suggestions on one waiting choice review (AI-SUGGEST-10). Nothing is\ndecided: the suggestions wait for the person (AI-SUGGEST-15).",
+        "operationId": "suggest_one_api_choices__review_id__ai_suggest_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "review_id",
+            "required": true,
+            "schema": {
+              "title": "Review Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChoiceSuggestBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChoiceReview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Suggest One",
+        "tags": [
+          "ai"
         ]
       }
     },

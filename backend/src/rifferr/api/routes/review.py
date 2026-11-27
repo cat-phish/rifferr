@@ -450,6 +450,7 @@ async def decide_choice(review_id: str, body: ChoiceDecisionBody, state: State) 
             known_name=body.known_name,
             note=body.note,
             by=DECIDER,
+            ai_suggestion=body.ai_suggestion,
         )
     except KeyError:
         raise not_found(f"choice review {review_id}") from None

@@ -19,7 +19,14 @@ from rifferr.core.changeset import (
     Stamp,
     TargetRef,
 )
-from rifferr.core.choices import ChoiceOffer, ChoiceOnReject, CustomField, LearnSettings
+from rifferr.core.choices import (
+    ChoiceAI,
+    ChoiceOffer,
+    ChoiceOnReject,
+    ChoiceSuggestInput,
+    CustomField,
+    LearnSettings,
+)
 from rifferr.core.covers import CoverQuery, RankedCandidate
 from rifferr.core.files import BusyFolder, CleanupChoice, CleanupEntry, CleanupOptions
 from rifferr.core.imports import ImportQuestion, TimeoutAction
@@ -230,10 +237,49 @@ class ChoiceRequest:
     known_name_actions: list[dict[str, Any]] = field(default_factory=list[dict[str, Any]])
     learn: LearnSettings | None = None
     on_reject: ChoiceOnReject = "stop"
+    ai_input: ChoiceSuggestInput | None = None  # F-AI-SUGGEST AI-SUGGEST-2
+    ai: ChoiceAI | None = None  # suggestions asked when the review opened (AI-SUGGEST-8)
 
 
 #: The engine's side of ``ctx.request_choice``: request -> review id.
 RequestChoice = Callable[[ChoiceRequest], str]
+
+
+class AIAnswer(BaseModel):
+    """A validated AI task result as steps see it (C-AI-CORE AI-CORE-9)."""
+
+    value: JsonValue
+    rejected: list[dict[str, JsonValue]] = []
+    usage: dict[str, JsonValue] = {}
+    provider: str
+    model: str
+    prompt_version: int
+    cached: bool = False
+
+
+class AIUnavailableError(Exception):
+    """An AI task gave no answer: not configured, a bad file, or attempts ran out."""
+
+
+AIEmit = Callable[[str, dict[str, JsonValue]], None]
+
+
+class AIAccess(Protocol):
+    """The worker's side of ``ctx.ask_ai``: runs an installed AI task (C-AI-CORE).
+    Steps never see providers, keys or hosts."""
+
+    @property
+    def configured(self) -> bool: ...
+
+    async def run_task(
+        self,
+        task: str,
+        input: Mapping[str, JsonValue],
+        *,
+        provider: str | None,
+        target: str,
+        emit: AIEmit,
+    ) -> AIAnswer: ...
 
 
 #: The engine's side of ``ctx.request_move_conflict``: plan, settings -> conflict id.
@@ -357,8 +403,15 @@ class StepContext:
         run_input: str = "",
         request_prune: RequestPrune | None = None,
         removals: RemovalJournal | None = None,
+        ai: AIAccess | None = None,
+        ai_emit: AIEmit | None = None,
+        workflow: str = "",
     ) -> None:
         self.run_id = run_id
+        self.workflow = workflow
+        """The run's workflow name, e.g. for per-step settings (AI-SUGGEST-7)."""
+        self._ai = ai
+        self._ai_emit: AIEmit = ai_emit or (lambda type_, data: None)
         self.run_input = run_input
         """``{{ run.input }}``, for steps that pass it to a process in the environment."""
         self.profile = profile
@@ -571,6 +624,33 @@ class StepContext:
         if self._snapshots.album(request.album_id) is None:
             raise StepFailure(f"album {request.album_id} is not one of this step's targets")
         return self._request_choice(request)
+
+    @property
+    def ai_configured(self) -> bool:
+        """Whether ``ask_ai`` can run: the profile has an enabled AI provider."""
+        return self._ai is not None and self._ai.configured
+
+    async def ask_ai(
+        self,
+        task: str,
+        input: BaseModel,
+        *,
+        provider: str | None = None,
+        target: str = "",
+    ) -> AIAnswer:
+        """Run the installed AI task ``task`` on ``input`` (C-AI-CORE AI-CORE-9). Its
+        ``ai.*`` events go on this run. Raises ``AIUnavailableError`` with a reason when
+        there is no answer; the step decides what that means. The answer is validated,
+        never applied: what to propose is the step's job (non-negotiable 4)."""
+        if self._ai is None or not self._ai.configured:
+            raise AIUnavailableError("AI is not configured for this profile")
+        return await self._ai.run_task(
+            task,
+            input.model_dump(mode="json"),
+            provider=provider,
+            target=target,
+            emit=self._ai_emit,
+        )
 
     def request_move_conflict(self, plan: MovePlan, settings: MoveSettings) -> str:
         """Leave a conflicted album in the review queue; only its lane waits until it is

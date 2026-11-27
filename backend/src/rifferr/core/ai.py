@@ -10,7 +10,7 @@ from __future__ import annotations
 import ipaddress
 import re
 from decimal import Decimal
-from typing import Annotated, Final
+from typing import Annotated, Final, Literal
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, PositiveInt, field_validator
@@ -91,6 +91,29 @@ class AIProviderSetting(BaseModel):
         return default_host
 
 
+SuggestMode = Literal["off", "unsure", "always"]
+STEP_REF_PATTERN: Final = r"^[^/\s]+/[^/\s]+$"
+
+
+class SuggestSettings(BaseModel):
+    """``ai.suggest``: when choice reviews ask the AI by themselves (AI-SUGGEST-7)."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    mode: SuggestMode = Field(default="unsure", description="Used when nothing else is set")
+    steps: dict[Annotated[str, Field(pattern=STEP_REF_PATTERN)], SuggestMode] = Field(
+        default_factory=dict[str, SuggestMode],
+        description='Overrides per "<workflow>/<step id>"; win over the step\'s with.ai.mode',
+    )
+
+    def mode_for(self, workflow: str, step_id: str, step_mode: SuggestMode | None) -> SuggestMode:
+        """Settings override, then the step's own mode, then the profile mode."""
+        override = self.steps.get(f"{workflow}/{step_id}")
+        if override is not None:
+            return override
+        return step_mode if step_mode is not None else self.mode
+
+
 class AISettings(BaseModel):
     """``ai`` in ``profile.yaml`` (AI-CORE-5)."""
 
@@ -110,6 +133,7 @@ class AISettings(BaseModel):
         default_factory=list[AIProviderSetting],
         description="In order; the first enabled one is the default",
     )
+    suggest: SuggestSettings = Field(default_factory=SuggestSettings)
 
     @field_validator("providers")
     @classmethod

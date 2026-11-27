@@ -344,7 +344,7 @@ class AIRuntime:
                         {
                             **base,
                             "attempt": attempt,
-                            "usage": _usage_json(usage),
+                            "usage": usage_json(usage),
                             "duration": round(time.monotonic() - started, 3),
                         },
                     )
@@ -382,7 +382,7 @@ def _schema_problem(exc: PydanticValidationError) -> str:
     return f"the answer doesn't match the expected shape ({where}: {first['msg']})"
 
 
-def _usage_json(usage: AIUsage) -> dict[str, JsonValue]:
+def usage_json(usage: AIUsage) -> dict[str, JsonValue]:
     return {
         "input_tokens": usage.input_tokens,
         "output_tokens": usage.output_tokens,
