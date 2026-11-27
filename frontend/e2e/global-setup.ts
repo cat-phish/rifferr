@@ -14,6 +14,8 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -41,6 +43,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     dashboard: join(root, "dashboard-inbox"),
     covers: join(root, "covers-inbox"),
     choices: join(root, "choices-inbox"),
+    ai: join(root, "ai-inbox"),
     moves: join(root, "moves-inbox"),
     moved: join(root, "moved-library"),
     home: join(root, "home"),
@@ -187,6 +190,31 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     join(here, "cover-flow.yaml"),
     join(dirs.config, "profiles", "main", "workflows", "cover-flow.yaml"),
   );
+  // AI suggestions (F-AI-SUGGEST e2e): an OpenAI-compatible stub on localhost, so no
+  // network; an album whose genre bucket is chosen with Ask AI.
+  const aiStub = await startAIStub();
+  writeFileSync(
+    profileYaml,
+    readFileSync(profileYaml, "utf8") +
+      "ai:\n  providers:\n    - name: stub\n      type: openai-compatible\n" +
+      `      model: stub-1\n      base_url: http://127.0.0.1:${String(aiStub.port)}/v1\n`,
+  );
+  mkdirSync(join(dirs.config, "profiles", "main", "rules"), { recursive: true });
+  writeFileSync(
+    join(dirs.config, "profiles", "main", "rules", "ai-genres.yaml"),
+    "target: genrebucket\nrules:\n" +
+      "  - label: Punk\n    description: Fast and loud.\n    when: 'albumartist:GBH'\n" +
+      "    actions: [{ set: { genrebucket: Punk } }]\n" +
+      "  - label: Metal\n    when: 'albumartist:Slayer'\n" +
+      "    actions: [{ set: { genrebucket: Metal } }]\n",
+  );
+  cpSync(
+    join(here, "ai-flow.yaml"),
+    join(dirs.config, "profiles", "main", "workflows", "ai-flow.yaml"),
+  );
+  cpSync(join(backend, "tests", "fixtures", "audio", "album-flac"), join(dirs.ai, "album-flac"), {
+    recursive: true,
+  });
   // An album whose kind and release date are chosen in review (S-TAGS-CHOOSE).
   cpSync(
     join(here, "choose-flow.yaml"),
@@ -282,11 +310,13 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   process.env.RIFFERR_E2E_DASHBOARD = dirs.dashboard;
   process.env.RIFFERR_E2E_COVERS_INBOX = dirs.covers;
   process.env.RIFFERR_E2E_CHOICES_INBOX = dirs.choices;
+  process.env.RIFFERR_E2E_AI_INBOX = dirs.ai;
   process.env.RIFFERR_E2E_MOVES_INBOX = dirs.moves;
   process.env.RIFFERR_E2E_MOVED_LIBRARY = dirs.moved;
   process.env.RIFFERR_E2E_FIXTURE = join(backend, "tests", "fixtures", "audio", "album-flac");
 
   return async () => {
+    aiStub.close();
     server.kill("SIGTERM");
     await new Promise<void>((done) => {
       if (server.exitCode !== null) done();
@@ -335,4 +365,34 @@ function jpegHeader(width: number, height: number): Buffer {
     0,
   ]);
   return Buffer.concat([Buffer.from([0xff, 0xd8]), app0, sof, Buffer.from([0xff, 0xd9])]);
+}
+
+/** A local OpenAI-compatible chat server with one fixed answer (F-AI-SUGGEST e2e). */
+async function startAIStub(): Promise<{ port: number; close: () => void }> {
+  const answer = {
+    suggestions: [
+      { choice: "punk", confidence: 0.8, rationale: "A UK82 band." },
+      { choice: "Street Punk", confidence: 0.4, rationale: "Close to street punk." },
+    ],
+  };
+  const server = createServer((req, res) => {
+    req.resume();
+    req.on("end", () => {
+      res.setHeader("content-type", "application/json");
+      res.end(
+        JSON.stringify({
+          model: "stub-1",
+          choices: [{ message: { role: "assistant", content: JSON.stringify(answer) } }],
+          usage: { prompt_tokens: 120, completion_tokens: 40 },
+        }),
+      );
+    });
+  });
+  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+  return {
+    port: (server.address() as AddressInfo).port,
+    close: () => {
+      server.close();
+    },
+  };
 }

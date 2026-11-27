@@ -79,7 +79,7 @@ export function ChoiceReviewView({ review }: { review: ChoiceReview }) {
         decide.mutate({
           decision: "choose",
           option: CUSTOM,
-          values: s.values ?? {},
+          values: fitted(s.values ?? {}, custom),
           ai_suggestion: rank,
         });
       return;
@@ -277,4 +277,17 @@ function hint(suggestions: string[] | undefined, learns: boolean): string {
   return learns
     ? "Type to pick a known value, or a new one (remembered); press Enter to add"
     : "Type to pick a known value, or a new one; press Enter to add";
+}
+
+/** A new AI value comes as a list; a text custom field takes it as one string. */
+function fitted(
+  values: Record<string, string[]>,
+  custom: ChoiceReview["custom"],
+): Record<string, FieldValue> {
+  const out: Record<string, FieldValue> = {};
+  for (const [field, v] of Object.entries(values)) {
+    const kind = (custom ?? []).find((c) => c.field === field)?.kind;
+    out[field] = kind === "list" ? v : v.join("; ");
+  }
+  return out;
 }

@@ -224,3 +224,18 @@ test("AI_SUGGEST_1 no ai block, no AI controls", async () => {
   expect(screen.queryByTestId("ai-suggestions")).toBeNull();
   expect(screen.queryByRole("button", { name: /Suggest with AI/ })).toBeNull();
 });
+
+test("AI_SUGGEST_6 a new value for a text field is sent as one string", async () => {
+  const { calls } = setup({ ...withAI(), custom: [{ field: "genres", kind: "text", value: "" }] });
+  renderApp("/review?profile=main");
+  const card = await screen.findByTestId("choice-review");
+  const [, street] = within(card).getAllByTestId("ai-suggestion");
+  fireEvent.click(within(street as HTMLElement).getByRole("radio"));
+  fireEvent.click(within(card).getByRole("button", { name: "Apply" }));
+  await waitFor(() => {
+    expect(posts(calls, "/api/choices/c1/decision")).toHaveLength(1);
+  });
+  expect(posts(calls, "/api/choices/c1/decision")[0]).toMatchObject({
+    values: { genres: "Street Punk" },
+  });
+});

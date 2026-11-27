@@ -1,0 +1,23 @@
+# Workflow for the AI suggestion e2e test (F-AI-SUGGEST): import an album, then choose its
+# genre bucket in review, with Ask AI on the card. The AI is a local stub server.
+name: ai-flow
+description: Import, then choose a genre bucket with AI suggestions.
+vars:
+  inbox:
+    description: Folder with an album to import
+steps:
+  - id: import
+    uses: beets.import
+    with:
+      path: "{{ vars.inbox }}"
+      set: { album: AI Sessions, albumartist: GBH }
+      options: { duplicate_action: keep }
+  - id: bucket
+    uses: tags.choose
+    with:
+      show: [albumartist]
+      options_from: ai-genres.yaml
+      custom: [genrebucket]
+      ai:
+        context: [albumartist, album]
+        mode: "off"
