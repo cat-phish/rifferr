@@ -2554,6 +2554,11 @@ export interface components {
          * @description One field change. ``old`` is the value the proposer saw (``None`` = absent).
          */
         FieldChange: {
+            /**
+             * Confidence
+             * @description How sure an AI proposer is (S-AI-TAG AI-TAG-10)
+             */
+            confidence?: number | null;
             /** Field */
             field: string;
             /**
@@ -2571,6 +2576,11 @@ export interface components {
             op: "set" | "delete";
             /** Rationale */
             rationale?: string | null;
+            /**
+             * Warnings
+             * @description Why a reviewer should look twice, e.g. not_in_vocabulary; a change with warnings starts unticked in review (AI-TAG-10)
+             */
+            warnings?: string[];
         };
         /**
          * FieldComparison

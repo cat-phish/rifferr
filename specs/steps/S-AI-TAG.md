@@ -151,10 +151,36 @@ can change, and only after review.
    edits the vocabulary file after confirmation? Or leave that to F-AI-CHAT?
 4. One request per album (this draft), or several small albums per request to save tokens?
    Batching makes caching and per-album failure coarser.
+5. AI-TAG-12 can't work as written: `input = {workflow, step_id, album_id}` would need the
+   server to rebuild the album's request, but only the worker reads the library (non-negotiable
+   2, one beets worker per profile). Proposal: the step stores the exact task input on the
+   ChangeSet (a new optional `ai_input`, additive to the published schema), and the review
+   view previews that, as choice reviews do (F-AI-SUGGEST). (agent, 2026-11-26)
+
+As implemented (2026-11-26; `rifferr.steps.ai_tag`, `rifferr.ai.tasks.tag`,
+`rifferr.core.ai_validate.check_field_values`):
+- Checks 1 to 4 of AI-TAG-7 are pure (`check_field_values`, run by the task's `validate`);
+  check 5 runs in the step. A field answered twice keeps its first answer
+  (`duplicate_field`). Without a vocabulary, values still take the profile's lookalike
+  characters (AI-CORE-22).
+- A list answer is checked element by element as `[value]` with `backend.check`, uncoerced,
+  since `coerce` passes lists through. A single value is coerced first. The prompt says which
+  fields hold several values; the step asks the backend once per field, by checking a
+  one-element list.
+- Step types gain an optional `source_kind = "ai"` attribute, giving `source.kind = ai`
+  (public step API, non-negotiable 7). `ctx.ask_ai` gains `retries` and `refresh`, and
+  `ctx.ai_rejected` reports step-side drops as `ai.rejected`. A task's `build` may raise
+  `ValueError` (e.g. a vocabulary with two entries that match alike), and the runner reports
+  that as the task failing.
+- Outputs also include `skipped`, `failed` and `currency`; `cost` is `""` when any request's
+  cost is unknown. The safety report lists `fields` among the data sent.
+- In review, changes with warnings start unticked, and the queue's bulk Accept leaves them
+  out too. A ChangeSet whose changes all have warnings is left waiting.
 
 ## Tasks
-- [ ] `tag` AI task: prompt, output schema, `sends` (AI-TAG-5, -6)
-- [ ] Validation order in `core.ai_validate` with Hypothesis tests (AI-TAG-7)
-- [ ] `ai.tag` step: lanes, `when`, `only_empty`, `on_error`, proposals (AI-TAG-1 to -4, -8, -9)
-- [ ] `FieldChange.confidence` / `warnings`, schema and TS client regenerated (AI-TAG-10)
-- [ ] Outputs and run page usage; review-view preview link (AI-TAG-11, -12)
+- [x] `tag` AI task: prompt, output schema, `sends` (AI-TAG-5, -6)
+- [x] Validation order in `core.ai_validate` with Hypothesis tests (AI-TAG-7)
+- [x] `ai.tag` step: lanes, `when`, `only_empty`, `on_error`, proposals (AI-TAG-1 to -4, -8, -9)
+- [x] `FieldChange.confidence` / `warnings`, schema and TS client regenerated (AI-TAG-10)
+- [x] Outputs and run page usage (AI-TAG-11)
+- [ ] Review-view preview link (AI-TAG-12): waits on open question 5

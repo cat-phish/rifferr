@@ -137,6 +137,7 @@ function LiveRun({ run, onFinished }: { run: RunDetail; onFinished: () => void }
                 <Table.Td ff="monospace">{row.step.uses}</Table.Td>
                 <Table.Td>
                   <StatusBadge status={row.step.status} />
+                  <AIUsage outputs={row.step.outputs} />
                 </Table.Td>
               </Table.Tr>
             ),
@@ -475,5 +476,20 @@ function ChangedFiles({
         </Button>
       </Group>
     </Stack>
+  );
+}
+
+/** Token totals of a step that asks an AI, and the cost when known (S-AI-TAG AI-TAG-11). */
+function AIUsage({ outputs }: { outputs?: Record<string, unknown> | null }) {
+  const input = outputs?.input_tokens;
+  const output = outputs?.output_tokens;
+  if (typeof input !== "number" || typeof output !== "number") return null;
+  const cost = typeof outputs?.cost === "string" && outputs.cost !== "" ? outputs.cost : null;
+  const currency = typeof outputs?.currency === "string" ? outputs.currency : "";
+  return (
+    <Text size="xs" c="dimmed" data-testid="ai-usage">
+      {input} input / {output} output tokens
+      {cost !== null ? `, ${cost} ${currency}`.trimEnd() : ""}
+    </Text>
   );
 }

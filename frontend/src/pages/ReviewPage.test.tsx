@@ -1336,3 +1336,66 @@ test("UI_REFRESH_27 a failed album stays at the step it failed at, with its erro
   expect(screen.getByTestId("failed-error").textContent).toBe("{{ vars.x }}: 'x' is not set");
   expect(row.querySelector("a")?.getAttribute("href")).toContain("/runs/R9");
 });
+
+// -- S-AI-TAG AI-TAG-10 -------------------------------------------------------------------
+
+const aiChangeset = () =>
+  changeset("cs1", NEW_RUN, {
+    source: { kind: "ai", name: "ai.tag" },
+    rationale: "AI tagging by claude (claude-haiku-5-5), prompt version 1",
+    targets: [
+      {
+        target: { scope: "album", id: "a1" },
+        changes: [
+          {
+            field: "genres",
+            op: "set",
+            old: null,
+            new: ["Post-Punk"],
+            rationale: "Manchester, 1979.",
+            confidence: 0.82,
+            warnings: [],
+          },
+          {
+            field: "mood",
+            op: "set",
+            old: null,
+            new: "Darkwave",
+            rationale: null,
+            confidence: 0.6,
+            warnings: ["not_in_vocabulary"],
+          },
+        ],
+      },
+    ],
+  });
+
+test("AI_TAG_10 rationale, confidence and warnings show; a warned change starts unticked", async () => {
+  const { calls } = setup({
+    queue: () => [csItem("cs1", NEW_RUN, "proposed", aiChangeset())],
+    extra: {
+      "POST /api/changesets/cs1/decision": () => ({ status: 202, body: { job_id: "j1" } }),
+    },
+  });
+  renderApp("/review?profile=main");
+  const rows = await screen.findAllByTestId("field-change");
+  expect(within(nth(rows, 0)).getByTestId("field-notes")).toHaveTextContent(
+    "82% sureManchester, 1979.",
+  );
+  expect(within(nth(rows, 1)).getByTestId("field-warning")).toHaveTextContent(
+    "not in the vocabulary",
+  );
+  expect(
+    await screen.findByRole("checkbox", { name: "Accept genres of Band - Live" }),
+  ).toBeChecked();
+  expect(screen.getByRole("checkbox", { name: "Accept mood of Band - Live" })).not.toBeChecked();
+  fireEvent.click(screen.getByRole("button", { name: "Accept selected" }));
+  await waitFor(() => {
+    expect(posts(calls, "/api/changesets/cs1/decision")).toHaveLength(1);
+  });
+  expect(nth(posts(calls, "/api/changesets/cs1/decision"), 0).body).toEqual({
+    decision: "accept",
+    accepted: [0],
+    note: null,
+  });
+});

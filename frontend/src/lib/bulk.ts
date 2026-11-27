@@ -1,3 +1,4 @@
+import { defaultAccepted, fieldRows } from "./review";
 import { api, ok } from "../api/client";
 import type { QueueItem } from "../api/types";
 
@@ -35,10 +36,15 @@ export function bulkKind(item: QueueItem): BulkKind | null {
 /** Decide one item as if alone (the same routes its card uses). */
 async function decideOne(item: QueueItem, action: string): Promise<void> {
   if (item.kind === "changeset") {
+    // Accepting leaves out changes with warnings, as the card does (AI-TAG-10).
+    const rows = item.changeset ? fieldRows(item.changeset) : [];
+    const keep = defaultAccepted(rows);
+    if (action === "accept" && keep.size === 0 && rows.length > 0) return;
+    const accepted = action === "accept" && keep.size < rows.length ? [...keep] : undefined;
     ok(
       await api.POST("/api/changesets/{changeset_id}/decision", {
         params: { path: { changeset_id: item.id } },
-        body: { decision: action as "accept" | "reject" },
+        body: { decision: action as "accept" | "reject", ...(accepted ? { accepted } : {}) },
       }),
     );
   } else if (item.kind === "gate") {

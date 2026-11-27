@@ -523,3 +523,25 @@ test("UI_SHELL_14 the phone menu button opens the navigation and a move closes i
     expect(screen.getByTestId("nav-burger")).toHaveAttribute("aria-label", "Open menu");
   });
 });
+
+test("AI_TAG_11 a step's AI token totals and cost show on the run page", async () => {
+  mockApi({
+    "GET /api/profiles": () => PROFILES,
+    "GET /api/runs/R1": () =>
+      runDetail({
+        steps: [
+          {
+            id: "tag",
+            uses: "ai.tag",
+            status: "succeeded",
+            outputs: { input_tokens: 1200, output_tokens: 300, cost: "0.0027", currency: "USD" },
+            passes: 1,
+          },
+        ],
+      }),
+  });
+  renderApp("/runs/R1?profile=main");
+  expect(await screen.findByTestId("ai-usage")).toHaveTextContent(
+    "1200 input / 300 output tokens, 0.0027 USD",
+  );
+});

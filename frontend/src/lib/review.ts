@@ -24,6 +24,15 @@ export interface FieldRow {
   op: "set" | "delete";
   old: Value;
   new: Value;
+  rationale: string | null;
+  confidence: number | null;
+  warnings: string[];
+}
+
+/** The changes ticked when a review opens: all but those with warnings, which a reviewer
+ * must tick on purpose (S-AI-TAG AI-TAG-10). */
+export function defaultAccepted(rows: FieldRow[]): Set<number> {
+  return new Set(rows.filter((r) => r.warnings.length === 0).map((r) => r.index));
 }
 
 export function fieldRows(cs: ChangeSet): FieldRow[] {
@@ -37,6 +46,9 @@ export function fieldRows(cs: ChangeSet): FieldRow[] {
         op: c.op,
         old: c.old,
         new: c.op === "delete" ? null : c.new,
+        rationale: c.rationale ?? null,
+        confidence: c.confidence ?? null,
+        warnings: c.warnings ?? [],
       });
     }
   }

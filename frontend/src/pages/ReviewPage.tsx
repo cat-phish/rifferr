@@ -47,6 +47,7 @@ import { StatusBadge } from "../components/StatusBadge";
 import {
   count,
   currentOf,
+  defaultAccepted,
   FINISHING_STAGE,
   failedByStep,
   type FailedEntry,
@@ -1101,7 +1102,7 @@ function ChangeSetCard({ item, focused }: { item: QueueItem; focused: boolean })
   const markDecided = (jobId?: string | null) => {
     markItem(item.id, jobId);
   };
-  const [checked, setChecked] = useState<Set<number>>(() => new Set(rows.map((r) => r.index)));
+  const [checked, setChecked] = useState<Set<number>>(() => defaultAccepted(rows));
   const [note, setNote] = useState("");
   const [sent, setSent] = useState<string | null>(null);
   const current = useQuery({
@@ -1265,7 +1266,12 @@ function ChangeSetCard({ item, focused }: { item: QueueItem; focused: boolean })
                   </Table.Td>
                 )}
                 <Table.Td>{labelOf(row)}</Table.Td>
-                <Table.Td ff="monospace">{row.field}</Table.Td>
+                <Table.Td>
+                  <Text size="sm" ff="monospace">
+                    {row.field}
+                  </Text>
+                  <FieldNotes row={row} />
+                </Table.Td>
                 <Table.Td data-testid="old" c="dimmed">
                   {formatValue(row.old)}
                 </Table.Td>
@@ -1618,3 +1624,31 @@ function GateAlbumView({ album }: { album: GateAlbum }) {
 function carriesChanges(cs: ChangeSet): boolean {
   return cs.targets.some((t) => t.changes.some((c) => c.field !== cs.stamp?.field));
 }
+
+/** A field change's reason, confidence and warnings, e.g. from an AI step (AI-TAG-10). */
+function FieldNotes({ row }: { row: FieldRow }) {
+  if (row.rationale === null && row.confidence === null && row.warnings.length === 0) return null;
+  return (
+    <Stack gap={0} data-testid="field-notes">
+      {row.confidence !== null && (
+        <Text size="xs" c="dimmed">
+          {Math.round(row.confidence * 100)}% sure
+        </Text>
+      )}
+      {row.rationale !== null && (
+        <Text size="xs" c="dimmed">
+          {row.rationale}
+        </Text>
+      )}
+      {row.warnings.map((w) => (
+        <Text key={w} size="xs" style={{ color: tc("warning") }} data-testid="field-warning">
+          ⚠ {WARNINGS[w] ?? w}
+        </Text>
+      ))}
+    </Stack>
+  );
+}
+
+const WARNINGS: Record<string, string> = {
+  not_in_vocabulary: "not in the vocabulary; tick it to accept",
+};
