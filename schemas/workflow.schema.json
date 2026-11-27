@@ -44,6 +44,75 @@
               "type": "string"
             },
             "uses": {
+              "const": "ai.tag",
+              "title": "Uses"
+            },
+            "when": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Backend condition (a beets query).",
+              "title": "When"
+            },
+            "with": {
+              "$ref": "#/$defs/With_ai_tag"
+            }
+          },
+          "required": [
+            "id",
+            "uses"
+          ],
+          "title": "Step: ai.tag",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One entry of ``steps:`` (WORKFLOW-2, WORKFLOW-3).",
+          "properties": {
+            "apply": {
+              "default": "review",
+              "description": "Whether this step's ChangeSets apply automatically or wait for review. Ignored by steps that don't produce ChangeSets.",
+              "enum": [
+                "auto",
+                "review"
+              ],
+              "title": "Apply",
+              "type": "string"
+            },
+            "id": {
+              "pattern": "^[a-z][a-z0-9_-]*$",
+              "title": "Id",
+              "type": "string"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Name"
+            },
+            "on_error": {
+              "default": "stop",
+              "enum": [
+                "stop",
+                "skip",
+                "continue"
+              ],
+              "title": "On Error",
+              "type": "string"
+            },
+            "uses": {
               "const": "beets.command",
               "title": "Uses"
             },
@@ -1069,6 +1138,144 @@
         "input"
       ],
       "title": "WebhookTrigger",
+      "type": "object"
+    },
+    "With_ai_tag": {
+      "additionalProperties": false,
+      "description": "``with:`` of an ``ai.tag`` step (S-AI-TAG Interfaces).",
+      "properties": {
+        "context": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Context",
+          "type": "array"
+        },
+        "denylist": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Denylist",
+          "type": "object"
+        },
+        "fields": {
+          "description": "The allowlist (AI-TAG-2)",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Fields",
+          "type": "array"
+        },
+        "item_context": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Item Context",
+          "type": "array"
+        },
+        "min_confidence": {
+          "default": 0.0,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Min Confidence",
+          "type": "number"
+        },
+        "on_error": {
+          "default": "skip",
+          "enum": [
+            "skip",
+            "fail"
+          ],
+          "title": "On Error",
+          "type": "string"
+        },
+        "on_unknown_value": {
+          "default": "drop",
+          "enum": [
+            "drop",
+            "flag"
+          ],
+          "title": "On Unknown Value",
+          "type": "string"
+        },
+        "only_empty": {
+          "default": false,
+          "title": "Only Empty",
+          "type": "boolean"
+        },
+        "provider": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Provider"
+        },
+        "refresh": {
+          "default": false,
+          "title": "Refresh",
+          "type": "boolean"
+        },
+        "retries": {
+          "default": 2,
+          "maximum": 5,
+          "minimum": 0,
+          "title": "Retries",
+          "type": "integer"
+        },
+        "rules": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Markdown notes, profile-relative",
+          "title": "Rules"
+        },
+        "scope": {
+          "default": "album",
+          "enum": [
+            "album",
+            "item"
+          ],
+          "title": "Scope",
+          "type": "string"
+        },
+        "vocabulary": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Vocabulary",
+          "type": "object"
+        },
+        "when": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "A beets query; others are skipped",
+          "title": "When"
+        }
+      },
+      "required": [
+        "fields"
+      ],
+      "title": "AITagParams",
       "type": "object"
     },
     "With_beets_command": {

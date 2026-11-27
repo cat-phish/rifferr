@@ -162,7 +162,10 @@ class AIRuntime:
             raise AITaskError(f"AI provider type '{setting.type}' is not installed")
         files = {name: self.read_file(rel) for name, rel in task.files(inp).items()}
         ctx = TaskContext(files=files, lookalikes=self.lookalikes())
-        system, user = task.build(inp, ctx)
+        try:
+            system, user = task.build(inp, ctx)
+        except ValueError as exc:  # the task refuses its input or files, e.g. a bad vocabulary
+            raise AITaskError(f"{task.id}: {exc}") from None
         schema = task.output_model.model_json_schema()
         request = AIRequest(
             system=system,

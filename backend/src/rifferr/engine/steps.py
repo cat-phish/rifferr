@@ -91,6 +91,10 @@ class StepType(Protocol):
     Optional attribute ``force_review: bool`` (default False): the step's ChangeSets
     always wait for review, and ``apply: auto`` is a validation error (CHANGESET-6).
 
+    Optional attribute ``source_kind`` (``"step"`` or ``"ai"``, default ``"step"``): the
+    ``source.kind`` of the step's ChangeSets; ``"ai"`` for steps whose proposals come from
+    a model (CHANGESET-1, S-AI-TAG AI-TAG-1).
+
     Optional attribute ``default_apply`` (``"auto"`` or ``"review"``, default ``"review"``):
     the ``apply`` policy when the workflow doesn't set one (CHANGESET-6).
 
@@ -279,6 +283,8 @@ class AIAccess(Protocol):
         provider: str | None,
         target: str,
         emit: AIEmit,
+        retries: int = 2,
+        refresh: bool = False,
     ) -> AIAnswer: ...
 
 
@@ -637,6 +643,8 @@ class StepContext:
         *,
         provider: str | None = None,
         target: str = "",
+        retries: int = 2,
+        refresh: bool = False,
     ) -> AIAnswer:
         """Run the installed AI task ``task`` on ``input`` (C-AI-CORE AI-CORE-9). Its
         ``ai.*`` events go on this run. Raises ``AIUnavailableError`` with a reason when
@@ -650,6 +658,16 @@ class StepContext:
             provider=provider,
             target=target,
             emit=self._ai_emit,
+            retries=retries,
+            refresh=refresh,
+        )
+
+    def ai_rejected(self, value: str, reason: str, *, field: str | None, target: str) -> None:
+        """Report a value of an AI answer that the step dropped after the task's own
+        checks, e.g. one the backend can't store (``ai.rejected``, AI-CORE-15)."""
+        self._ai_emit(
+            "ai.rejected",
+            {"value": value[:200], "reason": reason, "field": field, "target": target},
         )
 
     def request_move_conflict(self, plan: MovePlan, settings: MoveSettings) -> str:

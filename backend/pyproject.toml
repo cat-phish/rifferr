@@ -53,6 +53,7 @@ shell = "rifferr.steps.shell:ShellStep"
 "beets.import" = "rifferr.steps.beets_import:BeetsImportStep"
 "tags.script" = "rifferr.steps.tagscript:TagScriptStep"
 "tags.choose" = "rifferr.steps.tags_choose:TagsChooseStep"
+"ai.tag" = "rifferr.steps.ai_tag:AITagStep"
 review = "rifferr.steps.review:ReviewStep"
 "beets.command" = "rifferr.steps.beets_command:BeetsCommandStep"
 notify = "rifferr.steps.notify:NotifyStep"
@@ -69,6 +70,7 @@ anthropic = "rifferr.ai.providers.anthropic:AnthropicProvider"
 
 [project.entry-points."rifferr.ai_tasks"]
 "choice.suggest" = "rifferr.ai.tasks.choice_suggest:ChoiceSuggestTask"
+tag = "rifferr.ai.tasks.tag:TagTask"
 
 [project.entry-points."rifferr.cover_providers"]
 coverartarchive = "rifferr.covers.providers:CoverArtArchive"

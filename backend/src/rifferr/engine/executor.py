@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path, PurePath
-from typing import Any, Protocol, cast
+from typing import Any, Literal, Protocol, cast
 
 from pydantic import BaseModel, JsonValue
 from pydantic import ValidationError as PydanticValidationError
@@ -1028,7 +1028,7 @@ class Engine:
         run = state.run
         step_type = self.registry.step_type(spec.uses)
         force_review = bool(getattr(step_type, "force_review", False))
-        source = ChangeSource(kind="step", name=spec.uses)
+        source = ChangeSource(kind=_source_kind(step_type), name=spec.uses)
 
         def make(targets: Any, rationale: str | None) -> ChangeSet:
             return new_changeset(
@@ -1387,3 +1387,8 @@ def apply_policy(spec: StepSpec, step_type: object) -> str:
     if "apply" in spec.model_fields_set:
         return spec.apply
     return str(getattr(step_type, "default_apply", spec.apply))
+
+
+def _source_kind(step_type: object) -> Literal["step", "ai"]:
+    """``ai`` for a step type that declares ``source_kind = "ai"`` (CHANGESET-1)."""
+    return "ai" if getattr(step_type, "source_kind", "step") == "ai" else "step"

@@ -4,6 +4,21 @@
       "additionalProperties": false,
       "description": "A field change as a step proposes it. Without ``old`` the engine fills it in.",
       "properties": {
+        "confidence": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "How sure an AI proposer is (S-AI-TAG AI-TAG-10)",
+          "title": "Confidence"
+        },
         "field": {
           "title": "Field",
           "type": "string"
@@ -84,6 +99,14 @@
           ],
           "default": null,
           "title": "Rationale"
+        },
+        "warnings": {
+          "description": "Why a reviewer should look twice, e.g. not_in_vocabulary; a change with warnings starts unticked in review (AI-TAG-10)",
+          "items": {
+            "type": "string"
+          },
+          "title": "Warnings",
+          "type": "array"
         }
       },
       "required": [

@@ -186,7 +186,15 @@ def build_changesets(
                 continue  # already the current value (CHANGESET-4)
             old = c.old if c.has_old() else now
             kept.append(
-                FieldChange(field=c.field, op=c.op, old=old, new=c.new, rationale=c.rationale)
+                FieldChange(
+                    field=c.field,
+                    op=c.op,
+                    old=old,
+                    new=c.new,
+                    rationale=c.rationale,
+                    confidence=c.confidence,
+                    warnings=list(c.warnings),
+                )
             )
         if kept:
             album = snapshots.album_of(t.target)

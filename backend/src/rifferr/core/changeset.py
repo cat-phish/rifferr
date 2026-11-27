@@ -58,6 +58,14 @@ class _FieldChangeBase(BaseModel):
     op: FieldOp = "set"
     new: FieldValue = Field(default=None, description="The new value; required for op 'set'.")
     rationale: str | None = None
+    confidence: float | None = Field(
+        default=None, ge=0, le=1, description="How sure an AI proposer is (S-AI-TAG AI-TAG-10)"
+    )
+    warnings: list[str] = Field(
+        default_factory=list[str],
+        description="Why a reviewer should look twice, e.g. not_in_vocabulary; a change "
+        "with warnings starts unticked in review (AI-TAG-10)",
+    )
 
     @model_validator(mode="after")
     def _check_op(self) -> Self:

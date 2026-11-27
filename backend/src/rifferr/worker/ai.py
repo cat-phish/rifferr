@@ -57,6 +57,8 @@ class WorkerAI:
         provider: str | None,
         target: str,
         emit: AIEmit,
+        retries: int = 2,
+        refresh: bool = False,
     ) -> AIAnswer:
         providers, tasks = self._registries()
         found = tasks.get(task)
@@ -73,7 +75,12 @@ class WorkerAI:
         )
         try:
             result = await runtime.run_task(
-                found, found.input_model.model_validate(input), provider=provider, target=target
+                found,
+                found.input_model.model_validate(input),
+                provider=provider,
+                target=target,
+                retries=retries,
+                refresh=refresh,
             )
         except AITaskError as exc:
             raise AIUnavailableError(exc.message) from None

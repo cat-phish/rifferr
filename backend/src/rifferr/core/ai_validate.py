@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -171,4 +171,112 @@ def match_vocabulary(
             continue
         seen.add(key)
         out.append(match)
+    return out, rejected
+
+
+# -- field values (S-AI-TAG AI-TAG-6, -7) ----------------------------------------------
+
+OnUnknown = Literal["drop", "flag"]
+
+
+def parse_value_list(text: str) -> list[str]:
+    """A vocabulary or denylist file: one value per line; blank lines and lines starting
+    with ``#`` are ignored (AI-TAG-6)."""
+    out: list[str] = []
+    for line in text.splitlines():
+        value = line.strip()
+        if value and not value.startswith("#"):
+            out.append(value)
+    return out
+
+
+class AnsweredValue(BaseModel):
+    """One field value as the model gave it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    field: str
+    value: str | list[str]
+    confidence: float = Field(ge=0, le=1)
+    rationale: str = ""
+
+
+class CheckedValue(BaseModel):
+    """A field value that passed the checks that need no backend (AI-TAG-7, 1 to 4)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    field: str
+    values: list[str] = Field(min_length=1)
+    as_list: bool = Field(description="The model answered a list (for multi-value fields)")
+    confidence: float
+    rationale: str = ""
+    warnings: list[str] = Field(default_factory=list[str])
+
+    @property
+    def value(self) -> str | list[str]:
+        return list(self.values) if self.as_list else self.values[0]
+
+
+def check_field_values(
+    answers: Sequence[AnsweredValue],
+    *,
+    fields: Sequence[str],
+    vocabularies: Mapping[str, Vocabulary] | None = None,
+    denylists: Mapping[str, Vocabulary] | None = None,
+    on_unknown: OnUnknown = "drop",
+    min_confidence: float = 0.0,
+    lookalikes: Lookalikes = NO_LOOKALIKES,
+) -> tuple[list[CheckedValue], list[Rejection]]:
+    """Steps 1 to 4 of AI-TAG-7, in order: the field allowlist, the denylist, the
+    vocabulary (``drop``: strict, ``flag``: kept with a warning) and the confidence floor.
+    Values keep the vocabulary's spelling, or the lookalikes' preferred characters. A
+    field answered twice keeps its first answer. Pure; the backend checks come after."""
+    vocabularies = vocabularies or {}
+    denylists = denylists or {}
+    allowed = set(fields)
+    free = Vocabulary([], lookalikes)
+    out: list[CheckedValue] = []
+    rejected: list[Rejection] = []
+    seen: set[str] = set()
+    for answer in answers:
+        raw = answer.value if isinstance(answer.value, list) else [answer.value]
+        if answer.field not in allowed:
+            rejected += [Rejection.of(v, "field_not_allowed", answer.field) for v in raw]
+            continue
+        if answer.field in seen:
+            rejected += [Rejection.of(v, "duplicate_field", answer.field) for v in raw]
+            continue
+        seen.add(answer.field)
+        deny = denylists.get(answer.field)
+        kept: list[str] = []
+        for v in raw:
+            if deny is not None and deny.get(v) is not None:
+                rejected.append(Rejection.of(v, "denylisted", answer.field))
+            else:
+                kept.append(v)
+        vocab = vocabularies.get(answer.field)
+        if vocab is not None:
+            mode: MatchMode = "flag" if on_unknown == "flag" else "strict"
+            matches, dropped = match_vocabulary(kept, vocab, mode, field=answer.field)
+        else:
+            matches, dropped = match_vocabulary(kept, free, "open", field=answer.field)
+        rejected += dropped
+        if not matches:
+            continue
+        values = [m.value for m in matches]
+        if answer.confidence < min_confidence:
+            rejected += [Rejection.of(v, "low_confidence", answer.field) for v in values]
+            continue
+        warnings = list(dict.fromkeys(w for m in matches for w in m.warnings))
+        out.append(
+            CheckedValue(
+                field=answer.field,
+                values=values,
+                as_list=isinstance(answer.value, list),
+                confidence=answer.confidence,
+                rationale=answer.rationale,
+                warnings=warnings,
+            )
+        )
     return out, rejected

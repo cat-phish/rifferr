@@ -405,7 +405,7 @@ def _ai_findings(step_id: str, uses: str, params: Mapping[str, Any]) -> list[Fin
     if block is None:
         return []
     sent: list[str] = []
-    for key in ("context", "item_context"):
+    for key in ("fields", "context", "item_context"):
         value = block.get(key)
         if isinstance(value, list):
             sent += [str(v) for v in cast("list[Any]", value)]
