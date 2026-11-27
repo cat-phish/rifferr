@@ -17,6 +17,7 @@ from rifferr.covers.service import CoverService
 from rifferr.engine import Event, StepTypeRegistry
 from rifferr.engine.events import PROFILE_STREAM_PREFIX, profile_stream
 from rifferr.notify.service import NotificationService
+from rifferr.settings import KeyringStore, SystemKeyring
 from rifferr.triggers import TriggerManager
 from rifferr.worker.previews import PreviewSupervisor
 from rifferr.worker.supervisor import WorkerSupervisor
@@ -131,6 +132,7 @@ class ServerState:
     notifications: NotificationService | None = None
     covers: CoverService = field(default_factory=lambda: CoverService())
     ai: AIService | None = None  # C-AI-CORE
+    keyring: KeyringStore = field(default_factory=lambda: SystemKeyring())  # F-SETTINGS
 
 
 def server_state(request: Request) -> ServerState:

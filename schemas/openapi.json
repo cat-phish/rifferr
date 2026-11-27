@@ -203,6 +203,89 @@
         "title": "AIPreviewBody",
         "type": "object"
       },
+      "AISectionInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "keyring": {
+            "description": "Whether an OS keyring is available",
+            "title": "Keyring",
+            "type": "boolean"
+          },
+          "provider_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Provider Types",
+            "type": "array"
+          },
+          "providers": {
+            "items": {
+              "$ref": "#/components/schemas/ProviderStatus"
+            },
+            "title": "Providers",
+            "type": "array"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/AISuggestStep"
+            },
+            "title": "Steps",
+            "type": "array"
+          }
+        },
+        "required": [
+          "provider_types",
+          "providers",
+          "steps",
+          "keyring"
+        ],
+        "title": "AISectionInfo",
+        "type": "object"
+      },
+      "AISuggestStep": {
+        "additionalProperties": false,
+        "description": "A workflow step with ``with.ai`` that a suggestion-mode override can name.",
+        "properties": {
+          "mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "off",
+                  "unsure",
+                  "always"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The step's own with.ai.mode",
+            "title": "Mode"
+          },
+          "ref": {
+            "description": "\"<workflow>/<step id>\"",
+            "title": "Ref",
+            "type": "string"
+          },
+          "step_id": {
+            "title": "Step Id",
+            "type": "string"
+          },
+          "workflow": {
+            "title": "Workflow",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref",
+          "workflow",
+          "step_id",
+          "mode"
+        ],
+        "title": "AISuggestStep",
+        "type": "object"
+      },
       "Accepted": {
         "additionalProperties": false,
         "properties": {
@@ -2181,6 +2264,13 @@
           }
         },
         "title": "CleanupOptions",
+        "type": "object"
+      },
+      "ClearKeyBody": {
+        "additionalProperties": false,
+        "description": "Empty: mutating requests are JSON (F-SECURITY).",
+        "properties": {},
+        "title": "ClearKeyBody",
         "type": "object"
       },
       "CoverDecided": {
@@ -4437,6 +4527,63 @@
         "type": "object"
       },
       "JsonValue": {},
+      "KeyBody": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key"
+        ],
+        "title": "KeyBody",
+        "type": "object"
+      },
+      "KeyResult": {
+        "additionalProperties": false,
+        "properties": {
+          "env_line": {
+            "description": "Without a keyring: the secrets line to add",
+            "title": "Env Line",
+            "type": "string"
+          },
+          "env_var": {
+            "description": "Without a keyring: the variable to set",
+            "title": "Env Var",
+            "type": "string"
+          },
+          "key_set": {
+            "title": "Key Set",
+            "type": "boolean"
+          },
+          "keyring": {
+            "title": "Keyring",
+            "type": "boolean"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "secret": {
+            "title": "Secret",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "key_set",
+          "keyring",
+          "secret",
+          "env_var",
+          "env_line"
+        ],
+        "title": "KeyResult",
+        "type": "object"
+      },
       "LaneHold": {
         "additionalProperties": false,
         "properties": {
@@ -5733,6 +5880,58 @@
           "name"
         ],
         "title": "ProfileSummary",
+        "type": "object"
+      },
+      "ProviderStatus": {
+        "additionalProperties": false,
+        "description": "What the AI section shows about a provider besides its settings (SETTINGS-5, -6).",
+        "properties": {
+          "host": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Host"
+          },
+          "key_secret": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The secret name its api_key uses",
+            "title": "Key Secret"
+          },
+          "key_set": {
+            "description": "Whether its api_key resolves; never the key",
+            "title": "Key Set",
+            "type": "boolean"
+          },
+          "local": {
+            "description": "False: album data leaves this machine (AI-CORE-20)",
+            "title": "Local",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "key_set",
+          "key_secret",
+          "host",
+          "local"
+        ],
+        "title": "ProviderStatus",
         "type": "object"
       },
       "PruneAlbum": {
@@ -7095,6 +7294,25 @@
         "title": "SearchLink",
         "type": "object"
       },
+      "SectionInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "SectionInfo",
+        "type": "object"
+      },
       "SendBackBody": {
         "additionalProperties": false,
         "description": "Send an album back to an earlier review gate (C-LANES LANES-17).",
@@ -7110,6 +7328,81 @@
           "to_step"
         ],
         "title": "SendBackBody",
+        "type": "object"
+      },
+      "SettingsBody": {
+        "additionalProperties": false,
+        "properties": {
+          "base_hash": {
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "Base Hash",
+            "type": "string"
+          },
+          "values": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Values",
+            "type": "object"
+          }
+        },
+        "required": [
+          "values",
+          "base_hash"
+        ],
+        "title": "SettingsBody",
+        "type": "object"
+      },
+      "SettingsView": {
+        "additionalProperties": false,
+        "properties": {
+          "ai": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AISectionInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "base_hash": {
+            "description": "Send back on PUT; 409 if the file changed since",
+            "title": "Base Hash",
+            "type": "string"
+          },
+          "schema": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Schema",
+            "type": "object"
+          },
+          "section": {
+            "title": "Section",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "values": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Values",
+            "type": "object"
+          }
+        },
+        "required": [
+          "section",
+          "title",
+          "values",
+          "schema",
+          "base_hash"
+        ],
+        "title": "SettingsView",
         "type": "object"
       },
       "ShowFields": {
@@ -7369,6 +7662,47 @@
           "id"
         ],
         "title": "TargetRef",
+        "type": "object"
+      },
+      "TestResult": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "provider"
+        ],
+        "title": "TestResult",
         "type": "object"
       },
       "TrackMatch": {
@@ -12227,6 +12561,526 @@
         "summary": "Put Script",
         "tags": [
           "scripts"
+        ]
+      }
+    },
+    "/api/profiles/{profile}/settings": {
+      "get": {
+        "description": "The Settings page's sections, in order (SETTINGS-1).",
+        "operationId": "list_sections_api_profiles__profile__settings_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SectionInfo"
+                  },
+                  "title": "Response List Sections Api Profiles  Profile  Settings Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "List Sections",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/profiles/{profile}/settings/ai/providers/{provider}/key": {
+      "delete": {
+        "description": "Remove the key from the keyring and the provider's ``api_key`` (SETTINGS-6).",
+        "operationId": "clear_key_api_profiles__profile__settings_ai_providers__provider__key_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "title": "Provider",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ClearKeyBody"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeyResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Clear Key",
+        "tags": [
+          "settings"
+        ]
+      },
+      "put": {
+        "description": "Store the key in the OS keyring and point the provider at it. The key is never\nreturned, logged or written to ``profile.yaml``. Without a keyring: ``409 no_keyring``\nwith the environment variable to use instead.",
+        "operationId": "set_key_api_profiles__profile__settings_ai_providers__provider__key_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "title": "Provider",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KeyBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeyResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Set Key",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/profiles/{profile}/settings/ai/providers/{provider}/test": {
+      "post": {
+        "description": "One tiny fixed request, no album data, never cached (SETTINGS-7).",
+        "operationId": "test_provider_api_profiles__profile__settings_ai_providers__provider__test_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "title": "Provider",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Test Provider",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/profiles/{profile}/settings/{section}": {
+      "get": {
+        "description": "The section's values, their JSON Schema and the file's hash (SETTINGS-2).",
+        "operationId": "get_section_api_profiles__profile__settings__section__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "section",
+            "required": true,
+            "schema": {
+              "title": "Section",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Get Section",
+        "tags": [
+          "settings"
+        ]
+      },
+      "put": {
+        "description": "Validate the whole section and write only its key (SETTINGS-2, -3). ``400`` lists the\nfields at fault; ``409`` when ``profile.yaml`` changed since ``base_hash``.",
+        "operationId": "put_section_api_profiles__profile__settings__section__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile",
+            "required": true,
+            "schema": {
+              "title": "Profile",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "section",
+            "required": true,
+            "schema": {
+              "title": "Section",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Put Section",
+        "tags": [
+          "settings"
         ]
       }
     },

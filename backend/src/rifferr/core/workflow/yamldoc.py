@@ -85,6 +85,10 @@ class RoundTripDoc:
         parent[last] = value
         self._dirty = True
 
+    def touch(self) -> None:
+        """Mark ``data`` as changed in place, so ``dump`` writes it out."""
+        self._dirty = True
+
     def dump(self) -> str:
         if not self._dirty:
             return self.text

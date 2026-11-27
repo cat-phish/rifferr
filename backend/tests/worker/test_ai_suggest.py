@@ -298,3 +298,15 @@ async def test_AI_SUGGEST_3_rule_description_reaches_the_option(h: AIHarness) ->
     review = await waiting(h, bucket())
     (punk,) = [o for o in review.options if o.label == "Punk"]
     assert punk.description == "Fast and loud."
+
+
+async def test_SETTINGS_4_saved_settings_apply_to_the_next_run(always: AIHarness) -> None:
+    path = config_root() / "profiles" / "main" / "profile.yaml"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("suggest: {mode: always}", "suggest: {mode: off}"),
+        encoding="utf-8",
+    )
+    always.genre_album("Deep House")
+    review = await waiting(always, bucket())
+    assert review.ai is None  # the worker read the saved mode, not the one it started with
+    assert always.fake.requests == []

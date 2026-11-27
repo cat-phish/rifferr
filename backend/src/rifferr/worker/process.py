@@ -365,6 +365,7 @@ class Worker:
         assert isinstance(run_vars, dict)
         resume_after = payload.get("resume_after")
         assert resume_after is None or isinstance(resume_after, str)
+        settings = self._current_settings()  # saved settings apply from here (SETTINGS-4)
         engine = Engine(
             self.registry,
             _ForwardSink(self.send, self._sent, self._record_run_state),
@@ -381,7 +382,7 @@ class Worker:
             moves=self.moves,
             prunes=self.prunes,
             removals=AppRemovalJournal(self.db, self.profile.name),
-            ai=WorkerAI(self.profile, self.db),  # C-AI-CORE, F-AI-SUGGEST
+            ai=WorkerAI(settings, self.db),  # C-AI-CORE, F-AI-SUGGEST
         )
         try:
             wf, doc = load_workflow(source, source_name)
@@ -401,7 +402,7 @@ class Worker:
                 profile_dir=self.profile.root,
                 secrets=self.secrets,
                 notify=self.notify,
-                profile_settings=self._current_settings(),
+                profile_settings=settings,
                 busy=lambda: busy_folders(self.db, self.profile.name, job.run),
                 watched=lambda: watched_folders(self.profile),
                 imported=lambda path: self._supersede_imports(path, job.run),

@@ -41,6 +41,7 @@ from rifferr.api.routes import (
     triggers,
     workflows,
 )
+from rifferr.api.routes import settings as settings_routes
 from rifferr.api.security import (
     DAY,
     ASGIApp,
@@ -246,7 +247,9 @@ def create_api(settings: ApiSettings | None = None) -> FastAPI:
         state.ai = AIService(  # C-AI-CORE
             cache=AppAICache(db),
             load_profile=lambda name: load_profile(root, name),
-            secrets_for=lambda p: ProfileSecrets(p.secrets, SecretResolver()).resolve,
+            secrets_for=lambda p: (
+                ProfileSecrets(p.secrets, SecretResolver(keyring_get=state.keyring.get)).resolve
+            ),
             emit=lambda profile, type_, data: publish_profile_event(state, profile, type_, data),
         )
         supervisor.subscribe(notifications.on_event)  # S-NOTIFY rules (NOTIFY-9)
@@ -299,6 +302,7 @@ def create_api(settings: ApiSettings | None = None) -> FastAPI:
     app.include_router(dashboard.router)
     app.include_router(covers.router)
     app.include_router(ai.router)
+    app.include_router(settings_routes.router)
     _add_schemas(app, covers.RAW_BODY_SCHEMAS)
 
     @app.get("/healthz", response_model=Health, tags=["health"])

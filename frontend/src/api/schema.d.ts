@@ -991,6 +991,97 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/profiles/{profile}/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Sections
+         * @description The Settings page's sections, in order (SETTINGS-1).
+         */
+        get: operations["list_sections_api_profiles__profile__settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profiles/{profile}/settings/ai/providers/{provider}/key": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Key
+         * @description Store the key in the OS keyring and point the provider at it. The key is never
+         *     returned, logged or written to ``profile.yaml``. Without a keyring: ``409 no_keyring``
+         *     with the environment variable to use instead.
+         */
+        put: operations["set_key_api_profiles__profile__settings_ai_providers__provider__key_put"];
+        post?: never;
+        /**
+         * Clear Key
+         * @description Remove the key from the keyring and the provider's ``api_key`` (SETTINGS-6).
+         */
+        delete: operations["clear_key_api_profiles__profile__settings_ai_providers__provider__key_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profiles/{profile}/settings/ai/providers/{provider}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Provider
+         * @description One tiny fixed request, no album data, never cached (SETTINGS-7).
+         */
+        post: operations["test_provider_api_profiles__profile__settings_ai_providers__provider__test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profiles/{profile}/settings/{section}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Section
+         * @description The section's values, their JSON Schema and the file's hash (SETTINGS-2).
+         */
+        get: operations["get_section_api_profiles__profile__settings__section__get"];
+        /**
+         * Put Section
+         * @description Validate the whole section and write only its key (SETTINGS-2, -3). ``400`` lists the
+         *     fields at fault; ``409`` when ``profile.yaml`` changed since ``base_hash``.
+         */
+        put: operations["put_section_api_profiles__profile__settings__section__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/profiles/{profile}/tagscript/preview": {
         parameters: {
             query?: never;
@@ -1509,6 +1600,40 @@ export interface components {
             provider?: string | null;
             /** Task */
             task: string;
+        };
+        /** AISectionInfo */
+        AISectionInfo: {
+            /**
+             * Keyring
+             * @description Whether an OS keyring is available
+             */
+            keyring: boolean;
+            /** Provider Types */
+            provider_types: string[];
+            /** Providers */
+            providers: components["schemas"]["ProviderStatus"][];
+            /** Steps */
+            steps: components["schemas"]["AISuggestStep"][];
+        };
+        /**
+         * AISuggestStep
+         * @description A workflow step with ``with.ai`` that a suggestion-mode override can name.
+         */
+        AISuggestStep: {
+            /**
+             * Mode
+             * @description The step's own with.ai.mode
+             */
+            mode: ("off" | "unsure" | "always") | null;
+            /**
+             * Ref
+             * @description "<workflow>/<step id>"
+             */
+            ref: string;
+            /** Step Id */
+            step_id: string;
+            /** Workflow */
+            workflow: string;
         };
         /** Accepted */
         Accepted: {
@@ -2274,6 +2399,11 @@ export interface components {
             /** Trash */
             trash?: string | null;
         };
+        /**
+         * ClearKeyBody
+         * @description Empty: mutating requests are JSON (F-SECURITY).
+         */
+        ClearKeyBody: Record<string, never>;
         /**
          * CoverDecided
          * @description ``job_id`` is the worker job that sets the cover (``choose``); ``None`` otherwise.
@@ -3132,6 +3262,32 @@ export interface components {
             job_ids: string[];
         };
         JsonValue: unknown;
+        /** KeyBody */
+        KeyBody: {
+            /** Key */
+            key: string;
+        };
+        /** KeyResult */
+        KeyResult: {
+            /**
+             * Env Line
+             * @description Without a keyring: the secrets line to add
+             */
+            env_line: string;
+            /**
+             * Env Var
+             * @description Without a keyring: the variable to set
+             */
+            env_var: string;
+            /** Key Set */
+            key_set: boolean;
+            /** Keyring */
+            keyring: boolean;
+            /** Provider */
+            provider: string;
+            /** Secret */
+            secret: string;
+        };
         /** LaneHold */
         LaneHold: {
             /**
@@ -3675,6 +3831,31 @@ export interface components {
             vars?: string[];
         };
         /**
+         * ProviderStatus
+         * @description What the AI section shows about a provider besides its settings (SETTINGS-5, -6).
+         */
+        ProviderStatus: {
+            /** Host */
+            host: string | null;
+            /**
+             * Key Secret
+             * @description The secret name its api_key uses
+             */
+            key_secret: string | null;
+            /**
+             * Key Set
+             * @description Whether its api_key resolves; never the key
+             */
+            key_set: boolean;
+            /**
+             * Local
+             * @description False: album data leaves this machine (AI-CORE-20)
+             */
+            local: boolean;
+            /** Name */
+            name: string;
+        };
+        /**
          * PruneAlbum
          * @description One album listed by the step (LIBRARY-PRUNE-1, -3).
          */
@@ -4169,6 +4350,13 @@ export interface components {
              */
             url: string;
         };
+        /** SectionInfo */
+        SectionInfo: {
+            /** Id */
+            id: string;
+            /** Title */
+            title: string;
+        };
         /**
          * SendBackBody
          * @description Send an album back to an earlier review gate (C-LANES LANES-17).
@@ -4179,6 +4367,36 @@ export interface components {
              * @description Id of a review step the album passed
              */
             to_step: string;
+        };
+        /** SettingsBody */
+        SettingsBody: {
+            /** Base Hash */
+            base_hash: string;
+            /** Values */
+            values: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+        };
+        /** SettingsView */
+        SettingsView: {
+            ai?: components["schemas"]["AISectionInfo"] | null;
+            /**
+             * Base Hash
+             * @description Send back on PUT; 409 if the file changed since
+             */
+            base_hash: string;
+            /** Schema */
+            schema: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Section */
+            section: string;
+            /** Title */
+            title: string;
+            /** Values */
+            values: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
         };
         /**
          * ShowFields
@@ -4302,6 +4520,17 @@ export interface components {
              * @enum {string}
              */
             scope: "album" | "item";
+        };
+        /** TestResult */
+        TestResult: {
+            /** Error */
+            error?: string | null;
+            /** Model */
+            model?: string | null;
+            /** Ok */
+            ok: boolean;
+            /** Provider */
+            provider: string;
         };
         /**
          * TrackMatch
@@ -7596,6 +7825,371 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ScriptDetail"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_sections_api_profiles__profile__settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SectionInfo"][];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    set_key_api_profiles__profile__settings_ai_providers__provider__key_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile: string;
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KeyBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeyResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    clear_key_api_profiles__profile__settings_ai_providers__provider__key_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile: string;
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ClearKeyBody"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeyResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    test_provider_api_profiles__profile__settings_ai_providers__provider__test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile: string;
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_section_api_profiles__profile__settings__section__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile: string;
+                section: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    put_section_api_profiles__profile__settings__section__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile: string;
+                section: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettingsBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsView"];
                 };
             };
             /** @description Bad Request */
