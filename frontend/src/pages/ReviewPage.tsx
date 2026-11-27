@@ -39,6 +39,7 @@ import type { ChangeSet, GateAlbum, QueueItem, ReviewGate } from "../api/types";
 import { useProfile, withProfile } from "../hooks/useProfile";
 import { usePipeline, useReviewQueue, useWorkflowSteps } from "../hooks/useReviewQueue";
 import { BULK_ACTIONS, bulkKind, decideAll, type BulkFailure, type BulkKind } from "../lib/bulk";
+import { SuggestAllButton, suggestable } from "../components/AISuggestions";
 import { useAppEventListener } from "../lib/appEvents";
 import { duration, time } from "../lib/format";
 import { fromHeld, toRequest, type Pending } from "../lib/grid";
@@ -354,6 +355,11 @@ export function ReviewPage({
         </Group>
       )}
       {queue.error && <Alert color="red">{queue.error.message}</Alert>}
+      {suggestable(items).length > 0 && (
+        <Group justify="flex-end" data-testid="ai-bulk">
+          <SuggestAllButton items={items} />
+        </Group>
+      )}
       {kind !== null && (
         <Card withBorder padding="xs" data-testid="bulk-bar">
           <Group justify="space-between">

@@ -34,6 +34,7 @@ function review(over: Partial<S["ChoiceReview"]> = {}): S["ChoiceReview"] {
           },
         ],
         rule: false,
+        from_ai: false,
         matched: 0,
       },
       {
@@ -44,6 +45,7 @@ function review(over: Partial<S["ChoiceReview"]> = {}): S["ChoiceReview"] {
           { target: ALBUM, field: "albumartist", before: "A & B", after: "Split", deleted: false },
         ],
         rule: false,
+        from_ai: false,
         matched: 0,
       },
     ],
@@ -170,6 +172,7 @@ test("TAGS_CHOOSE_13 the remembering option says so and is chosen like any other
           preview: [],
           remembers: "A & B",
           rule: false,
+          from_ai: false,
           matched: 0,
         },
       ],

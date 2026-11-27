@@ -16,6 +16,7 @@ import { useState } from "react";
 import { api, ok } from "../api/client";
 import type { ChoiceReview } from "../api/types";
 import { type FieldValue, show } from "../lib/grid";
+import { AI_PREFIX, AISuggestionsSection } from "./AISuggestions";
 import { jobOf, useMarkDecided } from "./Decided";
 import { NoteField } from "./NoteField";
 
@@ -27,6 +28,7 @@ type Body = {
   values?: Record<string, FieldValue>;
   known_name?: boolean;
   note?: string;
+  ai_suggestion?: number;
 };
 
 function initialValues(review: ChoiceReview): Record<string, FieldValue> {
@@ -45,7 +47,8 @@ function initialValues(review: ChoiceReview): Record<string, FieldValue> {
 export function ChoiceReviewView({ review }: { review: ChoiceReview }) {
   const queryClient = useQueryClient();
   const markDecided = useMarkDecided();
-  const options = review.options;
+  // Rules the AI named appear with its suggestions, not as rules options (AI-SUGGEST-13).
+  const options = review.options.filter((o) => !o.from_ai);
   const custom = review.custom ?? [];
   const [picked, setPicked] = useState<string>(
     review.suggested ?? (options.length === 0 && custom.length > 0 ? CUSTOM : ""),
@@ -66,6 +69,21 @@ export function ChoiceReviewView({ review }: { review: ChoiceReview }) {
     },
   });
   const choose = () => {
+    if (picked.startsWith(AI_PREFIX)) {
+      // An AI suggestion is an ordinary decision that says it was one (AI-SUGGEST-6).
+      const rank = Number(picked.slice(AI_PREFIX.length));
+      const s = (review.ai?.suggestions ?? []).find((x) => x.rank === rank);
+      if (!s) return;
+      if (s.option) decide.mutate({ decision: "choose", option: s.option, ai_suggestion: rank });
+      else
+        decide.mutate({
+          decision: "choose",
+          option: CUSTOM,
+          values: s.values ?? {},
+          ai_suggestion: rank,
+        });
+      return;
+    }
     if (picked === CUSTOM) decide.mutate({ decision: "choose", option: CUSTOM, values });
     else decide.mutate({ decision: "choose", option: picked });
   };
@@ -118,6 +136,11 @@ export function ChoiceReviewView({ review }: { review: ChoiceReview }) {
                   </Group>
                 }
               />
+              {o.description && (
+                <Text size="xs" c="dimmed" pl={28} data-testid="choice-description">
+                  {o.description}
+                </Text>
+              )}
               <Stack gap={0} pl={28} data-testid="choice-preview">
                 {o.remembers != null && (
                   <Text size="xs" c="dimmed" data-testid="choice-remembers">
@@ -193,6 +216,9 @@ export function ChoiceReviewView({ review }: { review: ChoiceReview }) {
                 </Stack>
               )}
             </div>
+          )}
+          {review.ai_input != null && (
+            <AISuggestionsSection review={review} disabled={decide.isPending || decide.isSuccess} />
           )}
         </Stack>
       </Radio.Group>

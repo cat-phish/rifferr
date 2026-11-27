@@ -23,6 +23,10 @@ export const APP_EVENTS = [
   "move.resolved",
   "choice.requested",
   "choice.resolved",
+  // AI suggestions arrive on choice cards, and bulk progress (F-AI-SUGGEST).
+  "choice.ai_suggested",
+  "ai.job.progress",
+  "ai.job.finished",
   "changeset.proposed",
   "changeset.applied",
   "changeset.rejected",
@@ -113,7 +117,7 @@ export function useAppEvents(onEvent?: (event: RunEvent) => void): void {
       if (event.type === "run.finished" || event.type === "job.finished") {
         void queryClient.invalidateQueries({ queryKey: ["imports"] });
       }
-      if (event.type.startsWith("inbox.")) return;
+      if (event.type.startsWith("inbox.") || event.type.startsWith("ai.job.")) return;
       if (event.type.startsWith("trigger.")) {
         void queryClient.invalidateQueries({ queryKey: ["triggers"] });
         return;
