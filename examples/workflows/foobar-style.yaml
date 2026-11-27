@@ -255,6 +255,14 @@ steps:
       rank_by: subgenres
       custom: [genres]
       learn: true
+      # AI suggestions (F-AI-SUGGEST): an Ask AI button on each card, and on its own when
+      # the rules are unsure (the profile's `ai.suggest.mode`). The AI sees only these
+      # fields, the bucket labels with their descriptions, and the guidance notes; its
+      # suggestions are never preselected and never applied without you.
+      ai:
+        context: [albumartist, album, year, label]
+        guidance: rules/genre-guidance.md
+        max_suggestions: 3
   # Checklist line 6, album art: albums without art get a cover from the providers in
   # the profile's `covers` settings (Cover Art Archive, local images, iTunes and Deezer
   # by default). Every such album waits in the review queue with the ranked covers, best

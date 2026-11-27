@@ -1,0 +1,26 @@
+# An example `ai` section for a profile's profile.yaml (C-AI-CORE). Copy what you need.
+# The first enabled provider is the default; a step may name another with `provider:`.
+# API keys live in the keyring or the environment, never here: `api_key` names a secret
+# (`rifferr secret set anthropic-key`).
+ai:
+  lookalikes: rules/lookalikes.yaml
+  suggest:
+    # When tags.choose steps with an `ai` block ask the AI on their own (F-AI-SUGGEST):
+    # off | unsure (no rule matched, only fallback options, or a tie) | always.
+    # A step's `with.ai.mode` overrides this; `steps` (Settings) overrides both.
+    mode: unsure
+    steps: {}
+  providers:
+    - name: claude
+      type: anthropic
+      model: claude-haiku-5-5
+      api_key: anthropic-key
+      settings:
+        max_output_tokens: 1024
+        # Optional: shows a cost estimate before bulk runs. Use your provider's current prices.
+        price_per_mtok: { input: 1, output: 5 }
+    - name: local
+      type: openai-compatible
+      model: qwen3:8b
+      base_url: http://127.0.0.1:11434/v1 # e.g. Ollama; http only for local hosts
+      enabled: false

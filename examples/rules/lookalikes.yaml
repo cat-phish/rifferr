@@ -1,0 +1,14 @@
+# Lookalike characters for AI answers (C-AI-CORE AI-CORE-22). Set it in the profile:
+#   ai: { lookalikes: rules/lookalikes.yaml }
+# A model often writes the plain character where your names use a lookalike, e.g.
+# "Alt/Indie" for "Alt／Indie". With this file, every variant below matches your own
+# spelling, and a new value the AI suggests is rewritten to the preferred character.
+# These are the characters the path-characters script uses for folder names; edit them
+# to match your library. Each variant may belong to one group only.
+groups:
+  - preferred: "／" # U+FF0F fullwidth solidus
+    variants: ["/", "∕", "⁄", "⧸", "╱", "⟋"]
+  - preferred: "꞉" # U+A789 modifier letter colon
+    variants: [":", "∶", "ː", "˸", "﹕", "：", "⁚", "፡", "⦂"]
+  - preferred: "？" # U+FF1F fullwidth question mark
+    variants: ["?", "﹖", "ʔ"]

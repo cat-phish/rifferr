@@ -1,5 +1,5 @@
 # F-AI-SUGGEST: AI suggestions on a choice review
-Status: Approved
+Status: Implemented
 Milestone: M4
 
 ## Context
@@ -224,15 +224,36 @@ The model answers `alt/indie` → suggestion of the existing `Alt／Indie` optio
 4. Should `unsure` also count "the top option's rank is low" (e.g. one sub-genre out of five
    matched)? This draft keeps the three clear cases.
 
+As implemented (2026-11-26; `rifferr.ai.tasks.choice_suggest`, `rifferr.steps.tags_choose`,
+`rifferr.api.routes.ai`, `frontend/src/components/AISuggestions.tsx`):
+- The model answers `{suggestions: [{choice, confidence, rationale}]}`: one string per
+  suggestion. A known label maps to its offered option (`option`) or to a rule that isn't
+  offered (`rule`); a new value goes in `values` under the step's first `custom` field, as a
+  list. The card sends it as one string when that field is a text field.
+- A suggested rule that the rules didn't offer is added to the review as an option with key
+  `a{n}` and `from_ai: true`. The card shows it only in the AI section.
+- `backend.coerce`/`check` of a new value runs at decision time, like any custom value.
+- The step builds `ai_input` (stored on the review) only when it has `with.ai` and the profile
+  has an enabled provider. Ask AI and the bulk job reuse it on the server. Their
+  `choice.ai_suggested` events go on the profile stream and reach `GET /api/events`; the
+  automatic run in the worker emits on the run stream.
+- Routes: `POST /api/choices/{id}/ai-suggest {refresh}`, `POST /api/choices/ai-suggest
+  {ids | profile, step_id?, refresh}` (202, `{job, total}`), and `POST
+  /api/choices/ai-suggest/estimate` (same body; count, cached, tokens, cost) for the
+  confirmation.
+- Playwright covers Ask AI (`e2e/ai-suggest.spec.ts`, against a local OpenAI-compatible
+  stub). The bulk confirmation and progress are covered by Vitest
+  (`AISuggestions.test.tsx`).
+
 ## Tasks
-- [ ] `with.ai` params and validation; `description` on choice rules (AI-SUGGEST-1 to -3)
-- [ ] `choice.suggest` task: prompt, schema, matching (AI-SUGGEST-4, -5)
-- [ ] Decisions on AI suggestions; rationale; `when_single` exclusion (AI-SUGGEST-6)
-- [ ] Mode from settings; automatic run at review creation; failure note (AI-SUGGEST-7, -8)
-- [ ] Storage, event, routes (AI-SUGGEST-9 to -11)
-- [ ] Never decides: validation error for `with.ai` + `when_single: auto`; waiting test
+- [x] `with.ai` params and validation; `description` on choice rules (AI-SUGGEST-1 to -3)
+- [x] `choice.suggest` task: prompt, schema, matching (AI-SUGGEST-4, -5)
+- [x] Decisions on AI suggestions; rationale; `when_single` exclusion (AI-SUGGEST-6)
+- [x] Mode from settings; automatic run at review creation; failure note (AI-SUGGEST-7, -8)
+- [x] Storage, event, routes (AI-SUGGEST-9 to -11)
+- [x] Never decides: validation error for `with.ai` + `when_single: auto`; waiting test
       (AI-SUGGEST-15)
-- [ ] Choice card: Ask AI, preview link, suggestions section; queue header bulk button with
+- [x] Choice card: Ask AI, preview link, suggestions section; queue header bulk button with
       confirmation and progress; Playwright tests for both (AI-SUGGEST-12 to -14)
-- [ ] foobar-style `genre-bucket` gets `with.ai`; `examples/rules/genres.yaml` descriptions;
+- [x] foobar-style `genre-bucket` gets `with.ai`; `examples/rules/genres.yaml` descriptions;
       `examples/rules/genre-guidance.md`; `docs/coverage.md` row 14

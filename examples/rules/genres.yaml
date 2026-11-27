@@ -4,7 +4,8 @@
 # write "." for a space inside a name ("drum.and.bass"), or quote the whole term. Sub-genres no rule matches are
 # offered as their top-level genre in beets lastgenre's genre tree (`fallback`).
 # Copy this file into the profile's rules/ folder and edit it: it is yours. With
-# `learn: true`, a bucket you type in review adds a rule here.
+# `learn: true`, a bucket you type in review adds a rule here. A rule's optional
+# `description` shows in review and is sent to the AI with the bucket's label.
 target: genres
 rules:
   - label: Rock
@@ -22,6 +23,11 @@ rules:
   - label: Jazz
     when: 'subgenres::(?i)jazz|bebop|swing'
     actions: [{ set: { genres: [Jazz] } }]
+  # A bucket no query picks: offered only when chosen by hand or suggested by the AI.
+  # Its description tells the AI (and you, in review) what belongs here.
+  - label: +Cross-Genre Collabs
+    description: A collaboration or split whose artists usually come from two or more buckets.
+    actions: [{ set: { genres: [+Cross-Genre Collabs] } }]
 fallback:
   template: "%genre_root{{{ value }}}"
   actions: [{ set: { genres: ["{{ choice }}"] } }]
