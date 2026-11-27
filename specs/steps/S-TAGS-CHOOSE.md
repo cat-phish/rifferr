@@ -159,7 +159,9 @@ Album kind (foobar-style):
 
 ## Extensibility
 Options are data. Plugin authors reuse the choice review from their own steps through
-`ctx.request_choice(...)` (public step API, like `ctx.request_cover`).
+`ctx.request_choice(...)` (public step API, like `ctx.request_cover`). AI suggestions on a
+choice review (`with.ai`, Ask AI, automatic when the rules are unsure) are specified in
+F-AI-SUGGEST (Draft).
 
 ## Security & safety
 Option actions are tag-script actions: no code runs. Custom values are validated and coerced
