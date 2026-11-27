@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import shutil
 import textwrap
 from pathlib import Path
 from typing import Any
@@ -14,6 +16,19 @@ from rifferr.engine import Engine, InMemoryEventSink, Run, SecretAccess, StepTyp
 from rifferr.steps import shell
 from tests.backends.beets.conftest import beets_env  # noqa: F401  (shared fixture)
 from tests.engine.conftest import FixedClock
+
+#: PATH for shell-step tests: ``/usr/bin:/bin`` plus wherever this host keeps the tools the tests
+#: run, since some systems (e.g. NixOS) have only ``env`` and ``sh`` there.
+STEP_PATH = os.pathsep.join(
+    dict.fromkeys(
+        ["/usr/bin", "/bin"]
+        + [
+            os.path.dirname(w)
+            for t in ("sh", "echo", "tr", "ls", "pwd", "true")
+            if (w := shutil.which(t))
+        ]
+    )
+)
 
 RUN_ID = "01RUN000000000000000000001"
 
@@ -84,4 +99,4 @@ class ShellHarness:
 
 @pytest.fixture
 def sh(tmp_path: Path) -> ShellHarness:
-    return ShellHarness(tmp_path, {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"})
+    return ShellHarness(tmp_path, {"PATH": STEP_PATH, "LANG": "C.UTF-8"})

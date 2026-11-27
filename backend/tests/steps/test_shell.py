@@ -15,7 +15,7 @@ from rifferr.core.workflow import load_workflow, validate
 from rifferr.credentials import ProfileSecrets, SecretResolver
 from rifferr.engine import RunState, StepTypeRegistry
 from rifferr.steps import process, shell
-from tests.steps.conftest import RUN_ID, ShellHarness
+from tests.steps.conftest import RUN_ID, STEP_PATH, ShellHarness
 
 PY = sys.executable
 PRINT_ARGS = "import json, sys; print(json.dumps(sys.argv[1:]))"
@@ -144,7 +144,7 @@ async def test_SHELL_4_environment(sh: ShellHarness) -> None:
     assert env["RIFFERR_VAR_MUSIC_DIR"] == "/m"
     assert env["BEETSDIR"] == "/beets"  # backend.command_env()
     assert env["EXTRA"] == "t"
-    assert env["PATH"] == "/usr/bin:/bin"
+    assert env["PATH"] == STEP_PATH
 
 
 async def test_SHELL_4_per_album_has_no_item_path(sh: ShellHarness) -> None:
