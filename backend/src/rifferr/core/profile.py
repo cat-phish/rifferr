@@ -15,6 +15,7 @@ from typing import Annotated, Any, Final, Literal
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, PositiveInt
 from pydantic_core import PydanticCustomError
 
+from rifferr.core.ai import AISettings
 from rifferr.core.covers import CoverSettings
 from rifferr.core.duration import Duration
 from rifferr.core.notify import NotifySettings
@@ -225,6 +226,7 @@ class ProfileFile(BaseModel):
     notify: NotifySettings = Field(default_factory=NotifySettings)
     files: FilesSettings = Field(default_factory=FilesSettings)
     covers: CoverSettings = Field(default_factory=CoverSettings)
+    ai: AISettings = Field(default_factory=AISettings)
     vars: dict[VarName, Annotated[str, Field(strict=True)]] = Field(default_factory=dict[str, str])
     secrets: dict[str, SecretRefField] = Field(default_factory=dict[str, SecretRef])
     timezone: str | None = Field(default=None, description="IANA time zone; default: system")
@@ -280,6 +282,7 @@ def parse_profile(
         notify=file.notify,
         files=file.files,
         covers=file.covers,
+        ai=file.ai,
         vars=resolve_vars(file.vars, env),
         secrets=file.secrets,
         timezone=file.timezone,
@@ -310,6 +313,8 @@ def _semantic_errors(
                 )
             )
     for path, message in file.notify.checked(file.secrets):  # NOTIFY-1
+        errors.append(doc.error(path, message))
+    for path, message in file.ai.checked(set(file.secrets)):  # AI-CORE-6
         errors.append(doc.error(path, message))
     if file.timezone and timezone_exists and not timezone_exists(file.timezone):
         errors.append(doc.error(("timezone",), f"unknown time zone {file.timezone!r}"))
