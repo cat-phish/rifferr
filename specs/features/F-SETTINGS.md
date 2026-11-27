@@ -1,5 +1,5 @@
 # F-SETTINGS: Settings page, AI section first
-Status: Draft
+Status: Approved
 Milestone: M4
 
 ## Context

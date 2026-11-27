@@ -1,5 +1,5 @@
 # C-AI-CORE: Shared AI core: providers, tasks, validation, cache
-Status: Draft
+Status: Approved
 Milestone: M4
 
 ## Context

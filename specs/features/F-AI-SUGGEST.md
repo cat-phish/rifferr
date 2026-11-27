@@ -1,5 +1,5 @@
 # F-AI-SUGGEST: AI suggestions on a choice review
-Status: Draft
+Status: Approved
 Milestone: M4
 
 ## Context
