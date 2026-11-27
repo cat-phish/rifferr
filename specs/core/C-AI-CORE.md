@@ -118,7 +118,14 @@ retry, cache, preview and safety-report behaviors moved here.
   `cached`), `ai.response` (task, target, usage, duration) and `ai.rejected` (task, target,
   field or value, reason) events. Values in `ai.rejected` MUST be cut to 200 characters.
   Every task result MUST carry its usage, so callers can sum `input_tokens`, `output_tokens`
-  and `cost` (`None` when nothing was reported).
+  and `cost`. `cost` is the provider's reported cost when it reports one. Otherwise, when the
+  provider's settings have the optional `price_per_mtok` (AI-CORE-23), it is computed from the
+  token counts. Otherwise it is `None`.
+- AI-CORE-23: A provider entry MAY set `settings.price_per_mtok: {input, output, currency}`:
+  prices per million tokens, decimals, `currency` default `USD`. It is optional: without it,
+  everything works and costs show as unknown, with token counts only. A negative price or a
+  price without both `input` and `output` MUST be a validation error. A reported cost is always
+  shown, but a computed one MUST be marked as an estimate.
 
 ### Cache
 - AI-CORE-16: Answers MUST be cached in the app DB under the SHA-256 of: the task id and
@@ -177,6 +184,8 @@ ai:
       type: anthropic
       model: claude-haiku-5-5
       api_key: anthropic_key       # a name from `secrets`, never the key itself
+      settings:
+        price_per_mtok: {input: 1.00, output: 5.00, currency: USD}   # optional (AI-CORE-23)
     - name: local
       type: openai-compatible
       base_url: http://192.168.1.20:11434/v1
@@ -303,9 +312,8 @@ With the lookalike map above and vocabulary `[Alt／Indie, Garage Rock／Punk, H
 1. Match keys: should the lookalike map also be able to treat `-` and space as the same, so
    `hip hop` matches `Hip-Hop`? This draft keeps the map to single characters, so results are
    predictable. The `open` mode shows such values as new instead.
-2. Cost: providers rarely report a price. Should `settings` take a per-model price
-   (`price_per_mtok: {input, output}`) so the bulk confirmation can show a cost, or show tokens
-   only?
+2. ~~Cost: should `settings` take a per-model price?~~ Resolved 2026-11-26 (author): yes, as
+   an optional `price_per_mtok` (AI-CORE-23).
 3. Should the cache be shared between profiles that use the same provider and model? This draft
    keeps it per profile (the app DB is per profile).
 
@@ -322,3 +330,4 @@ With the lookalike map above and vocabulary `[Alt／Indie, Garage Rock／Punk, H
 - [ ] Cache table, TTL, cap (AI-CORE-16, -17)
 - [ ] Preview route; AI jobs with SSE progress and cancel (AI-CORE-18, -19)
 - [ ] Safety report findings (AI-CORE-20)
+- [ ] Optional `price_per_mtok`; reported vs estimated cost (AI-CORE-15, -23)

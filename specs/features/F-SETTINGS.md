@@ -29,9 +29,12 @@ environment (non-negotiable 5).
   runs that start afterwards. A run already going keeps the settings it started with.
 - SETTINGS-5: The AI section MUST show and edit: the providers (name, type from the installed
   `rifferr.ai_providers`, model, `base_url`, enabled, order; the first enabled one is the
+  default; an optional price per million input and output tokens, AI-CORE-23, left empty by
   default), `concurrency`, `timeout`, `cache_ttl`, the lookalike file (`ai.lookalikes`,
   AI-CORE-22), and the suggestion mode `off | unsure | always` with per-step overrides
-  (AI-SUGGEST-7). The override list offers the profile's workflow steps that have `with.ai`.
+  (AI-SUGGEST-7). The override list offers the profile's workflow steps that have `with.ai`,
+  and shows each step's own `with.ai.mode` when it has one, so it's clear what an override
+  replaces.
 - SETTINGS-6: A provider's API key MUST be write-only. The page shows whether a key is set,
   never its value. Entering a key MUST store it in the OS keyring under a secret name the
   page proposes (`rifferr/<profile>/<provider name>`). The page then adds the `secrets` entry

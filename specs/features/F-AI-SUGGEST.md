@@ -29,8 +29,8 @@ This is the `choice.suggest` AI task on C-AI-CORE. Nothing here is specific to g
 - AI-SUGGEST-1: `tags.choose` MUST accept an optional `with.ai` block (Interfaces). Without it,
   the step's reviews offer no AI suggestions and no Ask AI button. With it, the workflow sets
   *what* is sent: `context` (album fields), optional `guidance` (a Markdown file, AI-CORE-12),
-  optional `provider`, `max_suggestions` (1 to 10, default 3) and `allow_new` (default true).
-  *When* it runs automatically is not a workflow setting (AI-SUGGEST-7).
+  optional `provider`, `max_suggestions` (1 to 10, default 3), `allow_new` (default true), and
+  optional `mode` (AI-SUGGEST-7): the workflow's default for when the AI runs automatically.
 - AI-SUGGEST-2: The request MUST contain only: the task's prompt template; the `guidance` text;
   the choice's message and its `show` fields with their values; the `rank_by` values; every
   option the review offers (label, and the rule's `description` if the rules file has one,
@@ -64,9 +64,10 @@ This is the `choice.suggest` AI task on C-AI-CORE. Nothing here is specific to g
   `when_single: auto` and MUST NOT be applied without the person's decision (non-negotiable 4).
 
 ### When it runs
-- AI-SUGGEST-7: The suggestion mode for each step MUST come from the profile's AI settings
-  (F-SETTINGS): `off`, `unsure` (default) or `always`, with an optional override per workflow
-  step. `off` means only the buttons run it. `unsure` runs it automatically when any of these
+- AI-SUGGEST-7: Each step's suggestion mode is `off`, `unsure` or `always`, taken from the
+  first of these that is set (author, 2026-11-26): the Settings page's override for that
+  workflow step (F-SETTINGS), then the step's `with.ai.mode`, then the profile's
+  `ai.suggest.mode` (default `unsure`). `off` means only the buttons run it. `unsure` runs it automatically when any of these
   holds: the review offers no option; every option it offers is a fallback option; the top two
   ranked rule options have the same rank. `always` runs it for every review of the step.
 - AI-SUGGEST-8: An automatic run MUST happen when the review is created, before the
@@ -119,6 +120,7 @@ This is the `choice.suggest` AI task on C-AI-CORE. Nothing here is specific to g
       guidance: rules/genre-guidance.md   # optional, the user's notes for the AI
       max_suggestions: 3
       allow_new: true
+      # mode: always                      # optional workflow default; Settings can override
       # provider: local                   # optional; default is the profile's default
 ```
 ```yaml
@@ -132,8 +134,9 @@ rules:
 # profile.yaml (edited on the Settings page, F-SETTINGS)
 ai:
   suggest:
-    mode: unsure                  # off | unsure | always
-    steps:                        # optional overrides, "<workflow>/<step id>"
+    mode: unsure                  # off | unsure | always; used when nothing else is set
+    steps:                        # optional overrides, "<workflow>/<step id>"; win over the
+                                  # step's own `with.ai.mode"
       foobar-style/genre-bucket: always
 ```
 ```python
@@ -143,6 +146,7 @@ class ChoiceAIParams(BaseModel):
     provider: str | None = None
     max_suggestions: int = Field(3, ge=1, le=10)
     allow_new: bool = True
+    mode: Literal["off", "unsure", "always"] | None = None
 
 class AISuggestion(BaseModel, frozen=True):
     rank: int
@@ -181,8 +185,8 @@ The model answers `alt/indie` → suggestion of the existing `Alt／Indie` optio
 `alt/indie`.
 
 ## Extensibility
-- Any `tags.choose` step can use it; what is sent is the workflow's choice, and when it runs is
-  the user's setting.
+- Any `tags.choose` step can use it. What is sent is the workflow's choice. When it runs is
+  the workflow's default, and the user's Settings can override it.
 - The task is a normal `AITask`, so a plugin could register a different suggest task. Selecting
   it per step is left for later.
 - Fixed: suggestions never apply on their own, never preselect, and go through the
@@ -202,10 +206,10 @@ The model answers `alt/indie` → suggestion of the existing `Alt／Indie` optio
 - Fetching genres from MusicBrainz or Discogs (F-GENRE-FETCH).
 
 ## Open questions
-1. Should an AI top pick ever replace the rules' preselection, e.g. with `mode: always`, or
-   when the rules preselect only a fallback? This draft: never preselected (AI-SUGGEST-13).
-2. May a workflow set a default mode for its step (overridden by Settings), or is the mode
-   only a Settings choice? This draft: Settings only (AI-SUGGEST-7).
+1. ~~Should an AI top pick ever replace the rules' preselection?~~ Resolved 2026-11-26
+   (author): never. An AI suggestion is never preselected (AI-SUGGEST-13).
+2. ~~May a workflow set a default mode for its step?~~ Resolved 2026-11-26 (author): yes,
+   `with.ai.mode`. A Settings override for the step wins over it (AI-SUGGEST-7).
 3. Should a bulk job put several albums in one request to save tokens? This draft: one per
    album, for caching and per-album errors.
 4. Should `unsure` also count "the top option's rank is low" (e.g. one sub-genre out of five
