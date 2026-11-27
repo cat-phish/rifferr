@@ -145,8 +145,8 @@ can change, and only after review.
 
 ## Open questions
 1. ~~`apply: auto` allowed for AI output?~~ Resolved 2026-11-18 (author): no (AI-TAG-1).
-2. `on_error` default: this draft proposes `skip` plus a run warning (AI-TAG-8), because
-   unattended runs shouldn't fail on a flaky provider. Confirm.
+2. ~~`on_error` default?~~ Resolved 2026-11-26 (author): `skip` plus a run warning
+   (AI-TAG-8).
 3. Should a flagged (`not_in_vocabulary`) value offer "add to vocabulary" in review, which
    edits the vocabulary file after confirmation? Or leave that to F-AI-CHAT?
 4. One request per album (this draft), or several small albums per request to save tokens?

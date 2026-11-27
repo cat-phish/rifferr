@@ -81,6 +81,15 @@ This is the `choice.suggest` AI task on C-AI-CORE. Nothing here is specific to g
   queue shows them live. Asking again replaces them. Asking again with `refresh: true` skips
   the cache (AI-CORE-17).
 
+- AI-SUGGEST-15: AI MUST never decide a choice review or let one skip manual review (author,
+  2026-11-26). Whatever the mode, the confidence or the number of suggestions, a review that
+  has AI suggestions waits for a person's decision. Automatic runs (AI-SUGGEST-8) and bulk
+  jobs (AI-SUGGEST-11) only add suggestions. No route, bulk action or setting in this spec
+  decides with an AI suggestion: there is no "accept the AI's pick" or "accept all AI
+  suggestions". A step with `with.ai` and `when_single: auto` MUST be a validation error,
+  so AI is never combined with skipping the review. Tests MUST show that an album whose
+  only offer is an AI suggestion, at confidence 1.0, in `always` mode, still waits.
+
 ### UI and routes
 - AI-SUGGEST-10: `POST /api/choices/{id}/ai-suggest {refresh?}` MUST run the task for one
   waiting choice review and return when the suggestions are stored, or with the error. A
@@ -221,6 +230,8 @@ The model answers `alt/indie` → suggestion of the existing `Alt／Indie` optio
 - [ ] Decisions on AI suggestions; rationale; `when_single` exclusion (AI-SUGGEST-6)
 - [ ] Mode from settings; automatic run at review creation; failure note (AI-SUGGEST-7, -8)
 - [ ] Storage, event, routes (AI-SUGGEST-9 to -11)
+- [ ] Never decides: validation error for `with.ai` + `when_single: auto`; waiting test
+      (AI-SUGGEST-15)
 - [ ] Choice card: Ask AI, preview link, suggestions section; queue header bulk button with
       confirmation and progress; Playwright tests for both (AI-SUGGEST-12 to -14)
 - [ ] foobar-style `genre-bucket` gets `with.ai`; `examples/rules/genres.yaml` descriptions;
