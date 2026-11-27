@@ -78,9 +78,14 @@ class AIError(Exception):
 class AIProvider(Protocol):
     """An ``rifferr.ai_providers`` entry point (AI-CORE-1). Must not retry by itself."""
 
-    type: str
-    default_host: str | None
-    default_base_url: str | None
+    @property
+    def type(self) -> str: ...
+
+    @property
+    def default_host(self) -> str | None: ...
+
+    @property
+    def default_base_url(self) -> str | None: ...
 
     async def complete(
         self,
@@ -117,10 +122,17 @@ class AITask[In: BaseModel, Out](Protocol):
     core validates every answer against it before ``validate`` sees it (AI-CORE-10).
     """
 
-    id: str
-    prompt_version: int
-    input_model: type[In]
-    output_model: type[BaseModel]
+    @property
+    def id(self) -> str: ...
+
+    @property
+    def prompt_version(self) -> int: ...
+
+    @property
+    def input_model(self) -> type[In]: ...
+
+    @property
+    def output_model(self) -> type[BaseModel]: ...
 
     def sends(self, inp: In) -> list[str]:
         """Kinds of data the request contains, for the safety report and preview."""
