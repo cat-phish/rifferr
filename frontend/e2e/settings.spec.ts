@@ -24,3 +24,27 @@ test("SETTINGS_8 edit the AI section, save it, and test the connection", async (
     "3",
   );
 });
+
+test("SETTINGS_10 a new remote host is saved only after confirming it", async ({ page }) => {
+  await page.goto(`/auth/exchange?token=${process.env.RIFFERR_E2E_TOKEN ?? ""}`);
+  await page.goto("/settings?profile=main");
+  const ai = page.getByTestId("settings-ai");
+  const url = ai.locator('[data-testid=provider][data-name="stub"]').getByLabel("Server URL");
+  const original = await url.inputValue();
+
+  await url.fill("https://llm.example.net/v1");
+  await ai.getByRole("button", { name: "Save" }).click();
+  const ask = page.getByTestId("settings-confirm-hosts");
+  await expect(ask).toContainText("llm.example.net");
+  await ask.getByRole("button", { name: "Send album data to these hosts" }).click();
+  await expect(ask).toHaveCount(0);
+  await expect(ai.getByRole("button", { name: "Save" })).toBeDisabled();
+  await page.reload();
+  await expect(url).toHaveValue("https://llm.example.net/v1");
+
+  // Back to the local stub: a local host needs no confirmation.
+  await url.fill(original);
+  await ai.getByRole("button", { name: "Save" }).click();
+  await expect(ai.getByRole("button", { name: "Save" })).toBeDisabled();
+  await expect(page.getByTestId("settings-confirm-hosts")).toHaveCount(0);
+});

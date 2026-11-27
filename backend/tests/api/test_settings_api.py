@@ -221,3 +221,67 @@ async def test_SETTINGS_8_mutating_routes_are_json_only_and_origin_checked(api: 
             json={"values": body["values"], "base_hash": body["base_hash"]},
         )
     assert r.status_code == 401
+
+
+async def put_ai(api: Api, values: Any, base: str, confirm: list[str] | None = None) -> Any:
+    body: dict[str, Any] = {"values": values, "base_hash": base}
+    if confirm is not None:
+        body["confirm_hosts"] = confirm
+    return await api.client.put("/api/profiles/main/settings/ai", json=body)
+
+
+async def test_SETTINGS_10_new_remote_host_needs_confirmation(api: Api) -> None:
+    configure(api)
+    body = await get_ai(api)
+    values = body["values"]
+    values["providers"][1]["base_url"] = "https://llm.example.net/v1"
+    r = await put_ai(api, values, body["base_hash"])
+    assert r.status_code == 409, r.text
+    err = r.json()["error"]
+    assert err["code"] == "confirm_hosts"
+    assert err["details"] == [{"host": "llm.example.net", "providers": ["nas"]}]
+    assert "llm.example.net" not in profile_yaml().read_text(encoding="utf-8")
+    wrong = await put_ai(api, values, body["base_hash"], ["other.example"])
+    assert wrong.json()["error"]["code"] == "confirm_hosts"
+    r = await put_ai(api, values, body["base_hash"], ["llm.example.net"])
+    assert r.status_code == 200, r.text
+    assert "llm.example.net" in profile_yaml().read_text(encoding="utf-8")
+
+
+async def test_SETTINGS_10_adding_or_enabling_a_remote_provider(api: Api) -> None:
+    configure(api)
+    body = await get_ai(api)
+    values = body["values"]
+    values["providers"].append(
+        {"name": "far", "type": "fake", "model": "m3", "base_url": "https://far.example/v1"}
+    )
+    r = await put_ai(api, values, body["base_hash"])
+    assert r.json()["error"]["details"] == [{"host": "far.example", "providers": ["far"]}]
+    values["providers"][-1]["enabled"] = False
+    r = await put_ai(api, values, body["base_hash"])
+    assert r.status_code == 200, r.text
+    again = await get_ai(api)
+    values = again["values"]
+    values["providers"][-1]["enabled"] = True
+    r = await put_ai(api, values, again["base_hash"])
+    assert r.json()["error"]["code"] == "confirm_hosts"
+
+
+async def test_SETTINGS_10_known_local_or_disabled_hosts_need_no_confirmation(api: Api) -> None:
+    configure(api)
+    body = await get_ai(api)
+    values = body["values"]
+    # same host as the enabled "claude" provider, a local host, and a disabled remote one
+    values["providers"].append({"name": "second", "type": "fake", "model": "m9"})
+    values["providers"][1]["base_url"] = "http://192.168.1.20:11434/v1"
+    values["providers"].append(
+        {
+            "name": "off",
+            "type": "fake",
+            "model": "m3",
+            "base_url": "https://x.example/v1",
+            "enabled": False,
+        }
+    )
+    r = await put_ai(api, values, body["base_hash"])
+    assert r.status_code == 200, r.text

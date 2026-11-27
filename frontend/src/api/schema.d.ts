@@ -1072,7 +1072,8 @@ export interface paths {
         /**
          * Put Section
          * @description Validate the whole section and write only its key (SETTINGS-2, -3). ``400`` lists the
-         *     fields at fault; ``409`` when ``profile.yaml`` changed since ``base_hash``.
+         *     fields at fault; ``409 conflict`` when ``profile.yaml`` changed since ``base_hash``, and
+         *     ``409 confirm_hosts`` when album data would go to a host not yet confirmed (SETTINGS-10).
          */
         put: operations["put_section_api_profiles__profile__settings__section__put"];
         post?: never;
@@ -4372,6 +4373,11 @@ export interface components {
         SettingsBody: {
             /** Base Hash */
             base_hash: string;
+            /**
+             * Confirm Hosts
+             * @description New hosts the user confirmed album data may go to (SETTINGS-10)
+             */
+            confirm_hosts?: string[];
             /** Values */
             values: {
                 [key: string]: components["schemas"]["JsonValue"];

@@ -7339,6 +7339,15 @@
             "title": "Base Hash",
             "type": "string"
           },
+          "confirm_hosts": {
+            "description": "New hosts the user confirmed album data may go to (SETTINGS-10)",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 64,
+            "title": "Confirm Hosts",
+            "type": "array"
+          },
           "values": {
             "additionalProperties": {
               "$ref": "#/components/schemas/JsonValue"
@@ -12987,7 +12996,7 @@
         ]
       },
       "put": {
-        "description": "Validate the whole section and write only its key (SETTINGS-2, -3). ``400`` lists the\nfields at fault; ``409`` when ``profile.yaml`` changed since ``base_hash``.",
+        "description": "Validate the whole section and write only its key (SETTINGS-2, -3). ``400`` lists the\nfields at fault; ``409 conflict`` when ``profile.yaml`` changed since ``base_hash``, and\n``409 confirm_hosts`` when album data would go to a host not yet confirmed (SETTINGS-10).",
         "operationId": "put_section_api_profiles__profile__settings__section__put",
         "parameters": [
           {

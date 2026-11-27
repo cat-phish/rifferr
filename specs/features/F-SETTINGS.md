@@ -56,6 +56,15 @@ environment (non-negotiable 5).
   with the ids of the changed sections, and the run page MUST show it in the run log. The
   hash covers the loaded values, so an edit that keeps every value the same is not a change.
   It holds no secrets: keys stay in the keyring and only their secret names are in a section.
+- SETTINGS-10: A save that would start sending album data to a new host MUST be confirmed, as
+  trusting a workflow is. A new host is one that is not local (AI-CORE-20), is the host of an
+  enabled provider in the new values, and is not the host of any enabled provider in the saved
+  values. This covers changing a provider's `base_url`, adding or enabling a remote provider,
+  and changing a provider's type to one with another default host. The `PUT` MUST answer 409
+  `confirm_hosts`, listing each new host with the providers that use it, unless every new host
+  is in the body's `confirm_hosts`. The page then shows those hosts and saves again only when
+  the user confirms them. A host that is already in use, a local host, or a disabled provider
+  needs no confirmation. Edits made directly in `profile.yaml` are not checked.
 
 ## Interfaces
 ```python
@@ -87,16 +96,20 @@ class SettingsSection(Protocol):
 ## Security & safety
 - Keys go straight to the keyring and are never returned.
 - Changing settings can send album data to a new host. The page says so when a provider's
-  host isn't local, as the safety report does (AI-CORE-20).
+  host isn't local, as the safety report does (AI-CORE-20), and the server refuses the save
+  until the user confirms each new host (SETTINGS-10).
 
 ## Non-goals
 - Editing workflows (B-078) or rules files.
 - Settings other than AI in M4.
 
 ## Open questions
-1. Should changing a provider's host or adding a remote provider ask for confirmation, like
-   trusting a workflow? This draft only shows a notice.
-2. Keyring name: `rifferr/<profile>/<provider>`, or let the user type a name?
+1. ~~Should changing a provider's host or adding a remote provider ask for confirmation, like
+   trusting a workflow? This draft only shows a notice.~~ Answered (author, 2026-11-27): yes,
+   ask for confirmation (SETTINGS-10).
+2. ~~Keyring name: `rifferr/<profile>/<provider>`, or let the user type a name?~~ Answered
+   (author, 2026-11-27): automatic, as implemented (keyring service `rifferr`, entry
+   `<profile>/<provider>`, secret name `ai-<provider>`); the user never types it.
 3. ~~A run resumed after a review gate uses the settings saved since it started. Keep that, or
    store the settings with the run?~~ Answered (author, 2026-11-27): keep the saved settings,
    and note in the run log when they changed since the run's previous job (SETTINGS-4, -9).
@@ -138,3 +151,4 @@ class SettingsSection(Protocol):
 - [x] Test connection (SETTINGS-7)
 - [x] Security checks and Playwright test (SETTINGS-8)
 - [x] Settings hash per job and `run.settings_changed` in the run log (SETTINGS-9)
+- [x] Confirm new remote hosts before saving (SETTINGS-10)

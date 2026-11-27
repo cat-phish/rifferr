@@ -6,6 +6,7 @@ import {
   Card,
   Code,
   Group,
+  List,
   NumberInput,
   PasswordInput,
   Select,
@@ -115,7 +116,16 @@ function changedKeys(a: Values, b: Values): string[] {
   return [...keys].filter((k) => JSON.stringify(a[k]) !== JSON.stringify(b[k])).sort();
 }
 
-/** States: loading, clean, edited (Save / Discard), saving, conflict, error per field. */
+type NewHost = { host: string; providers: string[] };
+
+/** The hosts a `409 confirm_hosts` asks the user to confirm (SETTINGS-10). */
+function newHosts(err: unknown): NewHost[] {
+  if (!(err instanceof ApiError) || err.code !== "confirm_hosts") return [];
+  return Array.isArray(err.details) ? (err.details as NewHost[]) : [];
+}
+
+/** States: loading, clean, edited (Save / Discard), saving, conflict, confirm new hosts,
+ * error per field. */
 function useEditor(profile: string, section: string) {
   const queryClient = useQueryClient();
   const loaded = useSection(profile, section);
@@ -125,11 +135,15 @@ function useEditor(profile: string, section: string) {
   const values: Values | null = draft ?? saved?.values ?? null;
   const edited = draft !== null && JSON.stringify(draft) !== JSON.stringify(saved?.values);
   const save = useMutation({
-    mutationFn: async (base: string) =>
+    mutationFn: async ({ base, confirm = [] }: { base: string; confirm?: string[] }) =>
       ok(
         await api.PUT("/api/profiles/{profile}/settings/{section}", {
           params: { path: { profile, section } },
-          body: { values: (draft ?? {}) as Record<string, never>, base_hash: base },
+          body: {
+            values: (draft ?? {}) as Record<string, never>,
+            base_hash: base,
+            confirm_hosts: confirm,
+          },
         }),
       ),
     onSuccess: (view) => {
@@ -138,7 +152,7 @@ function useEditor(profile: string, section: string) {
       setConflict(null);
     },
     onError: async (err) => {
-      if (err instanceof ApiError && err.status === 409) {
+      if (err instanceof ApiError && err.status === 409 && err.code === "conflict") {
         const fresh = await api.GET("/api/profiles/{profile}/settings/{section}", {
           params: { path: { profile, section } },
         });
@@ -154,6 +168,7 @@ function useEditor(profile: string, section: string) {
     conflict,
     save,
     errors: fieldErrors(save.error),
+    newHosts: newHosts(save.error),
     set: (next: Values) => {
       setDraft(next);
     },
@@ -194,7 +209,7 @@ function SaveBar({ ed }: { ed: Editor }) {
               size="xs"
               color="yellow"
               onClick={() => {
-                if (ed.conflict) ed.save.mutate(ed.conflict.base_hash);
+                if (ed.conflict) ed.save.mutate({ base: ed.conflict.base_hash });
               }}
             >
               Overwrite with my edits
@@ -202,7 +217,46 @@ function SaveBar({ ed }: { ed: Editor }) {
           </Group>
         </Alert>
       )}
-      {err && !ed.conflict && (
+      {ed.newHosts.length > 0 && (
+        <Alert
+          color="orange"
+          data-testid="settings-confirm-hosts"
+          title="Album data goes to a new host"
+        >
+          <Text size="sm">
+            With these settings, AI requests send album data off this machine to:
+          </Text>
+          <List size="sm" mt={4}>
+            {ed.newHosts.map((h) => (
+              <List.Item key={h.host}>
+                <Code>{h.host}</Code> ({h.providers.join(", ")})
+              </List.Item>
+            ))}
+          </List>
+          <Group gap="xs" mt="xs">
+            <Button
+              size="xs"
+              variant="default"
+              onClick={() => {
+                ed.save.reset();
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="xs"
+              color="orange"
+              loading={ed.save.isPending}
+              onClick={() => {
+                ed.save.mutate({ base: saved.base_hash, confirm: ed.newHosts.map((h) => h.host) });
+              }}
+            >
+              Send album data to these hosts
+            </Button>
+          </Group>
+        </Alert>
+      )}
+      {err && !ed.conflict && ed.newHosts.length === 0 && (
         <Alert color="red" data-testid="settings-error">
           {err.message}
         </Alert>
@@ -221,7 +275,7 @@ function SaveBar({ ed }: { ed: Editor }) {
           disabled={!ed.edited}
           loading={ed.save.isPending}
           onClick={() => {
-            ed.save.mutate(saved.base_hash);
+            ed.save.mutate({ base: saved.base_hash });
           }}
         >
           Save

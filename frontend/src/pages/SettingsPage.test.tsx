@@ -193,3 +193,45 @@ test("SETTINGS_6 without a keyring the page explains the environment variable", 
   expect(within(page).getAllByTestId("no-keyring")).toHaveLength(2);
   expect(within(page).queryByLabelText(/API key/)).toBeNull();
 });
+
+test("SETTINGS_10 a new remote host is saved only after the user confirms it", async () => {
+  let puts = 0;
+  const { calls } = setup({
+    "PUT /api/profiles/main/settings/ai": () => {
+      puts += 1;
+      if (puts > 1) return view();
+      return {
+        status: 409,
+        body: {
+          error: {
+            code: "confirm_hosts",
+            message: "album data would go to a new host",
+            details: [{ host: "llm.example.net", providers: ["nas"] }],
+          },
+        },
+      };
+    },
+  });
+  renderApp("/settings?profile=main");
+  const page = await screen.findByTestId("settings-ai");
+  fireEvent.change(within(page).getAllByLabelText("Server URL")[1] as HTMLElement, {
+    target: { value: "https://llm.example.net/v1" },
+  });
+  fireEvent.click(within(page).getByRole("button", { name: "Save" }));
+  const ask = await screen.findByTestId("settings-confirm-hosts");
+  expect(ask).toHaveTextContent("llm.example.net");
+  expect(ask).toHaveTextContent("nas");
+  expect(screen.queryByTestId("settings-conflict")).toBeNull();
+  fireEvent.click(within(ask).getByRole("button", { name: "Send album data to these hosts" }));
+  await waitFor(() => {
+    expect(sent(calls, "PUT", "/api/profiles/main/settings/ai")).toHaveLength(2);
+  });
+  const [first, second] = sent(calls, "PUT", "/api/profiles/main/settings/ai") as {
+    confirm_hosts?: string[];
+  }[];
+  expect(first?.confirm_hosts ?? []).toEqual([]);
+  expect(second?.confirm_hosts).toEqual(["llm.example.net"]);
+  await waitFor(() => {
+    expect(screen.queryByTestId("settings-confirm-hosts")).toBeNull();
+  });
+});

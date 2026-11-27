@@ -85,6 +85,11 @@ class SettingsView(_Model):
 class SettingsBody(_Model):
     values: dict[str, JsonValue]
     base_hash: str = Field(min_length=64, max_length=64)
+    confirm_hosts: list[str] = Field(
+        default_factory=list[str],
+        max_length=64,
+        description="New hosts the user confirmed album data may go to (SETTINGS-10)",
+    )
 
 
 class KeyBody(_Model):
@@ -208,6 +213,36 @@ async def get_section(profile: str, section: str, state: State) -> SettingsView:
     return _view(state, profile, _section(section))
 
 
+def _remote_hosts(state: ServerState, providers: Any) -> dict[str, list[str]]:
+    """Non-local hosts of the enabled providers, each with the providers that use it."""
+    out: dict[str, list[str]] = {}
+    for setting in providers:
+        host = _host(state, setting) if setting.enabled else None
+        if host is not None and not is_private_host(host):
+            out.setdefault(host, []).append(setting.name)
+    return out
+
+
+def _check_new_hosts(state: ServerState, p: Profile, value: Any, confirmed: list[str]) -> None:
+    """Refuse a save that starts sending album data to an unconfirmed host (SETTINGS-10)."""
+    known = _remote_hosts(state, p.ai.providers)
+    new = {
+        h: names
+        for h, names in _remote_hosts(state, value.providers).items()
+        if h not in known and h not in confirmed
+    }
+    if new:
+        details: list[JsonValue] = [
+            {"host": h, "providers": list(names)} for h, names in sorted(new.items())
+        ]
+        raise ApiError(
+            409,
+            "confirm_hosts",
+            f"album data would go to a new host: {', '.join(sorted(new))}; confirm to save",
+            details=details,
+        )
+
+
 def _field_errors(exc: PydanticValidationError) -> list[JsonValue]:
     return [
         {"field": ".".join(str(x) for x in e["loc"]), "message": e["msg"]}
@@ -218,7 +253,8 @@ def _field_errors(exc: PydanticValidationError) -> list[JsonValue]:
 @router.put("/{section}", response_model=SettingsView, responses=ERROR_RESPONSES)
 async def put_section(profile: str, section: str, body: SettingsBody, state: State) -> SettingsView:
     """Validate the whole section and write only its key (SETTINGS-2, -3). ``400`` lists the
-    fields at fault; ``409`` when ``profile.yaml`` changed since ``base_hash``."""
+    fields at fault; ``409 conflict`` when ``profile.yaml`` changed since ``base_hash``, and
+    ``409 confirm_hosts`` when album data would go to a host not yet confirmed (SETTINGS-10)."""
     found = _section(section)
     p = get_profile(state, profile)
     try:
@@ -227,6 +263,8 @@ async def put_section(profile: str, section: str, body: SettingsBody, state: Sta
         errors = _field_errors(exc)
         where = ", ".join(".".join(str(x) for x in e["loc"]) for e in exc.errors())
         raise ApiError(400, "invalid_settings", f"invalid: {where}", details=errors) from None
+    if found.id == "ai":
+        _check_new_hosts(state, p, value, body.confirm_hosts)
     try:
         await asyncio.to_thread(
             save_section, state.config_root, p.name, found, value, body.base_hash
